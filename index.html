@@ -231,7 +231,9 @@ dialog textarea{width:100%; min-height:70px; font-family:ui-monospace,monospace;
   <div class="row" style="margin-top:0">
     <button class="ctl" id="cpCode">Copy code</button>
     <button class="ctl" id="cpLink">Copy link</button>
-    <button class="ctl" id="dlFile">Download .hpd</button>
+    <button class="ctl" id="dlFile">Save .hps file</button>
+    <button class="ctl" id="impFile">Import file…</button>
+    <input type="file" id="impFileInput" accept=".hps,.hpd,.txt" class="hidden">
   </div>
   <p class="hint">Paste a code, a link, or the contents of a .hpd file to import:</p>
   <textarea id="impTxt" placeholder="HPS1:…"></textarea>
@@ -1513,9 +1515,19 @@ function boot(){
     copyText(base+"#p="+enc(piece),"Link copied"); });
   $("dlFile").addEventListener("click",()=>{
     const a=document.createElement("a");
-    a.href=URL.createObjectURL(new Blob([JSON.stringify(piece,null,1)],{type:"application/json"}));
-    a.download=(piece.title||"piece").replace(/[^\w -]+/g,"")+".hpd"; a.click();
+    a.href=URL.createObjectURL(new Blob(["HPS1:"+enc(piece)+"\n"],{type:"text/plain"}));
+    a.download=(piece.title||"piece").replace(/[^\w -]+/g,"")+".hps"; a.click();
     setTimeout(()=>URL.revokeObjectURL(a.href),4000); });
+  $("impFile").addEventListener("click",()=>$("impFileInput").click());
+  $("impFileInput").addEventListener("change",e=>{
+    const f=e.target.files[0]; if(!f) return;
+    f.text().then(txt=>{
+      const p=pieceFromText(txt);
+      if(!p){ toast("That file could not be read"); return; }
+      loadPiece(p); $("shareDlg").close(); toast("Imported: "+(p.title||"Untitled"));
+    });
+    e.target.value="";
+  });
   $("impBtn").addEventListener("click",()=>{
     const p=pieceFromText($("impTxt").value);
     if(!p){ toast("That code could not be read"); return; }
