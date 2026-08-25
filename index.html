@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700;800&family=Atkinson+Hyperlegible:wght@400;700&family=Caveat:wght@600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700;800&family=Inter:wght@400;600;700;800&family=Caveat:wght@600&display=swap">
 <style>
 /* Handpan Studio v1 — single-theme (warm light), per the approved mockups.
    The score is a printed object: white card, brown edge, black/green inks. */
@@ -16,9 +16,10 @@
   --ink:#1E1B16; --ink2:#5E5749; --ink3:#8D8578;
   --rule:#E4DCD0; --rule2:#EFE9E0;
   --dixie:#E59315; --dixie-soft:#FDF3E4; --amber-ink:#A9660A;
-  --steel:#33607E; --steel-soft:#EBF1F5;
+  --steel:#33607E; --steel-soft:#EBF1F5; --clay:#BF5346;
   --green:#3F8C50; --green-soft:#EDF4EE;
   --sc-bg:#FFFFFF; --sc-edge:#6B4A38; --sc-ink:#17150F; --sc-hand:#3F8C50;
+  --hand-l:#17150F; --hand-r:#469957;   /* student-selectable; the green a tiny bit darker (David, 26 Aug) */
   --sc-rule:#D9D2C6; --sc-count:#C6BEB1; --sc-band:#FBE7C6;
   --shadow:0 1px 2px rgba(70,52,28,.05), 0 14px 34px -16px rgba(70,52,28,.2);
 }
@@ -29,7 +30,17 @@ body{
   font-family:Figtree,"Helvetica Neue",Arial,sans-serif; font-size:15px; line-height:1.55;
   -webkit-font-smoothing:antialiased; padding:14px clamp(10px,3vw,28px) 60px;
 }
+html,body{overflow-x:hidden; overscroll-behavior-x:none}  /* Magic-Mouse swipes must never shift the page */
+#scorewrap{position:relative}
+#handInd{position:absolute; top:10px; right:12px; z-index:3; width:40px; height:40px;
+  border-radius:50%; display:grid; place-items:center; font-family:Inter,sans-serif;
+  font-weight:700; font-size:15px; background:var(--card); border:2.5px solid var(--rule);
+  color:var(--ink3); box-shadow:var(--shadow)}
+#handInd.hand-L{border-color:var(--hand-l); background:var(--hand-l); color:#fff}
+#handInd.hand-R{border-color:var(--hand-r); background:var(--hand-r); color:#fff}
 button{font:inherit; cursor:pointer}
+.ctlgroup{display:inline-flex; gap:6px; padding:4px 7px; border:1px solid var(--rule);
+  border-radius:12px; background:var(--card)}                /* the three panel toggles live together */
 :focus-visible{outline:2px solid var(--steel); outline-offset:2px; border-radius:4px}
 .hidden{display:none !important}
 
@@ -57,6 +68,7 @@ select.ctl{appearance:auto; padding:6px 8px}
 .pills button{font-size:13px; font-weight:600; border:none; background:none; color:var(--ink2);
   padding:6px 12px; border-radius:7px}
 .pills button[aria-pressed="true"]{background:var(--card); color:var(--ink); box-shadow:0 1px 3px rgba(70,52,28,.15)}
+.pills button:disabled{opacity:.4; cursor:default}
 .play{width:44px; height:44px; border-radius:50%; border:none; background:var(--dixie); color:#231703;
   display:grid; place-items:center; flex:none; box-shadow:0 3px 10px -3px rgba(229,147,21,.6)}
 .play svg{display:block}
@@ -73,30 +85,48 @@ input[type=text]{width:auto}
 
 /* ---- the score ---- */
 #scorewrap{overflow-x:auto; padding-bottom:4px}
-.score{min-width:540px; max-width:980px; background:var(--sc-bg); border:1.5px solid var(--sc-edge);
-  border-radius:13px; padding:12px 14px 14px; font-family:"Atkinson Hyperlegible",Figtree,sans-serif;
+.score{min-width:540px; background:var(--sc-bg); border:1.5px solid var(--sc-edge);
+  border-radius:13px; padding:12px 14px 14px; font-family:Inter,Figtree,sans-serif;
   box-shadow:var(--shadow)}
 .secrow{display:flex; align-items:center; gap:8px; margin:10px 0 4px}
 .secrow:first-child{margin-top:0}
 .secname{font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--ink3)}
-.count{display:grid; margin-bottom:5px}
-.count span{text-align:center; font-size:17px; font-weight:700; color:var(--sc-count); font-variant-numeric:tabular-nums}
+.count{display:grid; margin-bottom:8px}
+.count span{text-align:center; font-size:17px; font-weight:700; color:var(--sc-count); font-variant-numeric:tabular-nums; position:relative}
 .bar{display:grid; gap:0}
 .beat{display:grid; align-items:end; border:1px solid var(--sc-rule); margin:0 -1px -1px 0; padding:6px 1px 5px; min-height:46px; position:relative}
 .beat.band{background:var(--sc-band)}
 .slot{display:flex; flex-direction:column-reverse; align-items:center; justify-content:flex-start;
   min-height:34px; border-radius:4px; padding:1px 0; position:relative}
 .slot.cursor{outline:2px solid var(--steel); outline-offset:0}
-.slot.now{outline:2px solid var(--dixie); outline-offset:0; background:var(--sc-band)}
+/* The playback marker (16th/8th/strokes): ONE even rectangle laid over the
+   covered slots as a full-height beat-cell overlay, so neighbouring symbols
+   of different sizes never jag the box. 1px border — like an active button;
+   the wash is translucent so the glyphs stay crisp beneath it. */
+.mkbox{position:absolute; top:-1px; bottom:-1px; pointer-events:none;
+  background:rgba(229,147,21,.13);
+  border-top:1px solid var(--dixie); border-bottom:1px solid var(--dixie)}
+.beat.tbeat>.mkbox{top:1px; bottom:1px}   /* the tab's fit David approved */
+.mkbox.mkbL{border-left:1px solid var(--dixie);
+  border-top-left-radius:4px; border-bottom-left-radius:4px}
+.mkbox.mkbR{border-right:1px solid var(--dixie);
+  border-top-right-radius:4px; border-bottom-right-radius:4px}
+/* box markers (subdivision / half / bar): band fill + a hairline outline */
+.beat.nowbeat{background:var(--sc-band); box-shadow:inset 0 0 0 1px rgba(229,147,21,.7)}
+.bar.nowbar{background:var(--sc-band); box-shadow:inset 0 0 0 1px rgba(229,147,21,.7)}
+.count span.cnow{color:var(--dixie)}
+.count span.cnow::after{content:""; position:absolute; left:1px; right:1px; bottom:-3px;
+  height:2.5px; background:var(--dixie); border-radius:2px}
 .sym{font-size:23px; font-weight:700; line-height:1.02; color:var(--sc-ink); font-variant-numeric:tabular-nums}
 /* glyphs breathe with slot density: alone large, stacked smaller */
-.slot.n1 .sym{font-size:27px}
+.slot.n1 .sym{font-size:29px}
 .slot.n2 .sym{font-size:20px}
 .slot.n3 .sym{font-size:16px; line-height:1.08}
-.slot.n1 .sym.gh{font-size:20px}
-.slot.n2 .sym.gh,.slot.n3 .sym.gh{font-size:15px}
-.sym.r{color:var(--sc-hand)}
-.sym.gh{font-size:17px; line-height:1.15}
+.slot.n1 .sym.gh{font-size:27px}
+.slot.n2 .sym.gh,.slot.n3 .sym.gh{font-size:18px}
+.sym.l{color:var(--hand-l)}
+.sym.r{color:var(--hand-r)}
+.sym.gh{font-size:21px; line-height:1.15}
 .sym.pc{font-size:21px}
 .sym.ot::after{content:"˚"; font-size:12px; vertical-align:top}
 .sym.mu{font-size:21px}
@@ -139,14 +169,93 @@ table.map select{font-size:12.5px; border:1px solid var(--rule); border-radius:6
   border:1px solid rgba(229,147,21,.35); border-radius:9px; padding:8px 11px}
 
 /* ---- editor ---- */
-#editbar{background:var(--card2); border:1px solid var(--rule); border-radius:12px; padding:12px 14px; margin-top:12px}
 .pal{display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:6px 0}
 .key{font-size:12.5px; font-weight:600; padding:6px 10px; border-radius:8px;
   border:1px solid var(--rule); background:var(--card); color:var(--ink2)}
 .key.on{background:var(--ink); color:var(--paper); border-color:var(--ink)}
 .key.hl{background:var(--green); color:#fff; border-color:var(--green)}
 .hint{font-size:12px; color:var(--ink3); margin-top:6px}
-#pansvg{max-width:230px}
+
+/* ---- views: the Tab skin + the pan companion panel (SPEC §7 — same data, body.design-*) ---- */
+.ctl select{font:inherit; font-size:13px; font-weight:700; border:none; background:none;
+  color:var(--ink); padding:0; cursor:pointer}
+#colCtl input{width:24px; height:19px; padding:1px; border:1px solid var(--rule);
+  border-radius:5px; background:none; cursor:pointer}
+#handsBtn,#rowsCtl{display:none}
+body.design-tab #handsBtn,body.design-tab #rowsCtl{display:inline-flex}
+/* the row under the score: arrangement card left, chords centered, pan right */
+#belowrow{display:flex; align-items:flex-start; gap:12px; margin-top:10px; flex-wrap:wrap}
+#arrbox{flex:0 1 auto; padding:14px 18px 16px}
+.arrline{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:5px 0}
+#arrbox .chip{font-size:15.5px; padding:7px 17px}      /* the arrangement reads at a glance (David, 26 Aug) */
+#arrbox .lab{font-size:12.5px}
+#chordwrap{flex:1 1 260px; overflow-x:auto; text-align:center; padding-bottom:4px}
+#panwrap{flex:0 0 auto; margin-left:auto; text-align:center}
+#pvwrap{display:flex; flex-direction:column; align-items:center; gap:8px}
+#pvsvg{width:min(100%,340px); height:auto; display:block}
+.pvf{cursor:pointer}
+.pvf .pvtint,.pvf .pvring{opacity:0; pointer-events:none}
+.pvf .pvring{transform-box:fill-box; transform-origin:center}
+.pvf.hL{--flash:var(--hand-l); --flashRing:var(--hand-l)}
+.pvf.hR{--flash:var(--hand-r); --flashRing:var(--hand-r)}
+.pvf.hT{--flash:rgba(229,147,21,.85); --flashRing:var(--dixie)}
+.pvf.hit .pvtint{animation:pvtint .9s ease-out}
+.pvf.hit .pvring{stroke:var(--flashRing); animation:pvpop .9s ease-out}
+@keyframes pvtint{from{opacity:.3}55%{opacity:.18}to{opacity:0}}
+@keyframes pvpop{from{opacity:.95; transform:scale(.88)}60%{opacity:.4}to{opacity:0; transform:scale(1.4)}}
+@media (prefers-reduced-motion:reduce){
+  .pvf.hit .pvring{animation:pvtint .9s ease-out}
+}
+.pvtint{fill:var(--flash)}
+.pvlamps{display:flex; align-items:center; gap:8px; margin-top:2px}
+.lamp{width:30px; height:30px; border-radius:50%; display:grid; place-items:center;
+  font-size:13px; font-weight:800; border:1.5px solid; transition:background .12s,color .12s}
+.lampL{color:var(--hand-l); border-color:var(--hand-l)}
+.lampR{color:var(--hand-r); border-color:var(--hand-r)}
+.lamp.hit.lampL{background:var(--hand-l); color:var(--sc-bg)}
+.lamp.hit.lampR{background:var(--hand-r); color:var(--sc-bg)}
+.lamp.hit.soft{opacity:.45}
+.pvperc{font-family:Inter,sans-serif; font-size:16px; font-weight:700; color:var(--ink3);
+  border:1.5px solid var(--sc-rule); border-radius:9px; padding:2px 10px; line-height:1.3;
+  cursor:pointer; transition:background .12s,color .12s,border-color .12s}
+.pvperc:hover{color:var(--ink); border-color:var(--ink3)}
+.pvperc.hit.hL{background:var(--hand-l); border-color:var(--hand-l); color:var(--sc-bg)}
+.pvperc.hit.hR{background:var(--hand-r); border-color:var(--hand-r); color:var(--sc-bg)}
+.pvgap{flex:0 0 8px}
+
+/* The tab rides the table's grid skeleton: one count line up top (with room
+   under it), rows of barsPerRow bars, the same beat-cell borders — but a
+   single big glyph line per cell with the hand letter beneath. */
+.tcount{margin-bottom:10px}
+.tcount span{font-size:19px}
+.beat.tbeat{align-items:center; min-height:0; padding:8px 1px 6px}
+.tcol{display:flex; flex-direction:column; align-items:center; justify-content:center;
+  min-height:48px; padding:2px 1px; border-radius:4px}
+.tsyms{display:flex; flex-direction:column-reverse; justify-content:center; align-items:center;
+  flex:1; width:100%}
+.tcol .sym{font-size:27px}
+.tcol.n2 .sym{font-size:19px}
+.tcol.n3 .sym{font-size:15px; line-height:1.1}
+.tcol .sym.gh{font-size:24px; margin:auto 0}
+.tcol.n2 .sym.gh,.tcol.n3 .sym.gh{font-size:17px; margin:0}
+.tcol .sym.pc{font-size:24px}
+.tcol .sym.sl{font-size:31px; line-height:.75}
+/* split rows: the notation itself in two lanes — right hand up, left hand
+   down — each lane a fixed-height row so the lanes align across the table */
+.tsyms.lane{flex:none; min-height:32px}
+.lane.ln1 .sym{font-size:27px}
+.lane.ln2 .sym{font-size:19px}
+.lane.ln3 .sym{font-size:15px; line-height:1.1}
+.lane.ln1 .sym.gh{font-size:26px}
+.lane.ln2 .sym.gh,.lane.ln3 .sym.gh{font-size:17px; margin:0}
+/* the hand letters: a slim, soft-tinted band pinned to the cell's bottom
+   border — fixed height, straight edges, independent of the notation above */
+.thand{font-size:9.5px; font-weight:700; letter-spacing:.06em; line-height:16px; height:16px;
+  color:var(--hand-l); font-family:Figtree,sans-serif; align-self:stretch; text-align:center;
+  background:#F8F5EF; margin:auto -2px -8px}
+.thand .r{color:var(--hand-r)}
+.thand.dim{color:var(--sc-count)}
+.thand.dim .r{color:var(--hand-r); opacity:.45}
 
 /* ---- dialogs ---- */
 dialog{border:1px solid var(--rule); border-radius:14px; padding:18px; background:var(--card);
@@ -173,6 +282,7 @@ dialog textarea{width:100%; min-height:70px; font-family:ui-monospace,monospace;
   <span class="brand">Handpan Studio</span>
   <input id="title" value="" aria-label="Piece title">
   <span class="spacer"></span>
+  <button class="ctl" id="syncOpen" title="Enter or leave video sync mode">Video sync</button>
   <button class="ctl" id="libBtn">Library</button>
   <button class="ctl" id="shareBtn">Share…</button>
   <button class="ctl" id="editBtn">Edit</button>
@@ -184,20 +294,34 @@ dialog textarea{width:100%; min-height:70px; font-family:ui-monospace,monospace;
   <select class="ctl" id="panSel" aria-label="My pan"></select>
   <button class="ctl" id="panNew">＋ My own pan…</button>
   <span class="spacer"></span>
+  <div class="pills" role="group" aria-label="Notation view" id="viewPills">
+    <button id="viewTable" aria-pressed="true">Table</button>
+    <button id="viewTab" aria-pressed="false">Tab</button>
+  </div>
   <div class="pills" role="group" aria-label="Playback mode">
     <button id="modePos" aria-pressed="true">By position</button>
     <button id="modeTrans" aria-pressed="false">Transposed</button>
   </div>
 </div>
 
-<div id="scorewrap"><div class="score" id="score"></div></div>
-<div id="chordwrap" class="hidden"><div class="score chordframe" id="chordbox"></div></div>
+<div id="vidwrap" class="hidden" style="margin-bottom:10px">
+  <video id="vidEl" controls playsinline style="width:100%;max-height:340px;border-radius:12px;background:#000"></video>
+</div>
+<div id="scorewrap"><div id="handInd" class="hidden" title="Current hand — press , to switch" aria-live="polite"></div><div class="score" id="score"></div></div>
 
-<div class="row" id="secnav">
-  <span class="lab">Arrangement</span>
-  <span id="arrChips" style="display:inline-flex;gap:5px;flex-wrap:wrap"></span>
-  <span class="lab" style="margin-left:14px" id="subLab">Table</span>
-  <span id="subChips" style="display:inline-flex;gap:5px;flex-wrap:wrap"></span>
+<div id="belowrow">
+  <div class="score chordframe" id="arrbox">
+    <div class="arrline">
+      <span class="lab">Arrangement</span>
+      <span id="arrChips" style="display:inline-flex;gap:5px;flex-wrap:wrap"></span>
+    </div>
+    <div class="arrline">
+      <span class="lab" id="subLab">Table</span>
+      <span id="subChips" style="display:inline-flex;gap:5px;flex-wrap:wrap"></span>
+    </div>
+  </div>
+  <div id="chordwrap" class="hidden"><div class="score chordframe" id="chordbox"></div></div>
+  <div id="panwrap" class="hidden"><div class="score chordframe" id="panbox"></div></div>
 </div>
 
 <div class="row" id="transport">
@@ -207,27 +331,81 @@ dialog textarea{width:100%; min-height:70px; font-family:ui-monospace,monospace;
   <label class="ctl"><b><input type="number" id="bpm" min="30" max="200" step="1" style="border:none;width:44px;padding:0;font-weight:700;background:none"></b>BPM</label>
   <button class="ctl" id="countBtn">Count-in</button>
   <button class="ctl" id="halfBtn">Half speed</button>
-  <button class="ctl" id="chordBtn">Chords</button>
+  <span class="ctlgroup" role="group" aria-label="Panels">
+    <button class="ctl" id="arrBtn">Arrangement</button>
+    <button class="ctl" id="chordBtn">Chords</button>
+    <button class="ctl" id="panBtn">Pan</button>
+  </span>
   <button class="ctl" id="metBtn">Metronome</button>
+  <label class="ctl">Marker <select id="markSel" aria-label="Marker follows">
+    <option value="16th">16th</option><option value="8th">8th</option>
+    <option value="subdiv">Subdivision</option><option value="half">Half</option>
+    <option value="bar">Bar</option><option value="strokes">Strokes</option></select></label>
+  <label class="ctl">Count <select id="countSel" aria-label="Count-line marker">
+    <option value="off">Off</option><option value="16th">16th</option><option value="8th">8th</option>
+    <option value="subdiv">Subdivision</option></select></label>
+  <label class="ctl" id="rowsCtl" title="Tab notation in one row, or split into left- and right-hand rows">Rows <select id="rowsSel">
+    <option value="one">One</option><option value="split">L + R</option></select></label>
+  <button class="ctl" id="handsBtn" title="Show the L/R hand letters">Hands</button>
   <label class="ctl">Swing <input type="range" id="swing" min="0" max="100" step="5" style="width:78px"> <b id="swingVal">0%</b></label>
   <button class="ctl" id="takBtn" title="Show tak as T or K">Tak: <b id="takGl">T</b></button>
+  <label class="ctl" id="colCtl" title="Hand colours">
+    L <input type="color" id="colR" aria-label="Left-hand colour">
+    R <input type="color" id="colL" aria-label="Right-hand colour"></label>
+  <button class="ctl" id="colReset" title="Hand colours back to black + green">↺</button>
   <span class="spacer"></span>
   <span class="hint">Space bar: play / pause</span>
 </div>
 
-<div class="row hidden" id="syncbar">
-  <span class="lab">Video</span>
-  <span class="badge"><b id="vtime">–:––</b></span>
-  <button class="ctl" id="followBtn">Follow video</button>
-  <button class="ctl" id="folMute">Sound: off</button>
-  <button class="ctl" id="tapBtn">Tap bar 1</button>
-  <button class="ctl" id="tapUndo">Undo tap</button>
-  <button class="ctl" id="tapClear">Clear map</button>
-  <span class="hint" id="syncInfo"></span>
+<div id="syncbar" class="hidden" style="background:var(--card2);border:1px solid var(--rule);border-radius:12px;padding:10px 14px 12px;margin-top:10px">
+  <div class="row" style="margin:0 0 6px">
+    <span class="lab">Video sync</span>
+    <span class="badge"><b id="vtime">–:––</b></span>
+    <span class="spacer"></span>
+    <button class="ctl" id="syncX" aria-label="Leave video sync mode" title="Leave video sync mode">✕</button>
+  </div>
+  <div class="row" style="margin:0">
+    <button class="ctl" id="vidOpen">Open video…</button>
+    <input type="file" id="vidFile" accept="video/*,audio/*" class="hidden">
+    <button class="ctl" id="followBtn">Follow video</button>
+    <button class="ctl" id="folMute">Sound: off</button>
+    <button class="ctl" id="tapBtn">Tap bar 1</button>
+    <button class="ctl" id="tapUndo">Undo</button>
+    <button class="ctl" id="tapClear">Clear map</button>
+    <button class="ctl" id="tapMode">Tap: bars</button>
+    <button class="ctl" id="mapBtn">Edit map</button>
+    <span class="hint" id="syncInfo"></span>
+  </div>
+</div>
+
+<div id="mapbar" class="hidden" style="background:var(--card2);border:1px solid var(--rule);border-radius:12px;padding:12px 14px;margin-top:10px">
+  <svg id="mapsvg" style="width:100%;height:110px;display:block;touch-action:none"></svg>
+  <div id="mapGrip" title="Drag to resize the timeline" style="height:12px;cursor:ns-resize;display:flex;align-items:center;justify-content:center;touch-action:none">
+    <div style="width:46px;height:4px;border-radius:2px;background:var(--rule)"></div>
+  </div>
+  <svg id="mapnav" style="width:100%;height:34px;display:block;touch-action:none;cursor:pointer;opacity:.85"></svg>
+  <div class="row" style="margin:8px 0 0">
+    <button class="ctl" id="mapPrev">‹</button>
+    <button class="ctl" id="mapNext">›</button>
+    <button class="ctl" id="mapAud">Audition</button>
+    <button class="ctl" id="mapQuant" title="Move every anchor onto the nearest played stroke">Snap to hits</button>
+    <button class="ctl" id="mapEnd" title="Place the End marker (the tune's last hit) at the video's current position — it snaps to the nearest stroke">Set End here</button>
+    <button class="ctl" id="mapAutoAll" title="With the first bar tapped and the End set, the walker maps every bar between, tracking your tempo drift">Auto-map all</button>
+    <button class="ctl" id="mapAutoRest" title="Continue mapping forward from your last tapped bar, at your tapped tempo">Auto-map rest</button>
+    <button class="ctl" id="mapMag" title="Dragged anchors magnet onto nearby strokes">Magnet: off</button>
+    <button class="ctl" id="mapWave" title="Show or hide the waveform">Wave: on</button>
+    <button class="ctl" id="mapRestore" disabled>Restore map</button>
+    <button class="ctl" id="mapDel" disabled>Delete anchor</button>
+    <button class="ctl" id="mapZoomOut">−</button>
+    <button class="ctl" id="mapZoomIn">＋</button>
+    <button class="ctl" id="mapFit">Fit</button>
+    <span class="hint">drag anchor = move · double-click = add · click anchor = select · click timeline = jump there · ⌫ deletes · W/Q zoom</span>
+    <span class="spacer"></span>
+    <button class="ctl" id="mapClose">Close</button>
+  </div>
 </div>
 
 <div id="report" class="hidden"></div>
-<div id="editbar" class="hidden"></div>
 
 <dialog id="shareDlg">
   <h3>Share this piece</h3>
@@ -716,6 +894,39 @@ let piece=null, C=null, myPanId="d-kurd-9", myPan=null, srcPan=null;
 let mode="pos", MAP=null, REPORT=null, overrides={};
 let bpm=72, halfSpeed=false, countIn=false, takGlyph="T";
 let metOn=(localStorage.getItem("hps.met")||"0")==="1";
+// marker follow: 16th | 8th | subdiv | half | bar | strokes
+// ("beat"/"quarter" were older names for subdiv — the marker that fills one beat box)
+let markMode=localStorage.getItem("hps.marker")||"subdiv";
+if(markMode==="beat"||markMode==="quarter") markMode="subdiv";
+if(!["16th","8th","subdiv","half","bar","strokes"].includes(markMode)) markMode="subdiv";
+let countMark=localStorage.getItem("hps.count")||"subdiv";   // header-numbers marker: off | 16th | 8th | subdiv
+if(countMark==="quarter"||countMark==="half"||countMark==="bar") countMark="subdiv";
+if(!["off","16th","8th","subdiv"].includes(countMark)) countMark="subdiv";
+let panOn=(localStorage.getItem("hps.pan")||"0")==="1";       // the pan companion panel
+// tab notation rows: one | split (green/left-hand lane above, black/right-hand below)
+let tabRows=localStorage.getItem("hps.tabrows")||"one";
+if(!["one","split"].includes(tabRows)) tabRows="one";
+// tab hand letters on/off (older keys carried three states / a boolean)
+const _hv=localStorage.getItem("hps.hands");
+let handsOn=_hv?(_hv!=="off"):(localStorage.getItem("hps.tabhands")!=="0");
+// hand colours — the students' choice; black + green is the notation's default
+const HAND_DEFAULTS={l:"#17150f",r:"#469957"};
+try{ // stored copies of superseded defaults follow the new default
+  if(["#4aa35d","#3f8c50"].includes((localStorage.getItem("hps.colR")||"").toLowerCase()))
+    localStorage.removeItem("hps.colR");
+}catch(e){}
+let handCol={l:localStorage.getItem("hps.colL")||HAND_DEFAULTS.l,
+             r:localStorage.getItem("hps.colR")||HAND_DEFAULTS.r};
+// The data's hand values are COLOUR tokens from the transcription era:
+// "L" = black glyphs, "R" = green glyphs. On David's notation the GREEN
+// hand is the LEFT one (his correction, 26 Aug) — so every human-facing
+// letter maps through here; the data itself never changes.
+function handLetter(h){ return h==="R"?"L":"R"; }
+function applyHandColors(){
+  document.documentElement.style.setProperty("--hand-l",handCol.l);
+  document.documentElement.style.setProperty("--hand-r",handCol.r);
+  const cl=$("colL"); if(cl){ cl.value=handCol.l; $("colR").value=handCol.r; }
+}
 let swing=+(localStorage.getItem("hps.swing")||0);
 let playing=false, timer=null, raf=null, nextTime=0, nextPulse=0, lastPaint=-1, fired=[];
 let loopSec=null;   // {from,to} in pulses, or null = whole piece
@@ -780,15 +991,82 @@ function sched(){
     }
   }catch(e){ /* one bad pulse must never stop the clock (WGG rule) */ }
 }
+function markerPulses(g,m){ // pulses covered by one marker unit (the beat is a quarter — x/4 meters)
+  const per={"16th":m.sub/4,"8th":m.sub/2,"subdiv":m.sub,"half":m.sub*2,"bar":m.bp}[g]||m.sub;
+  return Math.max(1,Math.round(per));
+}
+function clearSlotMarks(){
+  document.querySelectorAll(".mkbox").forEach(el=>el.remove());
+  document.querySelectorAll(".beat.nowbeat").forEach(el=>el.classList.remove("nowbeat"));
+  document.querySelectorAll(".bar.nowbar").forEach(el=>el.classList.remove("nowbar"));
+}
+// One even rectangle over the pulse window [s,e), drawn as full-height
+// overlays on the beat cells it touches (per-cell segments join seamlessly
+// when a window crosses a beat line, e.g. a triplet 8th).
+function drawMarkBox(m,barI,s,e){
+  const barBase=barI*m.bp;
+  for(let bt=Math.floor((s-barBase)/m.sub);bt<=Math.floor((e-1-barBase)/m.sub);bt++){
+    const cellS=barBase+bt*m.sub, cellE=barBase+(bt+1)*m.sub;
+    const segS=Math.max(s,cellS), segE=Math.min(e,cellE);
+    const sl=document.querySelector('#score [data-rel="'+segS+'"]');
+    const be=sl&&sl.closest(".beat"); if(!be) continue;
+    const d=document.createElement("div");
+    d.className="mkbox"+(segS===s?" mkbL":"")+(segE===e?" mkbR":"");
+    // edges that coincide with the cell border sit ON the border (-1px)
+    d.style.left=segS===cellS?"-1px":(((segS-cellS)/m.sub*100)+"%");
+    d.style.right=segE===cellE?"-1px":(((cellE-segE)/m.sub*100)+"%");
+    be.appendChild(d);
+  }
+}
+function clearMarks(){
+  clearSlotMarks();
+  document.querySelectorAll(".cnow").forEach(el=>el.classList.remove("cnow"));
+}
 function paintPulse(pi){
   const cur=secOfPulse(pi);
   if(cur){ selAi=cur.ai;
     if(cur.name!==viewSec){ viewSec=cur.name; render(); } }    // the view follows the music
-  document.querySelectorAll(".slot.now").forEach(el=>el.classList.remove("now"));
   document.querySelectorAll(".chip.playing").forEach(el=>el.classList.remove("playing"));
   if(cur){
-    const rel=pi-cur.pulse;
-    document.querySelectorAll('[data-rel="'+rel+'"]').forEach(el=>el.classList.add("now"));
+    const rel=pi-cur.pulse, m=SM(piece,cur.name);
+    const barI=Math.floor(rel/m.bp), relBar=rel%m.bp;
+    document.querySelectorAll(".cnow").forEach(el=>el.classList.remove("cnow"));
+    if(markMode==="strokes"){
+      // the marker sits on a stroke until the NEXT stroke sounds — empty
+      // pulses leave the previous mark standing (David, 26 Aug)
+      if(C&&(C.byPulse.get(pi)||[]).length){
+        clearSlotMarks();
+        drawMarkBox(m,barI,rel,rel+1);
+      }
+    } else if(markMode==="subdiv"||markMode==="half"){
+      // fill whole beat boxes, however many pulses each holds
+      clearSlotMarks();
+      const b0=Math.floor(relBar/m.sub);
+      const start=markMode==="half"?b0-(b0%2):b0, nb=markMode==="half"?2:1;
+      for(let k=0;k<nb;k++){
+        const sl=document.querySelector('#score [data-rel="'+(barI*m.bp+(start+k)*m.sub)+'"]');
+        const be=sl&&sl.closest(".beat"); if(be) be.classList.add("nowbeat");
+      }
+    } else if(markMode==="bar"){
+      clearSlotMarks();
+      const bars=document.querySelectorAll("#score .bar");
+      if(bars[barI]) bars[barI].classList.add("nowbar");
+    } else {
+      // 16th / 8th: one even rectangle over the covered slots
+      clearSlotMarks();
+      const px=markerPulses(markMode,m);
+      const s=barI*m.bp+Math.floor(relBar/px)*px;
+      drawMarkBox(m,barI,s,s+px);
+    }
+    if(countMark!=="off"){
+      const px=Math.min(markerPulses(countMark,m),m.bp);
+      const s=(barI%m.bpr)*m.bp+Math.floor(relBar/px)*px;
+      for(let r=s;r<s+px;r++){
+        const c=document.querySelector('.count [data-ct="'+r+'"]');
+        if(c) c.classList.add("cnow");
+      }
+    }
+    if(panOn) paintPan(pi);
     const chip=document.querySelector('[data-ai="'+cur.ai+'"]')||document.querySelector('[data-ai-'+cur.ai+']');
     if(chip) chip.classList.add("playing");
     document.querySelectorAll(".cchip.playing").forEach(el=>el.classList.remove("playing"));
@@ -805,6 +1083,14 @@ function tick(){
   raf=requestAnimationFrame(tick);
 }
 async function togglePlay(){
+  // in follow mode the play button drives the VIDEO — the notation follows it
+  if(follow){
+    const v=$("vidEl");
+    if(v&&v.src){ if(v.paused) v.play().catch(()=>{}); else v.pause(); return; }
+    // embedded: ask the lesson page's bridge to toggle its player
+    try{ window.parent.postMessage({type:"hps-video-ctl",action:"toggle"},"*"); }catch(e){}
+    return;
+  }
   if(playing){ stop(); return; }
   ensureCtx();
   // the first stroke must already be the recorded pan, not the synth stand-in
@@ -820,22 +1106,23 @@ function start(){
   if(countIn){ for(let i=0;i<cBeats;i++) fire(clickBuf(i===0),t0+i*beat,1);
     t0+=cBeats*beat; }
   const e=arrEntries()[Math.min(selAi,piece.arrangement.length-1)];
-  nextTime=t0; nextPulse=loopSec?0:(e?e.from:0); lastPaint=-1; fired=[];
+  nextTime=t0; nextPulse=loopSec?0:(pendingStart!=null?pendingStart:(e?e.from:0));
+  pendingStart=null; lastPaint=-1; fired=[];
   playing=true; timer=setInterval(sched,60); sched();
   raf=requestAnimationFrame(tick);
-  $("playBtn").innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
-  $("playBtn").setAttribute("aria-label","Stop");
+  updatePlayBtn();
 }
 function stop(){
   playing=false; clearInterval(timer); cancelAnimationFrame(raf);
+  if(!loopSec&&lastPaint>=0) pendingStart=lastPaint;  // play resumes where it stopped
   const now=ctx?ctx.currentTime:0;
   for(const g of live){ try{ g.gain.setValueAtTime(g.gain.value,now);
     g.gain.linearRampToValueAtTime(0,now+.04);}catch(e){} }
   live=[];
-  document.querySelectorAll(".slot.now").forEach(el=>el.classList.remove("now"));
+  clearMarks();
   document.querySelectorAll(".chip.playing").forEach(el=>el.classList.remove("playing"));
-  $("playBtn").innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.6l13 7.4-13 7.4z"/></svg>';
-  $("playBtn").setAttribute("aria-label","Play");
+  if(pendingStart!=null){ if(!C) C=compile(piece); paintPulse(pendingStart); } // show where play will resume
+  updatePlayBtn();
 }
 
 /* ---------------- transposition ----------------
@@ -950,8 +1237,19 @@ function transpose(){
    only — the audio engine never follows it. The sync map is tap-authored:
    one anchor per bar start, linear interpolation between anchors, stored
    with the piece so it travels in shares. */
-let videoT=null, videoSeen=false, follow=false, tapIdx=0;
-let followMuted=true, vCursor=null;
+let videoT=null, videoSeen=false, follow=false, tapBeats=false, mapSel=null;
+let followMuted=true, vCursor=null, vOff=null;
+/* The play button reflects whatever is sounding: the app's own playback, or
+   — in follow mode — the video. Video "playing" = its timecode is moving;
+   700 ms without movement reads as paused (covers Wistia's constant-t idle). */
+let vidPlaying=false, vidLastT=null, vidStillT=null;
+function updatePlayBtn(){
+  const active=playing||(follow&&vidPlaying);
+  $("playBtn").innerHTML=active
+    ?'<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
+    :'<svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.6l13 7.4-13 7.4z"/></svg>';
+  $("playBtn").setAttribute("aria-label",active?"Stop":"Play");
+}
 const fmtT=x=>Math.floor(x/60)+":"+String(Math.floor(x%60)).padStart(2,"0");
 function barStarts(){
   const out=[], c=compile(piece);   // never the cached C: it may belong to the previous piece
@@ -961,6 +1259,33 @@ function barStarts(){
   }
   return out;
 }
+function beatStarts(){
+  const out=[], c=compile(piece);
+  for(const sec of c.secStarts){
+    const s=piece.sections[sec.name]; if(!s) continue;
+    const m=SM(piece,sec.name);
+    for(let b=0;b<s.bars.length;b++)
+      for(let k=0;k<m.beats;k++) out.push(sec.pulse+b*m.bp+k*m.sub);
+  }
+  return out;
+}
+function tapTargets(){ // + the very last hit, played after the final table (timing only, not notation)
+  return [...(tapBeats?beatStarts():barStarts()), compile(piece).total];
+}
+function nextTap(){ // first untapped target after the highest anchored pulse
+  const ts=tapTargets();
+  const last=(piece.syncMap&&piece.syncMap.length)?Math.max(...piece.syncMap.map(a=>a.p)):-1;
+  const i=ts.findIndex(p=>p>last);
+  return {ts,i};
+}
+function pulseLabel(p){ // "A1·2" = section table, bar within it (beat suffix if off the bar)
+  const c=compile(piece);
+  if(p>=c.total) return "End";
+  let sec=c.secStarts[0]; for(const x of c.secStarts) if(x.pulse<=p) sec=x;
+  const m=SM(piece,sec.name), rel=p-sec.pulse;
+  const bar=Math.floor(rel/m.bp)+1, beat=Math.floor((rel%m.bp)/m.sub)+1;
+  return sec.name+"·"+bar+(beat>1?"·b"+beat:"");
+}
 function segRate(t){ // pulses per second on the sync map's segment around t
   const a=piece.syncMap; if(!a||a.length<2) return 0;
   for(let i=0;i<a.length-1;i++)
@@ -969,6 +1294,16 @@ function segRate(t){ // pulses per second on the sync map's segment around t
       return (a[i+1].p-a[i].p)/Math.max(1e-6,a[i+1].t-a[i].t);
     }
   return 0;
+}
+function invMap(p){
+  const a=piece.syncMap; if(!a||a.length<2) return null;
+  if(p<=a[0].p) return a[0].t;
+  for(let i=0;i<a.length-1;i++)
+    if(p<=a[i+1].p){
+      const f=(p-a[i].p)/Math.max(1e-6,a[i+1].p-a[i].p);
+      return a[i].t+f*(a[i+1].t-a[i].t);
+    }
+  return a[a.length-1].t;
 }
 function mapPulse(t){
   const a=piece.syncMap;
@@ -989,11 +1324,622 @@ function barChordLabel(bar){
   return g?{name:g,inf:!ev}:null;
 }
 function updateSyncUI(){
-  const n=(piece.syncMap||[]).length, bs=barStarts();
-  $("tapBtn").textContent=tapIdx>=bs.length?"All bars tapped":"Tap bar "+(tapIdx+1);
-  $("syncInfo").textContent=n?(n+" anchor"+(n>1?"s":"")+(n>=2?" — map ready":" — need 2+")):"tap bar starts while the video plays — key T";
+  const n=(piece.syncMap||[]).length, {ts,i}=nextTap();
+  const unit=tapBeats?"beat":"bar";
+  $("tapBtn").textContent=i<0?("All "+unit+"s tapped"):("Tap "+unit+" — next: "+pulseLabel(ts[i]));
+  $("tapMode").textContent="Tap: "+(tapBeats?"beats":"bars");
+  $("syncInfo").textContent=n?(n+" anchor"+(n>1?"s":"")+(n>=2?" — map ready":" — need 2+")):"tap "+unit+" starts while the video plays — key T";
   $("followBtn").classList.toggle("on",follow);
+  const r=$("mapRestore"); if(r) r.disabled=!piece.syncMapOrig;
+  if(!$("mapbar").classList.contains("hidden")) drawMap();
 }
+/* The Video sync button toggles the sync OPTIONS (panel + map editor).
+   The video itself always stays on screen once loaded, and Follow keeps
+   running — leaving the options is decluttering, not stopping (David,
+   26 Aug: "the video should always be visible"). */
+let syncSeenOnce=false;   // timecodes auto-open the panel only until the user first closes it
+function setSyncMode(on){
+  videoSeen=on; syncSeenOnce=true;
+  $("syncbar").classList.toggle("hidden",!on);
+  $("syncOpen").classList.toggle("on",on);
+  if(on){
+    if($("vidEl").src) $("vidwrap").classList.remove("hidden");
+    updateSyncUI();
+  } else {
+    if(!$("mapbar").classList.contains("hidden")) $("mapClose").click();
+  }
+}
+/* ---------- the tempo-map timeline editor ---------- */
+let mapDrag=null, mapWin={off:0,dur:null}, mapHist=[];
+let wavePk=null, aud=null;   // decoded audio peaks; audition loop state
+let waveOn=(localStorage.getItem("hps.wave")||"1")==="1";   // waveform shown
+let magOn=(localStorage.getItem("hps.mag")||"0")==="1";     // drags magnet onto strokes
+let mapH=Math.max(80,Math.min(400,+(localStorage.getItem("hps.mapH")||110)||110)); // timeline height, user-resizable
+let onsetsCache=null, pendingStart=null;
+function protectOrig(){ // the studio's originals/ lesson: the tapped map survives all editing
+  if(!piece.syncMapOrig&&piece.syncMap&&piece.syncMap.length>=2)
+    piece.syncMapOrig=JSON.parse(JSON.stringify(piece.syncMap));
+}
+function mapSnap(){ mapHist.push(JSON.stringify(piece.syncMap||[])); if(mapHist.length>100) mapHist.shift(); }
+function mapUndo(){
+  if(!mapHist.length){ toast("Nothing to undo"); return; }
+  piece.syncMap=JSON.parse(mapHist.pop()); mapSel=null;
+  const d=$("mapDel"); if(d) d.disabled=true;
+  updateSyncUI(); toast("Undone");
+}   // dur null = fit the whole range
+function mapMaxT(){
+  const a=piece.syncMap||[];
+  const m=Math.max(30, videoT||0, ...(a.length?a.map(x=>x.t):[0]))*1.08;
+  return Math.max(m, wavePk?wavePk.dur:0);   // with audio decoded, the range is the whole file
+}
+function mapView(){ const max=mapMaxT();
+  const dur=mapWin.dur?Math.min(mapWin.dur,max):max;
+  const off=Math.max(0,Math.min(mapWin.off,max-dur));
+  return {off,dur,max}; }
+function mapZoom(factor,centerT){
+  const v=mapView();
+  const c=centerT!=null?centerT:(videoT!=null&&videoT>=v.off&&videoT<=v.off+v.dur?videoT:v.off+v.dur/2);
+  let dur=Math.max(4,Math.min(v.max,v.dur*factor));
+  mapWin.dur=dur>=v.max?null:dur;
+  mapWin.off=Math.max(0,c-(c-v.off)*(dur/v.dur));
+  drawMap();
+}
+function decodePeaks(arrayBuffer){
+  ensureCtx();
+  return ctx.decodeAudioData(arrayBuffer).then(buf=>{
+    const ch=buf.getChannelData(0), N=16384, per=Math.max(1,Math.floor(ch.length/N));
+    const pk=new Array(N).fill(0);
+    for(let i=0;i<N;i++){ let m=0; const o=i*per;
+      for(let j=0;j<per;j+=7){ const v=Math.abs(ch[o+j]||0); if(v>m)m=v; }
+      pk[i]=m; }
+    wavePk={dur:buf.duration,pk};
+    if(!$("mapbar").classList.contains("hidden")) drawMap();
+    toast("Waveform ready");
+  }).catch(e=>{ // never silent: the waveform's absence must explain itself
+    nativePeaks().then(ok=>{ if(!ok)
+      toast("Couldn't read this video's audio — no waveform ("+((e&&(e.name||e.message))?((e.name||"")+(e.message?": "+e.message:"")):"decode failed")+")");
+    });
+  });
+}
+function nativePeaks(){ // the Mac app reads what WebKit won't (24-bit PCM .movs)
+  if(location.port!=="8144") return Promise.resolve(false);
+  let p=null; try{ p=localStorage.getItem("hps.lastVideo"); }catch(e){}
+  if(!p) return Promise.resolve(false);
+  return fetch("/peaks?p="+encodeURIComponent(p))
+    .then(r=>r.ok?r.json():null)
+    .then(j=>{
+      if(!j||!j.pk||!j.pk.length) return false;
+      wavePk={dur:j.dur,pk:j.pk};
+      if(!$("mapbar").classList.contains("hidden")) drawMap();
+      toast("Waveform ready");
+      return true;
+    }).catch(()=>false);
+}
+function drawMap(){
+  const svg=$("mapsvg"), H=mapH, a=piece.syncMap||[];
+  if(svg.clientHeight!==mapH) svg.style.height=mapH+"px";
+  const W=svg.clientWidth||900;
+  const v=mapView(), x=t=>(t-v.off)/v.dur*W;
+  const barSet=new Set(barStarts()), total=compile(piece).total;
+  let h='<rect x="0" y="0" width="'+W+'" height="'+H+'" fill="var(--card)" rx="8"/>';
+  if(wavePk&&waveOn){ // the studio lesson: markers belong on a waveform
+    const mid=(H-26)/2+8, amp=(H-26)/2-12;
+    h+=wavePath(v.off,v.dur,W,mid,amp,"0.9");
+  }
+  h+='<line x1="0" y1="'+(H-26)+'" x2="'+W+'" y2="'+(H-26)+'" stroke="var(--rule)" stroke-width="1.5"/>';
+  const step=v.dur>240?60:v.dur>90?30:v.dur>40?10:v.dur>12?5:1;
+  for(let t=Math.ceil(v.off/step)*step;t<=v.off+v.dur;t+=step)
+    h+='<line x1="'+x(t)+'" y1="'+(H-26)+'" x2="'+x(t)+'" y2="'+(H-20)+'" stroke="var(--ink3)"/>'
+      +'<text x="'+x(t)+'" y="'+(H-8)+'" font-size="10" fill="var(--ink3)" text-anchor="middle" font-family="Figtree">'+fmtT(t)+'</text>';
+  if(videoT!=null&&videoT>=v.off&&videoT<=v.off+v.dur)
+    h+='<line id="mapCur" x1="'+x(videoT)+'" y1="6" x2="'+x(videoT)+'" y2="'+(H-26)+'" stroke="var(--dixie)" stroke-width="2"/>';
+  a.forEach((an,i)=>{
+    if(an.t<v.off-1||an.t>v.off+v.dur+1) return;
+    const isBar=barSet.has(an.p)||an.p>=total, top=isBar?12:34, sel=i===mapSel;
+    const col=sel?"var(--dixie)":an.g?"var(--clay)":"var(--steel)"; // clay = no stroke found, placed between neighbours
+    h+='<g class="anch" data-i="'+i+'" style="cursor:ew-resize">'
+      +'<line x1="'+x(an.t)+'" y1="'+top+'" x2="'+x(an.t)+'" y2="'+(H-26)+'" stroke="'+col+'" stroke-width="'+(sel?3:isBar?2:1.2)+'"/>'
+      +'<circle cx="'+x(an.t)+'" cy="'+top+'" r="'+(sel?7:5)+'" fill="'+col+'"/>'
+      +(isBar?'<text x="'+x(an.t)+'" y="'+(top-3+16)+'" font-size="9.5" fill="'+(an.g&&!sel?"var(--clay)":"var(--ink2)")+'" text-anchor="middle" font-family="Figtree" transform="translate(0,-14)">'+pulseLabel(an.p)+'</text>':'')
+      +'</g>';
+  });
+  svg.innerHTML=h;
+  drawNav();
+  svg.querySelectorAll(".anch").forEach(g=>{
+    g.addEventListener("pointerdown",e=>{
+      e.preventDefault(); mapSel=+g.dataset.i; $("mapDel").disabled=false;
+      protectOrig();
+      mapDrag={i:mapSel,pre:JSON.stringify(piece.syncMap||[])};
+      svg.setPointerCapture(e.pointerId);
+      if(!C) C=compile(piece);
+      paintPulse((piece.syncMap[mapSel]||{}).p||0); drawMap();
+    });
+  });
+}
+function wavePath(off,dur,W,mid,amp,op,fill,stroke){ // each pixel = the loudest bucket it covers
+  if(!wavePk) return "";
+  const bd=wavePk.dur/wavePk.pk.length;
+  let up="",dn="";
+  for(let px=0;px<W;px+=2){
+    const t0=off+px/W*dur, t1=off+(px+2)/W*dur;
+    let b0=Math.floor(t0/bd), b1=Math.floor(t1/bd), m=0;
+    b0=Math.max(0,b0); b1=Math.min(wavePk.pk.length-1,Math.max(b0,b1));
+    for(let b=b0;b<=b1;b++){ const q=wavePk.pk[b]; if(q>m)m=q; }
+    up+=(px?"L":"M")+px+" "+(mid-m*amp).toFixed(1)+" ";
+    dn=" L"+px+" "+(mid+m*amp).toFixed(1)+dn;
+  }
+  return up?'<path d="'+up+dn+' Z" fill="'+(fill||"var(--steel-soft)")+'" stroke="'+(stroke||"var(--steel)")+'" stroke-width="0.5" opacity="'+op+'"/>':"";
+}
+function drawNav(){ // the whole file in miniature, greyed; the bright window is the view above
+  const svg=$("mapnav"); if(!svg) return;
+  const W=svg.clientWidth||900, H=34, v=mapView(), max=v.max;
+  let h='<rect x="0" y="0" width="'+W+'" height="'+H+'" fill="var(--dust)" rx="6"/>';
+  h+=wavePath(0,max,W,H/2,H/2-3,"0.8","var(--rule2)","var(--ink3)");
+  for(const an of piece.syncMap||[])
+    h+='<line x1="'+(an.t/max*W).toFixed(1)+'" y1="'+(H-7)+'" x2="'+(an.t/max*W).toFixed(1)+'" y2="'+H+'" stroke="'+(an.g?"var(--clay)":"var(--ink3)")+'" stroke-width="1" opacity="0.8"/>';
+  if(videoT!=null)
+    h+='<line id="navCur" x1="'+(videoT/max*W).toFixed(1)+'" y1="0" x2="'+(videoT/max*W).toFixed(1)+'" y2="'+H+'" stroke="var(--dixie)" stroke-width="1.5"/>';
+  const x0=v.off/max*W, x1=(v.off+v.dur)/max*W;
+  h+='<rect x="'+x0.toFixed(1)+'" y="0.75" width="'+Math.max(6,x1-x0).toFixed(1)+'" height="'+(H-1.5)
+    +'" fill="var(--dixie-soft)" fill-opacity="0.4" stroke="var(--dixie)" stroke-width="1.5" rx="4"/>';
+  svg.innerHTML=h;
+}
+function waveOnsets(){ // stroke starts = sharp rises of the peak envelope
+  if(!wavePk) return [];
+  if(onsetsCache&&onsetsCache.src===wavePk) return onsetsCache.on;
+  const pk=wavePk.pk, n=pk.length, bd=wavePk.dur/n, on=[];
+  for(let i=2;i<n;i++){
+    const base=Math.max(pk[i-1],pk[i-2]);
+    if(pk[i]>0.05&&pk[i]>base*1.6&&pk[i]-base>0.03){
+      const t=i*bd;
+      if(!on.length||t-on[on.length-1]>0.06) on.push(t);
+    }
+  }
+  onsetsCache={src:wavePk,on};
+  return on;
+}
+function nearestOnset(t,win){
+  let best=null;
+  for(const o of waveOnsets()){
+    const d=Math.abs(o-t);
+    if(d<=win&&(best==null||d<Math.abs(best-t))) best=o;
+  }
+  return best;
+}
+function snapWin(an){ // a 64th note at this spot's local tempo
+  const r=segRate(an.t), spPulse=r>0?1/r:0.2;
+  const c=compile(piece);
+  let sec=c.secStarts[0]; for(const x of c.secStarts) if(x.pulse<=an.p) sec=x;
+  return spPulse*SM(piece,sec.name).sub/16;    // the beat is sub pulses; a 64th is a 16th of it
+}
+function quantiseMap(){ // every anchor onto its stroke; strokeless downbeats between their neighbours
+  const a=piece.syncMap||[];
+  if(a.length<2){ toast("Need a map first"); return; }
+  if(!wavePk){ toast("No waveform to snap to"); return; }
+  protectOrig(); mapSnap();
+  let hit=0;
+  for(const an of a){
+    const o=nearestOnset(an.t,snapWin(an));
+    if(o!=null){ an.t=+o.toFixed(3); delete an.g; hit++; }
+    else an.g=1;
+  }
+  let placed=0, kept=0;
+  for(let i=0;i<a.length;i++){
+    if(!a[i].g) continue;
+    let L=i-1; while(L>=0&&a[L].g) L--;
+    let R=i+1; while(R<a.length&&a[R].g) R++;
+    if(L>=0&&R<a.length&&a[R].p!==a[L].p){ // spread runs evenly between the sure neighbours
+      a[i].t=+(a[L].t+(a[i].p-a[L].p)/(a[R].p-a[L].p)*(a[R].t-a[L].t)).toFixed(3);
+      placed++;
+    } else kept++;
+  }
+  piece.syncMap.sort((x,y)=>x.t-y.t);
+  updateSyncUI();
+  toast(hit+" snapped to hits"+(placed?(" · "+placed+" placed between neighbours"):"")
+    +(kept?(" · "+kept+" left as tapped"):""));
+}
+/* ---- Auto-map: a walker that does what a human tapping along does ----
+   Predict the next downbeat from the local tempo, snap to a real stroke
+   near the prediction, and let what it found correct the tempo estimate
+   before the next bar — so speeding up (David's own tendency) is followed,
+   not fought. Hand-placed anchors are law: the walker only ADDS anchors
+   in the gaps/after them. Downbeats with no stroke are placed at the
+   prediction and flagged clay-red for review. */
+function autoWalkGap(L,R,targets,stats){ // fill bar starts strictly between two anchors
+  const between=targets.filter(p=>p>L.p&&p<R.p);
+  const out=[];
+  if(!between.length) return out;
+  let sppE=(R.t-L.t)/(R.p-L.p);            // seed: the span's own average tempo
+  if(!(sppE>0)) return out;                // a backwards span maps nothing
+  let curT=L.t, curP=L.p;
+  for(const p of between){
+    const sppRem=(R.t-curT)/(R.p-curP);    // the pull that guarantees landing on R
+    const spp=0.45*sppE+0.55*sppRem;
+    const pred=curT+(p-curP)*spp;
+    const win=Math.max(0.08,spp*(p-curP)*0.25);
+    const o=nearestOnset(pred,win);
+    const an={p};
+    if(o!=null){ an.t=+o.toFixed(3);
+      sppE+=0.4*((an.t-curT)/(p-curP)-sppE); stats.hit++; }
+    else { an.t=+pred.toFixed(3); an.g=1; stats.miss++; }
+    out.push(an); curT=an.t; curP=p;
+  }
+  return out;
+}
+function autoWalkOn(a,targets,stats){ // continue forward from the last anchor
+  const last=a[a.length-1];
+  let num=0,den=0;                         // local tempo from the last few taps
+  for(let i=Math.max(1,a.length-3);i<a.length;i++){
+    num+=a[i].t-a[i-1].t; den+=a[i].p-a[i-1].p; }
+  let spp=den>0?num/den:0;
+  // sanity rail: a seed wildly off the notated tempo means the taps don't
+  // mean what they look like (e.g. bar taps made in beats mode) — fall back
+  const sppN=60/(piece.tempo||72)/SM(piece,piece.arrangement[0]).sub;
+  if(!(spp>0)||spp>sppN*3||spp<sppN/3) spp=sppN;
+  const out=[];
+  let curT=last.t, curP=last.p;
+  for(const p of targets.filter(x=>x>last.p)){
+    const pred=curT+(p-curP)*spp;
+    if(wavePk&&pred>wavePk.dur+0.5) break;  // ran off the end of the recording
+    const win=Math.max(0.08,spp*(p-curP)*0.25);
+    const o=nearestOnset(pred,win);
+    const an={p};
+    if(o!=null){ an.t=+o.toFixed(3);
+      spp+=0.4*((an.t-curT)/(p-curP)-spp); stats.hit++; }
+    else { an.t=+pred.toFixed(3); an.g=1; stats.miss++; }
+    out.push(an); curT=an.t; curP=p;
+  }
+  return out;
+}
+function finishAuto(stats){ // per David: land on the first doubtful marker, report the count
+  updateSyncUI();
+  const a=piece.syncMap||[];
+  const flagged=a.map((an,i)=>an.g?i:-1).filter(i=>i>=0);
+  if(flagged.length){
+    mapSel=flagged[0]; $("mapDel").disabled=false;
+    const an=a[mapSel], v=mapView();
+    if(an.t<v.off||an.t>v.off+v.dur) mapWin.off=Math.max(0,an.t-v.dur/2);
+    if(!C) C=compile(piece);
+    paintPulse(Math.min(C.total-1,an.p));
+  }
+  drawMap();
+  const n=stats.hit+stats.miss;
+  toast(n+" bar"+(n===1?"":"s")+" mapped · "+(stats.miss?stats.miss+" to review ([ and ] walk the markers)":"all snapped to hits"));
+}
+function autoMapAll(){
+  const total=compile(piece).total, a=(piece.syncMap||[]).slice().sort((x,y)=>x.p-y.p);
+  if(!wavePk){ toast("No waveform — open the video first"); return; }
+  if(a.length<2){
+    toast("Tap the first bar (T), then click the last hit in the timeline and press Set End here"); return; }
+  for(let i=1;i<a.length;i++) if(a[i].t<=a[i-1].t+0.05){ // markers must run forward in time
+    toast("Markers out of order: "+pulseLabel(a[i].p)+" at "+fmtT(a[i].t)
+      +" is not after "+pulseLabel(a[i-1].p)+" at "+fmtT(a[i-1].t)+" — move or delete one first");
+    return; }
+  protectOrig(); mapSnap();
+  const targets=barStarts(), stats={hit:0,miss:0}, add=[];
+  for(let i=0;i<a.length-1;i++) add.push(...autoWalkGap(a[i],a[i+1],targets,stats));
+  if(!add.length){
+    toast(a.some(x=>x.p>=total)?"Nothing to map — every bar between your markers is already placed"
+      :"No bars between your markers — set the End (Set End here) so there is a span to walk");
+    mapHist.pop(); return; }
+  piece.syncMap=(piece.syncMap||[]).concat(add).sort((x,y)=>x.t-y.t);
+  finishAuto(stats);
+}
+function autoMapRest(){
+  const total=compile(piece).total, a=(piece.syncMap||[]).slice().sort((x,y)=>x.p-y.p);
+  if(!wavePk){ toast("No waveform — open the video first"); return; }
+  if(a.length<2){ toast("Tap at least the first bars — Auto-map rest continues from your tempo"); return; }
+  for(let i=1;i<a.length;i++) if(a[i].t<=a[i-1].t+0.05){
+    toast("Markers out of order: "+pulseLabel(a[i].p)+" at "+fmtT(a[i].t)
+      +" is not after "+pulseLabel(a[i-1].p)+" at "+fmtT(a[i-1].t)+" — move or delete one first");
+    return; }
+  const targets=[...barStarts(),total];
+  if(!targets.some(p=>p>a[a.length-1].p)){ toast("Nothing left to map — the tune is fully tapped"); return; }
+  protectOrig(); mapSnap();
+  const stats={hit:0,miss:0};
+  const add=autoWalkOn(a,targets,stats);
+  if(!add.length){ toast("Could not continue — the recording seems to end here"); mapHist.pop(); return; }
+  piece.syncMap=(piece.syncMap||[]).concat(add).sort((x,y)=>x.t-y.t);
+  finishAuto(stats);
+}
+function mapShowSpan(from,to){ // ride the timeline onto a pulse span (arrangement clicks)
+  if($("mapbar").classList.contains("hidden")) return;
+  const t0=invMap(from), t1=invMap(to);
+  if(t0==null||t1==null||t1-t0<0.5) return;
+  const pad=Math.max(0.5,(t1-t0)*0.06);
+  mapWin.off=Math.max(0,t0-pad); mapWin.dur=(t1-t0)+2*pad;
+  drawMap();
+}
+function videoSeek(t){ // move the recording — local element or the embed bridge
+  const v=$("vidEl");
+  if(v&&v.src) v.currentTime=t;
+  else try{ window.parent.postMessage({type:"hps-video-ctl",action:"seek",t:t},"*"); }catch(e){}
+  vCursor=null;
+}
+function seekToPulse(p){ // click in the notation: the playhead goes there
+  if(!C) C=compile(piece);
+  if(follow&&piece.syncMap&&piece.syncMap.length>=2){
+    const vt=invMap(p);
+    if(vt!=null) videoSeek(vt);
+    paintPulse(p); return;
+  }
+  if(playing){ jumpTo(p); return; }
+  pendingStart=p; paintPulse(p);
+}
+function mapPointer(e){
+  const svg=$("mapsvg"), r=svg.getBoundingClientRect(), v=mapView();
+  return v.off+Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*v.dur;
+}
+document.addEventListener("DOMContentLoaded",()=>{
+  const svg=$("mapsvg");
+  svg.addEventListener("pointerdown",e=>{
+    if(e.target.closest(".anch")) return;           // anchors handle themselves
+    const v=mapView();
+    mapDrag={pan:true,x0:e.clientX,off0:v.off,dur:v.dur,moved:false};
+    svg.setPointerCapture(e.pointerId);
+  });
+  svg.addEventListener("pointermove",e=>{
+    if(!mapDrag) return;
+    if(mapDrag.pan){
+      if(Math.abs(e.clientX-mapDrag.x0)>3) mapDrag.moved=true;
+      const W=svg.clientWidth||900;
+      mapWin.off=mapDrag.off0-(e.clientX-mapDrag.x0)/W*mapDrag.dur;
+      if(mapWin.dur!=null) drawMap();
+      return;
+    }
+    const an=piece.syncMap[mapDrag.i]; if(!an) return;
+    const rr=svg.getBoundingClientRect();
+    mapDrag.off=e.clientY<rr.top-24;                 // dragged off the top = remove
+    let t=+mapPointer(e).toFixed(3);
+    if(magOn){ const o=nearestOnset(t,snapWin(an)); if(o!=null) t=+o.toFixed(3); }
+    an.t=t;
+    paintPulse(an.p); drawMap();
+  });
+  function mapDragOffEnd(){ return false; }
+  svg.addEventListener("pointerup",e=>{
+    if(!mapDrag) return;
+    const wasPan=mapDrag.pan, pre=mapDrag.pre, wasOff=mapDrag.off, offI=mapDrag.i, moved=mapDrag.moved;
+    mapDrag=null;
+    if(!wasPan&&wasOff&&piece.syncMap&&piece.syncMap[offI]){
+      mapHist.push(pre); if(mapHist.length>100) mapHist.shift();
+      piece.syncMap.splice(offI,1); mapSel=null; $("mapDel").disabled=true;
+      toast("Anchor removed"); updateSyncUI(); return;
+    }
+    if(wasPan){
+      if(!moved){ // a plain click: the recording goes there, and the notation follows if a map exists
+        const t=mapPointer(e);
+        videoSeek(t);
+        if(piece.syncMap&&piece.syncMap.length>=2){
+          const p=mapPulse(t);
+          if(p!=null){
+            const pr=Math.max(0,Math.min(compile(piece).total-1,Math.round(p)));
+            if(playing) jumpTo(pr); else pendingStart=pr;
+            if(!C) C=compile(piece);
+            paintPulse(pr); renderArr();
+          }
+        }
+      }
+      return;
+    }
+    if(mapDragOffEnd()){ return; }
+    const sel=piece.syncMap[mapSel];
+    if(pre&&pre!==JSON.stringify(piece.syncMap||[])){
+      mapHist.push(pre); if(mapHist.length>100) mapHist.shift();
+      if(sel) delete sel.g;                    // placed by hand — no longer a guess
+    }
+    piece.syncMap.sort((a,b)=>a.t-b.t);
+    mapSel=piece.syncMap.indexOf(sel);
+    updateSyncUI();
+  });
+  svg.addEventListener("wheel",e=>{
+    e.preventDefault();
+    if(Math.abs(e.deltaX)>Math.abs(e.deltaY)){   // Magic Mouse / trackpad side-scroll pans
+      const v=mapView(), W=svg.clientWidth||900;
+      mapWin.off=v.off+e.deltaX/W*v.dur; drawMap(); return;
+    }
+    mapZoom(e.deltaY>0?1.25:0.8, mapPointer(e));
+  },{passive:false});
+  $("mapZoomIn").addEventListener("click",()=>mapZoom(0.6));
+  $("mapZoomOut").addEventListener("click",()=>mapZoom(1.6));
+  $("mapFit").addEventListener("click",()=>{ mapWin={off:0,dur:null}; drawMap(); });
+  $("mapQuant").addEventListener("click",()=>quantiseMap());
+  $("mapAutoAll").addEventListener("click",()=>autoMapAll());
+  $("mapAutoRest").addEventListener("click",()=>autoMapRest());
+  $("mapEnd").addEventListener("click",()=>{
+    if(videoT==null){ toast("Play or click into the timeline first — the End goes at the playhead"); return; }
+    const total=compile(piece).total;
+    const before=(piece.syncMap||[]).filter(x=>x.p<total);
+    const lastT=before.length?Math.max(...before.map(x=>x.t)):null;
+    if(lastT!=null&&videoT<=lastT+0.3){ // the End is by definition after everything else
+      toast("The playhead ("+fmtT(videoT)+") is not after your last marker ("+fmtT(lastT)+") — click the tune's last hit in the timeline first"); return; }
+    protectOrig(); mapSnap();
+    let t=videoT;
+    const o=nearestOnset(t,0.4); if(o!=null) t=o;   // land on the actual stroke
+    const a=piece.syncMap=piece.syncMap||[];
+    const i=a.findIndex(x=>x.p>=total);
+    if(i>=0) a.splice(i,1);
+    a.push({t:+t.toFixed(3),p:total});
+    a.sort((x,y)=>x.t-y.t);
+    updateSyncUI();
+    toast("End marked at "+fmtT(t)+(o!=null?" — snapped to the stroke":""));
+  });
+  function setMag(v){ magOn=v; try{localStorage.setItem("hps.mag",v?"1":"0")}catch(e){}
+    $("mapMag").textContent="Magnet: "+(v?"on":"off"); $("mapMag").classList.toggle("on",v); }
+  function setWave(v){ waveOn=v; try{localStorage.setItem("hps.wave",v?"1":"0")}catch(e){}
+    $("mapWave").textContent="Wave: "+(v?"on":"off"); $("mapWave").classList.toggle("on",v); drawMap(); }
+  $("mapMag").addEventListener("click",()=>setMag(!magOn));
+  $("mapWave").addEventListener("click",()=>setWave(!waveOn));
+  setMag(magOn);
+  $("mapWave").textContent="Wave: "+(waveOn?"on":"off"); $("mapWave").classList.toggle("on",waveOn);
+  // The navigation strip: drag the window to move, its edges to zoom, click outside to centre.
+  const nav=$("mapnav");
+  let navDrag=null;
+  function navT(e){ const r=nav.getBoundingClientRect(), v=mapView();
+    return Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*v.max; }
+  nav.addEventListener("pointerdown",e=>{
+    e.preventDefault();
+    const v=mapView(), t=navT(e), r=nav.getBoundingClientRect();
+    const edge=10/r.width*v.max, zoomed=v.dur<v.max*0.999;
+    if(zoomed&&Math.abs(t-v.off)<edge) navDrag={m:"lo"};
+    else if(zoomed&&Math.abs(t-(v.off+v.dur))<edge) navDrag={m:"hi"};
+    else if(t>=v.off&&t<=v.off+v.dur&&zoomed) navDrag={m:"move",dt:t-v.off};
+    else if(zoomed){ mapWin.off=Math.max(0,t-v.dur/2); drawMap(); navDrag={m:"move",dt:v.dur/2}; }
+    else { mapWin.dur=Math.max(8,v.max/6); mapWin.off=Math.max(0,t-mapWin.dur/2); drawMap();
+      navDrag={m:"move",dt:mapWin.dur/2}; }   // click while fitted: open a window there
+    nav.setPointerCapture(e.pointerId);
+  });
+  nav.addEventListener("pointermove",e=>{
+    if(!navDrag) return;
+    const v=mapView(), t=navT(e);
+    if(navDrag.m==="move") mapWin.off=Math.max(0,t-navDrag.dt);
+    else if(navDrag.m==="lo"){
+      const hi=v.off+v.dur, off=Math.min(t,hi-2);
+      mapWin.off=Math.max(0,off); const d=hi-mapWin.off; mapWin.dur=d>=v.max?null:d;
+    } else {
+      const d=Math.max(2,t-v.off); mapWin.dur=d>=v.max?null:d;
+    }
+    drawMap();
+  });
+  nav.addEventListener("pointerup",()=>{ navDrag=null; nav.style.cursor=""; });
+  nav.addEventListener("pointermove",e=>{ // hover: the cursor names the grab
+    if(navDrag){ nav.style.cursor=navDrag.m==="move"?"grabbing":"ew-resize"; return; }
+    const v=mapView(), t=navT(e), r=nav.getBoundingClientRect();
+    const edge=10/r.width*v.max, zoomed=v.dur<v.max*0.999;
+    nav.style.cursor=zoomed&&(Math.abs(t-v.off)<edge||Math.abs(t-(v.off+v.dur))<edge)?"ew-resize"
+      :(zoomed&&t>v.off&&t<v.off+v.dur)?"grab":"pointer";
+  });
+  nav.addEventListener("wheel",e=>{ // same gestures as the timeline: sideways pans, up/down zooms
+    e.preventDefault();
+    if(Math.abs(e.deltaX)>Math.abs(e.deltaY)){
+      const v=mapView(), W=nav.clientWidth||900;
+      mapWin.off=v.off+e.deltaX/W*v.dur; drawMap(); return;
+    }
+    mapZoom(e.deltaY>0?1.25:0.8, navT(e));
+  },{passive:false});
+  // The grip between timeline and nav strip resizes the timeline; the height persists.
+  const grip=$("mapGrip");
+  let gripDrag=null;
+  grip.addEventListener("pointerdown",e=>{
+    e.preventDefault(); gripDrag={y0:e.clientY,h0:mapH};
+    grip.setPointerCapture(e.pointerId);
+  });
+  grip.addEventListener("pointermove",e=>{
+    if(!gripDrag) return;
+    mapH=Math.max(80,Math.min(400,gripDrag.h0+(e.clientY-gripDrag.y0)));
+    drawMap();
+  });
+  grip.addEventListener("pointerup",()=>{
+    gripDrag=null;
+    try{localStorage.setItem("hps.mapH",String(mapH))}catch(e){}
+  });
+  svg.addEventListener("dblclick",e=>{
+    const t=+mapPointer(e).toFixed(3);
+    protectOrig(); mapSnap();
+    piece.syncMap=piece.syncMap||[];
+    let p=Math.round(mapPulse(t)??-1);
+    const ts=beatStarts();
+    if(p<0){ const {ts:t2,i}=nextTap(); if(i<0) return; p=t2[i]; }
+    else p=ts.reduce((b,c)=>Math.abs(c-p)<Math.abs(b-p)?c:b,ts[0]); // snap to a beat
+    piece.syncMap.push({t,p}); piece.syncMap.sort((a,b)=>a.t-b.t);
+    mapSel=piece.syncMap.findIndex(a=>a.t===t); $("mapDel").disabled=false;
+    if(!C) C=compile(piece); paintPulse(p);
+    updateSyncUI(); toast("Anchor added at "+pulseLabel(p));
+  });
+  $("mapBtn").addEventListener("click",()=>{
+    $("mapbar").classList.toggle("hidden");
+    $("mapBtn").classList.toggle("on",!$("mapbar").classList.contains("hidden"));
+    if(!$("mapbar").classList.contains("hidden")) drawMap();
+  });
+  $("mapClose").addEventListener("click",()=>{ $("mapbar").classList.add("hidden"); $("mapBtn").classList.remove("on"); });
+  $("mapDel").addEventListener("click",()=>{
+    if(mapSel==null||!piece.syncMap) return;
+    protectOrig(); mapSnap();
+    piece.syncMap.splice(mapSel,1); mapSel=null; $("mapDel").disabled=true; updateSyncUI();
+  });
+  function selectAnchor(i){
+    const a=piece.syncMap||[]; if(!a.length) return;
+    mapSel=Math.max(0,Math.min(a.length-1,i)); $("mapDel").disabled=false;
+    const an=a[mapSel], v=mapView();
+    if(an.t<v.off||an.t>v.off+v.dur) mapWin.off=Math.max(0,an.t-v.dur/2);
+    if(!C) C=compile(piece);
+    paintPulse(an.p); drawMap();
+  }
+  $("mapPrev").addEventListener("click",()=>selectAnchor((mapSel==null?1:mapSel)-1));
+  $("mapNext").addEventListener("click",()=>selectAnchor((mapSel==null?-1:mapSel)+1));
+  $("mapRestore").addEventListener("click",()=>{
+    if(!piece.syncMapOrig) return;
+    mapSnap();
+    piece.syncMap=JSON.parse(JSON.stringify(piece.syncMapOrig));
+    mapSel=null; $("mapDel").disabled=true;
+    toast("Tapped map restored"); updateSyncUI();
+  });
+  // Audition: loop the selected anchor's bar through the map's own timing,
+  // clicks on the beats — hear the anchor without touching the video.
+  function audStop(){ if(!aud) return; clearInterval(aud.timer); aud=null;
+    $("mapAud").classList.remove("on");
+    const now=ctx?ctx.currentTime:0;
+    for(const g of live){ try{ g.gain.setValueAtTime(g.gain.value,now);
+      g.gain.linearRampToValueAtTime(0,now+.05);}catch(e){} }
+    live=[]; }
+  $("mapAud").addEventListener("click",()=>{
+    if(aud){ audStop(); return; }
+    const a=piece.syncMap||[]; if(a.length<2){ toast("Need a map first"); return; }
+    const p0=(mapSel!=null&&a[mapSel])?a[mapSel].p:a[0].p;
+    const bs=barStarts(); let from=bs[0];
+    for(const b of bs) if(b<=p0) from=b;
+    const c=compile(piece); let sec=c.secStarts[0];
+    for(const x of c.secStarts) if(x.pulse<=from) sec=x;
+    const m=SM(piece,sec.name), to=from+m.bp;
+    const t0=invMap(from), t1=invMap(to);
+    if(t0==null||t1==null||t1-t0<0.2){ toast("The bar has no mapped span yet"); return; }
+    ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
+    const evs=[];
+    for(let p=from;p<to;p++){
+      const dt=invMap(p)-t0;
+      if((p-sec.pulse)%m.sub===0) evs.push({dt,click:(p-sec.pulse)%m.bp===0?2:1});
+      for(const ev of (C&&C.byPulse.get(p)||compile(piece).byPulse.get(p)||[])) evs.push({dt,ev});
+    }
+    const loopDur=t1-t0;
+    aud={timer:null,start:ctx.currentTime+0.15,k:0};
+    aud.timer=setInterval(()=>{
+      if(!ctx) return;
+      while(true){
+        const cyc=Math.floor(aud.k/evs.length), e=evs[aud.k%evs.length];
+        const at=aud.start+cyc*loopDur+e.dt;
+        if(at>ctx.currentTime+0.35) break;
+        if(e.click) fire(clickBuf(e.click===2),at,.8);
+        else fireEvent(e.ev,at);
+        aud.k++;
+      }
+    },60);
+    $("mapAud").classList.add("on");
+    toast("Looping "+pulseLabel(from)+" — the map's own timing");
+  });
+  $("mapClose").addEventListener("click",()=>audStop());
+  document.addEventListener("keydown",e=>{
+    if(["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName)) return;
+    const mapOpen=!$("mapbar").classList.contains("hidden");
+    if((e.key==="Backspace"||e.key==="Delete")&&!editing&&mapSel!=null&&mapOpen){
+      e.preventDefault(); $("mapDel").click(); return; }
+    if(!editing&&mapOpen){
+      if(e.key==="["){ e.preventDefault(); $("mapPrev").click(); return; }
+      if(e.key==="]"){ e.preventDefault(); $("mapNext").click(); return; }
+      if(e.key==="w"||e.key==="W"){ e.preventDefault(); $("mapZoomIn").click(); return; }
+      if(e.key==="q"||e.key==="Q"){ e.preventDefault(); $("mapZoomOut").click(); return; }
+      if((e.key==="ArrowLeft"||e.key==="ArrowRight")&&mapSel!=null&&piece.syncMap&&piece.syncMap[mapSel]){
+        e.preventDefault();
+        protectOrig(); mapSnap();
+        const dt=(e.shiftKey?0.001:e.altKey?0.1:0.01)*(e.key==="ArrowLeft"?-1:1);
+        const an=piece.syncMap[mapSel];
+        an.t=Math.max(0,+(an.t+dt).toFixed(3)); delete an.g;
+        const sel=an; piece.syncMap.sort((x,y)=>x.t-y.t);
+        mapSel=piece.syncMap.indexOf(sel);
+        paintPulse(an.p); updateSyncUI(); return;
+      }
+    }
+  });
+});
+
 window.addEventListener("message",e=>{
   const d=e.data; let t=null;
   if(typeof d==="number") t=d;
@@ -1002,7 +1948,7 @@ window.addEventListener("message",e=>{
     else if(typeof d.hpsTime==="number") t=d.hpsTime;
   }
   if(d&&d.type==="hps-bridge"){
-    if(!videoSeen){ videoSeen=true; $("syncbar").classList.remove("hidden"); updateSyncUI(); }
+    if(!videoSeen&&!syncSeenOnce) setSyncMode(true);
     // once real timecodes flow, the heartbeat must not overwrite the clock
     if(videoT==null||d.status==="no-player")
       $("vtime").textContent=d.status==="connected"?"ready":
@@ -1010,30 +1956,71 @@ window.addEventListener("message",e=>{
     return;
   }
   if(t==null||!isFinite(t)) return;
+  onVideoTime(t);
+});
+function onVideoTime(t){
+  if(vidLastT!=null&&Math.abs(t-vidLastT)>0.004){
+    if(!vidPlaying){ vidPlaying=true; updatePlayBtn(); }
+    clearTimeout(vidStillT);
+    vidStillT=setTimeout(()=>{ vidPlaying=false; updatePlayBtn(); },700);
+  }
+  vidLastT=t;
   videoT=t;
-  if(!videoSeen){ videoSeen=true; $("syncbar").classList.remove("hidden"); updateSyncUI(); }
+  if(ctx){ const o=t-ctx.currentTime;
+    vOff=(vOff==null||Math.abs(o-vOff)>0.3)?o:vOff+0.12*(o-vOff); }
+  if(!videoSeen&&!syncSeenOnce) setSyncMode(true);
   $("vtime").textContent=fmtT(t);
   if(follow&&!playing){
     const p=mapPulse(t);
     if(p!=null){ if(!C) C=compile(piece); followTick(t,p); }
   }
-});
+  if(!$("mapbar").classList.contains("hidden")){
+    const v=mapView();
+    if(mapWin.dur!=null&&(t<v.off||t>v.off+v.dur*0.85)){
+      mapWin.off=Math.max(0,t-v.dur*0.3); drawMap();   // the window rides with the player
+    } else {
+      const cur=document.getElementById("mapCur"), W=$("mapsvg").clientWidth||900;
+      if(cur&&t>=v.off&&t<=v.off+v.dur){ const xx=(t-v.off)/v.dur*W;
+        cur.setAttribute("x1",xx); cur.setAttribute("x2",xx);
+        const nc=document.getElementById("navCur"), NW=$("mapnav").clientWidth||900;
+        if(nc){ const nx=t/v.max*NW; nc.setAttribute("x1",nx); nc.setAttribute("x2",nx); }
+      }
+      else drawMap();
+    }
+  }
+}
 function followTick(t,p){
-  paintPulse(Math.round(p)%C.total);
-  const rate=segRate(t);
-  if(rate<=0.05){ vCursor=null; return; }        // outside the map: hold, silent
+  const pr=Math.round(p);
+  if(pr>=C.total){ // past the last hit: the marker leaves the page
+    clearMarks();
+    document.querySelectorAll(".chip.playing,.cchip.playing").forEach(el=>el.classList.remove("playing"));
+  } else paintPulse(pr);
+  const a=piece.syncMap; if(!a||a.length<2) return;
   if(vCursor==null||Math.abs(p-vCursor)>4){       // start or seek: resync
     const now=ctx?ctx.currentTime:0;
     for(const g of live){ try{ g.gain.setValueAtTime(g.gain.value,now);
       g.gain.linearRampToValueAtTime(0,now+.05);}catch(e){} }
     live=[]; vCursor=Math.ceil(p);
   }
-  if(!ctx) return;
-  const horizon=p+rate*0.4;                       // schedule 400 ms ahead
-  while(vCursor<=horizon){
-    const pi=((Math.round(vCursor)%C.total)+C.total)%C.total;
-    const at=ctx.currentTime+(vCursor-p)/rate;
-    if(!followMuted) for(const ev of (C.byPulse.get(pi)||[])) fireEvent(ev,Math.max(at,ctx.currentTime));
+  if(!ctx||vOff==null) return;
+  const lastP=a[a.length-1].p;
+  // each pulse is scheduled at ITS OWN spot on the map (piecewise inverse),
+  // through the smoothed video->audio clock: segments fill their spans
+  // exactly, seams included; message jitter no longer moves the grid
+  while(vCursor<=lastP){
+    const vt=invMap(vCursor); if(vt==null) break;
+    const at=vt-vOff;
+    if(at>ctx.currentTime+0.45) break;            // beyond the look-ahead
+    const pr=Math.round(vCursor);
+    if(pr<C.total&&at>ctx.currentTime-0.06){ // End is silent: nothing notated there
+      const pi=((pr%C.total)+C.total)%C.total;
+      if(!followMuted)
+        for(const ev of (C.byPulse.get(pi)||[])) fireEvent(ev,Math.max(at,ctx.currentTime));
+      if(metOn){ // the metronome follows the map's own timing, even with the notes muted
+        const sec=secOfPulse(pi), rel=pi-sec.pulse, mm=SM(piece,sec.name);
+        if(rel%mm.sub===0) fire(clickBuf(rel%mm.bp===0),Math.max(at,ctx.currentTime),1);
+      }
+    }
     vCursor++;
   }
 }
@@ -1044,7 +2031,7 @@ function glyphFor(ev,disp){
   if(ev.v==="perc"){
     let g=ev.s==="slap"?"^":ev.s==="knock"?"°":(ev.g||"T");
     if(ev.roll) g+="\u0303";                       // combining tilde: a grace-note roll
-    return {t:g,cls:"sym pc"};
+    return {t:g,cls:"sym pc"+(ev.s==="slap"?" sl":"")};
   }
   let f=ev.f;
   if(disp&&mode==="trans"&&MAP){ f=MAP[f]; if(f===null||f===undefined) return {t:"–",cls:"sym gh"}; }
@@ -1066,26 +2053,50 @@ function locOf(pulse){
   }
   return null;
 }
+/* The skin dispatcher (SPEC §7): one data model, three renderers, switched by
+   a class on the body. The Table skin is the notation; Pan and Tab are the
+   courtesy views for students arriving from elsewhere. */
+let view=localStorage.getItem("hps.view")||"table";
+if(!["table","tab"].includes(view)) view="table";   // "pan" is a companion panel now, not a main view
+function setView(v,opts){
+  view=v; try{localStorage.setItem("hps.view",v)}catch(e){}
+  document.body.classList.remove("design-table","design-tab");
+  document.body.classList.add("design-"+v);
+  for(const [id,k] of [["viewTable","table"],["viewTab","tab"]])
+    $(id).setAttribute("aria-pressed",String(view===k));
+  if(!(opts&&opts.skipRender)) render();
+}
 function render(){
   if(!piece.sections[viewSec]) viewSec=piece.arrangement[0];
-  const nm=viewSec, sec=piece.sections[nm], m=SM(piece,nm);
   const sc=$("score"); sc.innerHTML="";
-  const sr=document.createElement("div"); sr.className="secrow";
-  sr.innerHTML='<span class="secname">'+nm+'</span>';
-  sc.appendChild(sr);
-  const cnt=document.createElement("div"); cnt.className="count";
+  if(view==="tab") renderTabView(sc);
+  else renderTableView(sc);
+  renderChordRow();
+  renderArr();
+}
+// One count line, shared by the Table and Tab skins; [data-ct] carries the
+// header-numbers marker (countMark) across the row's barsPerRow bars.
+function buildCountRow(m,cls){
+  const cnt=document.createElement("div"); cnt.className="count"+(cls?" "+cls:"");
   cnt.style.gridTemplateColumns="repeat("+m.bpr+",1fr)"; cnt.style.gap="0 14px";
   for(let r=0;r<m.bpr;r++){
     const cb=document.createElement("div");
     cb.style.display="grid"; cb.style.gridTemplateColumns="repeat("+m.bp+",1fr)";
     for(let t=0;t<m.bp;t++){
-      const sp=document.createElement("span");
+      const sp=document.createElement("span"); sp.dataset.ct=r*m.bp+t;
       sp.textContent=t%m.sub===0?String(t/m.sub+1):(m.sub%2===0&&t%m.sub===m.sub/2?"+":"·");
       cb.appendChild(sp);
     }
     cnt.appendChild(cb);
   }
-  sc.appendChild(cnt);
+  return cnt;
+}
+function renderTableView(sc){
+  const nm=viewSec, sec=piece.sections[nm], m=SM(piece,nm);
+  const sr=document.createElement("div"); sr.className="secrow";
+  sr.innerHTML='<span class="secname">'+nm+'</span>';
+  sc.appendChild(sr);
+  sc.appendChild(buildCountRow(m));
   for(let b0=0;b0<sec.bars.length;b0+=m.bpr){
     const rowEl=document.createElement("div");
     rowEl.style.display="grid";
@@ -1115,11 +2126,12 @@ function render(){
           for(const ev of evs){
             const g=glyphFor(ev,true);
             const el=document.createElement("span");
-            el.className=g.cls+(ev.hand==="R"?" r":"");
+            el.className=g.cls+(ev.hand==="R"?" r":" l");
             el.innerHTML=g.t; sl.appendChild(el);
           }
           if(editing&&rel===cursor) sl.classList.add("cursor");
           if(editing) sl.addEventListener("pointerdown",()=>{ cursor=rel; render(); });
+          else sl.addEventListener("pointerdown",()=>seekToPulse(viewFromPulse()+rel));
           be.appendChild(sl);
         }
         bel.appendChild(be);
@@ -1128,10 +2140,187 @@ function render(){
     }
     sc.appendChild(rowEl);
   }
-  renderChordRow();
-  renderArr();
+}
+
+/* ---- Pan panel: the pan from above, a companion beside the chord row,
+   toggled by the Pan button and shown under whichever main notation is up.
+   Geometry is the student's own pan (myPan) — in transposed mode the
+   lit field is the one that actually sounds. Left hand ink, right hand
+   green, matching the notation; the L/R lamps repeat the hand so colour
+   is never the only signal. Tapping a field plays its note. ---- */
+function effField(f){ // the field that actually sounds right now (mode-aware)
+  if(mode==="trans"&&MAP){ const g=MAP[f]; return g===null||g===undefined?null:g; }
+  return f;
+}
+function panViewSVG(pan,label){
+  const P=pan||myPan, n=P.fields.length, ring=zigzag(n);
+  const cx=215, R=207, fr=37, dr=52, pr=148;
+  let h='<svg id="pvsvg" viewBox="0 0 430 430" role="img" aria-label="'+(label||"Your pan from above — tap a field to hear it")+'">'
+   +'<defs><radialGradient id="pvg" cx="50%" cy="42%" r="68%">'
+   +'<stop offset="0%" stop-color="#F4EFE7"/><stop offset="72%" stop-color="#E9E2D5"/>'
+   +'<stop offset="100%" stop-color="#D9CFBE"/></radialGradient>'
+   +'<radialGradient id="pvgd" cx="50%" cy="40%" r="75%">'
+   +'<stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#EFE9DE"/></radialGradient></defs>'
+   +'<circle cx="'+cx+'" cy="'+cx+'" r="'+R+'" fill="url(#pvg)" stroke="var(--sc-edge)" stroke-width="2"/>'
+   +'<circle cx="'+cx+'" cy="'+cx+'" r="'+(R-10)+'" fill="none" stroke="rgba(107,74,56,.14)" stroke-width="1"/>';
+  const field=(f,x,y,r,num,note,numSize,noteDy)=>
+    '<g class="pvf" id="pvf'+f+'" data-f="'+f+'" tabindex="0" role="button"'
+    +' aria-label="'+(f===0?"Ding":"Field "+f)+" — "+note+'">'
+    +'<circle class="pvbase" cx="'+x+'" cy="'+y+'" r="'+r+'" fill="url(#pvgd)" stroke="'+(f===0?"var(--sc-edge)":"var(--sc-rule)")+'" stroke-width="'+(f===0?2:1.5)+'"/>'
+    +'<circle class="pvtint" cx="'+x+'" cy="'+y+'" r="'+r+'"/>'
+    +'<circle class="pvring" cx="'+x+'" cy="'+y+'" r="'+r+'" fill="none" stroke-width="3.5"/>'
+    +'<text x="'+x+'" y="'+(y+numSize*.32)+'" text-anchor="middle" font-family="Inter" font-size="'+numSize+'" font-weight="700" fill="var(--sc-ink)" pointer-events="none">'+num+'</text>'
+    +'<text x="'+x+'" y="'+(y+noteDy)+'" text-anchor="middle" font-family="Figtree" font-size="11.5" font-weight="600" fill="var(--ink3)" pointer-events="none">'+note+'</text></g>';
+  ring.forEach((f,k)=>{
+    const a=Math.PI/2+k*2*Math.PI/n;
+    // mirrored: the zigzag's odd fields sit on the player's RIGHT (David, 26 Aug —
+    // "right is black and left is green" meant the drawn pan was flipped)
+    const x=+(cx-pr*Math.cos(a)).toFixed(1), y=+(cx+pr*Math.sin(a)).toFixed(1);
+    h+=field(f,x,y,fr,String(f),P.labelFor(f),21,24);
+  });
+  h+=field(0,cx,cx,dr,"D",P.labelFor(0),26,32);
+  return h+'</svg>';
+}
+function renderPanPanel(){
+  const box=$("panbox");
+  $("panwrap").classList.toggle("hidden",!(panOn||editing));
+  if(editing){ renderEditbar(); return; }   // the pan card becomes the editor's input pan
+  if(!panOn){ box.innerHTML=""; return; }
+  box.innerHTML="";
+  const wrap=document.createElement("div"); wrap.id="pvwrap";
+  const pan=document.createElement("div"); pan.innerHTML=panViewSVG();
+  const lamps=document.createElement("div"); lamps.className="pvlamps";
+  // the green hand is the LEFT one: green lamp lettered L on the left, black R on the right
+  lamps.innerHTML='<span class="lamp lampR" id="pvlampR" title="Left hand">'+handLetter("R")+'</span><span class="pvgap"></span>'
+    +'<span class="pvperc" id="pvp-slap" title="Slap">^</span>'
+    +'<span class="pvperc" id="pvp-tak" title="Tak">T</span>'
+    +'<span class="pvperc" id="pvp-knock" title="Knock">°</span>'
+    +'<span class="pvgap"></span><span class="lamp lampL" id="pvlampL" title="Right hand">'+handLetter("L")+'</span>';
+  wrap.appendChild(pan.firstChild); wrap.appendChild(lamps);
+  box.appendChild(wrap);
+  const tapField=f=>{
+    ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
+    const midi=myPan.midiFor(f); if(midi==null) return;
+    fire(bankBuf("o"+midi)||synthBuf(midi,"open"),ctx.currentTime+0.01,1);
+    pvFlash($("pvf"+f),["hT"]);
+  };
+  box.querySelectorAll(".pvf").forEach(g=>{
+    g.addEventListener("pointerdown",()=>tapField(+g.dataset.f));
+    g.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); tapField(+g.dataset.f); } });
+  });
+  const tapPerc=s=>{ // the badges sound like the fields do (David, 26 Aug)
+    ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
+    fire(bankBuf("p_"+s+"R")||percBuf(s),ctx.currentTime+0.01,0.9);
+    pvFlash($("pvp-"+s),["hT"]);
+  };
+  ["slap","tak","knock"].forEach(s=>{
+    const el=$("pvp-"+s); if(!el) return;
+    el.setAttribute("role","button"); el.tabIndex=0;
+    el.setAttribute("aria-label","Play "+s);
+    el.addEventListener("pointerdown",()=>tapPerc(s));
+    el.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); tapPerc(s); } });
+  });
+}
+const pvTimers=new WeakMap();
+function pvFlash(el,cls){
+  if(!el) return;
+  el.classList.remove("hit","hL","hR","hT","soft");
+  void el.getBoundingClientRect();               // restart the CSS animation
+  el.classList.add("hit",...cls);
+  clearTimeout(pvTimers.get(el));
+  pvTimers.set(el,setTimeout(()=>el.classList.remove("hit","hL","hR","hT","soft"),520));
+}
+function paintPan(pi){
+  for(const ev of (C&&C.byPulse.get(pi)||[])){
+    const hand=ev.hand==="R"?"hR":"hL";
+    pvFlash($(ev.hand==="R"?"pvlampR":"pvlampL"),ev.v==="ghost"?["soft"]:[]);
+    if(ev.v==="ghost") continue;
+    if(ev.v==="perc"){ pvFlash($("pvp-"+ev.s),[hand]); continue; }
+    const f=effField(ev.f); if(f===null) continue;
+    pvFlash($("pvf"+f),[hand]);
+  }
+}
+
+/* ---- Linear tab: the table's grid skeleton — one count line up top, rows
+   of barsPerRow bars, the same beat-cell borders — carrying a single big
+   glyph line per cell with the hand letter beneath (toggleable). No chords
+   in this view, by David's call. Columns keep .slot[data-rel], so the
+   playback marker machinery is the table's, untouched. ---- */
+function renderTabView(sc){
+  const nm=viewSec, sec=piece.sections[nm], m=SM(piece,nm);
+  const sr=document.createElement("div"); sr.className="secrow";
+  sr.innerHTML='<span class="secname">'+nm+'</span>';
+  sc.appendChild(sr);
+  sc.appendChild(buildCountRow(m,"tcount"));
+  for(let b0=0;b0<sec.bars.length;b0+=m.bpr){
+    const rowEl=document.createElement("div");
+    rowEl.style.display="grid";
+    rowEl.style.gridTemplateColumns="repeat("+m.bpr+",1fr)";
+    rowEl.style.gap="0 14px";
+    for(let bi=b0;bi<Math.min(b0+m.bpr,sec.bars.length);bi++){
+      const bar=sec.bars[bi];
+      const byT=new Map();
+      for(const ev of bar){ if(!byT.has(ev.t)) byT.set(ev.t,[]); byT.get(ev.t).push(ev); }
+      const bel=document.createElement("div"); bel.className="bar";
+      bel.style.gridTemplateColumns="repeat("+m.beats+",1fr)";
+      for(let b=0;b<m.beats;b++){
+        const be=document.createElement("div"); be.className="beat tbeat";
+        be.style.gridTemplateColumns="repeat("+m.sub+",1fr)";
+        for(let sN=0;sN<m.sub;sN++){
+          const t=b*m.sub+sN, rel=bi*m.bp+t;
+          const col=document.createElement("div"); col.className="slot tcol"; col.dataset.rel=rel;
+          col.addEventListener("pointerdown",()=>seekToPulse(viewFromPulse()+rel));
+          const evs=(byT.get(t)||[]).slice(0,4)
+            .sort((a,b)=>(a.v==="field"?a.f:-1)-(b.v==="field"?b.f:-1));
+          const lane=(list,split)=>{
+            const sy=document.createElement("span");
+            sy.className="tsyms"+(split?" lane":"")
+              +(split&&list.length?(list.length===1?" ln1":list.length===2?" ln2":" ln3"):"");
+            for(const ev of list){
+              const g=glyphFor(ev,true);
+              const el=document.createElement("span");
+              el.className=g.cls+(ev.hand==="R"?" r":" l");
+              el.innerHTML=g.t; sy.appendChild(el);
+            }
+            col.appendChild(sy);
+          };
+          if(tabRows==="split"){
+            // the notation itself in two rows: the green (left) hand above, black (right) below
+            lane(evs.filter(e=>e.hand==="R"),true);
+            lane(evs.filter(e=>e.hand!=="R"),true);
+          } else {
+            if(evs.length) col.classList.add(evs.length===1?"n1":evs.length===2?"n2":"n3");
+            lane(evs,false);
+          }
+          if(handsOn){
+            const ghostOnly=evs.length&&evs.every(e=>e.v==="ghost");
+            const hands=[...new Set(evs.map(e=>e.hand))];
+            const hd=document.createElement("span");
+            hd.className="thand"+(ghostOnly?" dim":"");
+            hd.innerHTML=hands.map(h=>'<span'+(h==="R"?' class="r"':'')+'>'+handLetter(h)+'</span>').join("");
+            col.appendChild(hd);
+          }
+          be.appendChild(col);
+        }
+        bel.appendChild(be);
+      }
+      rowEl.appendChild(bel);
+    }
+    sc.appendChild(rowEl);
+  }
 }
 let chordRowOn=(localStorage.getItem("hps.chords")||"1")==="1";
+let arrOn=(localStorage.getItem("hps.arr")||"1")==="1";       // the arrangement card
+function setChords(v){ chordRowOn=v;
+  try{localStorage.setItem("hps.chords",v?"1":"0")}catch(e){}
+  $("chordBtn").classList.toggle("on",v); render(); }
+function setPan(v){ panOn=v;
+  try{localStorage.setItem("hps.pan",v?"1":"0")}catch(e){}
+  $("panBtn").classList.toggle("on",v); renderPanPanel(); }
+function setArr(v){ arrOn=v;
+  try{localStorage.setItem("hps.arr",v?"1":"0")}catch(e){}
+  $("arrBtn").classList.toggle("on",v);
+  $("arrbox").classList.toggle("hidden",!v); }
 function chordPCs(name){
   const m=String(name).match(/^([A-Ga-g])([b♭#♯]?)\s*(maj|min|m)?/);
   if(!m) return null;
@@ -1220,6 +2409,12 @@ function arrEntries(){ let pulse=0;
   return piece.arrangement.map((nm,ai)=>{ const m=SM(piece,nm);
     const e={nm,ai,from:pulse,to:pulse+piece.sections[nm].bars.length*m.bp};
     pulse=e.to; return e; }); }
+function viewFromPulse(){ // arrangement pulse where the displayed table begins
+  const es=arrEntries(), e=es[selAi];
+  if(e&&e.nm===viewSec) return e.from;
+  const f=es.find(x=>x.nm===viewSec);
+  return f?f.from:0;
+}
 function arrRuns(){ const runs=[];
   for(const e of arrEntries()){ const b=baseOf(e.nm).base, last=runs[runs.length-1];
     if(last&&last.base===b&&last.ais[last.ais.length-1]===e.ai-1){ last.to=e.to; last.ais.push(e.ai); }
@@ -1266,7 +2461,10 @@ function renderArr(){
         toast(loopSec?("Looping "+r.base):"Looping off"); renderArr(); return;
       }
       selAi=r.ais[0]; viewSec=piece.arrangement[selAi]; loopSec=null; cursor=0;
-      jumpTo(r.from); render();
+      pendingStart=null;
+      if(follow){ render(); seekToPulse(r.from); }   // following: the video goes there
+      else { jumpTo(r.from); render(); }
+      mapShowSpan(r.from,r.to);            // the timeline editor rides along
     });
     el.appendChild(c);
   });
@@ -1282,7 +2480,11 @@ function renderArr(){
       const anywhere=piece.arrangement.indexOf(nm);
       selAi=inRun!==undefined?inRun:(anywhere>=0?anywhere:selAi);
       viewSec=nm; cursor=0;
-      jumpTo(arrEntries()[selAi].from); render();
+      const en=arrEntries()[selAi];
+      pendingStart=null;
+      if(follow){ render(); seekToPulse(en.from); }
+      else { jumpTo(en.from); render(); }
+      mapShowSpan(en.from,en.to);          // the timeline editor rides along
     });
     tv.appendChild(c);
   }
@@ -1329,7 +2531,7 @@ function refresh(){
   $("title").value=piece.title||"Untitled";
   $("bpm").value=bpm;
   if(mode==="trans") transpose(); else {MAP=null;REPORT=null;}
-  render(); renderReport(); if(editing) renderEditbar();
+  render(); renderPanPanel(); renderReport();
   C=compile(piece);
 }
 
@@ -1340,6 +2542,15 @@ function undo(){ if(!undoStack.length){toast("Nothing to undo");return;}
   piece=JSON.parse(undoStack.pop()); refresh(); }
 function nextHand(){ if(selHand!=="alt") return selHand;
   lastHand=lastHand==="L"?"R":"L"; return lastHand; }
+function updateHandInd(){ // the badge beside the notation: which hand the next symbol gets
+  const el=$("handInd"); if(!el) return;
+  el.classList.toggle("hidden",!editing);
+  if(!editing) return;
+  el.classList.remove("hand-L","hand-R");
+  if(selHand==="L"){ el.classList.add("hand-L"); el.textContent=handLetter("L"); }      // black = right hand
+  else if(selHand==="R"){ el.classList.add("hand-R"); el.textContent=handLetter("R"); } // green = left hand
+  else el.textContent="L·R";
+}
 function slotEvents(loc){ return piece.sections[loc.sec].bars[loc.bar].filter(e=>e.t===loc.t); }
 function clearSlot(loc){ const bar=piece.sections[loc.sec].bars[loc.bar];
   for(let i=bar.length-1;i>=0;i--) if(bar[i].t===loc.t) bar.splice(i,1); }
@@ -1382,6 +2593,7 @@ function editorKeys(e){
   else if(k==="n"){ placePerc("knock"); e.preventDefault(); }
   else if(k==="."||k==="g"){ place({v:"ghost",hand:nextHand()}); e.preventDefault(); }
   else if(k==="h"){ selHand=selHand==="L"?"R":selHand==="R"?"alt":"L"; renderEditbar(); }
+  else if(k===","){ selHand=selHand==="L"?"R":"L"; renderEditbar(); e.preventDefault(); }
   else if(e.key==="ArrowRight"){ cursor=(cursor+1)%total; render(); e.preventDefault(); }
   else if(e.key==="ArrowLeft"){ cursor=(cursor-1+total)%total; render(); e.preventDefault(); }
   else if(e.key==="ArrowDown"){ cursor=(cursor+bp)%total; render(); e.preventDefault(); }
@@ -1389,36 +2601,25 @@ function editorKeys(e){
   else if(e.key==="Backspace"||e.key==="Delete"){ const loc=viewLoc();
     if(loc){ snapshot(); clearSlot(loc); refresh(); } e.preventDefault(); }
 }
-function panSVG(){
-  const n=srcPan.fields.length, ring=zigzag(n);
-  let h='<svg id="pansvg" viewBox="0 0 220 220" role="img" aria-label="Tap a field to place it">'
-   +'<circle cx="110" cy="110" r="103" fill="var(--dust)" stroke="var(--rule)" stroke-width="1.5"/>'
-   +'<circle class="pfield" data-f="0" cx="110" cy="110" r="24" fill="var(--card)" stroke="var(--ink)" stroke-width="2" style="cursor:pointer"/>'
-   +'<text x="110" y="116" text-anchor="middle" font-family="Atkinson Hyperlegible" font-size="16" font-weight="700" fill="var(--ink)" pointer-events="none">D</text>';
-  ring.forEach((f,k)=>{
-    const a=Math.PI/2+k*2*Math.PI/n, x=110+78*Math.cos(a), y=110+78*Math.sin(a);
-    h+='<circle class="pfield" data-f="'+f+'" cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="17" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5" style="cursor:pointer"/>'
-     +'<text x="'+x.toFixed(1)+'" y="'+(y+5).toFixed(1)+'" text-anchor="middle" font-family="Atkinson Hyperlegible" font-size="14" font-weight="700" fill="var(--ink)" pointer-events="none">'+f+'</text>';
-  });
-  return h+'</svg>';
-}
 function renderEditbar(){
-  const E=$("editbar");
+  // renders INTO the pan card: while editing, the animated pan becomes the
+  // editor's input pan with the palettes beneath (no separate panel)
+  const E=$("panbox");
   const key=(id,label,on)=>'<button class="key'+(on?" on":"")+'" data-k="'+id+'">'+label+'</button>';
   E.innerHTML=
-   '<div style="display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start">'
-   +'<div style="flex:0 0 220px">'+panSVG()+'</div>'
-   +'<div style="flex:1; min-width:250px">'
+   '<div style="text-align:left; max-width:292px">'
+   +'<div style="text-align:center"><div style="width:256px;display:inline-block">'
+     +panViewSVG(srcPan,"Tap a field to place it")+'</div></div>'
    +'<div class="lab">Hand</div><div class="pal">'
-     +key("hL","Left",selHand==="L")+key("hR","Right",selHand==="R")+key("hA","Alternate",selHand==="alt")+'</div>'
+     +key("hR","Left",selHand==="R")+key("hL","Right",selHand==="L")+key("hA","Alternate",selHand==="alt")+'</div>'
    +'<div class="lab">Tone field</div><div class="pal">'
      +key("aO","Open",selArt==="open")+key("aM","Mute",selArt==="mute")+key("aV","Overtone",selArt==="overtone")+'</div>'
    +'<div class="lab">Percussive</div><div class="pal">'
      +key("pg","Ghost •",false)+key("ps","Slap ^",false)+key("pt","Tak T",false)+key("pk","Tak K",false)+key("pn","Knock °",false)+'</div>'
    +'<div class="lab">Bars</div><div class="pal">'
      +key("b+","＋ Add bar",false)+key("b-","− Remove bar",false)+key("uz","Undo",false)+'</div>'
-   +'<p class="hint">Click a slot, then: <b>1–9</b> fields · <b>D</b> doum · <b>T</b>/<b>K</b> tak · <b>S</b> slap · <b>N</b> knock · <b>.</b> ghost · <b>M</b>/<b>O</b> mute/overtone mode · <b>H</b> hand · arrows move · Backspace clears · ⌘Z undo</p>'
-   +'</div></div>';
+   +'<p class="hint">Click a slot, then: <b>1–9</b> fields · <b>D</b> doum · <b>T</b>/<b>K</b> tak · <b>S</b> slap · <b>N</b> knock · <b>.</b> ghost · <b>M</b>/<b>O</b> mute/overtone · <b>,</b> switch hand · <b>H</b> hand modes · arrows move · ⌫ clears · ⌘Z undo</p>'
+   +'</div>';
   E.querySelectorAll(".key").forEach(b=>b.addEventListener("click",()=>{
     const k=b.dataset.k;
     if(k==="hL")selHand="L"; else if(k==="hR")selHand="R"; else if(k==="hA")selHand="alt";
@@ -1433,7 +2634,12 @@ function renderEditbar(){
     else if(k==="uz"){ undo(); return; }
     renderEditbar();
   }));
-  E.querySelectorAll(".pfield").forEach(c=>c.addEventListener("click",()=>placeField(+c.dataset.f)));
+  E.querySelectorAll(".pvf").forEach(g=>{
+    const put=()=>{ placeField(+g.dataset.f); pvFlash($("pvf"+g.dataset.f),["hT"]); };
+    g.addEventListener("pointerdown",put);
+    g.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); put(); } });
+  });
+  updateHandInd();
 }
 
 /* ---------------- share / library ---------------- */
@@ -1454,8 +2660,11 @@ function loadPiece(p){
   piece=JSON.parse(JSON.stringify(p));
   C=compile(piece);
   if(!allPans().find(x=>x.id===piece.writtenFor)){ toast("Unknown pan '"+piece.writtenFor+"' — showing on D Kurd"); piece.writtenFor="d-kurd-9"; }
-  bpm=piece.tempo||72; loopSec=null; cursor=0; undoStack=[]; viewSec=piece.arrangement[0]; selAi=0; tapIdx=(piece.syncMap||[]).length; if(videoSeen)updateSyncUI(); loadOv();
+  bpm=piece.tempo||72; loopSec=null; cursor=0; undoStack=[]; viewSec=piece.arrangement[0]; selAi=0; mapSel=null; mapHist=[];
+  if((piece.syncMap||[]).length&&!videoSeen) setSyncMode(true);
+  if(videoSeen)updateSyncUI(); loadOv();
   if(playing) stop();
+  pendingStart=null;                     // a fresh piece starts at its top
   refresh();
 }
 function copyText(t,msg){
@@ -1503,14 +2712,47 @@ function boot(){
   sel.addEventListener("change",()=>{ myPanId=sel.value; refresh(); });
   $("modePos").addEventListener("click",()=>setMode("pos"));
   $("modeTrans").addEventListener("click",()=>setMode("trans"));
+  setView(view,{skipRender:true});   // body class + pill state before the first render
+  $("viewTable").addEventListener("click",()=>setView("table"));
+  $("viewTab").addEventListener("click",()=>setView("tab"));
   $("playBtn").addEventListener("click",()=>togglePlay());
+  updatePlayBtn();   // the bigger icons from the first paint on
   $("bpm").addEventListener("change",()=>{ bpm=Math.min(200,Math.max(30,+$("bpm").value||72)); piece.tempo=bpm; });
   $("countBtn").addEventListener("click",()=>{ countIn=!countIn; $("countBtn").classList.toggle("on",countIn); });
   $("halfBtn").addEventListener("click",()=>{ halfSpeed=!halfSpeed; $("halfBtn").classList.toggle("on",halfSpeed); });
   $("chordBtn").classList.toggle("on",chordRowOn);
-  $("chordBtn").addEventListener("click",()=>{ chordRowOn=!chordRowOn;
-    try{localStorage.setItem("hps.chords",chordRowOn?"1":"0")}catch(e){}
-    $("chordBtn").classList.toggle("on",chordRowOn); render(); });
+  $("chordBtn").addEventListener("click",()=>setChords(!chordRowOn));
+  $("panBtn").classList.toggle("on",panOn);
+  $("panBtn").addEventListener("click",()=>setPan(!panOn));
+  setArr(arrOn);
+  $("arrBtn").addEventListener("click",()=>setArr(!arrOn));
+  $("markSel").value=markMode;
+  $("markSel").addEventListener("change",()=>{ markMode=$("markSel").value;
+    try{localStorage.setItem("hps.marker",markMode)}catch(e){}
+    clearMarks(); });
+  $("countSel").value=countMark;
+  $("countSel").addEventListener("change",()=>{ countMark=$("countSel").value;
+    try{localStorage.setItem("hps.count",countMark)}catch(e){}
+    clearMarks(); });
+  $("rowsSel").value=tabRows;
+  $("rowsSel").addEventListener("change",()=>{ tabRows=$("rowsSel").value;
+    try{localStorage.setItem("hps.tabrows",tabRows)}catch(e){}
+    render(); });
+  applyHandColors();
+  $("colL").addEventListener("input",()=>{ handCol.l=$("colL").value;
+    try{localStorage.setItem("hps.colL",handCol.l)}catch(e){} applyHandColors(); });
+  $("colR").addEventListener("input",()=>{ handCol.r=$("colR").value;
+    try{localStorage.setItem("hps.colR",handCol.r)}catch(e){} applyHandColors(); });
+  const colReset=()=>{
+    handCol={l:HAND_DEFAULTS.l,r:HAND_DEFAULTS.r};
+    try{localStorage.removeItem("hps.colL");localStorage.removeItem("hps.colR")}catch(e){}
+    applyHandColors(); toast("Hand colours back to black + green"); };
+  $("colReset").addEventListener("click",colReset);
+  $("colCtl").addEventListener("dblclick",colReset);
+  $("handsBtn").classList.toggle("on",handsOn);
+  $("handsBtn").addEventListener("click",()=>{ handsOn=!handsOn;
+    try{localStorage.setItem("hps.hands",handsOn?"on":"off")}catch(e){}
+    $("handsBtn").classList.toggle("on",handsOn); render(); });
   $("metBtn").classList.toggle("on",metOn);
   $("metBtn").addEventListener("click",()=>{ metOn=!metOn;
     try{localStorage.setItem("hps.met",metOn?"1":"0")}catch(e){}
@@ -1523,14 +2765,18 @@ function boot(){
   $("title").addEventListener("change",()=>{ piece.title=$("title").value; });
   $("editBtn").addEventListener("click",()=>{
     editing=!editing; $("editBtn").classList.toggle("on",editing);
-    $("editbar").classList.toggle("hidden",!editing);
-    refresh();
+    if(editing&&view!=="table"){ setView("table",{skipRender:true}); toast("Editing uses the table view"); }
+    $("viewPills").querySelectorAll("button").forEach(b=>b.disabled=editing);
+    refresh();   // the pan card becomes the editor while editing (renderPanPanel)
+    updateHandInd();
   });
   document.addEventListener("keydown",e=>{
     const typing=["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName);
     if(e.key===" "&&!typing){ e.preventDefault(); togglePlay(); return; }
     if((e.key==="t"||e.key==="T")&&!typing&&!editing&&videoSeen){
       e.preventDefault(); $("tapBtn").click(); return; }
+    if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="z"&&!typing&&!editing&&videoSeen){
+      e.preventDefault(); mapUndo(); return; }
     editorKeys(e);
   });
   $("shareBtn").addEventListener("click",()=>openDlg($("shareDlg")));
@@ -1560,7 +2806,7 @@ function boot(){
     loadPiece(p); $("shareDlg").close(); toast("Imported: "+(p.title||"Untitled")); });
   $("followBtn").addEventListener("click",()=>{ follow=!follow;
     if(follow){ if(playing) stop(); ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank(); }
-    vCursor=null; updateSyncUI();
+    vCursor=null; updateSyncUI(); updatePlayBtn();
     toast(follow?"Notation follows the video":"Follow off"); });
   $("folMute").addEventListener("click",()=>{ followMuted=!followMuted;
     $("folMute").textContent="Sound: "+(followMuted?"off":"on");
@@ -1569,19 +2815,77 @@ function boot(){
     vCursor=null; });
   $("tapBtn").addEventListener("click",()=>{
     if(videoT==null){ toast("No video time yet — is the bridge running?"); return; }
-    const bs=barStarts(); if(tapIdx>=bs.length){ toast("All bars tapped"); return; }
+    const {ts,i}=nextTap(); if(i<0){ toast("Everything is tapped"); return; }
+    mapSnap();
     piece.syncMap=piece.syncMap||[];
-    piece.syncMap.push({t:+videoT.toFixed(3),p:bs[tapIdx]});
+    piece.syncMap.push({t:+videoT.toFixed(3),p:ts[i]});
     piece.syncMap.sort((a,b)=>a.t-b.t);
-    const tapped=bs[tapIdx]; tapIdx++;
     if(!C) C=compile(piece);
-    paintPulse(tapped);            // highlight the tapped bar; the view follows across tables
+    paintPulse(ts[i]);             // the notation walks with the taps
     updateSyncUI();
   });
-  $("tapUndo").addEventListener("click",()=>{
-    if(piece.syncMap&&piece.syncMap.length){ piece.syncMap.pop(); tapIdx=Math.max(0,tapIdx-1); }
-    updateSyncUI(); });
-  $("tapClear").addEventListener("click",()=>{ piece.syncMap=[]; tapIdx=0; updateSyncUI(); });
+  $("tapMode").addEventListener("click",()=>{ tapBeats=!tapBeats; updateSyncUI(); });
+  $("tapUndo").addEventListener("click",()=>mapUndo());
+  $("tapClear").addEventListener("click",()=>{ protectOrig(); mapSnap(); piece.syncMap=[]; mapSel=null; updateSyncUI(); });
+  $("syncOpen").addEventListener("click",()=>{
+    setSyncMode(!videoSeen);
+    if(videoSeen) toast("Video sync — open a video file, or embed the app under a lesson video");
+  });
+  $("syncX").addEventListener("click",()=>setSyncMode(false));
+  $("vidOpen").addEventListener("click",()=>$("vidFile").click());
+  let vidWired=false;
+  function wireVideo(){
+    if(vidWired) return; vidWired=true;
+    const v=$("vidEl");
+    v.addEventListener("timeupdate",()=>onVideoTime(v.currentTime));
+    v.addEventListener("seeked",()=>onVideoTime(v.currentTime));
+    (function tick(){ if(!v.paused&&!v.ended) onVideoTime(v.currentTime);
+      requestAnimationFrame(tick); })();
+  }
+  function loadVideoSrc(src,quiet){
+    const v=$("vidEl"); v.src=src;
+    setSyncMode(true);
+    $("vidwrap").classList.remove("hidden");
+    wireVideo();
+    if(!quiet) toast("Video loaded — play it and tap with T");
+  }
+  $("vidFile").addEventListener("change",e=>{
+    const f=e.target.files[0]; if(!f) return;
+    wavePk=null;
+    f.arrayBuffer().then(ab=>decodePeaks(ab))    // the waveform under the timeline
+      .catch(()=>toast("Couldn't read the video file — no waveform"));
+    loadVideoSrc(URL.createObjectURL(f));
+    e.target.value="";
+  });
+  // The Mac app's file panel reports the real path — the page remembers it
+  // and the app's server streams it back next launch (browsers can't).
+  window.hpsNativePick=function(path){
+    if(!/\.(mp4|m4v|mov|m4a|mp3|wav|aiff?|webm)$/i.test(path)) return;
+    try{ localStorage.setItem("hps.lastVideo",path); }catch(e){}
+  };
+  function restoreSession(){
+    // last piece (unless a share link chose one)
+    if(!location.hash.startsWith("#p=")){
+      try{ const lp=localStorage.getItem("hps.lastPiece");
+        if(lp){ const p=pieceFromText(lp); if(p) loadPiece(p); } }catch(e){}
+    }
+    // last video — only inside the Mac app, whose server can stream any path
+    try{
+      const vp=localStorage.getItem("hps.lastVideo");
+      if(vp&&location.port==="8144"){
+        const src="/media?p="+encodeURIComponent(vp);
+        fetch(src,{method:"HEAD"}).then(r=>{ if(!r.ok) return;
+          loadVideoSrc(src,true);
+          fetch(src).then(x=>x.arrayBuffer()).then(ab=>decodePeaks(ab))
+            .catch(()=>toast("Couldn't reload the video's audio — no waveform"));
+          toast("Reopened your last video");
+        }).catch(()=>{});
+      }
+    }catch(e){}
+  }
+  window.addEventListener("beforeunload",()=>{
+    try{ localStorage.setItem("hps.lastPiece","HPS1:"+enc(piece)); }catch(e){}
+  });
   $("libBtn").addEventListener("click",()=>{ renderLib(); openDlg($("libDlg")); });
   $("libClose").addEventListener("click",()=>$("libDlg").close());
   $("saveBtn").addEventListener("click",()=>{
@@ -1604,6 +2908,7 @@ function boot(){
   let p0=null;
   if(location.hash.startsWith("#p=")) p0=pieceFromText(location.hash.slice(3));
   loadPiece(p0||DEMOS.find(p=>p.id==="composition-2")||DEMOS[0]);
+  restoreSession();
   try{ ensureCtx(); preloadBank(); }catch(e){}   // warm the bank before the first tap
 }
 boot();
