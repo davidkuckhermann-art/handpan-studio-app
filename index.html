@@ -152,6 +152,9 @@ table.map select{font-size:12.5px; border:1px solid var(--rule); border-radius:6
 dialog{border:1px solid var(--rule); border-radius:14px; padding:18px; background:var(--card);
   color:var(--ink); box-shadow:var(--shadow); max-width:min(92vw,520px)}
 dialog::backdrop{background:rgba(30,27,22,.35)}
+dialog.flat[open]{position:fixed; top:9vh; left:50%; transform:translateX(-50%);
+  z-index:60; margin:0; max-height:78vh; overflow:auto}
+#dlgShade{position:fixed; inset:0; background:rgba(30,27,22,.35); z-index:55}
 dialog h3{margin:0 0 10px; font-size:16px}
 dialog textarea{width:100%; min-height:70px; font-family:ui-monospace,monospace; font-size:12px;
   border:1px solid var(--rule); border-radius:8px; padding:8px}
@@ -258,6 +261,7 @@ dialog textarea{width:100%; min-height:70px; font-family:ui-monospace,monospace;
   <span class="spacer"></span><button class="ctl" id="npClose">Cancel</button></div>
 </dialog>
 
+<div id="dlgShade" class="hidden"></div>
 <div id="toast" role="status"></div>
 <script src="bank.js"></script>
 <script>
@@ -285,6 +289,21 @@ const EMBED_KEY="ce0f3bf87594bda9";
    ================================================================ */
 
 const $=id=>document.getElementById(id);
+/* WebKit inside a cross-origin iframe can render a modal <dialog> whose top
+   layer never receives clicks (the Kajabi library bug, 26 Aug 2026). When
+   framed, dialogs open as plain fixed overlays instead — same look, no top
+   layer to break. */
+const FLAT_DLG=window!==window.top;
+function openDlg(d){
+  if(!FLAT_DLG){ d.showModal(); return; }
+  d.classList.add("flat"); $("dlgShade").classList.remove("hidden"); d.show();
+}
+document.addEventListener("DOMContentLoaded",()=>{
+  for(const d of document.querySelectorAll("dialog"))
+    d.addEventListener("close",()=>$("dlgShade").classList.add("hidden"));
+  $("dlgShade").addEventListener("click",()=>{
+    document.querySelectorAll("dialog[open]").forEach(d=>d.close()); });
+});
 let _errShown=0;
 window.addEventListener("error",e=>{ if(window!==window.top&&_errShown<3){ _errShown++;
   try{ toast("Error: "+(e.message||"unknown")); }catch(_){}}});
@@ -1447,6 +1466,7 @@ function renderLib(){
     const open=()=>{ try{ onload(); $("libDlg").close(); }
       catch(e){ toast("Could not open: "+(e&&e.message||e)); } };
     d.addEventListener("click",open);
+    d.addEventListener("pointerup",e=>{ if(e.pointerType==="touch") open(); });
     const b=document.createElement("button"); b.className="ctl"; b.textContent="Open";
     b.addEventListener("click",ev=>{ ev.stopPropagation(); open(); });
     d.appendChild(b);
@@ -1507,7 +1527,7 @@ function boot(){
     if(e.key===" "&&!typing){ e.preventDefault(); togglePlay(); return; }
     editorKeys(e);
   });
-  $("shareBtn").addEventListener("click",()=>$("shareDlg").showModal());
+  $("shareBtn").addEventListener("click",()=>openDlg($("shareDlg")));
   $("shareClose").addEventListener("click",()=>$("shareDlg").close());
   $("cpCode").addEventListener("click",()=>copyText("HPS1:"+enc(piece),"Code copied"));
   $("cpLink").addEventListener("click",()=>{
@@ -1553,14 +1573,14 @@ function boot(){
     if(piece.syncMap&&piece.syncMap.length){ piece.syncMap.pop(); tapIdx=Math.max(0,tapIdx-1); }
     updateSyncUI(); });
   $("tapClear").addEventListener("click",()=>{ piece.syncMap=[]; tapIdx=0; updateSyncUI(); });
-  $("libBtn").addEventListener("click",()=>{ renderLib(); $("libDlg").showModal(); });
+  $("libBtn").addEventListener("click",()=>{ renderLib(); openDlg($("libDlg")); });
   $("libClose").addEventListener("click",()=>$("libDlg").close());
   $("saveBtn").addEventListener("click",()=>{
     const l=savedPieces(); piece.title=$("title").value;
     const i=l.findIndex(x=>x.id===piece.id&&x.title===piece.title);
     if(i>=0)l[i]=piece; else l.push(JSON.parse(JSON.stringify(piece)));
     setSaved(l); renderLib(); toast("Saved"); });
-  $("panNew").addEventListener("click",()=>$("panDlg").showModal());
+  $("panNew").addEventListener("click",()=>openDlg($("panDlg")));
   $("npClose").addEventListener("click",()=>$("panDlg").close());
   $("npSave").addEventListener("click",()=>{
     const name=$("npName").value.trim(), ding=$("npDing").value.trim();
