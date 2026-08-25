@@ -89,6 +89,12 @@ input[type=text]{width:auto}
 .slot.cursor{outline:2px solid var(--steel); outline-offset:0}
 .slot.now{outline:2px solid var(--dixie); outline-offset:0; background:var(--sc-band)}
 .sym{font-size:23px; font-weight:700; line-height:1.02; color:var(--sc-ink); font-variant-numeric:tabular-nums}
+/* glyphs breathe with slot density: alone large, stacked smaller */
+.slot.n1 .sym{font-size:27px}
+.slot.n2 .sym{font-size:20px}
+.slot.n3 .sym{font-size:16px; line-height:1.08}
+.slot.n1 .sym.gh{font-size:20px}
+.slot.n2 .sym.gh,.slot.n3 .sym.gh{font-size:15px}
 .sym.r{color:var(--sc-hand)}
 .sym.gh{font-size:17px; line-height:1.15}
 .sym.pc{font-size:21px}
@@ -277,6 +283,9 @@ const EMBED_KEY="ce0f3bf87594bda9";
    ================================================================ */
 
 const $=id=>document.getElementById(id);
+let _errShown=0;
+window.addEventListener("error",e=>{ if(window!==window.top&&_errShown<3){ _errShown++;
+  try{ toast("Error: "+(e.message||"unknown")); }catch(_){}}});
 const toastEl=$("toast"); let toastT=null;
 function toast(msg){ toastEl.textContent=msg; toastEl.classList.add("show");
   clearTimeout(toastT); toastT=setTimeout(()=>toastEl.classList.remove("show"),2400); }
@@ -1071,6 +1080,8 @@ function render(){
         for(let sN=0;sN<m.sub;sN++){
           const t=b*m.sub+sN, rel=bi*m.bp+t;
           const sl=document.createElement("div"); sl.className="slot"; sl.dataset.rel=rel;
+          const _n=(byT.get(t)||[]).length;
+          if(_n) sl.classList.add(_n===1?"n1":_n===2?"n2":"n3");
           const evs=(byT.get(t)||[]).slice(0,4)
             .sort((a,b)=>(a.v==="field"?a.f:-1)-(b.v==="field"?b.f:-1)); // higher field on top
           if(t===0&&bc){ sl.classList.add("haschord");
@@ -1429,13 +1440,16 @@ function copyText(t,msg){
 function renderLib(){
   const L=$("libList"); L.innerHTML="";
   const row=(name,sub,onload,ondel)=>{
-    const d=document.createElement("div"); d.className="lrow";
+    const d=document.createElement("div"); d.className="lrow"; d.style.cursor="pointer";
     d.innerHTML='<span class="nm">'+name+'</span><span class="hint">'+sub+'</span>';
+    const open=()=>{ try{ onload(); $("libDlg").close(); }
+      catch(e){ toast("Could not open: "+(e&&e.message||e)); } };
+    d.addEventListener("click",open);
     const b=document.createElement("button"); b.className="ctl"; b.textContent="Open";
-    b.addEventListener("click",()=>{ onload(); $("libDlg").close(); });
+    b.addEventListener("click",ev=>{ ev.stopPropagation(); open(); });
     d.appendChild(b);
     if(ondel){ const x=document.createElement("button"); x.className="ctl"; x.textContent="✕";
-      x.title="Delete"; x.addEventListener("click",ondel); d.appendChild(x); }
+      x.title="Delete"; x.addEventListener("click",ev=>{ ev.stopPropagation(); ondel(ev); }); d.appendChild(x); }
     L.appendChild(d);
   };
   for(const p of DEMOS) row(p.title,"demo · "+panById(p.writtenFor).name,()=>loadPiece(p));
