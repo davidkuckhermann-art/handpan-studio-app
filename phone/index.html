@@ -504,8 +504,9 @@ body.phone header #setBtn{display:none !important}
   html.phone,body.phone{position:fixed; inset:0; width:100%; height:100%;
     overflow:hidden; overscroll-behavior:none; padding-bottom:0;
     display:flex; flex-direction:column}
-  body.phone #scorewrap{flex:1 1 auto; min-height:0; overflow:hidden}
-  body.phone #belowrow{flex:0 1 auto; min-height:0; overflow:hidden; margin-top:8px}
+  body.phone #scorewrap{flex:0 0 auto; min-height:0; overflow:hidden}
+  body.phone #belowrow{flex:1 1 auto; min-height:0; overflow:hidden; margin-top:8px;
+    align-items:flex-start}
   body.phone #transport{flex:none; margin:0;
     display:block; background:var(--card); border-top:1px solid var(--rule);
     padding:8px calc(10px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom))
@@ -2803,6 +2804,35 @@ function pieceNaturalHeight(W){
   natCache={key,h};
   return h;
 }
+/* PORTRAIT STACK (David, 26 Aug: "the pan view should not be above the
+   notation, instead it should shrink into the available space"). The notation
+   is sized FIRST, by width, and keeps that size; the companion card — chords or
+   pan — then zooms down into whatever height is left. Only if the notation
+   alone cannot fit does it give way. Deliberately arithmetic rather than flex
+   distribution: flex would hand the pan its natural 311px and leave the music
+   the remainder, which is the behaviour he was objecting to. */
+function fitPortraitStack(sc,z,designW){
+  const wrap=$("scorewrap"), bar=$("transport");
+  const top=wrap.getBoundingClientRect().top;
+  const space=innerHeight-top-(bar?bar.offsetHeight:0)-10;
+  if(space<=0) return;
+  let h=sc.getBoundingClientRect().height;
+  if(h>space){                                  // the music alone is too tall
+    z=Math.max(0.3,z*(space/h)); sc.style.zoom=z;
+    h=sc.getBoundingClientRect().height;
+  }
+  const box=panOn?$("panbox"):(chordRowOn?$("chordbox"):null);
+  if(!box||!box.offsetParent) return;
+  box.style.zoom="";
+  const leftover=space-h-10;
+  const bw=box.offsetWidth, bh=box.offsetHeight;
+  const host=box.closest("#chordwrap,#panwrap");
+  const availW=host?host.clientWidth:wrap.clientWidth;
+  let cz=1;
+  if(bh>0&&leftover>0) cz=Math.min(cz,leftover/bh);
+  if(bw>availW&&availW>0) cz=Math.min(cz,availW/bw);
+  box.style.zoom=cz<1?Math.max(0.3,cz):"";
+}
 function phoneFit(){
   if(!PHONE) return;
   const wrap=$("scorewrap"), sc=$("scorecard");
@@ -2844,17 +2874,6 @@ function phoneFit(){
       sc.style.width=(W/z)+"px";
     }
   }
-  else{
-    /* PORTRAIT is locked too, so the score has to FIT, not overflow. The flex
-       column already decided how much height the notation gets — take the
-       smaller of the width fit and the height fit, and centre what is left
-       over. Unlike landscape the design width is NOT the free variable here:
-       a portrait card widened to fill would push the bars off the screen. */
-    const availH=wrap.clientHeight-4;
-    const natH=Math.max(sc.scrollHeight,pieceNaturalHeight(designW));
-    if(natH>0&&availH>0) z=Math.min(z,availH/natH);
-    z=Math.max(0.3,z);
-  }
   sc.style.zoom=z;
   /* Centre the notation vertically from what is ACTUALLY on screen: measure
      the rendered height (getBoundingClientRect honours the zoom in every
@@ -2862,12 +2881,7 @@ function phoneFit(){
      in CSS instead cost two rounds — Safari centres a zoomed flex item by its
      unzoomed size (David, 26 Aug: "still not centered vertically"). */
   wrap.style.paddingTop="";
-  if(!land){
-    // centre whatever slack is left, measured from the RENDERED height
-    const h=sc.getBoundingClientRect().height;
-    const slack=wrap.clientHeight-h;
-    if(slack>2) wrap.style.paddingTop=Math.round(slack/2)+"px";
-  }
+  if(!land) fitPortraitStack(sc,z,designW);
   if(land){
     // place it so the card's own middle sits on the SCREEN's middle
     const h=sc.getBoundingClientRect().height, wr=wrap.getBoundingClientRect();
@@ -2890,7 +2904,7 @@ function phoneFit(){
     pb.style.top=Math.max(0,cr.top-wr.top+7)+"px";
   }
   const cw=$("chordwrap"), cb=$("chordbox");
-  if(!cw.classList.contains("hidden")){
+  if(!cw.classList.contains("hidden")&&matchMedia("(orientation:landscape)").matches){
     cb.style.zoom="";
     const w=cb.offsetWidth;
     if(w>cw.clientWidth) cb.style.zoom=cw.clientWidth/w;
