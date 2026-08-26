@@ -2043,7 +2043,18 @@ let vidPlaying=false, vidLastT=null, vidStillT=null;
    vRate=1 reproduces the old arithmetic exactly, so nothing moves at normal
    speed. Samples are NOT pitched — one-shots simply spread out, which is what
    slow practice should sound like. */
-let vRate=1, vidLastA=null;
+let vRate=1, vRefT=null, vRefA=null;
+/* The marker's own clock. It used to repaint only when a timecode arrived —
+   5 a second, so it moved in 200 ms steps and sat ~100 ms behind the video
+   (David, 26 Aug: "dragging a bit at times"). It now paints on rAF from a
+   PREDICTED video time: the last timecode plus vRate x the wall time since it
+   landed. Averaging the last N timecodes was the other candidate and is worse,
+   not better — a moving average lags by (N-1)/2 samples, so 8 of them would
+   have ADDED 700 ms. Extrapolating forward removes lag; averaging backward
+   can only add it.
+   performance.now(), NOT ctx.currentTime: the pan is muted by default in the
+   embed, so the audio clock may be suspended and frozen while the video runs. */
+let vPredT=null, vPredWall=0, followRaf=null, lastFollowPaint=null, vtimeStr="";
 /* An <input> holds its default width whatever text is in it, which left the
    "Written for" badge floating in the gap. Measure the text in the field's own
    font and size the field to it, so the badge sits against the piece's name. */
@@ -2859,22 +2870,29 @@ function onVideoTime(t,rate){
     vidStillT=setTimeout(()=>{ vidPlaying=false; updatePlayBtn(); },700);
   }
   /* The rate, settled before anything is scheduled against it. A rate the
-     source states is law; otherwise measure it from consecutive timecodes.
-     Refused: a pause (dt~0), a seek (dt far past the audio elapsed), and a
-     long message gap (da>1s — paused with the bridge silent), any of which
-     would otherwise collapse the estimate on resume. */
+     source states is law; otherwise measure it — against a REFERENCE SAMPLE
+     at least 0.2 s old, never the previous message. The bridge now posts on
+     rAF, so consecutive samples are ~16 ms apart: far too short a base line
+     to divide by. A sliding reference makes the estimate independent of how
+     fast the player happens to report. It re-anchors after a 1 s gap, which
+     is a pause with the bridge silent — measuring across one would collapse
+     the estimate on resume. */
   const aNow=ctx?ctx.currentTime:null;
   if(rate!=null&&isFinite(rate)&&rate>0.05&&rate<8) vRate=rate;
-  else if(aNow!=null&&vidLastT!=null&&vidLastA!=null){
-    const dt=t-vidLastT, da=aNow-vidLastA;
-    if(da>0.08&&da<1&&dt>0.004&&dt<da*8){
-      const m=dt/da;                       // snap on a real speed change,
-      if(m>0.05&&m<8)                      // smooth the message jitter
-        vRate=(Math.abs(m-vRate)>0.25)?m:vRate+0.15*(m-vRate);
+  else if(aNow!=null){
+    if(vRefA==null||aNow-vRefA>1){ vRefT=t; vRefA=aNow; }      // (re)anchor
+    else if(aNow-vRefA>=0.2){
+      const dt=t-vRefT, da=aNow-vRefA;
+      if(dt>0.004&&dt<da*8){
+        const m=dt/da;                     // snap on a real speed change,
+        if(m>0.05&&m<8)                    // smooth the reporting jitter
+          vRate=(Math.abs(m-vRate)>0.25)?m:vRate+0.15*(m-vRate);
+      }
+      vRefT=t; vRefA=aNow;                 // slide the base line forward
     }
   }
-  if(aNow!=null) vidLastA=aNow;
   vidLastT=t;
+  vPredT=t; vPredWall=performance.now();   // what the marker predicts from
   const firstT=(videoT==null);
   videoT=t;
   if(firstT){
@@ -2882,14 +2900,14 @@ function onVideoTime(t,rate){
       armFollow=false; follow=true; vCursor=null;
       if(playing) stop();
       if(loopSec){ loopSec=null; render(); }   // loops don't survive into follow
-      updatePlayBtn();
+      startFollowPaint(); updatePlayBtn();
     }
     updateScoreTools();
   }
   if(ctx){ const b=t-vRate*ctx.currentTime;
     vOff=(vOff==null||Math.abs(b-vOff)>0.3)?b:vOff+0.12*(b-vOff); }
   if(!videoSeen&&!syncSeenOnce) setSyncMode(true);
-  $("vtime").textContent=fmtT(t);
+  { const vs=fmtT(t); if(vs!==vtimeStr){ vtimeStr=vs; $("vtime").textContent=vs; } }
   if(follow&&!playing){
     const p=mapPulse(t);
     if(p!=null){ if(!C) C=compile(piece); followTick(t,p); }
@@ -2915,7 +2933,21 @@ function onVideoTime(t,rate){
    loop is refused while Follow is on and cleared when Follow starts —
    `loopAllowed()` is the one gate; don't reintroduce a video-seeking loop. */
 function loopAllowed(){ return !follow; }
-function followTick(t,p){
+/* Where the video is RIGHT NOW, between timecodes. Holds rather than runs
+   away when the stream goes quiet or the video is paused — an extrapolation
+   with no brake is worse than a stale value. */
+function predictedVideoT(){
+  if(vPredT==null) return null;
+  const dt=(performance.now()-vPredWall)/1000;
+  if(dt>0.35||!vidPlaying) return vPredT;
+  return vPredT+vRate*dt;
+}
+function followPaint(){
+  if(!follow){ followRaf=null; return; }
+  followRaf=requestAnimationFrame(followPaint);
+  if(!C||playing) return;
+  const t=predictedVideoT(); if(t==null) return;
+  const p=mapPulse(t); if(p==null) return;
   /* FLOOR, not round (David, 26 Aug: "a tiny bit too early" in the Kajabi
      embed). Rounding lights a stroke as soon as the video passes the halfway
      point TOWARDS it — up to half a pulse early, which on Composition 2
@@ -2924,10 +2956,18 @@ function followTick(t,p){
      scheduled time has already PASSED (`fired[i].at<=now`), so the marker
      lights a stroke only once it has sounded. Follow now matches it. */
   const pr=Math.max(0,Math.floor(p));
+  if(pr===lastFollowPaint) return;         // 60 Hz loop, ~5 Hz of real changes
+  lastFollowPaint=pr;
   if(pr>=C.total){ // past the last hit: the marker leaves the page
     clearMarks();
     document.querySelectorAll(".chip.playing,.cchip.playing").forEach(el=>el.classList.remove("playing"));
   } else paintPulse(pr);
+}
+function startFollowPaint(){
+  lastFollowPaint=null;                    // always paint once on engaging
+  if(followRaf==null) followRaf=requestAnimationFrame(followPaint);
+}
+function followTick(t,p){                  // audio only — the marker is on rAF
   const a=piece.syncMap; if(!a||a.length<2) return;
   if(vCursor==null||Math.abs(p-vCursor)>4){       // start or seek: resync
     const now=ctx?ctx.currentTime:0;
@@ -4791,6 +4831,7 @@ function boot(){
   $("followBtn").addEventListener("click",()=>{ follow=!follow;
     if(follow){ if(playing) stop(); ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
       if(loopSec){ loopSec=null; render(); }    // loops don't survive into follow mode
+      startFollowPaint();
     }
     vCursor=null; updateScoreTools(); updatePlayBtn(); if(videoSeen) updateSyncUI();
     toast(follow?"Notation follows the video":"Follow off"); });
@@ -4851,7 +4892,8 @@ function boot(){
     try{ localStorage.removeItem("hps.lastVideo"); }catch(e){}   // or the Mac app reopens it
     $("vidwrap").classList.add("hidden");
     videoT=null; vidLastT=null; vidPlaying=false; vidLabel=""; wavePk=null;
-    vRate=1; vidLastA=null; vOff=null;
+    vRate=1; vRefT=null; vRefA=null; vOff=null;
+    vPredT=null; lastFollowPaint=null; vtimeStr="";
     follow=false; vCursor=null;
     $("vtime").textContent="–:––";
     updateScoreTools(); updatePlayBtn(); if(videoSeen) updateSyncUI();
