@@ -384,8 +384,9 @@ body.phone #jamBtn,body.phone #jampanel{display:none !important}
 .gmini i.r{color:var(--hand-r)}
 .gmini i.g{font-size:11px}
 #grooveDlg{width:min(690px,94vw)}
-.jslot{position:relative; touch-action:none}
-.jslot.jdrag{opacity:.8; box-shadow:0 6px 18px -6px rgba(70,52,28,.4); z-index:5}
+.jslot{position:relative; touch-action:none; user-select:none; -webkit-user-select:none}
+.jslot.jdrag{opacity:.85; box-shadow:0 8px 20px -6px rgba(70,52,28,.45); z-index:5;
+  transition:none; pointer-events:none}
 .jslot .jx{
   position:absolute; top:-6px; right:-6px; width:17px; height:17px;
   display:grid; place-items:center; border-radius:50%; font-size:9px;
@@ -4294,7 +4295,17 @@ function leaveJam(){
 // a chord or groove change lands without stopping the music.
 function applyJam(){
   const built=buildJamPiece();
-  if(playing){ piece=built; viewSec="Jam"; selAi=0; viewPin=null; refresh(); }
+  if(playing){
+    /* The pulse counter is ABSOLUTE and folds via modulo — with a NEW total
+       the same counter folds somewhere else (David, 26 Aug: "playback jumps
+       to a different place"). Rebase: read the folded position under the
+       OLD piece, swap, and plant the counter back on that musical spot. */
+    const pi=loopedPulse(nextPulse);
+    piece=built; viewSec="Jam"; selAi=0; viewPin=null; refresh();
+    if(loopSec&&loopSec.to>C.total){ loopSec=null; paintLoopFrame(); }
+    nextPulse=pi%C.total;
+    fired=[]; lastPaint=-1;
+  }
   else loadPiece(built);
   renderJamPanel(); saveJamLS();
 }
@@ -4326,43 +4337,62 @@ function renderJamPanel(){
       openJamSlot(i);
     });
     // drag to reorder, touch or mouse (David, 26 Aug) — a real tap still
-    // opens the picker; movement past 7px turns the gesture into a drag
+    // opens the picker; movement past 7px turns the gesture into a drag.
+    // Tracking lives on WINDOW: capture on a <button> fails silently in
+    // WebKit, and element-level moves die the moment the pointer leaves the
+    // card ("dragging still doesn't work" — his Safari, twice).
     b.addEventListener("pointerdown",e=>{
       if(e.target.classList.contains("jx")) return;
-      if(e.button!==undefined&&e.button>0) return;
-      const sx=e.clientX, sy=e.clientY; let dragging=false;
-      // capture at DOWN, not at the threshold — a fast pointer leaves the
-      // button before 7px and the moves stop arriving (David: "dragging
-      // doesn't work"); with capture every move routes here regardless
-      try{ b.setPointerCapture(e.pointerId); }catch(x){}
+      if(e.pointerType==="mouse"&&e.button!==0) return;
+      const pid=e.pointerId, sx=e.clientX, sy=e.clientY; let dragging=false;
       const cards=()=>[...prog.querySelectorAll(".jslot:not(.jadd)")];
       const move=ev=>{
+        if(ev.pointerId!==pid) return;
         if(!dragging){
           if(Math.abs(ev.clientX-sx)<7&&Math.abs(ev.clientY-sy)<7) return;
           dragging=true; b.classList.add("jdrag");
         }
         ev.preventDefault();
-        // the card follows the pointer through the row, live
+        // where does the card belong under this pointer?
         let before=null;
         for(const o of cards()){ if(o===b) continue;
           const r=o.getBoundingClientRect();
           if(ev.clientX<r.left+r.width/2){ before=o; break; } }
-        if(before) prog.insertBefore(b,before);
-        else prog.insertBefore(b,prog.querySelector(".jadd"));
+        const target=before||prog.querySelector(".jadd");
+        if(b.nextSibling!==target){
+          // FLIP: the displaced neighbours GLIDE to their new spots
+          // (David, 26 Aug: "a smoother animation")
+          const snap=new Map();
+          for(const o of cards()) if(o!==b) snap.set(o,o.getBoundingClientRect().left);
+          prog.insertBefore(b,target);
+          for(const [o,x0] of snap){
+            const d=x0-o.getBoundingClientRect().left;
+            if(d){ o.style.transition="none"; o.style.transform="translateX("+d+"px)";
+              requestAnimationFrame(()=>{
+                o.style.transition="transform .16s ease"; o.style.transform=""; }); }
+          }
+        }
+        // and the card itself rides the pointer instead of teleporting
+        const br=b.getBoundingClientRect();
+        const dx=ev.clientX-(br.left+br.width/2);
+        const dy=Math.max(-12,Math.min(12,ev.clientY-(br.top+br.height/2)));
+        b.style.transform="translate("+dx+"px,"+dy+"px) scale(1.05)";
       };
-      const up=()=>{
-        b.removeEventListener("pointermove",move);
-        b.removeEventListener("pointerup",up);
-        b.removeEventListener("pointercancel",up);
+      const up=ev=>{
+        if(ev&&ev.pointerId!==pid) return;
+        window.removeEventListener("pointermove",move);
+        window.removeEventListener("pointerup",up);
+        window.removeEventListener("pointercancel",up);
         if(!dragging) return;
         b.classList.remove("jdrag"); b.dataset.dragged="1";
+        b.style.transform="";
         jam.slots=cards().map(x=>jam.slots[+x.dataset.i]);
         jamEditSlot=-1;
         applyJam();
       };
-      b.addEventListener("pointermove",move);
-      b.addEventListener("pointerup",up);
-      b.addEventListener("pointercancel",up);
+      window.addEventListener("pointermove",move);
+      window.addEventListener("pointerup",up);
+      window.addEventListener("pointercancel",up);
     });
     // quick-delete, top-right (David, 26 Aug)
     const x=document.createElement("span"); x.className="jx"; x.textContent="✕";
@@ -4422,7 +4452,8 @@ function renderJamDlg(){
   const sugOf=c=>{
     if(!jamSugOn||c.miss||c.name===prevSlot.chord) return "";
     const ic=Math.min((c.root-lr+12)%12,(lr-c.root+12)%12);
-    return (c.group==="Triads"&&!c.lt&&ic>=3)?"strong":"soft";
+    // whole steps count as obvious too (David, 26 Aug — Dm→C is standard)
+    return (c.group==="Triads"&&!c.lt&&ic>=2)?"strong":"soft";
   };
   $("jamSugBtn").classList.toggle("on",jamSugOn);
   $("jamSugHint").classList.toggle("hidden",!jamSugOn);
@@ -4443,7 +4474,9 @@ function renderJamDlg(){
     b.innerHTML=(sug?"<span class='sdot"+(sug==="soft"?" soft":"")+"'></span>":"")
       +"<b>"+fmtChord(c.name)+"</b><span class='jcf'>"+flds+"</span>"
       +(c.miss?"<small class='miss'>no "+c.miss+"</small>":"");
-    b.addEventListener("click",()=>{ s.chord=c.name; applyJam(); renderJamDlg(); });
+    // choosing closes the picker (David, 26 Aug) — length/hear live behind
+    // a second tap on the card
+    b.addEventListener("click",()=>{ s.chord=c.name; applyJam(); $("jamDlg").close(); });
     g.appendChild(b);
   }
   $("jamLen").textContent=s.bars>1?s.bars+" bars":"1 bar";
