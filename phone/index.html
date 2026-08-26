@@ -1669,8 +1669,11 @@ function sched(){
       const sec=secOfPulse(pi), rel=pi-sec.pulse, m=SM(piece,sec.name);
       let at=nextTime;   // swing: the off subdivision leans toward the triplet
       if(swing>0&&m.sub%2===0&&(rel%2)===1) at+=swing/100*pulseDurOf(pi)/3;
-      for(const ev of (C.byPulse.get(pi)||[])) fireEvent(ev,at);
-      if(metOn&&rel%m.sub===0) fire(clickBuf(rel%m.bp===0),nextTime,1);
+      // a running groove PREVIEW owns the ears: the playback clock keeps
+      // walking silently and speaks again the moment the preview stops
+      const mutedByPreview=typeof jpv!=="undefined"&&jpv;
+      if(!mutedByPreview) for(const ev of (C.byPulse.get(pi)||[])) fireEvent(ev,at);
+      if(!mutedByPreview&&metOn&&rel%m.sub===0) fire(clickBuf(rel%m.bp===0),nextTime,1);
       fired.push({pi,at:nextTime}); if(fired.length>200) fired.splice(0,80);
       nextPulse++; nextTime+=pulseDurOf(pi);
     }
@@ -1816,6 +1819,7 @@ async function togglePlay(){
    same frozen clock. So: wait for the context to be RUNNING, then build the
    schedule against a live clock. */
 async function start(){
+  if(typeof jamPreviewStop==="function") jamPreviewStop();  // play takes the ears back
   ensureCtx(); ensureSink();
   if(ctx.state!=="running"){
     try{ await ctx.resume(); }catch(e){}
@@ -1838,6 +1842,9 @@ async function start(){
   updatePlayBtn();
 }
 function stop(){
+  // the transport's stop silences EVERYTHING — a looping groove preview too
+  // (David, 26 Aug: "previewing a loop doesn't stop when I click stop")
+  if(typeof jamPreviewStop==="function") jamPreviewStop();
   playing=false; clearInterval(timer); cancelAnimationFrame(raf);
   if(!loopSec&&lastPaint>=0) pendingStart=lastPaint;  // play resumes where it stopped
   const now=ctx?ctx.currentTime:0;
