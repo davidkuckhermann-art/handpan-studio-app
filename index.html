@@ -295,8 +295,6 @@ dialog textarea{width:100%; min-height:70px; font-family:ui-monospace,monospace;
 body.phone{padding:calc(10px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right))
            calc(30px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left))}
 body.phone #syncOpen,body.phone #editBtn{display:none !important}
-#sndBtn{display:none}
-body.phone #sndBtn{display:inline-flex}   /* the phone's only way to see the audio route */
 body.phone #scorewrap{overflow-x:hidden}
 body.phone #score{min-width:0; width:540px}
 body.phone.design-tab #score{width:700px}
@@ -402,7 +400,6 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <input id="title" value="" aria-label="Piece title">
   <span class="spacer"></span>
   <button class="ctl" id="syncOpen" title="Enter or leave video sync mode">Video sync</button>
-  <button class="ctl" id="sndBtn" title="Play a test tone and report the audio route">Sound</button>
   <button class="ctl" id="libBtn">Library</button>
   <button class="ctl" id="shareBtn">Share…</button>
   <button class="ctl" id="editBtn">Edit</button>
@@ -528,14 +525,6 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 
 <div id="report" class="hidden"></div>
 
-<dialog id="sndDlg">
-  <h3>Sound check</h3>
-  <p class="hint" style="margin:0 0 8px">A test tone should sound now. If it doesn't,
-    check the side switch (silent mode) and the volume, then tap again.</p>
-  <div id="sndInfo" style="font-family:ui-monospace,monospace; font-size:12px; line-height:1.7"></div>
-  <div class="row"><button class="ctl on" id="sndAgain">Test tone</button>
-  <span class="spacer"></span><button class="ctl" id="sndClose">Close</button></div>
-</dialog>
 <dialog id="shareDlg">
   <h3>Share this piece</h3>
   <div class="row" style="margin-top:0">
@@ -606,8 +595,20 @@ function openDlg(d){
   d.classList.add("flat"); $("dlgShade").classList.remove("hidden"); d.show();
 }
 document.addEventListener("DOMContentLoaded",()=>{
-  for(const d of document.querySelectorAll("dialog"))
+  for(const d of document.querySelectorAll("dialog")){
     d.addEventListener("close",()=>$("dlgShade").classList.add("hidden"));
+    /* A click outside the frame closes it (David, 26 Aug). The shade below
+       covers the embedded flat mode; a MODAL dialog has no shade of its own,
+       and clicks on its native backdrop arrive with the dialog itself as the
+       target — so anything targeting the dialog but landing outside its box
+       is an outside click. Clicks on the contents target a child and are
+       ignored here. */
+    d.addEventListener("click",e=>{
+      if(e.target!==d) return;
+      const r=d.getBoundingClientRect();
+      if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom) d.close();
+    });
+  }
   $("dlgShade").addEventListener("click",()=>{
     document.querySelectorAll("dialog[open]").forEach(d=>d.close()); });
 });
@@ -3232,29 +3233,6 @@ function boot(){
   window.addEventListener("beforeunload",()=>{
     try{ localStorage.setItem("hps.lastPiece","HPS1:"+enc(piece)); }catch(e){}
   });
-  // Sound check — the phone has no console, so the app reports its own route
-  const sndTest=()=>{
-    ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
-    try{ const o=ctx.createOscillator(), g=ctx.createGain();
-      o.frequency.value=440; g.gain.value=0;
-      const t=ctx.currentTime;
-      g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(.25,t+.02);
-      g.gain.setValueAtTime(.25,t+.45); g.gain.linearRampToValueAtTime(0,t+.6);
-      o.connect(g); g.connect(dry); o.start(t); o.stop(t+.65);
-    }catch(e){}
-    const sink=iosSink==="failed"?"failed":(iosSink?"on (voice route)":"off");
-    $("sndInfo").innerHTML=[
-      ["context",ctx?ctx.state:"none"],
-      ["sample rate",ctx?Math.round(ctx.sampleRate)+" Hz":"–"],
-      ["audio session",haveAudioSession()?(audioSessionSet?"playback":"available"):"not supported"],
-      ["media sink",sink],
-      ["bank",window.HPS_BANK?BANKBUF.size+" decoded":"not loaded"],
-      ["master",master?master.gain.value.toFixed(2):"–"],
-    ].map(([k,v])=>"<b>"+k+"</b> — "+v).join("<br>");
-  };
-  $("sndBtn").addEventListener("click",()=>{ sndTest(); openDlg($("sndDlg")); });
-  $("sndAgain").addEventListener("click",sndTest);
-  $("sndClose").addEventListener("click",()=>$("sndDlg").close());
   $("libBtn").addEventListener("click",()=>{ renderLib(); openDlg($("libDlg")); });
   $("libClose").addEventListener("click",()=>$("libDlg").close());
   $("saveBtn").addEventListener("click",()=>{
