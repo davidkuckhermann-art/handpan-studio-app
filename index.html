@@ -946,11 +946,19 @@ body.phone .jchord b{font-size:15px}
 body.phone .jgrow{padding:7px 8px; gap:8px}
 body.phone .jgrow .gname{min-width:0; font-size:12px}
 body.phone .gmini i{font-size:10px}
-#menuDlg .grab{width:38px; height:4px; border-radius:2px; background:var(--rule); margin:2px auto 8px}
+/* the handle is a HANDLE: a 28px-tall grab target with the 4px pill drawn
+   in its middle, and touch-action:none so the drag is ours, not the page's */
+#menuDlg .grab{width:38px; height:4px; border-radius:2px; background:var(--rule);
+  margin:0 auto 4px; padding:12px 0; background-clip:content-box;
+  box-sizing:content-box; touch-action:none; cursor:grab}
+#menuDlg.swiping{transition:none}
 #menuDlg h4{font-size:10px; font-weight:800; letter-spacing:.12em; text-transform:uppercase;
   color:var(--ink3); margin:14px 0 2px}
 #menuDlg .drow{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:7px 0}
 #menuDlg .drow>span:first-child{font-size:13.5px; font-weight:600; color:var(--ink2)}
+/* the two practice doors: full-width buttons, no labels to explain them */
+#menuDlg .drow-btns{display:flex; gap:9px; padding:2px 0 7px}
+#menuDlg .drow-btns .ctl{flex:1; justify-content:center; padding:11px 12px; font-size:14px}
 #menuDlg #panSel{max-width:210px}
 /* the pinned bar: two rows — practice + transport, then the arrangement */
 @media (orientation:portrait){
@@ -1524,10 +1532,12 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
        menu IS the practice menu, so routing through a second sheet just to
        choose between two things was a step for nothing -->
   <h4>Play &amp; explore</h4>
-  <div class="drow"><span>Play along</span>
-    <span id="mJam"><button class="ctl" id="jamModeBtn">Jam mode</button></span></div>
-  <div class="drow"><span>Test yourself</span>
-    <span id="mQuiz"><button class="ctl" id="quizModeBtn">Chord quiz</button></span></div>
+  <!-- these two need no describing labels — the buttons ARE the choice
+       (David, 26 Aug), so they sit side by side instead of in rows -->
+  <div class="drow drow-btns" id="mPlayRow">
+    <button class="ctl" id="jamModeBtn">Jam mode</button>
+    <button class="ctl" id="quizModeBtn">Chord quiz</button>
+  </div>
 
   <h4>Pieces</h4>
   <div class="drow"><span>Your library</span><span id="mLib"></span></div>
@@ -1623,6 +1633,40 @@ function openDlg(d){
    Jam mode looked pre-selected. Every dialog has the same trap (the chord
    picker's first chord, the groove browser's first row). Tab still walks into
    the controls from here, and the box stays announced to screen readers. */
+/* SWIPE THE HANDLE DOWN TO CLOSE (David, 26 Aug). The sheet follows the
+   finger, springs back if the pull was small, and rides out the rest of the
+   way if it was not — so the gesture always answers, one way or the other. */
+function sheetSwipe(dlg,handle){
+  if(!dlg||!handle) return;
+  let sy=0, dy=0, id=null, t0=0;
+  const done=()=>{ dlg.classList.remove("swiping"); dlg.style.transform=""; id=null; };
+  handle.addEventListener("pointerdown",e=>{
+    if(e.pointerType==="mouse"&&e.button!==0) return;
+    id=e.pointerId; sy=e.clientY; dy=0; t0=Date.now();
+    dlg.classList.add("swiping");
+    try{ handle.setPointerCapture(id); }catch(x){}
+  });
+  handle.addEventListener("pointermove",e=>{
+    if(id===null||e.pointerId!==id) return;
+    dy=Math.max(0,e.clientY-sy);
+    dlg.style.transform="translateY("+dy+"px)";
+    e.preventDefault();
+  });
+  const end=e=>{
+    if(id===null||(e&&e.pointerId!==id)) return;
+    // a flick counts, but a nudge must not: 40px of travel, thrown quickly
+    const flick=dy>40&&(Date.now()-t0)<260;
+    dlg.classList.remove("swiping");
+    if(dy>70||flick){
+      dlg.style.transform="translateY(100%)";
+      setTimeout(()=>{ try{dlg.close();}catch(x){} done(); },190);
+    } else { dlg.style.transform=""; id=null; }
+  };
+  handle.addEventListener("pointerup",end);
+  handle.addEventListener("pointercancel",end);
+  // a sheet reopened after a swipe must not still be shifted down
+  dlg.addEventListener("close",done);
+}
 function dlgFocus(d){
   try{ d.setAttribute("tabindex","-1"); d.focus({preventScroll:true}); }catch(e){}
 }
@@ -5196,6 +5240,12 @@ function renderJamPanel(){
   mk("Open in editor","Copy this jam into a new piece and open the editor",jamToPiece);
   /* on the phone the tools get their OWN line under the strip — inside it they
      would scroll away with the chords */
+  /* The phone hangs the tools OUTSIDE #jamProg (inside it they scroll away
+     with the chords), and renderJamPanel only clears #jamProg — so every
+     re-render stacked another tools row and the track showed several lit
+     groove buttons at once (David, 26 Aug: "several grooves selected"). Clear
+     the old row before adding the new one. */
+  $("jamtrack").querySelectorAll(".jtools").forEach(el=>el.remove());
   (PHONE?$("jamtrack"):prog).appendChild(tools);
   // the groove: one button naming the current one, sitting at the score
   // frame's TOP LEFT beside the section name (David, 26 Aug) — the browser
@@ -7196,6 +7246,7 @@ else{
   $("mShare").appendChild($("shareBtn"));
   $("mSet").appendChild($("setBtn"));
   $("menuBtn").addEventListener("click",()=>openDlg($("menuDlg")));
+  sheetSwipe($("menuDlg"),$("menuDlg").querySelector(".grab"));
   $("menuClose").addEventListener("click",()=>$("menuDlg").close());
   // the sheet's own buttons close it, so the change is visible behind it
   ["libBtn","shareBtn","setBtn"].forEach(id=>
