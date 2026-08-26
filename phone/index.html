@@ -4062,8 +4062,9 @@ function renderLib(){
 // boxes prove it; pickups on the last 16th; accents ON the beat; raised
 // green glyphs are offbeats. Each ev: [t, "1"|"3"|"5"|"g"|"^", handToken].
 const JAMPATS=[
- // David, 26 Aug: "the 3/4 is actually not labelled correctly" — no meter tag
- {id:"cg1",name:"Classical 3 pulse",tag:"",meter:[3,4],sub:1,bpr:4,ev:[
+ // David, 26 Aug: "the 3/4 is actually not labelled correctly" — no meter
+ // tag; and the counts are 16ths ("3/16th timing"), like the fast grooves
+ {id:"cg1",name:"Classical 3 pulse",tag:"",meter:[3,4],sub:1,unit:16,bpr:4,ev:[
    [0,"5","R"],[0,"1","L"],[1,"3","L"],[2,"3","L"]]},
  {id:"cg2",name:"Fast arpeggio 1",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"1","L"],[4,"3","L"],[5,"5","R"],[6,"1","L"],[7,"3","L"],
@@ -4177,19 +4178,23 @@ function jamVoice(name){
   return best.map;
 }
 // A follow-up chord that makes musical sense, with dice in it (David, 26
-// Aug): full chords only, weighted by root motion from the last chord —
-// 4ths/5ths first, then 3rds, then steps — triads over 7ths over 9ths.
+// Aug): the FAMILY is drawn first at his stated odds — 55% triad, 30% 7th,
+// 15% 9th (a family the pan lacks gives its share to the others) — then the
+// chord within it by root motion: 4ths/5ths first, then 3rds, then steps.
 function jamSuggest(){
   const last=jam.slots[jam.slots.length-1];
   const lastDef=last&&jamDefs().byName[last.chord];
   const lr=lastDef?lastDef.root:jpc(myPan.ding);
-  const cands=jamDefs().list.filter(c=>!c.miss&&!(last&&c.name===last.chord));
-  if(!cands.length){ toast("No chord to suggest on this pan"); return; }
+  const pool=jamDefs().list.filter(c=>!c.miss&&!(last&&c.name===last.chord));
+  if(!pool.length){ toast("No chord to suggest on this pan"); return; }
+  const share={"Triads":55,"7th chords":30,"9th chords":15};
+  const fams=Object.keys(share).filter(g=>pool.some(c=>c.group===g));
+  let fx=Math.random()*fams.reduce((s,g)=>s+share[g],0), fam=fams[0];
+  for(const g of fams){ if(fx<share[g]){ fam=g; break; } fx-=share[g]; }
+  const cands=pool.filter(c=>c.group===fam);
   const wOf=c=>{
     const iv=Math.min((c.root-lr+12)%12,(lr-c.root+12)%12);
-    const move={0:1.5,1:1,2:3,3:4,4:4,5:6,6:.7}[iv]||1;
-    const fam=c.group==="Triads"?1.6:c.group==="7th chords"?1:.7;
-    return move*fam;
+    return {0:1.5,1:1,2:3,3:4,4:4,5:6,6:.7}[iv]||1;
   };
   let sum=0; const acc=cands.map(c=>(sum+=wOf(c)));
   const x=Math.random()*sum, i=acc.findIndex(v=>x<v);
@@ -4295,12 +4300,15 @@ function renderJamPanel(){
       if(e.target.classList.contains("jx")) return;
       if(e.button!==undefined&&e.button>0) return;
       const sx=e.clientX, sy=e.clientY; let dragging=false;
+      // capture at DOWN, not at the threshold — a fast pointer leaves the
+      // button before 7px and the moves stop arriving (David: "dragging
+      // doesn't work"); with capture every move routes here regardless
+      try{ b.setPointerCapture(e.pointerId); }catch(x){}
       const cards=()=>[...prog.querySelectorAll(".jslot:not(.jadd)")];
       const move=ev=>{
         if(!dragging){
           if(Math.abs(ev.clientX-sx)<7&&Math.abs(ev.clientY-sy)<7) return;
           dragging=true; b.classList.add("jdrag");
-          try{ b.setPointerCapture(e.pointerId); }catch(x){}
         }
         ev.preventDefault();
         // the card follows the pointer through the row, live
