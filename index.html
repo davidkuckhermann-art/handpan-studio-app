@@ -797,14 +797,11 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <span>In Jam Mode you choose a chord progression and a Groove to create your own arrangements.</span>
     <button id="jamInfoX" aria-label="Close this note" title="Close">✕</button>
   </div>
-  <div class="row" style="margin:0 0 8px">
+  <div class="row" style="margin:0">
     <span class="lab">Chords</span>
     <span id="jamProg"></span>
   </div>
-  <div class="row" style="margin:0">
-    <span class="lab">Groove</span>
-    <span id="jamPats"></span>
-  </div>
+  <!-- the groove selector lives on the score frame's top-left (David, 26 Aug) -->
 </div>
 
 <div id="vidwrap" class="hidden" style="margin-bottom:10px">
@@ -826,7 +823,10 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <!-- the frame's HEAD: section name left, transport CENTRED over the music
        (David, 26 Aug — back up here after a spell in the footer) -->
   <div id="scorehead">
-   <span class="secname" id="secLabel"></span>
+   <!-- one grid cell: section name + (in jam mode) the groove selector -->
+   <span style="display:flex;align-items:center;gap:10px;min-width:0">
+     <span class="secname" id="secLabel"></span><span id="grooveHost"></span>
+   </span>
    <div id="sctools">
     <div id="handInd" class="hidden" title="Current hand — press , to switch" aria-live="polite"></div>
     <button class="ib hidden" id="followBtn"></button>
@@ -4029,6 +4029,7 @@ function loadPiece(p){
     jamOn=false; jamEditSlot=-1; jamPrev=null;
     document.body.classList.remove("jam");
     $("jamBtn").classList.remove("on"); $("jampanel").classList.add("hidden");
+    $("grooveHost").innerHTML="";
     try{ $("jamDlg").close(); }catch(e){}
   }
   piece=JSON.parse(JSON.stringify(p));
@@ -4302,6 +4303,7 @@ function leaveJam(){
   saveJamLS();
   jamOn=false; jamEditSlot=-1; document.body.classList.remove("jam");
   $("jamBtn").classList.remove("on"); $("jampanel").classList.add("hidden");
+  $("grooveHost").innerHTML="";
   try{ $("jamDlg").close(); }catch(e){}
   const prev=jamPrev; jamPrev=null;
   if(prev){ loadPiece(prev.piece); bpm=prev.bpm; $("bpm").value=bpm; }
@@ -4349,7 +4351,7 @@ function renderJamPanel(){
     if(na) b.title="Not on this pan — these bars play silent";
     b.dataset.i=i;
     b.innerHTML="<b>"+fmtChord(s.chord)+"</b><small>"
-      +(s.bars>1?s.bars+" bars":"1 bar")+"</small>";
+      +(s.bars>1?s.bars+" bars":"1 bar")+(na?" · silent":"")+"</small>";
     b.addEventListener("click",()=>{
       if(b.dataset.dragged){ delete b.dataset.dragged; return; }
       openJamSlot(i);
@@ -4448,16 +4450,17 @@ function renderJamPanel(){
     applyJam(); toast("Chords cleared — add or suggest to begin");
   });
   prog.appendChild(tools);
-  // the groove: one button naming the current one — the pill row would not
-  // survive a growing library (David, 26 Aug); the browser dialog has them all
-  const pats=$("jamPats"); pats.innerHTML="";
+  // the groove: one button naming the current one, sitting at the score
+  // frame's TOP LEFT beside the section name (David, 26 Aug) — the browser
+  // dialog behind it has the whole library
+  const host=$("grooveHost"); host.innerHTML="";
   const p=JAMPATS.find(x=>x.id===jam.patternId)||JAMPATS[0];
   const cur=document.createElement("button");
   cur.className="ctl on";
   cur.innerHTML=jamPatLabel(p)+" ▾";
   cur.title="Choose a groove";
   cur.addEventListener("click",openGrooveDlg);
-  pats.appendChild(cur);
+  host.appendChild(cur);
 }
 function jamPatLabel(p){
   const mt=p.tag!==undefined?p.tag:p.meter[0]+"/"+p.meter[1];
