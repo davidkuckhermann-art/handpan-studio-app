@@ -1011,11 +1011,6 @@ body.phone .gmini i{font-size:10px}
   body.phone #pvwrap:not(.sides) #pvsvg{width:min(100%,260px)}
   /* the stroke badges are what stand between the drawing and the card's edge,
      so they run slim on the phone — every px they give back is drawing */
-  /* portrait: the drawing owns the width, the badges sit under it in one row */
-  body.phone #pvwrap.belowbadges{flex-direction:column; gap:9px}
-  body.phone #pvwrap.belowbadges #pvsvg{width:100%; max-width:none}
-  body.phone #pvwrap.belowbadges .pvrow{display:flex; gap:22px; justify-content:center}
-  body.phone #pvwrap.belowbadges .pvside{flex-direction:row; gap:9px}
   body.phone #pvwrap.sides{gap:6px}
   body.phone .pvside{gap:7px}
   body.phone .pvside .lamp{width:32px; height:32px; font-size:13px}
@@ -3711,8 +3706,12 @@ function fitPortraitStack(sc,z,designW){
       const cs=getComputedStyle(box);
       const padX=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight);
       // only the FLANKING badges take width from the drawing
-      const sidesW=svg.closest("#pvwrap")&&svg.closest("#pvwrap").classList.contains("sides")
-        ? [...box.querySelectorAll(".pvside")].reduce((s,e)=>s+e.offsetWidth+12,0) : 0;
+      const pw=svg.closest("#pvwrap");
+      // the flanks cost their own width plus the REAL gap either side — a
+      // guessed 12px here quietly shrank the drawing by the difference
+      const gap=pw?parseFloat(getComputedStyle(pw).columnGap||getComputedStyle(pw).gap)||0:0;
+      const sidesW=pw&&pw.classList.contains("sides")
+        ? [...box.querySelectorAll(".pvside")].reduce((s,e)=>s+e.offsetWidth+gap,0) : 0;
       const wAvail=box.clientWidth-padX-sidesW;
       /* an SVG element has NO offsetHeight — it is not an HTMLElement, and
          reading it gives undefined, which turned the whole size into NaN and
@@ -4044,21 +4043,12 @@ function renderPanPanelInner(){
     const nm=document.createElement("div"); nm.className="pvchord"; nm.id="pvchord";
     wrap.appendChild(nm);
   } else {
-    /* The badges FLANK the pan to save height — and on the phone in portrait
-       that trade is now backwards (David, 26 Aug: "the pan view is still not
-       using the available space"). A round drawing is limited by WIDTH, and
-       the flanking columns were eating 93px of it while 117px of height sat
-       empty under the card. In portrait they go underneath instead, and the
-       picture takes the whole card. Landscape and the desktop keep the sides. */
-    if(PHONE&&!matchMedia("(orientation:landscape)").matches){
-      wrap.classList.add("belowbadges");
-      const row=document.createElement("div"); row.className="pvrow";
-      row.append(left,right);
-      wrap.append(pan.firstChild,row);
-    } else {
-      wrap.classList.add("sides");
-      wrap.append(left,pan.firstChild,right);
-    }
+    /* The badges FLANK the pan everywhere (David, 26 Aug — he asked for them
+       back at the sides: the row underneath cost ~50px of height and he wants
+       that height in the drawing). The sizer below measures the drawing
+       against both axes, so it takes whatever the flanks leave. */
+    wrap.classList.add("sides");
+    wrap.append(left,pan.firstChild,right);
   }
   box.appendChild(wrap);
   const tapField=f=>{
