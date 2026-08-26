@@ -5787,10 +5787,29 @@ function setMode(m){
 function boot(){
   const sel=$("panSel");
   const pc=n=>String(n).replace(/-?\d+$/,"");   // strip the octave for the list
+  /* CLOSED IT IS JUST THE SCALE'S NAME; OPEN, every option spells its notes
+     (David, 26 Aug). A native select can only show the selected option's own
+     text, so the two faces are the same text swapped at the right moment:
+     the options grow their note lists on the way INTO the list (pointerdown
+     and the keys that open it, both of which fire before the popup is built)
+     and shrink again on change or blur. Nothing else has to know — the
+     values, the handlers and `__new` are untouched. */
+  const panLong=p=>p.name+"  —  "+pc(p.ding)+" / "+p.fields.map(pc).join(" ");
+  function panFaces(long){
+    // hold the closed width while the list is open, or the control itself
+    // jumps wider the instant the long options land in it
+    if(long&&!sel.style.width) sel.style.width=sel.getBoundingClientRect().width+"px";
+    for(const o of sel.options){
+      if(o.value==="__new") continue;
+      const p=panById(o.value); if(!p) continue;
+      o.textContent=long?panLong(p):p.name;
+    }
+    if(!long) sel.style.width="";
+  }
   function fillPans(){ sel.innerHTML="";
     for(const p of allPans()){ const o=document.createElement("option");
       o.value=p.id;
-      o.textContent=p.name+"  —  "+pc(p.ding)+" / "+p.fields.map(pc).join(" ");
+      o.textContent=p.name;              // the closed face
       sel.appendChild(o); }
     // its own button cost a slot in the row it no longer has — it lives here now
     const add=document.createElement("option");
@@ -5798,7 +5817,12 @@ function boot(){
     sel.appendChild(add);
     sel.value=myPanId; }
   fillPans();
+  sel.addEventListener("pointerdown",()=>panFaces(true));
+  sel.addEventListener("keydown",e=>{
+    if(e.key===" "||e.key==="Enter"||e.key.indexOf("Arrow")===0) panFaces(true); });
+  sel.addEventListener("blur",()=>panFaces(false));
   sel.addEventListener("change",()=>{
+    panFaces(false);
     if(sel.value==="__new"){ sel.value=myPanId; openDlg($("panDlg")); return; }
     myPanId=sel.value; refresh(); });
   $("modePos").addEventListener("click",()=>setMode("pos"));
