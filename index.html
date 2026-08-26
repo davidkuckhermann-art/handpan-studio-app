@@ -1681,8 +1681,10 @@ function sched(){
       let at=nextTime;   // swing: the off subdivision leans toward the triplet
       if(swing>0&&m.sub%2===0&&(rel%2)===1) at+=swing/100*pulseDurOf(pi)/3;
       // a running groove PREVIEW owns the ears: the playback clock keeps
-      // walking silently and speaks again the moment the preview stops
-      const mutedByPreview=typeof jpv!=="undefined"&&jpv;
+      // walking silently and speaks again after the preview stops — plus a
+      // short breath (jamMuteUntil) so the handover isn't a hard cut
+      const mutedByPreview=(typeof jpv!=="undefined"&&jpv)
+        ||(typeof jamMuteUntil!=="undefined"&&ctx.currentTime<jamMuteUntil);
       if(!mutedByPreview) for(const ev of (C.byPulse.get(pi)||[])) fireEvent(ev,at);
       if(!mutedByPreview&&metOn&&rel%m.sub===0) fire(clickBuf(rel%m.bp===0),nextTime,1);
       fired.push({pi,at:nextTime}); if(fired.length>200) fired.splice(0,80);
@@ -3894,6 +3896,7 @@ function refresh(){
   if(ctx) preloadBank();
   $("srcPanName").textContent=srcPan.pan.name;
   $("title").value=piece.title||"Untitled"; fitTitle();
+  if(jamOn) fitJamTitle();
   $("bpm").value=bpm;
   if(mode==="trans") transpose(); else {MAP=null;REPORT=null;}
   render(); renderPanPanel(); renderReport();
@@ -4082,8 +4085,8 @@ function renderLib(){
 // green glyphs are offbeats. Each ev: [t, "1"|"3"|"5"|"g"|"^", handToken].
 const JAMPATS=[
  // David, 26 Aug: "the 3/4 is actually not labelled correctly" — no meter
- // tag; and the counts are 16ths ("3/16th timing"), like the fast grooves
- {id:"cg1",name:"Classical 3 pulse",tag:"",meter:[3,4],sub:1,unit:16,bpr:4,ev:[
+ // tag; counts settled on 8th-note timing (was quarters, then 16ths)
+ {id:"cg1",name:"Classical 3 pulse",tag:"",meter:[3,4],sub:1,unit:8,bpr:4,ev:[
    [0,"5","R"],[0,"1","L"],[1,"3","L"],[2,"3","L"]]},
  {id:"cg2",name:"Fast arpeggio 1",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"1","L"],[4,"3","L"],[5,"5","R"],[6,"1","L"],[7,"3","L"],
@@ -4207,6 +4210,19 @@ function jamVoice(name){
   }
   return best.map;
 }
+// "Jam mode" in the header while jamming; the word "mode" collapses when the
+// header runs out of room (David, 26 Aug). The fit test SUMS natural widths
+// (the flex spacer excluded — it reports its grown width, the fitFooter trap).
+function fitJamTitle(){
+  if(!jamOn) return;
+  const t=$("title"), h=document.querySelector("header");
+  if(t.value!=="Jam mode"){ t.value="Jam mode"; fitTitle(); }
+  const kids=[...h.children].filter(el=>
+    !el.classList.contains("spacer")&&getComputedStyle(el).display!=="none");
+  const gap=parseFloat(getComputedStyle(h).gap)||12;
+  const sum=kids.reduce((s,el)=>s+el.getBoundingClientRect().width,0)+gap*kids.length;
+  if(sum>h.clientWidth+1){ t.value="Jam"; fitTitle(); }
+}
 // Shift every chord's root by n semitones, names rebuilt in the app's own
 // spelling; chords the pan can't voice at the new root stay in the row,
 // dashed, playing silent bars — transposing back restores them (David, 26 Aug).
@@ -4262,7 +4278,7 @@ function buildJamPiece(){
       bars.push(bar);
     }
   }
-  return { format:"hpd-1", id:"jam", title:"Jam", author:"",
+  return { format:"hpd-1", id:"jam", title:"Jam mode", author:"",
     writtenFor:myPanId, tempo:bpm||72, meter:pat.meter, sub:pat.sub,
     unit:pat.unit||4,
     barsPerRow:pat.bpr||1, sections:{Jam:{bars}}, arrangement:["Jam"] };
@@ -4386,18 +4402,23 @@ function renderJamPanel(){
         const target=before||prog.querySelector(".jadd");
         if(b.nextSibling!==target){
           // FLIP: the displaced neighbours GLIDE to their new spots
-          // (David, 26 Aug: "a smoother animation")
+          // (David, 26 Aug: "a smoother animation"). The forced reflow
+          // between the two writes is what makes it VISIBLE — a single rAF
+          // lets WebKit coalesce offset and reset into no animation at all
+          // (his "the animation doesn't work").
           const snap=new Map();
           for(const o of cards()) if(o!==b) snap.set(o,o.getBoundingClientRect().left);
           prog.insertBefore(b,target);
           for(const [o,x0] of snap){
             const d=x0-o.getBoundingClientRect().left;
             if(d){ o.style.transition="none"; o.style.transform="translateX("+d+"px)";
-              requestAnimationFrame(()=>{
-                o.style.transition="transform .16s ease"; o.style.transform=""; }); }
+              void o.offsetWidth;             // commit the offset state
+              o.style.transition="transform .16s ease"; o.style.transform=""; }
           }
         }
-        // and the card itself rides the pointer instead of teleporting
+        // and the card itself rides the pointer — measured WITHOUT its own
+        // transform, or the previous offset corrupts the next one
+        b.style.transform="";
         const br=b.getBoundingClientRect();
         const dx=ev.clientX-(br.left+br.width/2);
         const dy=Math.max(-12,Math.min(12,ev.clientY-(br.top+br.height/2)));
@@ -4509,7 +4530,10 @@ function renderJamDlg(){
       .map(f=>"<span>"+(f===0?"D":f)+"</span>").join("");
     const sug=sugOf(c);
     const b=document.createElement("button");
-    b.className="jchord"+(c.name===s.chord?" sel":"")+(c.lt?" lt":"")+(c.miss?" almost":"");
+    // the light card = COMPLETE chord, whatever the family (David, 26 Aug —
+    // "all chords that we have all notes for, also 7th and 9th"); only
+    // missing-note chords wear the cream + dashes
+    b.className="jchord"+(c.name===s.chord?" sel":"")+(c.miss?" lt almost":"");
     b.innerHTML=(sug?"<span class='sdot"+(sug==="soft"?" soft":"")+"'></span>":"")
       +"<b>"+fmtChord(c.name)+"</b><span class='jcf'>"+flds+"</span>"
       +(c.miss?"<small class='miss'>no "+c.miss+"</small>":"");
@@ -4536,6 +4560,16 @@ function jamHear(){
    preview at the current tempo — tap ▸ to loop, tap again to stop, tap the
    row to use the groove (all three ABC'd with David, 26 Aug). */
 let jpv=null;   // the running preview loop
+let jamMuteUntil=0;   // after a preview ends: a short breath before the jam speaks
+// ramp every ringing (and already-scheduled) voice to silence — the fade
+// David asked for around previews, instead of a hard cut
+function jamFadeLive(dur){
+  if(!ctx) return;
+  const now=ctx.currentTime;
+  for(const g of live){ try{ g.gain.setValueAtTime(g.gain.value,now);
+    g.gain.linearRampToValueAtTime(0,now+dur); }catch(e){} }
+  live=[];
+}
 function grooveMini(pat){
   const v=jamVoice(jam.slots[0]&&jam.slots[0].chord)||{"1":0,"3":0,"5":0};
   const bp=pat.meter[0]*pat.sub;
@@ -4562,6 +4596,8 @@ function grooveMini(pat){
 function jamPreviewStop(){
   if(!jpv) return;
   clearInterval(jpv.timer); jpv=null;
+  jamFadeLive(.2);                              // the preview lets go
+  if(ctx&&playing) jamMuteUntil=ctx.currentTime+.55;   // breath — then the jam returns
   document.querySelectorAll("#grooveList .gplay.on").forEach(b=>{
     b.classList.remove("on"); b.textContent="▸"; });
 }
@@ -4573,7 +4609,11 @@ function jamPreviewToggle(patId,btn){
   if(!v){ toast("Add a chord first"); return; }
   const evs=pat.ev.map(([t,k,h])=>k==="g"?null:k==="^"?P(t,"slap",h):F(t,v[k],h))
     .filter(Boolean);
-  jpv={patId,nextBar:ctx.currentTime+0.08,timer:null};
+  // if the jam (or another preview) is sounding: fade it, one breath, then
+  // the groove starts (David, 26 Aug)
+  const takeover=playing||live.length>0;
+  if(takeover) jamFadeLive(.3);
+  jpv={patId,nextBar:ctx.currentTime+(takeover?0.72:0.08),timer:null};
   const tickP=()=>{ if(!jpv) return;
     // tempo read every pass, so a scrub lands on the next bar
     const slotDur=60/effBpm()/pat.sub*(4/(pat.unit||4));
@@ -4901,6 +4941,7 @@ function boot(){
     try{localStorage.setItem("hps.jamInfo","0")}catch(e){}
   });
   $("jamSugBtn").addEventListener("click",()=>{ jamSugOn=!jamSugOn; renderJamDlg(); });
+  window.addEventListener("resize",()=>{ if(jamOn) fitJamTitle(); });
   $("libClose").addEventListener("click",()=>$("libDlg").close());
   $("saveBtn").addEventListener("click",()=>{
     const l=savedPieces(); piece.title=$("title").value;
