@@ -312,8 +312,17 @@ body:not(.phone) .chordrow{gap:17px}
 body:not(.phone) #chordbox{padding:14px 22px 16px}
 
 /* ---- jam mode (26 Aug) ---- */
-#jampanel{background:var(--card2); border:1px solid var(--rule); border-radius:12px;
-  padding:11px 14px 12px; margin:14px 0 10px}   /* air below the header rows (David) */
+/* THE CHORD TRACK (26 Aug, David: "separate the chord track somehow"). The
+   progression reads as a LANE the music runs along: a recessed dust ground
+   with the chord cards riding on it as raised clips. Structure, not paint —
+   which is what tells jam apart now that the page tint is gone. */
+#jampanel{background:none; border:none; padding:0; margin:14px 0 10px}
+#jamtrack{display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  background:var(--dust); border:1px solid var(--rule); border-radius:12px;
+  padding:9px 13px; box-shadow:inset 0 1px 3px rgba(70,52,28,.07)}
+#jamtrack>.lab{margin-right:0}
+#jamProg .jslot{box-shadow:0 1px 2px rgba(70,52,28,.09)}
+#jamProg .jslot.jadd{box-shadow:none}
 /* a real gap below the Table/Tab · panels · pan row — when the screen has
    the height to give (David, 26 Aug) */
 body:not(.phone) #viewrow{margin-bottom:18px}
@@ -366,11 +375,10 @@ body.jam #vidwrap,body.jam #followBtn,body.jam #folMute{display:none !important}
 /* the GROUP, not the pill — Practice grew a sibling ✕ and hiding only the
    pill would leave the ✕ stranded in the header */
 body.phone #practiceGroup,body.phone #jampanel,body.phone #modebar{display:none !important}
-/* THE PRACTICE ROOM (26 Aug, David's pick: the dust room). One class flip:
-   the page ground deepens to the app's own dust and the light changes over
-   a third of a second — the cards and the score stay printed objects. */
-body{transition:background-color .35s ease}
-body.inpractice{background:var(--dust)}
+/* THE PRACTICE ROOM was a page-wide dust tint and David turned it down
+   (26 Aug: "I don't like the different skin") — the paper stays the paper in
+   every mode. Practice is told by STRUCTURE instead: the mode bar names the
+   room, and jam's chords sit in a track of their own (below). */
 #modebar{display:flex; align-items:center; gap:12px; margin:0 0 12px;
   padding:7px 14px; border-radius:9px; background:#E7E1D6; color:var(--ink2);
   font-size:11.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase}
@@ -394,6 +402,10 @@ html.player #modebar{display:none}
 body.quiz #scorewrap,body.quiz #belowrow,body.quiz #transport,
 body.quiz #viewrow,body.quiz #jampanel,body.quiz #vidwrap,
 body.quiz #authortools,body.quiz #srcBadge{display:none !important}
+/* "Written for D Kurd 9" belongs to the PIECE — a jam is written for the
+   student's own pan, so the badge would be talking about the composition
+   that jam mode replaced (David, 26 Aug) */
+body.jam #srcBadge{display:none !important}
 #quizwrap{margin-bottom:14px}
 /* The overview is a CARD in the middle of the page (David, 26 Aug), not a
    full-width sheet of settings hugging the left edge — it is a thing you set
@@ -1054,7 +1066,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <span>In Jam Mode you choose a chord progression and a Groove to create your own arrangements.</span>
     <button id="jamInfoX" aria-label="Close this note" title="Close">✕</button>
   </div>
-  <div class="row" style="margin:0">
+  <div id="jamtrack">
     <span class="lab">Chords</span>
     <span id="jamProg"></span>
   </div>
@@ -4643,6 +4655,31 @@ function buildJamPiece(){
     unit:pat.unit||4,
     barsPerRow:pat.bpr||1, sections:{Jam:{bars}}, arrangement:["Jam"] };
 }
+/* A JAM IS A STARTING POINT, NOT A DEAD END (David, 26 Aug): copy the
+   progression as it stands into an ordinary, editable piece. Three things
+   make the copy a real composition rather than a jam wearing a hat — a fresh
+   id (a piece called `jam` is deliberately never persisted), the section
+   renamed A1 so it obeys the app's own naming, and no `jamPrev` restore on
+   the way out, because the copy is where the student is going. */
+function jamToPiece(){
+  const built=buildJamPiece();
+  const bars=built.sections.Jam.bars;
+  if(!bars.length||!bars.some(b=>b.length)){
+    toast("Add a chord this pan can play first"); return;
+  }
+  const p=JSON.parse(JSON.stringify(built));
+  const first=jam.slots[0]&&jam.slots[0].chord;
+  p.id="piece-"+Date.now().toString(36);
+  p.title=first?("Jam in "+first):"My jam";
+  p.author="";
+  p.sections={A1:p.sections.Jam};
+  p.arrangement=["A1"];
+  jamPrev=null;                 // nothing to go back to — this IS the piece
+  leaveJam();
+  loadPiece(p);
+  if(!editing&&!PHONE) $("editBtn").click();
+  toast("Copied into a new piece — save it from the Library");
+}
 function saveJamLS(){ try{localStorage.setItem("hps.jam",JSON.stringify(
   {slots:jam.slots,patternId:jam.patternId,bpm:bpm}))}catch(e){} }
 function defaultJam(){
@@ -4836,6 +4873,7 @@ function renderJamPanel(){
     try{ $("jamDlg").close(); }catch(e){}
     applyJam(); toast("Chords cleared — add or suggest to begin");
   });
+  mk("Copy to a piece","Copy this jam into a new piece and open the editor",jamToPiece);
   prog.appendChild(tools);
   // the groove: one button naming the current one, sitting at the score
   // frame's TOP LEFT beside the section name (David, 26 Aug) — the browser
@@ -5310,31 +5348,50 @@ function renderQuiz(){
      overview from there. Nothing is lost: every answer went to memory as it
      was given. */
   mk2("End round","",qzFinish,"Stop here and see how you did");
-  // the instrument
+  /* THE INSTRUMENT IS DRAWN ONCE PER QUESTION (David, 26 Aug: "the handpan
+     graphic jumps and the badge gets redrawn when the arpeggio starts").
+     Going from search to reveal used to replace the whole SVG: the drawing
+     collapsed and re-laid-out under the reveal's first chord, and the ticks
+     the student had earned popped in again with their entry animation. The
+     question's own drawing now STAYS and only its state changes. */
   const pan=$("quizpan");
-  pan.innerHTML=panViewSVG(myPan,searching
+  const qk=QZ.i+"|"+def.name;
+  const fresh=pan.dataset.qk!==qk||!pan.querySelector("svg");
+  if(fresh){
+    pan.dataset.qk=qk;
+    pan.innerHTML=panViewSVG(myPan,"");
+    // ids would collide with the pan PANEL's identical drawing, so this copy
+    // carries none — everything here is found through data-f
+    pan.querySelectorAll("[id]").forEach(el=>{
+      if(el.id&&el.id.indexOf("pv")===0&&el.id!=="pvg"&&el.id!=="pvgd") el.removeAttribute("id"); });
+    pan.querySelectorAll(".pvf").forEach(g=>{
+      g.addEventListener("pointerdown",()=>qzTapField(pan,g));
+    });
+  }
+  const svg=pan.querySelector("svg");
+  if(svg) svg.setAttribute("aria-label",searching
     ? (qcfg.mode==="tap"
        ? "Your pan — tap every field that belongs to "+def.name
        : "Your pan — the numbers are there, the note names are hidden while you search")
     : def.name+" on your pan");
   pan.classList.toggle("searching",searching);
   pan.classList.toggle("tapping",searching&&qcfg.mode==="tap");
-  // ids would collide with the pan PANEL's identical drawing, so this copy
-  // carries none — everything here is found through data-f
-  pan.querySelectorAll("[id]").forEach(el=>{
-    if(el.id&&el.id.indexOf("pv")===0&&el.id!=="pvg"&&el.id!=="pvgd") el.removeAttribute("id"); });
+  pan.querySelectorAll(".pvf.clit").forEach(g=>g.classList.remove("clit"));
   if(!searching)
     for(const f of qzFields(def)){
       const g=pan.querySelector('.pvf[data-f="'+f+'"]');
       if(g) g.classList.add("clit");
     }
-  pan.querySelectorAll(".pvf").forEach(g=>{
-    g.addEventListener("pointerdown",()=>qzTapField(pan,g));
-  });
   /* Ticks show while hunting, and STAY on a win — the reveal of a chord you
      found yourself should show your own marks, not just the app's answer. A
-     lost round clears them: those were guesses, and the amber is the truth. */
-  if(qcfg.mode==="tap"&&(searching||QZ.won)) qzPaintPicks(pan);
+     lost round clears them: those were guesses, and the amber is the truth.
+     Repainting only when the drawing is NEW keeps the earned ticks exactly
+     where they are, animation and all already spent. */
+  if(qcfg.mode==="tap"&&(searching||QZ.won)){ if(fresh) qzPaintPicks(pan); }
+  else {
+    pan.querySelectorAll(".pvf.qpick").forEach(x=>x.classList.remove("qpick"));
+    pan.querySelectorAll(".qbadge").forEach(x=>x.remove());
+  }
 }
 /* TAP MODE (David, 26 Aug): the student picks the chord's fields on the
    drawing. A right field stays marked; ONE wrong field wipes every mark and
@@ -5372,7 +5429,8 @@ function qzTapField(pan,g){
     QZ.wrong++;
     QZ.picked.clear();
     qzPaintPicks(pan);            // every tick disappears — David's rule
-    qzErrSound();
+    // the wrong note used to buzz here; David took the sound away (26 Aug) —
+    // the field's own tone has already sounded, and the cross says the rest
     // the wrong field wears its cross briefly, then goes quiet with the rest
     g.classList.add("qwrong");
     qzBadge(g,"no");
@@ -5402,43 +5460,22 @@ function qzBadge(g,kind){
   wrap.append(c,p);
   g.appendChild(wrap);
 }
+/* INCREMENTAL: each tick pops exactly once, when it is earned. Clearing and
+   re-drawing every badge on every tap made the whole set flash again with the
+   newest one (David, 26 Aug — "the badge gets redrawn"). Only what changed is
+   touched, so a wrong tap still wipes the lot in one go. */
 function qzPaintPicks(pan){
-  pan.querySelectorAll(".pvf.qpick").forEach(x=>x.classList.remove("qpick"));
-  pan.querySelectorAll(".qbadge.ok").forEach(x=>x.remove());
-  if(!QZ) return;
-  for(const f of QZ.picked){
-    const g=pan.querySelector('.pvf[data-f="'+f+'"]');
-    if(g){ g.classList.add("qpick"); qzBadge(g,"ok"); }
-  }
+  const picked=QZ?QZ.picked:new Set();
+  pan.querySelectorAll(".pvf").forEach(g=>{
+    const on=picked.has(+g.dataset.f), has=g.classList.contains("qpick");
+    if(on&&!has){ g.classList.add("qpick"); qzBadge(g,"ok"); }
+    else if(!on&&has){ g.classList.remove("qpick");
+      g.querySelectorAll(".qbadge.ok").forEach(x=>x.remove()); }
+  });
 }
-/* The wrong note SOUNDS wrong as well as looking it (David, 26 Aug). A short
-   downward glide, deliberately never a stable pitch — a real note here would
-   sit inside the pan's own tuning and read as music rather than as "no". */
-function qzErrBuf(){
-  const k="quiz|err";
-  if(!BUFC.has(k)){
-    const sr=ctx.sampleRate, dur=.3, n=Math.floor(sr*dur), b=ctx.createBuffer(2,n,sr);
-    for(let ch=0;ch<2;ch++){
-      const d=b.getChannelData(ch);
-      for(let i=0;i<n;i++){
-        const t=i/sr, f=208-260*t, env=Math.exp(-t/.082);
-        d[i]=(Math.sin(2*Math.PI*f*t)+.2*Math.sin(2*Math.PI*f*1.5*t))*env;
-      }
-      for(let i=0,at=.003*sr;i<at;i++) d[i]*=i/at;   // no click on the attack
-    }
-    let p=0; for(let ch=0;ch<2;ch++){ const d=b.getChannelData(ch);
-      for(let i=0;i<d.length;i++){ const v=Math.abs(d[i]); if(v>p) p=v; } }
-    if(p>0){ const g=.34/p; for(let ch=0;ch<2;ch++){ const d=b.getChannelData(ch);
-      for(let i=0;i<d.length;i++) d[i]*=g; } }
-    BUFC.set(k,b);
-  }
-  return BUFC.get(k);
-}
-// a beat behind the field's own note, so the two are heard as two things
-function qzErrSound(){
-  if(!ctx) return;
-  fire(qzErrBuf(),ctx.currentTime+.055,.7);
-}
+/* The wrong-note buzz (a short downward glide) lived here and was REMOVED
+   at David's word (26 Aug): the field's own tone plus the red cross say it
+   without a sound effect scolding the student. */
 // held by reference, not by id: renderQuiz wipes the card's innerHTML and a
 // detached node is no longer findable with getElementById
 let qzCheerEl=null;
@@ -5540,7 +5577,8 @@ function updatePracticeBtn(){
   const b=$("practiceBtn"); if(!b) return;
   const on=jamOn||quizOn;
   b.classList.toggle("on",on);
-  document.body.classList.toggle("inpractice",on);   // the dust room
+  // a hook for anything that needs to know, now that the tint is gone
+  document.body.classList.toggle("inpractice",on);
   // the mode bar: which room, and the one way home. It replaced the ✕
   // beside the Practice pill (David, 26 Aug).
   const mb=$("modebar");
