@@ -489,8 +489,17 @@ body.phone header #setBtn{display:none !important}
 #menuDlg #panSel{max-width:210px}
 /* the pinned bar: two rows — practice + transport, then the arrangement */
 @media (orientation:portrait){
-  body.phone{padding-bottom:0}
-  body.phone #transport{position:fixed; left:0; right:0; bottom:0; z-index:40; margin:0;
+  /* LOCKED, like landscape (David, 26 Aug): the page is the screen and nothing
+     scrolls or rubber-bands. The body is a flex column — header, view pills,
+     the notation (which takes whatever is left), the companion card, and the
+     bar — so the BROWSER works out the notation's share and phoneFit only has
+     to scale the score into it. */
+  html.phone,body.phone{position:fixed; inset:0; width:100%; height:100%;
+    overflow:hidden; overscroll-behavior:none; padding-bottom:0;
+    display:flex; flex-direction:column}
+  body.phone #scorewrap{flex:1 1 auto; min-height:0; overflow:hidden}
+  body.phone #belowrow{flex:0 1 auto; min-height:0; overflow:hidden; margin-top:8px}
+  body.phone #transport{flex:none; margin:0;
     display:block; background:var(--card); border-top:1px solid var(--rule);
     padding:8px calc(10px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom))
             calc(10px + env(safe-area-inset-left));
@@ -516,7 +525,7 @@ body.phone header #setBtn{display:none !important}
   body.phone #chordbox .cchip{padding:5px 9px 6px}
   body.phone #chordbox .cname{font-size:16px}
   body.phone #chordbox .sym{font-size:16px}
-  body.phone #pvsvg{width:min(100%,250px)}
+  body.phone #pvsvg{width:min(100%,250px,32vh)}
   body.phone #panbox{padding:8px 10px 10px}
 }
 /* landscape keeps its own arrangement (#miniarr), so the flattened card hides */
@@ -2828,6 +2837,17 @@ function phoneFit(){
       sc.style.width=(W/z)+"px";
     }
   }
+  else{
+    /* PORTRAIT is locked too, so the score has to FIT, not overflow. The flex
+       column already decided how much height the notation gets — take the
+       smaller of the width fit and the height fit, and centre what is left
+       over. Unlike landscape the design width is NOT the free variable here:
+       a portrait card widened to fill would push the bars off the screen. */
+    const availH=wrap.clientHeight-4;
+    const natH=Math.max(sc.scrollHeight,pieceNaturalHeight(designW));
+    if(natH>0&&availH>0) z=Math.min(z,availH/natH);
+    z=Math.max(0.3,z);
+  }
   sc.style.zoom=z;
   /* Centre the notation vertically from what is ACTUALLY on screen: measure
      the rendered height (getBoundingClientRect honours the zoom in every
@@ -2835,6 +2855,12 @@ function phoneFit(){
      in CSS instead cost two rounds — Safari centres a zoomed flex item by its
      unzoomed size (David, 26 Aug: "still not centered vertically"). */
   wrap.style.paddingTop="";
+  if(!land){
+    // centre whatever slack is left, measured from the RENDERED height
+    const h=sc.getBoundingClientRect().height;
+    const slack=wrap.clientHeight-h;
+    if(slack>2) wrap.style.paddingTop=Math.round(slack/2)+"px";
+  }
   if(land){
     // place it so the card's own middle sits on the SCREEN's middle
     const h=sc.getBoundingClientRect().height, wr=wrap.getBoundingClientRect();
