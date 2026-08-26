@@ -300,6 +300,32 @@ body:not(.phone) .cchip .sym{font-size:25px}
 body:not(.phone) .chordrow{gap:17px}
 body:not(.phone) #chordbox{padding:14px 22px 16px}
 
+/* ---- jam mode (26 Aug) ---- */
+#jampanel{background:var(--card2); border:1px solid var(--rule); border-radius:12px;
+  padding:11px 14px 12px; margin-bottom:10px}
+#jamProg,#jamPats{display:inline-flex; gap:7px; flex-wrap:wrap; align-items:stretch}
+.jslot{display:inline-flex; flex-direction:column; align-items:center; gap:1px;
+  font:inherit; background:var(--card); border:1px solid var(--rule); border-radius:10px;
+  padding:6px 12px 5px; cursor:pointer; color:var(--ink); min-width:56px}
+.jslot b{font-size:16.5px; font-weight:800; letter-spacing:-.01em}
+.jslot small{font-size:10.5px; font-weight:600; color:var(--ink3)}
+.jslot.sel{border-color:var(--dixie); background:var(--dixie-soft); box-shadow:0 0 0 1px var(--dixie)}
+.jslot.jadd{justify-content:center; font-size:19px; font-weight:600; color:var(--ink3);
+  background:none; border-style:dashed; min-width:40px}
+#jamPats .ctl .hint{font-size:11px}
+#jamChordGrid{display:flex; flex-wrap:wrap; gap:7px; margin:10px 0 14px}
+.jchord{display:inline-flex; flex-direction:column; align-items:center; gap:3px;
+  font:inherit; background:var(--card); border:1px solid var(--rule); border-radius:10px;
+  padding:7px 12px 6px; cursor:pointer; color:var(--ink); min-width:62px}
+.jchord b{font-size:17px; font-weight:800}
+.jchord .jcf{display:flex; gap:3px}
+.jchord .jcf span{font-size:11px; font-weight:700; color:var(--ink2); background:var(--dust);
+  border:1px solid var(--rule); border-radius:5px; padding:0 4px; line-height:1.5}
+.jchord .miss{font-size:10px; font-weight:600; color:var(--ink3); font-style:italic}
+.jchord.sel{border-color:var(--dixie); background:var(--dixie-soft); box-shadow:0 0 0 1px var(--dixie)}
+body.jam #authortools{display:none !important}
+body.phone #jamBtn,body.phone #jampanel{display:none !important}
+
 /* ---- transposition report ---- */
 #report{background:var(--card2); border:1px solid var(--rule); border-radius:12px; padding:13px 15px; margin-top:12px}
 .fitline{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
@@ -660,6 +686,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <input id="title" value="" aria-label="Piece title">
   <span class="badge" id="srcBadge">Written for <b id="srcPanName"></b></span>
   <span class="spacer"></span>
+  <button class="ctl" id="jamBtn" title="Jam along with a chord progression and a groove">Jam</button>
   <button class="ctl" id="libBtn">Library</button>
   <button class="ctl" id="shareBtn">Share…</button>
   <!-- the two AUTHOR tools, grouped away from the student's controls -->
@@ -693,6 +720,20 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   </div>
   <!-- phone only: chords or pan, opposite the Table/Tab pills -->
   <span id="cpHost"></span>
+</div>
+
+<!-- JAM MODE (26 Aug): chords + one of David's chord grooves → a piece the
+     app writes itself, played through the normal pipeline. Desktop only for
+     now (Phase 4 is the phone). -->
+<div id="jampanel" class="hidden">
+  <div class="row" style="margin:0 0 8px">
+    <span class="lab">Chords</span>
+    <span id="jamProg"></span>
+  </div>
+  <div class="row" style="margin:0">
+    <span class="lab">Groove</span>
+    <span id="jamPats"></span>
+  </div>
 </div>
 
 <div id="vidwrap" class="hidden" style="margin-bottom:10px">
@@ -838,6 +879,23 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <textarea id="impTxt" placeholder="HPS1:…"></textarea>
   <div class="row"><button class="ctl on" id="impBtn">Import</button>
   <span class="spacer"></span><button class="ctl" id="shareClose">Close</button></div>
+</dialog>
+
+<!-- Jam chord picker: only chords this pan can play. "Almost" chords (one
+     tone missing) are offered too, marked — the missing tone plays the root. -->
+<dialog id="jamDlg">
+  <h3 id="jamDlgTitle">Chord</h3>
+  <div id="jamChordGrid"></div>
+  <div class="row" style="margin:0">
+    <span class="lab">Length</span>
+    <button class="ctl" id="jamMinus" aria-label="One bar less">−</button>
+    <span class="badge"><b id="jamLen">1 bar</b></span>
+    <button class="ctl" id="jamPlus" aria-label="One bar more">＋</button>
+    <span class="spacer"></span>
+    <button class="ctl" id="jamHear" title="Strum this chord once">Hear it</button>
+    <button class="ctl" id="jamRemove">Remove</button>
+    <button class="ctl" id="jamDlgClose">Close</button>
+  </div>
 </dialog>
 
 <dialog id="libDlg">
@@ -1856,6 +1914,21 @@ let followMuted=EMBEDDED, vCursor=null, vOff=null;
    — in follow mode — the video. Video "playing" = its timecode is moving;
    700 ms without movement reads as paused (covers Wistia's constant-t idle). */
 let vidPlaying=false, vidLastT=null, vidStillT=null;
+/* THE VIDEO'S CLOCK IS NOT THE AUDIO CLOCK (David, 26 Aug — the Kajabi embed,
+   Follow video, video slowed below 1x). At 1x the two run together and a bare
+   offset was enough; at 0.5x the video advances half as fast, so the offset
+   slid and every pulse was scheduled about twice too early. Measured here:
+   the cursor sprinted 11 -> 18 pulses ahead of the video, the |p-vCursor|>4
+   guard in followTick then read that as lost sync and ramped every ringing
+   voice to zero ~12 times in 10s, and the pulses it had passed were fired
+   again — rushed, choking, stuttering strokes, ~45% more hits than the music
+   holds. Faster than 1x broke the other way: notes landed in the past and
+   were dropped by followTick's at>now-0.06 guard.
+   The clock is now offset AND rate: video(audio) = vOff + vRate*audio.
+   vRate=1 reproduces the old arithmetic exactly, so nothing moves at normal
+   speed. Samples are NOT pitched — one-shots simply spread out, which is what
+   slow practice should sound like. */
+let vRate=1, vidLastA=null;
 /* An <input> holds its default width whatever text is in it, which left the
    "Written for" badge floating in the gap. Measure the text in the field's own
    font and size the field to it, so the badge sits against the piece's name. */
@@ -2644,11 +2717,14 @@ document.addEventListener("DOMContentLoaded",()=>{
 });
 
 window.addEventListener("message",e=>{
-  const d=e.data; let t=null;
+  const d=e.data; let t=null, r=null;
   if(typeof d==="number") t=d;
   else if(d&&typeof d==="object"){
     if(typeof d.t==="number"&&(d.type==="hps-video-time"||d.hps)) t=d.t;
     else if(typeof d.hpsTime==="number") t=d.hpsTime;
+    // the re-pasted bridge posts the player's own playbackRate; older blocks
+    // don't, and onVideoTime measures it instead
+    if(typeof d.r==="number") r=d.r;
   }
   if(d&&d.type==="hps-bridge"){
     if(!videoSeen&&!syncSeenOnce) setSyncMode(true);
@@ -2659,20 +2735,36 @@ window.addEventListener("message",e=>{
     return;
   }
   if(t==null||!isFinite(t)) return;
-  onVideoTime(t);
+  onVideoTime(t,r);
 });
-function onVideoTime(t){
+function onVideoTime(t,rate){
   if(vidLastT!=null&&Math.abs(t-vidLastT)>0.004){
     if(!vidPlaying){ vidPlaying=true; updatePlayBtn(); }
     clearTimeout(vidStillT);
     vidStillT=setTimeout(()=>{ vidPlaying=false; updatePlayBtn(); },700);
   }
+  /* The rate, settled before anything is scheduled against it. A rate the
+     source states is law; otherwise measure it from consecutive timecodes.
+     Refused: a pause (dt~0), a seek (dt far past the audio elapsed), and a
+     long message gap (da>1s — paused with the bridge silent), any of which
+     would otherwise collapse the estimate on resume. */
+  const aNow=ctx?ctx.currentTime:null;
+  if(rate!=null&&isFinite(rate)&&rate>0.05&&rate<8) vRate=rate;
+  else if(aNow!=null&&vidLastT!=null&&vidLastA!=null){
+    const dt=t-vidLastT, da=aNow-vidLastA;
+    if(da>0.08&&da<1&&dt>0.004&&dt<da*8){
+      const m=dt/da;                       // snap on a real speed change,
+      if(m>0.05&&m<8)                      // smooth the message jitter
+        vRate=(Math.abs(m-vRate)>0.25)?m:vRate+0.15*(m-vRate);
+    }
+  }
+  if(aNow!=null) vidLastA=aNow;
   vidLastT=t;
   const firstT=(videoT==null);
   videoT=t;
   if(firstT) updateScoreTools();
-  if(ctx){ const o=t-ctx.currentTime;
-    vOff=(vOff==null||Math.abs(o-vOff)>0.3)?o:vOff+0.12*(o-vOff); }
+  if(ctx){ const b=t-vRate*ctx.currentTime;
+    vOff=(vOff==null||Math.abs(b-vOff)>0.3)?b:vOff+0.12*(b-vOff); }
   if(!videoSeen&&!syncSeenOnce) setSyncMode(true);
   $("vtime").textContent=fmtT(t);
   if(follow&&!playing){
@@ -2720,7 +2812,7 @@ function followTick(t,p){
   // exactly, seams included; message jitter no longer moves the grid
   while(vCursor<=lastP){
     const vt=invMap(vCursor); if(vt==null) break;
-    const at=vt-vOff;
+    const at=(vt-vOff)/vRate;   // video(audio)=vOff+vRate*audio, inverted
     if(at>ctx.currentTime+0.45) break;            // beyond the look-ahead
     const pr=Math.round(vCursor);
     if(pr<C.total&&at>ctx.currentTime-0.06){ // End is silent: nothing notated there
@@ -3348,13 +3440,16 @@ function setNota(v){ notaOn=v;
   document.body.classList.toggle("nonota",!v);
   if(v&&piece) render(); }
 function chordPCs(name){
-  const m=String(name).match(/^([A-Ga-g])([b♭#♯]?)\s*(maj|min|m)?/);
+  // dim added for jam mode (26 Aug — David: "you forgot the E diminished");
+  // inference (panTriads) deliberately stays maj/min only, so existing
+  // pieces' guessed chords do not change.
+  const m=String(name).match(/^([A-Ga-g])([b♭#♯]?)\s*(maj|min|dim|m)?/);
   if(!m) return null;
   let r=PC[m[1].toUpperCase()];
   if(m[2]==="#"||m[2]==="♯")r++; if(m[2]==="b"||m[2]==="♭")r--;
   r=((r%12)+12)%12;
-  const minor=m[3]==="min"||m[3]==="m";
-  return [r,(r+(minor?3:4))%12,(r+7)%12];
+  const dim=m[3]==="dim", minor=dim||m[3]==="min"||m[3]==="m";
+  return [r,(r+(minor?3:4))%12,(r+(dim?6:7))%12];
 }
 // every tone field on the notated pan whose pitch belongs to the chord — the
 // palette is computed from the pan, exactly as SPEC §1 promised
@@ -3657,6 +3752,16 @@ function loadOv(){ try{overrides=JSON.parse(localStorage.getItem("hps.ov."+piece
 function refresh(){
   srcPan=derive(panById(piece.writtenFor));
   myPan=derive(panById(myPanId));
+  // a jam is always written FOR the student's pan — switching pans re-voices
+  // the whole progression (chords the new pan can't form are dropped)
+  if(jamOn&&piece.writtenFor!==myPanId){
+    jam.slots=jam.slots.filter(s=>jamVoice(s.chord));
+    if(!jam.slots.length) jam=defaultJam();
+    piece=buildJamPiece(); C=compile(piece);
+    viewSec="Jam"; selAi=0; viewPin=null;
+    srcPan=derive(panById(piece.writtenFor));
+    renderJamPanel(); saveJamLS();
+  }
   if(ctx) preloadBank();
   $("srcPanName").textContent=srcPan.pan.name;
   $("title").value=piece.title||"Untitled"; fitTitle();
@@ -3788,6 +3893,15 @@ function pieceFromText(txt){
 function savedPieces(){ try{return JSON.parse(localStorage.getItem("hps.tunes")||"[]")}catch(e){return[]} }
 function setSaved(l){ try{localStorage.setItem("hps.tunes",JSON.stringify(l))}catch(e){} }
 function loadPiece(p){
+  // opening a real piece while jamming leaves jam mode (no piece to restore —
+  // the user chose a new one)
+  if(jamOn&&p&&p.id!=="jam"){
+    saveJamLS();
+    jamOn=false; jamEditSlot=-1; jamPrev=null;
+    document.body.classList.remove("jam");
+    $("jamBtn").classList.remove("on"); $("jampanel").classList.add("hidden");
+    try{ $("jamDlg").close(); }catch(e){}
+  }
   piece=JSON.parse(JSON.stringify(p));
   C=compile(piece);
   if(!allPans().find(x=>x.id===piece.writtenFor)){ toast("Unknown pan '"+piece.writtenFor+"' — showing on D Kurd"); piece.writtenFor="d-kurd-9"; }
@@ -3821,6 +3935,216 @@ function renderLib(){
   for(const p of DEMOS) row(p.title,"demo · "+panById(p.writtenFor).name,()=>loadPiece(p));
   savedPieces().forEach((p,i)=>row(p.title||"Untitled","saved",()=>loadPiece(p),
     ()=>{ const l=savedPieces(); l.splice(i,1); setSaved(l); renderLib(); }));
+}
+
+/* ---------------- jam mode (26 Aug, ABC'd) ----------------
+   A jam is a chord progression + one of David's chord grooves. The groove's
+   slots carry chord DEGREES (1 root · 3 third · 5 fifth), not fields — his
+   screenshots notate every groove on the C major fields of the D Kurd
+   (3=root, 5=third, 7=fifth), so each chord re-voices the same shape on the
+   student's pan. buildJamPiece() emits an ORDINARY piece and everything
+   downstream (scheduler, marker, loop, count-in, Tab, pan flashes) is
+   untouched. Hands are the colour tokens throughout: black="L", green="R". */
+
+// The ten grooves, transcribed from David's screenshots (26 Aug) per
+// TRANSCRIPTION.md — headers count 8ths over 16th grids where the highlight
+// boxes prove it; pickups on the last 16th; accents ON the beat; raised
+// green glyphs are offbeats. Each ev: [t, "1"|"3"|"5"|"g"|"^", handToken].
+const JAMPATS=[
+ {id:"cg1",name:"Classical 3/4",meter:[3,4],sub:1,bpr:4,ev:[
+   [0,"5","R"],[0,"1","L"],[1,"3","L"],[2,"3","L"]]},
+ {id:"cg2",name:"Fast arpeggio 1",meter:[4,4],sub:4,bpr:1,ev:[
+   [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"1","L"],[4,"3","L"],[5,"5","R"],[6,"1","L"],[7,"3","L"],
+   [8,"5","R"],[9,"1","L"],[10,"3","L"],[11,"5","R"],[12,"1","L"],[14,"g","L"],[15,"g","R"]]},
+ {id:"cg3",name:"Fast arpeggio 2",meter:[4,4],sub:4,bpr:1,ev:[
+   [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"1","L"],[4,"3","L"],[5,"5","R"],[6,"1","L"],[7,"5","R"],
+   [8,"1","L"],[9,"3","L"],[10,"5","R"],[11,"1","L"],[12,"3","L"],[13,"5","R"],[14,"1","L"],[15,"5","R"]]},
+ {id:"cg4",name:"Backbeat arpeggio",meter:[4,4],sub:4,bpr:1,ev:[
+   [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"1","L"],[4,"^","L"],[5,"1","L"],[6,"3","L"],[7,"5","R"],
+   [8,"1","L"],[9,"3","L"],[10,"5","R"],[11,"1","L"],[12,"^","L"],[13,"1","L"],[14,"3","L"],[15,"5","R"]]},
+ // the comp-2 A-cell shape: stack(1) · pickup(a-of-1) · accent ON 2 · offbeat
+ {id:"cg5",name:"2/4 polyrhythm",meter:[2,4],sub:4,bpr:2,ev:[
+   [0,"5","R"],[0,"1","L"],[3,"3","L"],[4,"5","R"],[6,"1","L"]]},
+ {id:"cg6",name:"Relaxed backbeat",meter:[4,4],sub:4,bpr:1,ev:[
+   [0,"5","R"],[0,"3","L"],[0,"1","L"],[2,"g","R"],[3,"1","L"],[4,"^","L"],[5,"1","L"],[6,"3","L"],[7,"5","R"],
+   [8,"g","R"],[9,"g","L"],[10,"g","R"],[11,"g","L"],[12,"^","L"],[13,"1","L"],[14,"5","R"]]},
+ {id:"cg7",name:"Bembé",meter:[6,8],sub:2,bpr:2,ev:[
+   [0,"1","L"],[2,"3","L"],[5,"5","R"],[6,"1","L"],[8,"3","L"],[9,"5","R"],[11,"5","R"]]},
+ {id:"cg8",name:"7/8 rhythm",meter:[7,8],sub:1,bpr:2,ev:[
+   [0,"5","R"],[0,"1","L"],[1,"g","R"],[2,"3","L"],[3,"5","R"],[3,"1","L"],[4,"g","R"],[5,"3","L"],[6,"g","R"]]},
+ {id:"cg9",name:"2-step",meter:[4,4],sub:4,bpr:1,ev:[
+   [0,"1","L"],[2,"5","R"],[3,"3","L"],[4,"g","R"],[5,"3","L"],[6,"5","R"],[7,"g","R"],
+   [8,"1","L"],[10,"5","R"],[11,"3","L"],[12,"g","R"],[13,"3","L"],[14,"5","R"],[15,"g","R"]]},
+ {id:"cg10",name:"Uptempo backbeat",meter:[2,4],sub:4,bpr:2,ev:[
+   [0,"3","L"],[0,"1","L"],[1,"g","L"],[2,"^","R"],[3,"1","L"],[4,"g","L"],[5,"3","R"],[6,"^","L"],[7,"5","R"]]},
+];
+
+let jamOn=false, jamPrev=null, jamEditSlot=-1, jam=null;
+const jpc=m=>((m%12)+12)%12;
+
+// Every chord this pan can play: full triads (maj/min/dim — David: don't
+// forget Edim) plus "almost" chords with the root present and ONE tone
+// missing, marked with what's missing. Ordered from the ding's key.
+function jamChords(){
+  const pcs=new Set([jpc(myPan.ding),...myPan.fields.map(f=>jpc(f.midi))]);
+  const d=jpc(myPan.ding), out=[];
+  for(const r of pcs){
+    for(const [q,t3,t5] of [["maj",4,7],["min",3,7],["dim",3,6]]){
+      const has3=pcs.has((r+t3)%12), has5=pcs.has((r+t5)%12);
+      if(!has3&&!has5) continue;
+      out.push({name:PCN[r]+q,root:r,miss:has3&&has5?null:(has3?"5th":"3rd")});
+    }
+  }
+  out.sort((a,b)=>((a.miss?1:0)-(b.miss?1:0))||(((a.root-d+12)%12)-((b.root-d+12)%12))
+    ||a.name.localeCompare(b.name));
+  return out;
+}
+// Degree → field on the student's pan: the most compact ascending voicing
+// (root, then third above it, fifth above that; wrap down when the pan runs
+// out — Gm on a D Kurd voices 7·2·4). A missing degree plays the root.
+function jamVoice(name){
+  const t=chordPCs(name); if(!t) return null;
+  const fieldsOf=v=>{ const o=[]; if(jpc(myPan.ding)===v) o.push(0);
+    for(const f of myPan.fields) if(jpc(f.midi)===v) o.push(f.n); return o; };
+  const roots=fieldsOf(t[0]); if(!roots.length) return null;
+  let best=null;
+  for(const rf of roots){
+    const rm=myPan.midiFor(rf);
+    const pick=(cands,above)=>{ if(!cands.length) return null;
+      const up=cands.filter(f=>myPan.midiFor(f)>above);
+      const a=up.length?up:cands;
+      return a.reduce((x,y)=>myPan.midiFor(x)<=myPan.midiFor(y)?x:y); };
+    const f3=pick(fieldsOf(t[1]),rm);
+    // the fifth stacks above the THIRD — even when the third wrapped below
+    // the root (Gm on a D Kurd: B♭3·D4·G4, not B♭3…up to the ding)
+    const f5=pick(fieldsOf(t[2]),f3!=null?myPan.midiFor(f3):rm);
+    const ms=[rm,f3!=null?myPan.midiFor(f3):rm,f5!=null?myPan.midiFor(f5):rm];
+    // compactness first, with a nudge toward root-position (root lowest) —
+    // wrapped voicings like Gm's 2·4·7 survive, inverted dyads don't win ties
+    const span=Math.max(...ms)-Math.min(...ms)+(rm===Math.min(...ms)?0:2);
+    if(!best||span<best.span)
+      best={span,map:{"1":rf,"3":f3!=null?f3:rf,"5":f5!=null?f5:rf}};
+  }
+  return best.map;
+}
+function buildJamPiece(){
+  const pat=JAMPATS.find(p=>p.id===jam.patternId)||JAMPATS[0];
+  const bars=[];
+  for(const slot of jam.slots){
+    const v=jamVoice(slot.chord); if(!v) continue;
+    for(let b=0;b<(slot.bars||1);b++){
+      const bar=pat.ev.map(([t,k,h])=>
+        k==="g"?G(t,h):k==="^"?P(t,"slap",h):F(t,v[k],h));
+      if(b===0&&bar.length) bar[0]=Object.assign({},bar[0],{chord:slot.chord});
+      bars.push(bar);
+    }
+  }
+  return { format:"hpd-1", id:"jam", title:"Jam", author:"",
+    writtenFor:myPanId, tempo:bpm||72, meter:pat.meter, sub:pat.sub,
+    barsPerRow:pat.bpr||1, sections:{Jam:{bars}}, arrangement:["Jam"] };
+}
+function saveJamLS(){ try{localStorage.setItem("hps.jam",JSON.stringify(
+  {slots:jam.slots,patternId:jam.patternId,bpm:bpm}))}catch(e){} }
+function defaultJam(){
+  const full=jamChords().filter(c=>!c.miss);
+  const prefer=["Dmin","B♭maj","Fmaj","Cmaj"];
+  const slots=prefer.every(n=>full.some(c=>c.name===n))
+    ?prefer.map(chord=>({chord,bars:1}))
+    :full.slice(0,4).map(c=>({chord:c.name,bars:1}));
+  return {slots:slots.length?slots:[{chord:full[0]&&full[0].name||"Cmaj",bars:1}],
+    patternId:JAMPATS[0].id,bpm:72};
+}
+function enterJam(){
+  if(jamOn) return;
+  if(editing){ toast("Leave editing first"); return; }
+  if(follow) $("followBtn").click();          // a jam has its own clock
+  if(videoSeen) setSyncMode(false);
+  jamPrev={piece:JSON.parse(JSON.stringify(piece)),bpm};
+  try{ jam=JSON.parse(localStorage.getItem("hps.jam")||"null"); }catch(e){ jam=null; }
+  if(!jam||!Array.isArray(jam.slots)||!jam.slots.length) jam=defaultJam();
+  jam.slots=jam.slots.filter(s=>jamVoice(s.chord));   // stored chords may not fit this pan
+  if(!jam.slots.length) jam=defaultJam();
+  if(!JAMPATS.some(p=>p.id===jam.patternId)) jam.patternId=JAMPATS[0].id;
+  if(jam.bpm) bpm=jam.bpm;
+  jamOn=true; document.body.classList.add("jam");
+  $("jamBtn").classList.add("on"); $("jampanel").classList.remove("hidden");
+  applyJam();
+}
+function leaveJam(){
+  if(!jamOn) return;
+  saveJamLS();
+  jamOn=false; jamEditSlot=-1; document.body.classList.remove("jam");
+  $("jamBtn").classList.remove("on"); $("jampanel").classList.add("hidden");
+  try{ $("jamDlg").close(); }catch(e){}
+  const prev=jamPrev; jamPrev=null;
+  if(prev){ loadPiece(prev.piece); bpm=prev.bpm; $("bpm").value=bpm; }
+}
+// Regenerate from the recipe. Mid-playback the piece is swapped under the
+// running scheduler (loopedPulse folds the counter into the new length), so
+// a chord or groove change lands without stopping the music.
+function applyJam(){
+  const built=buildJamPiece();
+  if(playing){ piece=built; viewSec="Jam"; selAi=0; viewPin=null; refresh(); }
+  else loadPiece(built);
+  renderJamPanel(); saveJamLS();
+}
+function renderJamPanel(){
+  const prog=$("jamProg"); prog.innerHTML="";
+  jam.slots.forEach((s,i)=>{
+    const b=document.createElement("button");
+    b.className="jslot"+(i===jamEditSlot?" sel":"");
+    b.innerHTML="<b>"+fmtChord(s.chord)+"</b><small>"
+      +(s.bars>1?s.bars+" bars":"1 bar")+"</small>";
+    b.addEventListener("click",()=>openJamSlot(i));
+    prog.appendChild(b);
+  });
+  const add=document.createElement("button");
+  add.className="jslot jadd"; add.textContent="＋"; add.title="Add a chord";
+  add.addEventListener("click",()=>{
+    const last=jam.slots[jam.slots.length-1];
+    jam.slots.push({chord:last?last.chord:(jamChords()[0]||{}).name,bars:last?last.bars:1});
+    applyJam(); openJamSlot(jam.slots.length-1);
+  });
+  prog.appendChild(add);
+  const pats=$("jamPats"); pats.innerHTML="";
+  for(const p of JAMPATS){
+    const b=document.createElement("button");
+    b.className="ctl"+(p.id===jam.patternId?" on":"");
+    const mt=p.meter[0]+"/"+p.meter[1];   // no badge when the name already says it
+    b.innerHTML=p.name+(p.name.includes(mt)?"":' <span class="hint">'+mt+"</span>");
+    b.addEventListener("click",()=>{ jam.patternId=p.id; applyJam(); });
+    pats.appendChild(b);
+  }
+}
+function openJamSlot(i){
+  jamEditSlot=i; renderJamPanel(); renderJamDlg(); openDlg($("jamDlg"));
+}
+function renderJamDlg(){
+  const s=jam.slots[jamEditSlot]; if(!s) return;
+  $("jamDlgTitle").textContent="Chord "+(jamEditSlot+1)+" of "+jam.slots.length;
+  const g=$("jamChordGrid"); g.innerHTML="";
+  for(const c of jamChords()){
+    const v=jamVoice(c.name); if(!v) continue;
+    const flds=[...new Set(["1","3","5"].map(d=>v[d]))]
+      .sort((a,b)=>myPan.midiFor(a)-myPan.midiFor(b))
+      .map(f=>"<span>"+(f===0?"D":f)+"</span>").join("");
+    const b=document.createElement("button");
+    b.className="jchord"+(c.name===s.chord?" sel":"");
+    b.innerHTML="<b>"+fmtChord(c.name)+"</b><span class='jcf'>"+flds+"</span>"
+      +(c.miss?"<small class='miss'>no "+c.miss+"</small>":"");
+    b.addEventListener("click",()=>{ s.chord=c.name; applyJam(); renderJamDlg(); });
+    g.appendChild(b);
+  }
+  $("jamLen").textContent=s.bars>1?s.bars+" bars":"1 bar";
+}
+function jamHear(){
+  const s=jam.slots[jamEditSlot]; if(!s) return;
+  ensureCtx();
+  const v=jamVoice(s.chord); if(!v) return;
+  const flds=[...new Set(["1","3","5"].map(d=>v[d]))]
+    .sort((a,b)=>myPan.midiFor(a)-myPan.midiFor(b));
+  flds.forEach((f,i)=>{ const m=myPan.midiFor(f);
+    fire(bankBuf("o"+m)||synthBuf(m,"open"),ctx.currentTime+.05+i*.07,.9); });
 }
 
 /* ---------------- wiring ---------------- */
@@ -3992,9 +4316,9 @@ function boot(){
   function wireVideo(){
     if(vidWired) return; vidWired=true;
     const v=$("vidEl");
-    v.addEventListener("timeupdate",()=>onVideoTime(v.currentTime));
-    v.addEventListener("seeked",()=>onVideoTime(v.currentTime));
-    (function tick(){ if(!v.paused&&!v.ended) onVideoTime(v.currentTime);
+    v.addEventListener("timeupdate",()=>onVideoTime(v.currentTime,v.playbackRate));
+    v.addEventListener("seeked",()=>onVideoTime(v.currentTime,v.playbackRate));
+    (function tick(){ if(!v.paused&&!v.ended) onVideoTime(v.currentTime,v.playbackRate);
       requestAnimationFrame(tick); })();
   }
   function loadVideoSrc(src,quiet,name){
@@ -4017,6 +4341,7 @@ function boot(){
     try{ localStorage.removeItem("hps.lastVideo"); }catch(e){}   // or the Mac app reopens it
     $("vidwrap").classList.add("hidden");
     videoT=null; vidLastT=null; vidPlaying=false; vidLabel=""; wavePk=null;
+    vRate=1; vidLastA=null; vOff=null;
     follow=false; vCursor=null;
     $("vtime").textContent="–:––";
     updateScoreTools(); updatePlayBtn(); if(videoSeen) updateSyncUI();
@@ -4074,7 +4399,8 @@ function boot(){
     // last piece (unless a share link chose one)
     if(!location.hash.startsWith("#p=")){
       try{ const lp=localStorage.getItem("hps.lastPiece");
-        if(lp){ const p=pieceFromText(lp); if(p) loadPiece(p); } }catch(e){}
+        // a stored generated jam (pre-fix storage) never restores as a piece
+        if(lp){ const p=pieceFromText(lp); if(p&&p.id!=="jam") loadPiece(p); } }catch(e){}
     }
     // last video — only inside the Mac app, whose server can stream any path
     try{
@@ -4091,11 +4417,28 @@ function boot(){
     }catch(e){}
   }
   window.addEventListener("beforeunload",()=>{
-    try{ localStorage.setItem("hps.lastPiece","HPS1:"+enc(piece)); }catch(e){}
+    // never persist a generated jam as the "last piece" — closing mid-jam
+    // stores the piece the jam replaced (the recipe itself lives in hps.jam)
+    const p=jamOn&&jamPrev?jamPrev.piece:piece;
+    if(p&&p.id==="jam") return;
+    try{ localStorage.setItem("hps.lastPiece","HPS1:"+enc(p)); }catch(e){}
   });
   $("setBtn").addEventListener("click",()=>openDlg($("setDlg")));
   $("setClose").addEventListener("click",()=>$("setDlg").close());
   $("libBtn").addEventListener("click",()=>{ renderLib(); openDlg($("libDlg")); });
+  $("jamBtn").addEventListener("click",()=>{ jamOn?leaveJam():enterJam(); });
+  $("jamDlg").addEventListener("close",()=>{ jamEditSlot=-1; if(jamOn) renderJamPanel(); });
+  $("jamMinus").addEventListener("click",()=>{ const s=jam&&jam.slots[jamEditSlot];
+    if(s&&s.bars>1){ s.bars--; applyJam(); renderJamDlg(); } });
+  $("jamPlus").addEventListener("click",()=>{ const s=jam&&jam.slots[jamEditSlot];
+    if(s&&s.bars<8){ s.bars++; applyJam(); renderJamDlg(); } });
+  $("jamHear").addEventListener("click",jamHear);
+  $("jamRemove").addEventListener("click",()=>{
+    if(!jam) return;
+    if(jam.slots.length<=1){ toast("A jam needs at least one chord"); return; }
+    jam.slots.splice(jamEditSlot,1); jamEditSlot=-1;
+    $("jamDlg").close(); applyJam();
+  });
   $("libClose").addEventListener("click",()=>$("libDlg").close());
   $("saveBtn").addEventListener("click",()=>{
     const l=savedPieces(); piece.title=$("title").value;
