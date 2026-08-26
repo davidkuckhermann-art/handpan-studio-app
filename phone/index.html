@@ -160,6 +160,13 @@ input[type=text]{width:auto}
   background:var(--sc-bg); min-width:34px}
 .cchip.playing{background:var(--sc-band)}
 .cchip .sym{font-size:19px; line-height:1.05}
+/* The bottom row has room to spare on a desktop, so the chord card reads from
+   playing distance (David, 26 Aug). The phone keeps its fitted sizes. */
+body:not(.phone) .cname{font-size:25px}
+body:not(.phone) .cchip{padding:9px 16px 10px; border-radius:14px}
+body:not(.phone) .cchip .sym{font-size:25px}
+body:not(.phone) .chordrow{gap:17px}
+body:not(.phone) #chordbox{padding:14px 22px 16px}
 
 /* ---- transposition report ---- */
 #report{background:var(--card2); border:1px solid var(--rule); border-radius:12px; padding:13px 15px; margin-top:12px}
@@ -358,8 +365,12 @@ body.phone #playBtn::after{content:""; position:absolute; inset:-7px; border-rad
      and the bottom bar (David, 26 Aug) — the wrapper takes the leftover space
      and centres the card in it, so any slack is split evenly above and below */
   body.phone{display:flex; flex-direction:column}
-  body.phone #scorewrap{flex:1 1 0; min-height:0; overflow:hidden;
-    display:flex; align-items:center; justify-content:center}
+  /* NOT flex-centred: the card carries a CSS `zoom`, and Safari can lay a
+     zoomed flex item out at its UNZOOMED size — which centred it wrongly on
+     David's phone while looking right in a Chromium test. phoneFit() centres
+     it from the MEASURED rendered height instead, via padding on this
+     (unzoomed) wrapper, which behaves the same in every engine. */
+  body.phone #scorewrap{flex:1 1 0; min-height:0; overflow:hidden}
   body.phone header{margin-bottom:2px}
   body.phone header .ctl{padding:4px 9px; font-size:12.5px}
   body.phone #title{font-size:16px}
@@ -768,15 +779,12 @@ function setWet(p){ const w=p/100; wet.gain.value=w*1.1; dry.gain.value=1-w*.35;
 const IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
 const FRAMED_SAFARI=window!==window.top && /apple/i.test(navigator.vendor||"");
 const PHONE=document.body.classList.contains("phone");   // set at body-open
-/* Master volume — the notation's up/down swipe drives this on the phone
-   (David, 26 Aug: tempo moved to the BPM button). Remembered per browser. */
-let vol=(()=>{ try{ const v=parseFloat(localStorage.getItem("hps.vol"));
-  return isFinite(v)?Math.min(1,Math.max(0,v)):.9; }catch(e){ return .9; } })();
-function setVol(v){
-  vol=Math.min(1,Math.max(0,v));
-  if(master) master.gain.value=vol;
-  try{ localStorage.setItem("hps.vol",vol.toFixed(3)); }catch(e){}
-}
+/* The swipe-up/down VOLUME control was built and then removed at David's word
+   (26 Aug). Master gain is a constant again; the stored key goes too, so a
+   quiet value left over from that build can't strand the phone with no way
+   to turn it back up. */
+const vol=.9;
+try{ localStorage.removeItem("hps.vol"); }catch(e){}
 let iosSink=null;
 /* iOS audio, the whole trap in one place (David's phone, 26 Aug 2026):
    - Plain WebAudio obeys the hardware RINGER SWITCH — silent phone, silent app.
@@ -2169,25 +2177,13 @@ function onVideoTime(t){
     }
   }
 }
-let lastVidLoop=0;
+/* NO LOOPING IN FOLLOW MODE (David, 26 Aug): the video is the clock there and
+   the map's timing isn't tight enough for a musical loop, so seeking the
+   recording back on every pass was built and then removed at his word. The
+   loop is refused while Follow is on and cleared when Follow starts —
+   `loopAllowed()` is the one gate; don't reintroduce a video-seeking loop. */
+function loopAllowed(){ return !follow; }
 function followTick(t,p){
-  /* In follow mode the video IS the clock, so a loop has to loop the VIDEO:
-     when the playhead passes the loop's end, the recording jumps back to the
-     loop's start (David, 26 Aug — "looping works, but not in follow video
-     mode"). The map converts the loop's pulses into video seconds; a loop
-     before the video reaches it is left alone, so the run-in still plays. */
-  if(loopSec&&piece.syncMap&&piece.syncMap.length>=2){
-    const t0=invMap(loopSec.from), t1=invMap(loopSec.to);
-    if(t0!=null&&t1!=null&&t1>t0+0.2&&t>=t1-0.015&&performance.now()-lastVidLoop>350){
-      lastVidLoop=performance.now();
-      const now=ctx?ctx.currentTime:0;
-      for(const g of live){ try{ g.gain.setValueAtTime(g.gain.value,now);
-        g.gain.linearRampToValueAtTime(0,now+.05);}catch(e){} }
-      live=[]; vCursor=null;
-      videoSeek(t0);
-      return;
-    }
-  }
   const pr=Math.round(p);
   if(pr>=C.total){ // past the last hit: the marker leaves the page
     clearMarks();
@@ -2312,6 +2308,16 @@ function phoneFit(){
     }
   }
   sc.style.zoom=z;
+  /* Centre the notation vertically from what is ACTUALLY on screen: measure
+     the rendered height (getBoundingClientRect honours the zoom in every
+     engine) and split the slack as padding on the unzoomed wrapper. Doing it
+     in CSS instead cost two rounds — Safari centres a zoomed flex item by its
+     unzoomed size (David, 26 Aug: "still not centered vertically"). */
+  wrap.style.paddingTop="";
+  if(land){
+    const slack=wrap.clientHeight-sc.getBoundingClientRect().height;
+    if(slack>1) wrap.style.paddingTop=(slack/2)+"px";
+  }
   // anchor the play button to the CARD's top-right, not the wrapper's — when
   // the card is narrower than the screen the two are far apart
   const pb=$("playBtn");
@@ -2775,6 +2781,7 @@ function renderArr(){
     c.title=r===selRun?"Click again: loop this part":"Select — playback starts here";
     c.addEventListener("click",()=>{
       if(r===selRun){
+        if(!loopAllowed()&&!loopSec){ toast("No looping while the notation follows the video"); return; }
         const wasOn=loopSec&&loopSec.from===r.from;
         if(wasOn){ const pi=lastPaint>=0?lastPaint:r.from; loopSec=null;
           if(playing){ nextPulse=pi; } }
@@ -3127,7 +3134,9 @@ function boot(){
     if(!p){ toast("That code could not be read"); return; }
     loadPiece(p); $("shareDlg").close(); toast("Imported: "+(p.title||"Untitled")); });
   $("followBtn").addEventListener("click",()=>{ follow=!follow;
-    if(follow){ if(playing) stop(); ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank(); }
+    if(follow){ if(playing) stop(); ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
+      if(loopSec){ loopSec=null; render(); }    // loops don't survive into follow mode
+    }
     vCursor=null; updateSyncUI(); updatePlayBtn();
     toast(follow?"Notation follows the video":"Follow off"); });
   $("folMute").addEventListener("click",()=>{ followMuted=!followMuted;
@@ -3273,16 +3282,18 @@ function setTempo(v){
    real tap is passed on as a seek. */
 function phoneTouchNav(){
   const wrap=$("scorewrap"), land=()=>matchMedia("(orientation:landscape)").matches;
-  const TAP=12, VOL_PX=220, DBL=340;     // a 220px swipe covers silent → full
-  let sx=0,sy=0,id=null,mode=null,vol0=vol,lastTap=0,lastX=0,lastY=0;
+  const TAP=12, DBL=340;
+  let sx=0,sy=0,id=null,mode=null,lastTap=0,lastX=0,lastY=0;
   let anchor=null,dragged=false,clearIfNoDrag=false;
   wrap.addEventListener("pointerdown",e=>{
     if(e.pointerType==="mouse"&&e.button!==0) return;
     if(e.target.closest&&e.target.closest("#playBtn")) return;   // the play button keeps its own tap
-    id=e.pointerId; sx=e.clientX; sy=e.clientY; mode=null; vol0=vol;
+    id=e.pointerId; sx=e.clientX; sy=e.clientY; mode=null;
     anchor=null; dragged=false; clearIfNoDrag=false;
     const now=performance.now();
-    if(now-lastTap<DBL&&Math.abs(e.clientX-lastX)<28&&Math.abs(e.clientY-lastY)<28){
+    if(now-lastTap<DBL&&Math.abs(e.clientX-lastX)<28&&Math.abs(e.clientY-lastY)<28&&!loopAllowed()){
+      lastTap=0; toast("No looping while the notation follows the video");
+    } else if(now-lastTap<DBL&&Math.abs(e.clientX-lastX)<28&&Math.abs(e.clientY-lastY)<28){
       const c=cellAtPoint(e.clientX,e.clientY);
       if(c){                              // second tap: this cell starts the loop
         lastTap=0; mode="loop"; anchor=c;
@@ -3306,13 +3317,6 @@ function phoneTouchNav(){
       e.preventDefault();
       return;
     }
-    if(!land()) return;                  // the volume swipe is landscape-only
-    if(!mode&&Math.abs(dy)>=TAP&&Math.abs(dy)>Math.abs(dx)*1.4) mode="vol";
-    if(mode==="vol"){                    // up is louder: screen y grows downward
-      setVol(vol0-dy/VOL_PX);
-      toast("Volume "+Math.round(vol*100)+"%");
-      e.preventDefault();
-    }
   },true);
   wrap.addEventListener("pointerup",e=>{
     if(id===null||e.pointerId!==id){ id=null; return; }
@@ -3323,7 +3327,6 @@ function phoneTouchNav(){
       else { reanchorLoop(); toast(loopBarsLabel()); }
       return;
     }
-    if(mode==="vol"){ setVol(vol0-dy/VOL_PX); toast("Volume "+Math.round(vol*100)+"%"); return; }
     if(Math.abs(dx)>=TAP||Math.abs(dy)>=TAP) return;
     lastTap=performance.now(); lastX=e.clientX; lastY=e.clientY;
     const el=document.elementFromPoint(e.clientX,e.clientY);
@@ -3483,6 +3486,20 @@ function loopBarsLabel(){
     : ("Looping "+beats+(beats>1?" beats":" beat"));
 }
 boot();
+if(PHONE){
+  /* iOS still double-tap-zoomed through `touch-action:manipulation` (David,
+     26 Aug, on the device — it looked disabled in a Chromium test). The zoom
+     is triggered by the SECOND touchend, so refusing that one's default is
+     what actually stops it. Non-passive, or preventDefault is ignored. */
+  let lastEnd=0;
+  document.addEventListener("touchend",e=>{
+    const now=Date.now();
+    if(now-lastEnd<=360) e.preventDefault();
+    lastEnd=now;
+  },{passive:false});
+  // pinch-zoom gestures on the score would fight the fitted layout too
+  document.addEventListener("gesturestart",e=>e.preventDefault());
+}
 if(PHONE){ // the play button lives inside the notation frame here (David, 26 Aug)
   $("scorewrap").appendChild($("playBtn"));
   phoneTouchNav();
