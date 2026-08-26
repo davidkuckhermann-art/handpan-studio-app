@@ -705,7 +705,9 @@ body.jam #srcBadge{display:none !important}
   padding-left:12px; border-left:1px solid var(--rule)}
 
 /* ---- transposition report ---- */
-#report{background:var(--card2); border:1px solid var(--rule); border-radius:12px; padding:13px 15px; margin-top:12px}
+#report{position:relative; background:var(--card2); border:1px solid var(--rule);
+  border-radius:12px; padding:13px 15px; margin-top:12px}
+#repX{position:absolute; top:7px; right:7px; width:26px; height:26px}
 .fitline{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
 .fitpc{font-size:24px; font-weight:800; font-variant-numeric:tabular-nums}
 .fitsum{font-size:13px; color:var(--ink2)}
@@ -1041,9 +1043,12 @@ body.phone .gmini i{font-size:10px}
   body.phone .jslot{padding:5px 10px 4px; min-width:52px}
   body.phone .jslot b{font-size:15px}
   body.phone .jslot small{font-size:9.5px}
-  /* the tools ride their own scrolling line, so nothing has to be dropped */
+  /* the tools live under the chord card, not in it: two left-aligned lines */
+  body.phone .jtoolbox{display:flex; flex-direction:column; align-items:flex-start;
+    gap:6px; margin-top:9px}
+  body.phone .jgline{display:flex; justify-content:flex-start}
   body.phone .jtools{margin:0; padding:0; border-left:none; width:100%;
-    overflow-x:auto; scrollbar-width:none; gap:5px}
+    justify-content:flex-start; overflow-x:auto; scrollbar-width:none; gap:5px}
   body.phone .jtools::-webkit-scrollbar{display:none}
   body.phone .jtools .ctl{font-size:12px; padding:6px 9px; white-space:nowrap}
   body.phone #jamInfo{font-size:11.5px; padding:6px 9px; margin-bottom:7px}
@@ -1290,7 +1295,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
        can't nest, so they abut and share an edge to read as one control). -->
   <!-- the ✕ that used to abut the pill moved into the MODE BAR (David, 26 Aug) -->
   <span class="pgroup" id="practiceGroup">
-    <button class="ctl" id="practiceBtn" title="Jam along or quiz yourself on chords">Practice</button>
+    <button class="ctl" id="practiceBtn" title="Jam along or quiz yourself on chords">Play &amp; Explore</button>
   </span>
   <button class="ctl" id="libBtn">Library</button>
   <button class="ctl" id="shareBtn">Share…</button>
@@ -1581,7 +1586,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 
 <!-- The practice menu: one door, two rooms. -->
 <dialog id="practiceDlg">
-  <h3>Practice</h3>
+  <h3>Play &amp; Explore</h3>
   <button class="pchoice" id="pcJam">
     <b>Jam mode</b>
     <span>Pick a chord progression and a groove — the app plays a backing on your
@@ -3828,7 +3833,9 @@ function setView(v,opts){
 function render(){
   if(!piece.sections[viewSec]) viewSec=piece.arrangement[0];
   const sc=$("score"); sc.innerHTML="";
-  const sl=$("secLabel"); if(sl) sl.textContent=viewSec||"";
+  // in jam the frame's label belongs to the groove selector beside it,
+  // not to the one section the generated piece has (David, 26 Aug)
+  const sl=$("secLabel"); if(sl) sl.textContent=jamOn?"Groove browser":(viewSec||"");
   if(view==="tab") renderTabView(sc);
   else renderTableView(sc);
   renderChordRow();
@@ -4750,10 +4757,13 @@ function labelPills(withNum){
 }
 function renderReport(){
   const R=$("report");
-  if(mode!=="trans"||!REPORT){ R.classList.add("hidden"); return; }
+  if(mode!=="trans"||!REPORT||reportClosed){ R.classList.add("hidden"); return; }
   R.classList.remove("hidden");
   const tag=r=>({exact:"Exact",octave:"Octave",sub:"Substituted",drop:"Dropped"})[r]||r;
-  let h='<div class="fitline"><span class="fitpc">'+REPORT.fit+'%</span>'
+  let h='<button class="ib" id="repX" title="Close — it comes back with Transposed">'
+   +'<svg viewBox="0 0 24 24" width="13" height="13"><path d="M7 7l10 10M17 7L7 17" fill="none" '
+   +'stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></button>'
+   +'<div class="fitline"><span class="fitpc">'+REPORT.fit+'%</span>'
    +'<span class="fitsum"><b>'+srcPan.pan.name+' → '+myPan.pan.name+'</b><br>'
    +REPORT.nEx+' exact · '+REPORT.nOc+' octave · '+REPORT.nSub+' substituted · '+REPORT.nDrop+' dropped</span></div>';
   h+='<table class="map"><tr><th>Field</th><th>Sounds</th><th></th><th>On your pan</th><th>Match</th><th>Change</th></tr>';
@@ -4771,6 +4781,8 @@ function renderReport(){
     h+='<div class="warn"><b>'+REPORT.violStacks.length+' stack'+(REPORT.violStacks.length>1?"s":"")
       +'</b> cannot keep both notes under one hand on this pan — the notes play, but check the fingering.</div>';
   R.innerHTML=h;
+  const rx=$("repX");
+  if(rx) rx.addEventListener("click",()=>{ reportClosed=true; renderReport(); });
   R.querySelectorAll("select").forEach(s=>s.addEventListener("change",()=>{
     const sf=+s.dataset.sf, v=s.value;
     overrides[myPanId]=overrides[myPanId]||{};
@@ -5295,6 +5307,11 @@ const JAMPATS=[
 ];
 
 let jamOn=false, jamPrev=null, jamEditSlot=-1, jam=null, jamSugOn=false;
+/* The transposition report can be dismissed and stays dismissed until the
+   student asks for Transposed again (David, 26 Aug) — it is a briefing, not
+   a permanent fixture, and it was un-closeable in every view. */
+let reportClosed=false;
+const JAM_MAX=8;   // longest progression jam mode takes for now (David, 26 Aug)
 const jpc=m=>((m%12)+12)%12;
 
 // Every chord this pan can play, grouped for the picker (David, 26 Aug:
@@ -5429,6 +5446,7 @@ function jamTranspose(n){
 // 15% 9th (a family the pan lacks gives its share to the others) — then the
 // chord within it by root motion: 4ths/5ths first, then 3rds, then steps.
 function jamSuggest(){
+  if(jam.slots.length>=JAM_MAX){ toast("Eight chords is the most for now"); return; }
   const last=jam.slots[jam.slots.length-1];
   const lastDef=last&&jamDefs().byName[last.chord];
   const lr=lastDef?lastDef.root:jpc(myPan.ding);
@@ -5518,6 +5536,9 @@ function enterJam(){
   if(!allPats().some(p=>p.id===jam.patternId)) jam.patternId=JAMPATS[0].id;
   if(jam.bpm) bpm=jam.bpm;
   jamOn=true; document.body.classList.add("jam");
+  // the phone opens on the CHORDS side — the progression is what you came
+  // for, and the pan is one tap away (David, 26 Aug)
+  if(PHONE&&!chordRowOn) setChords(true);
   updatePracticeBtn(); if(!PHONE) $("jampanel").classList.remove("hidden");
   let seen=null; try{seen=localStorage.getItem("hps.jamInfo")}catch(e){}
   $("jamInfo").classList.toggle("hidden",seen==="0");
@@ -5690,15 +5711,20 @@ function renderJamPanel(){
   const add=document.createElement("button");
   add.className="jslot jadd"; add.textContent="＋"; add.title="Add a chord";
   add.addEventListener("click",()=>{
+    if(jam.slots.length>=JAM_MAX){ toast("Eight chords is the most for now"); return; }
     const last=jam.slots[jam.slots.length-1];
     jam.slots.push({chord:last?last.chord:(jamDefs().list[0]||{}).name,bars:last?last.bars:1});
     applyJam(); openJamSlot(jam.slots.length-1);
   });
+  if(jam.slots.length>=JAM_MAX){ add.classList.add("na");
+    add.title="Eight chords is the most for now"; }
   prog.appendChild(add);
   // a fitting follow-up chord, with dice in it
   const sug=document.createElement("button");
   sug.className="jslot jadd"; sug.textContent="Suggest";
   sug.title="Add a chord that fits — with a little randomness";
+  if(jam.slots.length>=JAM_MAX){ sug.classList.add("na");
+    sug.title="Eight chords is the most for now"; }
   sug.addEventListener("click",jamSuggest);
   prog.appendChild(sug);
   // transpose the WHOLE progression by semitones; clear starts fresh
@@ -5717,13 +5743,19 @@ function renderJamPanel(){
   mk("Open in editor","Copy this jam into a new piece and open the editor",jamToPiece);
   /* on the phone the tools get their OWN line under the strip — inside it they
      would scroll away with the chords */
-  /* The phone hangs the tools OUTSIDE #jamProg (inside it they scroll away
-     with the chords), and renderJamPanel only clears #jamProg — so every
-     re-render stacked another tools row and the track showed several lit
-     groove buttons at once (David, 26 Aug: "several grooves selected"). Clear
-     the old row before adding the new one. */
-  $("jamtrack").querySelectorAll(".jtools").forEach(el=>el.remove());
-  (PHONE?$("jamtrack"):prog).appendChild(tools);
+  /* On the phone the tools sit OUTSIDE the chord card entirely (David, 26
+     Aug — visual separation): their own block under the track, groove on one
+     line, the rest on the next, both hard left. They live outside #jamProg
+     either way, and renderJamPanel only clears #jamProg, so the old block has
+     to go first or the rows stack up (that was the "several grooves selected
+     at once" bug). */
+  $("jampanel").querySelectorAll(".jtoolbox").forEach(el=>el.remove());
+  if(PHONE){
+    const boxT=document.createElement("div"); boxT.className="jtoolbox";
+    const gline=document.createElement("div"); gline.className="jgline";
+    boxT.append(gline,tools);
+    $("jampanel").appendChild(boxT);
+  } else prog.appendChild(tools);
   // the groove: one button naming the current one, sitting at the score
   // frame's TOP LEFT beside the section name (David, 26 Aug) — the browser
   // dialog behind it has the whole library
@@ -5734,9 +5766,9 @@ function renderJamPanel(){
   cur.innerHTML=jamPatLabel(p)+" ▾";
   cur.title="Choose a groove";
   cur.addEventListener("click",openGrooveDlg);
-  /* the score frame's head is hidden on the phone, so the groove button
-     leads the tools line there instead of sitting on the notation */
-  if(PHONE) tools.insertBefore(cur,tools.firstChild);
+  /* the score frame's head is hidden on the phone, so the groove button gets
+     its own line above the other tools instead of sitting on the notation */
+  if(PHONE){ const gl=$("jampanel").querySelector(".jgline"); if(gl) gl.appendChild(cur); }
   else host.appendChild(cur);
 }
 function jamPatLabel(p){
@@ -7111,6 +7143,7 @@ function renderGrooveDlg(){
 
 /* ---------------- wiring ---------------- */
 function setMode(m){
+  if(m==="trans") reportClosed=false;   // asking for it again brings it back
   mode=m;
   $("modePos").setAttribute("aria-pressed",m==="pos");
   $("modeTrans").setAttribute("aria-pressed",m==="trans");
