@@ -679,6 +679,7 @@ body.jam #srcBadge{display:none !important}
 .gmini i.r{color:var(--hand-r)}
 .gmini i.g{font-size:11px}
 #grooveDlg{width:min(690px,94vw)}
+#grooveLoadDlg{width:min(560px,94vw); max-height:80vh; overflow-y:auto; overscroll-behavior:contain}
 /* pan-x, not none: a plain swipe still scrolls the strip on a phone, and the
    long-press takes the gesture over from there (David, 26 Aug) */
 .jslot{position:relative; touch-action:pan-x; user-select:none; -webkit-user-select:none}
@@ -1125,12 +1126,20 @@ body.phone .gmini i{font-size:10px}
   /* writing a GROOVE: no articulation, no taks/knocks, one fixed bar */
   body.gedit #edArtPills,body.gedit #edTak,body.gedit #edTakK,body.gedit #edKnock,
   body.gedit #edBarAdd,body.gedit #edBarDel,body.gedit #edChips .gap{display:none}
-  body.phone #newDlg,body.phone #editExitDlg,body.phone #grooveNewDlg{
+  /* …and the live time row above the lane, groove workbench only */
+  #edTimeRow{display:none}
+  body.gedit #edTimeRow{display:flex; align-items:center; gap:6px; margin-bottom:6px}
+  #edTimeRow .ctl{font-size:12.5px; padding:6px 8px}
+  /* Save / Load lead the chip row while a groove is on the bench */
+  #edGSave,#edGLoad{display:none}
+  body.gedit #edGSave,body.gedit #edGLoad{display:inline-flex}
+  body.phone #grooveLoadDlg{max-height:74vh; overflow-y:auto; overscroll-behavior:contain}
+  body.phone #newDlg,body.phone #editExitDlg,body.phone #grooveNewDlg,body.phone #grooveLoadDlg{
     border:none; border-radius:18px 18px 0 0; padding:14px 16px 26px;
     width:100%; max-width:none; margin:auto auto 0; background:var(--card);
     box-shadow:0 -12px 40px -14px rgba(70,52,28,.55)}
   body.phone #newDlg::backdrop,body.phone #editExitDlg::backdrop,
-  body.phone #grooveNewDlg::backdrop{background:rgba(30,27,22,.34)}
+  body.phone #grooveNewDlg::backdrop,body.phone #grooveLoadDlg::backdrop{background:rgba(30,27,22,.34)}
 }
 /* landscape keeps its own arrangement (#miniarr), so the flattened card hides */
 @media (orientation:landscape){
@@ -1470,6 +1479,19 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
        skeleton, like the quiz's cheer pill: paintEditDeck() rewrites only
        #edCells, so live elements (the play button in #edPlayHost) survive. -->
   <div id="editdeck">
+    <!-- groove workbench only: the live time row, above the editor
+         (26 Aug, David's ask) -->
+    <div id="edTimeRow">
+      <span class="lab" style="display:inline-block">Time</span>
+      <select class="ctl" id="edTS" aria-label="Time signature">
+        <option value="2/4">2/4</option><option value="3/4">3/4</option>
+        <option value="4/4">4/4</option><option value="5/4">5/4</option>
+        <option value="6/8">6/8</option><option value="7/8">7/8</option>
+        <option value="9/8">9/8</option><option value="12/8">12/8</option></select>
+      <select class="ctl" id="edSub" aria-label="Subdivision">
+        <option value="1">No subdivision</option><option value="2">2 per count</option>
+        <option value="3">3 per count</option><option value="4">4 per count — 16ths</option></select>
+    </div>
     <div class="lane">
       <div id="edLaneHead">
         <button id="edLaneLab" class="lab" title="Sections &amp; arrangement…">–</button>
@@ -1499,6 +1521,9 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     </div>
     <div id="edPanHost"></div>
     <div id="edChips">
+      <!-- groove workbench only (26 Aug, David: "save and load commands") -->
+      <button class="ctl" id="edGSave">Save</button>
+      <button class="ctl" id="edGLoad">Load…</button>
       <button class="ctl" id="edGhost"><b>•</b>&nbsp;Ghost</button>
       <button class="ctl" id="edSlap"><b>^</b>&nbsp;Slap</button>
       <button class="ctl" id="edTak"><b>T</b>&nbsp;Tak</button>
@@ -1647,13 +1672,23 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
       <option value="9/8">9/8</option><option value="12/8">12/8</option></select>
     <span class="lab">Subdivision</span>
     <select class="ctl" id="gnSub" aria-label="Subdivision">
-      <option value="1">None</option><option value="2" selected>2 per count</option>
-      <option value="3">3 per count</option><option value="4">4 per count</option></select></div>
+      <option value="1">None</option><option value="2">2 per count</option>
+      <option value="3">3 per count</option>
+      <!-- 16ths by default — grooves live on the 16th grid (David, 26 Aug) -->
+      <option value="4" selected>4 per count — 16ths</option></select></div>
   <div class="row"><span class="lab">Written on</span>
     <select class="ctl" id="gnChord" aria-label="Reference chord"></select></div>
   <p class="hint">You write one bar on this chord's tones (plus ghosts and slaps) — in a jam, the same shape plays on every chord of your progression.</p>
   <div class="row"><button class="ctl on" id="gnCreate">Write it</button>
   <span class="spacer"></span><button class="ctl" id="gnClose">Cancel</button></div>
+</dialog>
+
+<!-- LOAD into the groove workbench (26 Aug, David: "save and load commands").
+     Your grooves load as themselves; a built-in loads as a copy to start from. -->
+<dialog id="grooveLoadDlg">
+  <h3>Load a groove</h3>
+  <div class="list" id="glList"></div>
+  <div class="row"><span class="spacer"></span><button class="ctl" id="glClose">Close</button></div>
 </dialog>
 
 <dialog id="libDlg">
@@ -4909,16 +4944,33 @@ function renderEditbar(){
   const key=(id,label,on)=>'<button class="key'+(on?" on":"")+'" data-k="'+id+'">'+label+'</button>';
   const handPal='<div class="lab">Hand</div><div class="pal">'
      +key("hR","Left",selHand==="R")+key("hL","Right",selHand==="L")+key("hA","Alternate",selHand==="alt")+'</div>';
+  // the workbench's live time row (26 Aug, David: "a time signature selector,
+  // ideally above the groove editor") — rebuilt each render with the piece's
+  // current values, wired below beside the keys
+  const tsNow=grooveEdit?piece.meter[0]+"/"+piece.meter[1]:"";
+  const timeRow=grooveEdit
+   ? '<div class="lab">Time</div><div class="pal">'
+     +'<select class="ctl" id="gwTS" aria-label="Time signature">'
+       +TSOPTS.map(o=>'<option value="'+o+'"'+(o===tsNow?" selected":"")+'>'+o+'</option>').join("")
+       +(TSOPTS.includes(tsNow)?"":'<option value="'+tsNow+'" selected>'+tsNow+'</option>')+'</select>'
+     +'<select class="ctl" id="gwSub" aria-label="Subdivision">'
+       +[["1","No subdivision"],["2","2 per count"],["3","3 per count"],["4","4 per count — 16ths"]]
+         .map(([v,l])=>'<option value="'+v+'"'+(+v===piece.sub?" selected":"")+'>'+l+'</option>').join("")
+     +'</select></div>'
+   : "";
   E.innerHTML=grooveEdit
    // writing a GROOVE: one bar on the reference chord — no articulation, no
    // taks or knocks, no bars or sections; the shared key wiring below simply
    // finds fewer keys to wire
    ? '<div style="text-align:left; max-width:292px">'
+   +timeRow
    +'<div style="text-align:center"><div style="width:256px;display:inline-block">'
      +panViewSVG(srcPan,"Tap a chord tone to place it")+'</div></div>'
    +handPal
    +'<div class="lab">Percussive</div><div class="pal">'
-     +key("pg","Ghost •",false)+key("ps","Slap ^",false)+key("uz","Undo",false)+'</div>'
+     +key("pg","Ghost •",false)+key("ps","Slap ^",false)+'</div>'
+   +'<div class="lab">Groove</div><div class="pal">'
+     +key("gsv","Save",false)+key("gld","Load…",false)+key("uz","Undo",false)+'</div>'
    +'<p class="hint">One bar on <b>'+grooveEdit.ref+'</b> — '
      +grooveNotes(jamDefs().byName[grooveEdit.ref])
      +'. The title above is the groove’s name; <b>Edit</b> (or the phone’s ✕) finishes and saves it.</p>'
@@ -4949,6 +5001,8 @@ function renderEditbar(){
       snapshot(); piece.sections[viewSec].bars.splice(loc.bar,1);
       cursor=0; refresh(); } return; }
     else if(k==="sc"){ openPieceDlg(); return; }
+    else if(k==="gsv"){ grooveSaveNow(); return; }
+    else if(k==="gld"){ openGrooveLoadDlg(); return; }
     else if(k==="uz"){ undo(); return; }
     renderEditbar();
   }));
@@ -4957,6 +5011,11 @@ function renderEditbar(){
     g.addEventListener("pointerdown",put);
     g.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); put(); } });
   });
+  if(grooveEdit){
+    const set=()=>grooveSetTime($("gwTS").value,$("gwSub").value);
+    $("gwTS").addEventListener("change",set);
+    $("gwSub").addEventListener("change",set);
+  }
   updateHandInd();
 }
 
@@ -5011,6 +5070,11 @@ function paintEditDeck(){
       be.appendChild(sl);
     }
     box.appendChild(be);
+  }
+  // the groove workbench's time row reads the piece, never the other way round
+  if(grooveEdit){
+    $("edTS").value=piece.meter[0]+"/"+piece.meter[1];
+    $("edSub").value=String(piece.sub);
   }
   // pill faces — the tokens are COLOURS from the transcription era: R = green
   // = the LEFT hand (HANDOVER; same mapping as the desktop palette)
@@ -5076,6 +5140,21 @@ function nextSecName(base){
     if(b.base===base) mx=Math.max(mx,+(b.num||1));
   }
   return base+(mx+1);
+}
+/* changing the SUBDIVISION rescales the grid under the notes — a note on
+   beat 2 must stay on beat 2, so t scales by newSub/oldSub. Notes that don't
+   land on the new grid (an offbeat 16th when the grid coarsens) are dropped,
+   toasted and undoable. */
+function resub(nm,oldSub,newSub){
+  if(oldSub===newSub) return;
+  let dropped=0;
+  for(const bar of piece.sections[nm].bars)
+    for(let i=bar.length-1;i>=0;i--){
+      const nt=bar[i].t*newSub/oldSub;
+      if(Number.isInteger(nt)) bar[i].t=nt;
+      else { bar.splice(i,1); dropped++; }
+    }
+  if(dropped) toast(dropped+(dropped===1?" note":" notes")+" fell between the new counts and "+(dropped===1?"was":"were")+" removed — undo brings "+(dropped===1?"it":"them")+" back");
 }
 /* shrinking a table's bar length would leave notes past its end SOUNDING
    inside the next bar (compile offsets by ev.t) — trim them, undoably */
@@ -5158,7 +5237,8 @@ function renderPieceDlg(){
       const p=v.split("/"); snapshot();
       sec.meter=[+p[0],+p[1]]; psTrim(nm); refresh(); renderPieceDlg(); }));
     l2.appendChild(mkSel([["1","No subdivision"],["2","2 per count"],["3","3 per count"],["4","4 per count"]],
-      String(m.sub),v=>{ snapshot(); sec.sub=+v; psTrim(nm); refresh(); renderPieceDlg(); }));
+      String(m.sub),v=>{ snapshot(); const old=m.sub; sec.sub=+v;
+        resub(nm,old,+v); psTrim(nm); refresh(); renderPieceDlg(); }));
     l2.appendChild(mkSel([["1","1 bar per row"],["2","2 bars per row"],["3","3 bars per row"],["4","4 bars per row"]],
       String(m.bpr),v=>{ snapshot(); sec.barsPerRow=+v; refresh(); renderPieceDlg(); }));
     row.append(l1,l2);
@@ -5765,9 +5845,15 @@ function renderJamPanel(){
   cur.title="Choose a groove";
   cur.addEventListener("click",openGrooveDlg);
   /* the score frame's head is hidden on the phone, so the groove button rides
-     the tools line — to the RIGHT of them, the whole row hard left (David,
-     26 Aug) — instead of sitting on the notation */
-  if(PHONE) tools.appendChild(cur);
+     the tools line — the GROOVE hard left, the other buttons pushed right
+     (David, 26 Aug evening; this reversed the same-day "groove to the right
+     of the tools"). The spacer collapses when the row overflows, so a long
+     groove name still just scrolls. */
+  if(PHONE){
+    const sp=document.createElement("span"); sp.className="spacer";
+    tools.insertBefore(sp,tools.firstChild);
+    tools.insertBefore(cur,sp);
+  }
   else host.appendChild(cur);
 }
 function jamPatLabel(p){
@@ -6995,6 +7081,22 @@ function grooveDegOf(f,def){       // which voice of the reference chord this fi
 function grooveNotes(def){
   return PCN[def.degs["1"]]+" · "+PCN[def.degs["3"]]+" · "+PCN[def.degs["5"]];
 }
+/* the workbench's LIVE time controls (26 Aug, David: "there also needs to be
+   a time signature selector, ideally above the groove editor") — one mutation
+   behind both platforms' selectors. Shrinking trims like the Piece sheet. */
+function grooveSetTime(tsVal,subVal){
+  if(!grooveEdit) return;
+  const p=tsVal.split("/"), beats=+p[0], den=+p[1];
+  snapshot();
+  const oldSub=piece.sub;
+  piece.meter=[beats,den];
+  if(den===8) piece.unit=8; else delete piece.unit;   // x/8 counts eighths (Bembé's rule)
+  piece.sub=+subVal;
+  resub("Groove",oldSub,+subVal);   // notes stay where they SOUND
+  psTrim("Groove");                 // then anything past the new bar goes
+  cursor=0;
+  refresh();
+}
 function startGrooveEdit(opts){    // opts: {id?, name, meter, sub, unit?, ref, ev?}
   if(editing){ toast("Leave editing first"); return; }
   const def=jamDefs().byName[opts.ref];
@@ -7023,28 +7125,85 @@ function startGrooveEdit(opts){    // opts: {id?, name, meter, sub, unit?, ref, 
 }
 /* runs AFTER the Edit toggle has left editing mode (both platforms route
    through the Edit button, so there is exactly one way out) */
-function grooveEditFinish(){
-  const ge=grooveEdit; grooveEdit=null;
-  document.body.classList.remove("gedit");
-  const def=jamDefs().byName[ge.ref];
+/* SAVE, without leaving (26 Aug, David: the workbench "needs save and load
+   commands") — converts and stores the bar as it stands; grooveEdit.id is
+   pinned to the saved groove, so every further Save overwrites the same one. */
+function grooveSaveNow(quietEmpty){
+  if(!grooveEdit) return null;
+  const def=jamDefs().byName[grooveEdit.ref];
   const bar=(piece.sections.Groove&&piece.sections.Groove.bars[0])||[];
   const ev=bar.map(e=>
       e.v==="ghost"?[e.t,"g",e.hand]
       :e.v==="perc"?[e.t,"^",e.hand]
       :[e.t,grooveDegOf(e.f,def),e.hand])
     .filter(x=>x[1]).sort((a,b)=>a[0]-b[0]);
-  let savedId=null;
-  if(!ev.length) toast("Empty bar — groove not saved");
-  else{
-    const name=($("title").value||"").trim()||"My groove";
-    const g={id:ge.id||"ug-"+Date.now().toString(36), name, user:true,
-      meter:piece.meter, sub:piece.sub, bpr:1, ev, ref:ge.ref};
-    if(piece.unit&&piece.unit!==4) g.unit=piece.unit;
-    const l=userGrooves(), i=l.findIndex(x=>x.id===g.id);
-    if(i>=0) l[i]=g; else l.push(g);
-    setUserGrooves(l); savedId=g.id;
-    toast("Groove saved: "+name);
+  if(!ev.length){ toast(quietEmpty?"Empty bar — groove not saved":"Empty bar — nothing to save"); return null; }
+  const name=($("title").value||"").trim()||"My groove";
+  const l=userGrooves();
+  // no pinned id (fresh bench, or undo past a Load) — a groove with this NAME
+  // is the one being worked on, not a sibling to spawn
+  const id=grooveEdit.id
+    ||(l.find(x=>x.name===name)||{}).id
+    ||"ug-"+Date.now().toString(36);
+  const g={id, name, user:true,
+    meter:piece.meter, sub:piece.sub, bpr:1, ev, ref:grooveEdit.ref};
+  if(piece.unit&&piece.unit!==4) g.unit=piece.unit;
+  const i=l.findIndex(x=>x.id===g.id);
+  if(i>=0) l[i]=g; else l.push(g);
+  setUserGrooves(l);
+  grooveEdit.id=g.id;
+  toast("Saved: "+name);
+  return g.id;
+}
+/* LOAD another groove into the workbench, in place. A user groove loads as
+   itself (Save keeps working on it); a BUILT-IN loads as a starting point —
+   its id is not adopted, so Save makes the student's own copy. Degrees are
+   chord-relative, so the bar rebuilds exactly on whichever reference chord
+   applies: the groove's own if this pan can voice it, else the current one. */
+function grooveLoadInto(g){
+  if(!grooveEdit) return;
+  const own=g.ref&&jamDefs().byName[g.ref]&&!jamDefs().byName[g.ref].miss;
+  const ref=own?g.ref:grooveEdit.ref;
+  const v=jamVoice(ref);
+  if(!v){ toast("Your pan can't voice "+ref+" right now"); return; }
+  snapshot();                       // the bar being replaced is one undo away
+  grooveEdit.ref=ref;
+  grooveEdit.id=g.user?g.id:null;
+  piece.meter=g.meter.slice(); piece.sub=g.sub||1;
+  if(g.unit&&g.unit!==4) piece.unit=g.unit; else delete piece.unit;
+  piece.title=g.name; $("title").value=g.name; fitTitle();
+  piece.sections.Groove.bars=[g.ev.map(([t,k,h])=>
+    k==="g"?G(t,h):k==="^"?P(t,"slap",h):F(t,v[k],h))];
+  cursor=0;
+  refresh();
+  toast(g.user?("Loaded: "+g.name):("Loaded a copy of "+g.name+" — Save makes it yours"));
+}
+function openGrooveLoadDlg(){
+  if(!grooveEdit) return;
+  const L=$("glList"); L.innerHTML="";
+  const row=(p,sub)=>{
+    const d=document.createElement("div"); d.className="jgrow"; d.style.cursor="pointer";
+    const nm=document.createElement("div"); nm.className="gname"; nm.innerHTML=jamPatLabel(p);
+    d.appendChild(nm); d.appendChild(grooveMini(p));
+    if(sub){ const s=document.createElement("span"); s.className="hint"; s.textContent=sub; d.appendChild(s); }
+    d.addEventListener("click",()=>{ grooveLoadInto(p); $("grooveLoadDlg").close(); });
+    L.appendChild(d);
+  };
+  const ug=userGrooves();
+  if(ug.length){
+    const h=document.createElement("div"); h.className="lab";
+    h.style.margin="4px 0"; h.textContent="Your grooves"; L.appendChild(h);
+    for(const p of ug) row(p);
   }
+  const h2=document.createElement("div"); h2.className="lab";
+  h2.style.margin="10px 0 4px"; h2.textContent="Built-in — loads as a copy"; L.appendChild(h2);
+  for(const p of JAMPATS) row(p);
+  openDlg($("grooveLoadDlg"));
+}
+function grooveEditFinish(){
+  const savedId=grooveSaveNow(true);
+  const ge=grooveEdit; grooveEdit=null;
+  document.body.classList.remove("gedit");
   loadPiece(ge.prevPiece);
   bpm=ge.prevBpm||bpm; $("bpm").value=bpm;
   if(ge.wasJam){
@@ -7548,6 +7707,7 @@ function boot(){
   /* new groove: setup sheet → the editor as a one-bar workbench */
   $("grooveNewBtn").addEventListener("click",()=>{ jamPreviewStop(); openGrooveNewDlg(); });
   $("gnClose").addEventListener("click",()=>$("grooveNewDlg").close());
+  $("glClose").addEventListener("click",()=>$("grooveLoadDlg").close());
   $("gnCreate").addEventListener("click",()=>{
     const mv=$("gnMeter").value.split("/"), beats=+mv[0], den=+mv[1];
     startGrooveEdit({
@@ -8023,6 +8183,12 @@ else{
   });
   $("mNewBtn").addEventListener("click",()=>{ $("menuDlg").close(); openDlg($("newDlg")); });
   $("edLaneLab").addEventListener("click",openPieceDlg);
+  // the groove workbench's live time row (paintEditDeck keeps the values true)
+  const edSetTime=()=>grooveSetTime($("edTS").value,$("edSub").value);
+  $("edTS").addEventListener("change",edSetTime);
+  $("edSub").addEventListener("change",edSetTime);
+  $("edGSave").addEventListener("click",()=>grooveSaveNow());
+  $("edGLoad").addEventListener("click",openGrooveLoadDlg);
   $("menuBtn").addEventListener("click",()=>openDlg($("menuDlg")));
   sheetSwipe($("menuDlg"),$("menuDlg").querySelector(".grab"));
   $("menuClose").addEventListener("click",()=>$("menuDlg").close());
