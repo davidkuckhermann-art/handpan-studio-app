@@ -499,7 +499,7 @@ body.phone header #setBtn{display:none !important}
     display:flex; flex-direction:column}
   body.phone #scorewrap{flex:0 0 auto; min-height:0; overflow:hidden}
   body.phone #belowrow{flex:1 1 auto; min-height:0; overflow:hidden; margin-top:8px;
-    align-items:flex-start}
+    align-items:center; justify-content:flex-start}
   body.phone #transport{flex:none; margin:0;
     display:block; background:var(--card); border-top:1px solid var(--rule);
     padding:8px calc(10px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom))
@@ -522,10 +522,11 @@ body.phone header #setBtn{display:none !important}
   body.phone #belowrow{gap:8px}
   /* the two companion cards were sized for a desktop — trim them or the pan
      cannot fit under the notation at all (measured: 227 + 172 + 385 > screen) */
-  body.phone #chordbox{padding:8px 12px 10px}
-  body.phone #chordbox .cchip{padding:5px 9px 6px}
-  body.phone #chordbox .cname{font-size:16px}
-  body.phone #chordbox .sym{font-size:16px}
+  body.phone #chordbox{padding:12px 16px 14px}
+  body.phone #chordbox .cchip{padding:8px 13px 9px; border-radius:13px}
+  body.phone #chordbox .cname{font-size:23px}
+  body.phone #chordbox .sym{font-size:23px}
+  body.phone #chordbox .chordrow{gap:14px}
   body.phone #pvsvg{width:min(100%,250px,32vh)}
   body.phone #panbox{padding:8px 10px 10px}
 }
@@ -686,6 +687,8 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <button id="modePos" aria-pressed="true">By position</button>
     <button id="modeTrans" aria-pressed="false">Transposed</button>
   </div>
+  <!-- phone only: chords or pan, opposite the Table/Tab pills -->
+  <span id="cpHost"></span>
 </div>
 
 <div id="vidwrap" class="hidden" style="margin-bottom:10px">
@@ -849,8 +852,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <div class="drow"><span>Sounds as</span><span id="mMode"></span></div>
   <h4>Show</h4>
   <div class="drow"><span>Notation</span><span id="mNota"></span></div>
-  <div class="drow"><span>Under the notation</span>
-    <span style="display:flex;gap:6px"><span id="mChords"></span><span id="mPanel"></span></span></div>
+
   <h4>Pieces</h4>
   <div class="drow"><span>Your library</span><span id="mLib"></span></div>
   <div class="drow"><span>This piece</span><span id="mShare"></span></div>
@@ -2821,10 +2823,19 @@ function fitPortraitStack(sc,z,designW){
   const bw=box.offsetWidth, bh=box.offsetHeight;
   const host=box.closest("#chordwrap,#panwrap");
   const availW=host?host.clientWidth:wrap.clientWidth;
-  let cz=1;
+  /* It scales BOTH ways: a card that fits with room to spare grows into it, so
+     the chords read from playing distance on a big phone and still fit a small
+     one (David, 26 Aug: "make the chord view bigger"). Bounded by the width as
+     well, or a grown card would run off the side. */
+  /* The pan is a picture and reads better the bigger it is, so it may fill the
+     leftover. The chords are four short labels — blown up to fill a phone they
+     just look wrong (David, 26 Aug), so they grow only a little past the size
+     they were designed at. */
+  let cz=panOn?1.9:1.2;
   if(bh>0&&leftover>0) cz=Math.min(cz,leftover/bh);
-  if(bw>availW&&availW>0) cz=Math.min(cz,availW/bw);
-  box.style.zoom=cz<1?Math.max(0.3,cz):"";
+  if(bw>0&&availW>0)   cz=Math.min(cz,availW/bw);
+  cz=Math.max(0.3,cz);
+  box.style.zoom=Math.abs(cz-1)<0.02?"":cz;
 }
 function phoneFit(){
   if(!PHONE) return;
@@ -3272,11 +3283,13 @@ let notaOn=(localStorage.getItem("hps.nota")||"1")==="1";     // the notation it
 function setChords(v){ chordRowOn=v;
   try{localStorage.setItem("hps.chords",v?"1":"0")}catch(e){}
   $("chordBtn").classList.toggle("on",v);
+  $("chordBtn").setAttribute("aria-pressed",v?"true":"false");
   if(v&&PHONE&&panOn) setPan(false);
   render(); }
 function setPan(v){ panOn=v;
   try{localStorage.setItem("hps.pan",v?"1":"0")}catch(e){}
   $("panBtn").classList.toggle("on",v);
+  $("panBtn").setAttribute("aria-pressed",v?"true":"false");
   document.body.classList.toggle("haspan",v);   // the row aligns right while it shows
   if(v&&PHONE&&chordRowOn) setChords(false);
   renderPanPanel(); }
@@ -3809,10 +3822,10 @@ function boot(){
   paintCountIn();
   $("halfBtn").addEventListener("click",()=>{ halfSpeed=!halfSpeed; $("halfBtn").classList.toggle("on",halfSpeed); });
   $("chordBtn").classList.toggle("on",chordRowOn);
-  $("chordBtn").addEventListener("click",()=>setChords(!chordRowOn));
+  $("chordBtn").addEventListener("click",()=>setChords(PHONE?true:!chordRowOn));
   $("panBtn").classList.toggle("on",panOn);
   document.body.classList.toggle("haspan",panOn);
-  $("panBtn").addEventListener("click",()=>setPan(!panOn));
+  $("panBtn").addEventListener("click",()=>setPan(PHONE?true:!panOn));
   setNota(notaOn);
   $("notaBtn").addEventListener("click",()=>setNota(!notaOn));
   wireMarkPop();
@@ -4378,8 +4391,19 @@ else{
   $("mPan").appendChild($("panSel"));
   $("mMode").appendChild(document.querySelector('.pills[aria-label="Playback mode"]'));
   $("mNota").appendChild($("notaBtn"));
-  $("mChords").appendChild($("chordBtn"));
-  $("mPanel").appendChild($("panBtn"));
+  /* Chords or pan is a SWITCH on the phone, so it reads as pills — opposite
+     the Table/Tab pair, which is the other "how am I reading this" choice
+     (David, 26 Aug). Same two buttons, so the handlers are untouched. */
+  const cp=document.createElement("span");
+  cp.className="pills"; cp.setAttribute("role","group"); cp.setAttribute("aria-label","Under the notation");
+  $("chordBtn").className=""; $("panBtn").className="";
+  $("chordBtn").textContent="Chords"; $("panBtn").textContent="Pan";
+  cp.append($("chordBtn"),$("panBtn"));
+  $("cpHost").appendChild(cp);
+  if(!chordRowOn&&!panOn) setChords(true);      // the switch always has a side
+  // boot painted the .on class but not the pressed state the pills read
+  $("chordBtn").setAttribute("aria-pressed",chordRowOn?"true":"false");
+  $("panBtn").setAttribute("aria-pressed",panOn?"true":"false");
   $("mLib").appendChild($("libBtn"));
   $("mShare").appendChild($("shareBtn"));
   $("mSet").appendChild($("setBtn"));
