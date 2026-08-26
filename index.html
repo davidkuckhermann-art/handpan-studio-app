@@ -502,8 +502,9 @@ body.phone header #setBtn{display:none !important}
     overflow:hidden; overscroll-behavior:none; padding-bottom:0;
     display:flex; flex-direction:column}
   body.phone #scorewrap{flex:0 0 auto; min-height:0; overflow:hidden}
-  body.phone #belowrow{flex:1 1 auto; min-height:0; overflow:hidden; margin-top:8px;
+  body.phone #belowrow{flex:1 1 auto; min-height:0; overflow:hidden; margin-top:4px;
     align-items:center; justify-content:flex-start}
+  body.phone #panbox{padding:6px 8px 8px}
   body.phone #transport{flex:none; margin:0;
     display:block; background:var(--card); border-top:1px solid var(--rule);
     padding:8px calc(10px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom))
@@ -532,7 +533,6 @@ body.phone header #setBtn{display:none !important}
   body.phone #chordbox .sym{font-size:19px}
   body.phone #chordbox .chordrow{gap:11px}
   body.phone #pvwrap:not(.sides) #pvsvg{width:min(100%,260px)}
-  body.phone #panbox{padding:8px 10px 10px}
 }
 /* landscape keeps its own arrangement (#miniarr), so the flattened card hides */
 @media (orientation:landscape){
@@ -1426,11 +1426,11 @@ let panOn=(localStorage.getItem("hps.pan")||"0")==="1";       // the pan compani
 // pan view: strokes flash per hit | chords hold the active chord's fields lit
 let panMode=localStorage.getItem("hps.panmode")==="chords"?"chords":"strokes";
 // tab notation rows: one | split (green/left-hand lane above, black/right-hand below)
-let tabRows=localStorage.getItem("hps.tabrows")||"one";
+let tabRows=localStorage.getItem("hps.tabrows")||"split";   // two rows by default (David)
 if(!["one","split"].includes(tabRows)) tabRows="one";
 // tab hand letters on/off (older keys carried three states / a boolean)
 const _hv=localStorage.getItem("hps.hands");
-let handsOn=_hv?(_hv!=="off"):(localStorage.getItem("hps.tabhands")!=="0");
+let handsOn=_hv?(_hv!=="off"):(localStorage.getItem("hps.tabhands")==="1"); // off by default (David)
 // hand colours — the students' choice; black + green is the notation's default
 const HAND_DEFAULTS={l:"#17150f",r:"#469957"};
 try{ // stored copies of superseded defaults follow the new default
@@ -3116,7 +3116,17 @@ function panViewSVG(pan,label){
   h+=field(0,cx,cx,dr,"D",P.labelFor(0),26,32);
   return h+'</svg>';
 }
+/* The card has to be MEASURED AFTER IT IS DRAWN. render() fits the portrait
+   stack, but refresh() draws the pan afterwards (`render(); renderPanPanel()`)
+   and setPan() never fitted at all — so the fit was computed against the
+   previous pan and a tall one ran under the bottom bar (David, 26 Aug: "part
+   is cut off"). Refit at the end of every pan render. */
 function renderPanPanel(){
+  const r=renderPanPanelInner();
+  if(PHONE) phoneFit();
+  return r;
+}
+function renderPanPanelInner(){
   const box=$("panbox");
   $("panwrap").classList.toggle("hidden",!(panOn||editing));
   if(editing){ renderEditbar(); return; }   // the pan card becomes the editor's input pan
