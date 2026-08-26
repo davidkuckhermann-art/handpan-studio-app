@@ -313,12 +313,12 @@ input[type=text]{width:auto}
   display:flex; flex-direction:column-reverse; align-items:center; gap:1px;
   background:var(--sc-bg); min-width:34px}
 .cchip.playing{background:var(--sc-band)}
-.cchip .sym{font-size:19px; line-height:1.05; font-weight:700}
+.cchip .sym{font-size:calc(19px*var(--cs,1)); line-height:1.05; font-weight:700}
 /* The bottom row has room to spare on a desktop, so the chord card reads from
    playing distance (David, 26 Aug). The phone keeps its fitted sizes. */
 body:not(.phone) .cname{font-size:25px}
 body:not(.phone) .cchip{padding:9px 16px 10px; border-radius:14px}
-body:not(.phone) .cchip .sym{font-size:25px}
+body:not(.phone) .cchip .sym{font-size:calc(25px*var(--cs,1))}
 body:not(.phone) .chordrow{gap:17px}
 body:not(.phone) #chordbox{padding:14px 22px 16px}
 
@@ -891,7 +891,7 @@ body.phone header #setBtn{display:none !important}
   body.phone #chordbox{padding:9px 13px 11px}
   body.phone #chordbox .cchip{padding:6px 10px 7px; border-radius:11px}
   body.phone #chordbox .cname{font-size:18px}
-  body.phone #chordbox .sym{font-size:19px}
+  body.phone #chordbox .sym{font-size:calc(19px*var(--cs,1))}
   body.phone #chordbox .chordrow{gap:11px}
   body.phone #pvwrap:not(.sides) #pvsvg{width:min(100%,260px)}
 }
@@ -4038,17 +4038,26 @@ function renderChordRow(){
   wrap.classList.toggle("hidden",!chips.length);
   if(!chips.length) return;
   const row=document.createElement("div"); row.className="chordrow";
-  for(const ch of chips){
+  /* A CHORD WITH MORE NOTES WRITES THEM SMALLER (David, 26 Aug), so the tall
+     boxes come down to meet the short ones instead of towering over them or
+     padding themselves out with air. The row's shortest chord sets the target
+     height; every other card scales by how many notes it has to fit, with a
+     floor so a six-note chord stays readable. The scale rides a CSS variable,
+     because the base size differs between desktop and phone. */
+  const counts=chips.map(ch=>Math.max(1,chordFields(ch.name).length));
+  const fewest=Math.min(...counts);
+  chips.forEach((ch,i)=>{
     const w=document.createElement("div"); w.className="cchipwrap";
     const nm=document.createElement("div"); nm.className="cname"+(ch.inferred?" inf":"");
     nm.innerHTML=fmtChord(ch.name); if(ch.inferred) nm.title="Chord guessed from the notes — not notated";
     const c=document.createElement("div"); c.className="cchip"; c.dataset.cbar=ch.bi;
+    c.style.setProperty("--cs",Math.max(.62,fewest/counts[i]).toFixed(3));
     for(const f of chordFields(ch.name)){
       const el=document.createElement("span"); el.className="sym";
       el.textContent=f===0?"D":String(f); c.appendChild(el);
     }
     w.appendChild(nm); w.appendChild(c); row.appendChild(w);
-  }
+  });
   box.appendChild(row);
 }
 function baseOf(nm){ const m=String(nm).match(/^(.*?)(\d*)$/); return {base:m[1]||nm,num:m[2]}; }
