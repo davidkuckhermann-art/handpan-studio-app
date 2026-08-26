@@ -318,14 +318,16 @@ body:not(.phone) #chordbox{padding:14px 22px 16px}
   background:none; border-style:dashed; min-width:40px}
 #jamPats .ctl .hint{font-size:11px}
 #jamChordGrid{display:flex; flex-wrap:wrap; gap:7px; margin:10px 0 14px}
-.jchord{display:inline-flex; flex-direction:column; align-items:center; gap:3px;
+.jchord{position:relative; display:inline-flex; flex-direction:column; align-items:center; gap:3px;
   font:inherit; background:var(--card); border:1px solid var(--rule); border-radius:10px;
   padding:7px 12px 6px; cursor:pointer; color:var(--ink); min-width:62px}
 .jchord b{font-size:17px; font-weight:800}
 .jchord .jcf{display:flex; gap:3px}
 .jchord .jcf span{font-size:11px; font-weight:700; color:var(--ink2); background:var(--dust);
   border:1px solid var(--rule); border-radius:5px; padding:0 4px; line-height:1.5}
-.jchord .miss{font-size:10px; font-weight:600; color:var(--ink3); font-style:italic}
+/* a missing note is worth SEEING (David, 26 Aug): dashed frame, clay label */
+.jchord .miss{font-size:10px; font-weight:700; color:var(--clay)}
+.jchord.almost{border-style:dashed}
 .jchord.sel{border-color:var(--dixie); background:var(--dixie-soft); box-shadow:0 0 0 1px var(--dixie)}
 /* "nice, but less obvious" chords sit back a little; the obvious family
    reads at full strength (David, 26 Aug) */
@@ -334,6 +336,12 @@ body:not(.phone) #chordbox{padding:14px 22px 16px}
 .jchord.lt .jcf span{opacity:.75}
 .jchord.lt.sel{background:var(--dixie-soft)}
 .jslot.playing{border-color:var(--dixie); background:var(--dixie-soft)}
+/* suggestion dots: filled = the obvious next chord, hollow = adventurous */
+.jchord .sdot{position:absolute; top:-6px; left:-6px; width:15px; height:15px;
+  border-radius:50%; background:var(--dixie); border:2px solid #fff;
+  box-shadow:0 1px 3px rgba(70,52,28,.35)}
+.jchord .sdot.soft{width:11px; height:11px; top:-4px; left:-4px;
+  background:#fff; border:2px solid var(--dixie); opacity:.7; box-shadow:none}
 body.jam #authortools{display:none !important}
 /* a jam is ONE section — its arrangement pill in the frame's footer and the
    arrangement card are pure noise ("what does the jam button next to
@@ -943,6 +951,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
      tone missing) are offered too, marked — the missing tone plays the root. -->
 <dialog id="jamDlg">
   <h3 id="jamDlgTitle">Chord</h3>
+  <p class="hint hidden" id="jamSugHint"></p>
   <div id="jamChordGrid"></div>
   <div class="row" style="margin:0">
     <span class="lab">Length</span>
@@ -950,8 +959,8 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <span class="badge"><b id="jamLen">1 bar</b></span>
     <button class="ctl" id="jamPlus" aria-label="One bar more">＋</button>
     <span class="spacer"></span>
+    <button class="ctl" id="jamSugBtn" title="Mark chords that fit after the previous one">Suggestions</button>
     <button class="ctl" id="jamHear" title="Strum this chord once">Hear it</button>
-    <button class="ctl" id="jamRemove">Remove</button>
     <button class="ctl" id="jamDlgClose">Close</button>
   </div>
 </dialog>
@@ -4098,7 +4107,7 @@ const JAMPATS=[
    [0,"3","L"],[0,"1","L"],[1,"g","L"],[2,"^","R"],[3,"1","L"],[4,"g","L"],[5,"3","R"],[6,"^","L"],[7,"5","R"]]},
 ];
 
-let jamOn=false, jamPrev=null, jamEditSlot=-1, jam=null;
+let jamOn=false, jamPrev=null, jamEditSlot=-1, jam=null, jamSugOn=false;
 const jpc=m=>((m%12)+12)%12;
 
 // Every chord this pan can play, grouped for the picker (David, 26 Aug:
@@ -4125,15 +4134,26 @@ function jamChordDefs(){
         miss:h3&&h5?null:(h3?"5th":"3rd"),
         lt:q==="dim"||!(h3&&h5)});
     }
+    // 7ths and 9ths may miss exactly ONE tone (David, 26 Aug — never more);
+    // the label names it. Voicing: the high voice takes the best colour tone
+    // the pan still has (7th→fifth on a no-7th, 9th→7th→fifth on a 9th).
     for(const [q,t3,t5,t7] of [["maj7",M3,P5,M7],["7",M3,P5,m7],
-                               ["min7",m3,P5,m7],["min7♭5",m3,d5,m7]])
-      if(has(t3,t5,t7))
-        out.push({name:PCN[r]+q,group:"7th chords",root:r,
-          degs:{"1":r,"3":t3,"5":t7},miss:null,lt:true});
-    for(const [q,t3,t5,t7] of [["maj9",M3,P5,M7],["9",M3,P5,m7],["min9",m3,P5,m7]])
-      if(has(t3,t5,t7,N9))
-        out.push({name:PCN[r]+q,group:"9th chords",root:r,
-          degs:{"1":r,"3":t3,"5":N9},miss:null,lt:true});
+                               ["min7",m3,P5,m7],["min7♭5",m3,d5,m7]]){
+      const gone=[["3rd",t3],["5th",t5],["7th",t7]].filter(([,p])=>!pcs.has(p));
+      if(gone.length>1) continue;
+      out.push({name:PCN[r]+q,group:"7th chords",root:r,
+        degs:{"1":r,"3":pcs.has(t3)?t3:r,
+              "5":pcs.has(t7)?t7:(pcs.has(t5)?t5:r)},
+        miss:gone.length?gone[0][0]:null,lt:true});
+    }
+    for(const [q,t3,t5,t7] of [["maj9",M3,P5,M7],["9",M3,P5,m7],["min9",m3,P5,m7]]){
+      const gone=[["3rd",t3],["5th",t5],["7th",t7],["9th",N9]].filter(([,p])=>!pcs.has(p));
+      if(gone.length>1) continue;
+      out.push({name:PCN[r]+q,group:"9th chords",root:r,
+        degs:{"1":r,"3":pcs.has(t3)?t3:r,
+              "5":pcs.has(N9)?N9:(pcs.has(t7)?t7:(pcs.has(t5)?t5:r))},
+        miss:gone.length?gone[0][0]:null,lt:true});
+    }
   }
   const gi={"Triads":0,"7th chords":1,"9th chords":2};
   out.sort((a,b)=>gi[a.group]-gi[b.group]||((a.miss?1:0)-(b.miss?1:0))
@@ -4382,6 +4402,25 @@ function renderJamDlg(){
   const s=jam.slots[jamEditSlot]; if(!s) return;
   $("jamDlgTitle").textContent="Chord "+(jamEditSlot+1)+" of "+jam.slots.length;
   const g=$("jamChordGrid"); g.innerHTML="";
+  // Suggestions (David, 26 Aug — replaced Remove; the cards' ✕ deletes):
+  // relative to the chord BEFORE this slot in the loop. Strong dot = the
+  // obvious simple move: a full maj/min triad whose root steps by a 3rd,
+  // 4th or 5th. Soft dot = feeling adventurous: any other complete chord
+  // (dim, 7ths, 9ths, stepwise or parallel moves). Almost-chords get none.
+  const prevSlot=jam.slots.length>1
+    ?jam.slots[(jamEditSlot-1+jam.slots.length)%jam.slots.length]
+    :jam.slots[jamEditSlot];
+  const pd=jamDefs().byName[prevSlot.chord];
+  const lr=pd?pd.root:jpc(myPan.ding);
+  const sugOf=c=>{
+    if(!jamSugOn||c.miss||c.name===prevSlot.chord) return "";
+    const ic=Math.min((c.root-lr+12)%12,(lr-c.root+12)%12);
+    return (c.group==="Triads"&&!c.lt&&ic>=3)?"strong":"soft";
+  };
+  $("jamSugBtn").classList.toggle("on",jamSugOn);
+  $("jamSugHint").classList.toggle("hidden",!jamSugOn);
+  if(jamSugOn) $("jamSugHint").textContent="After "+prevSlot.chord
+    +": ● an obvious next chord · ○ feeling adventurous";
   let curGroup=null;
   for(const c of jamDefs().list){
     const v=jamVoice(c.name); if(!v) continue;
@@ -4391,9 +4430,11 @@ function renderJamDlg(){
     const flds=[...new Set(["1","3","5"].map(d=>v[d]))]
       .sort((a,b)=>myPan.midiFor(a)-myPan.midiFor(b))
       .map(f=>"<span>"+(f===0?"D":f)+"</span>").join("");
+    const sug=sugOf(c);
     const b=document.createElement("button");
-    b.className="jchord"+(c.name===s.chord?" sel":"")+(c.lt?" lt":"");
-    b.innerHTML="<b>"+fmtChord(c.name)+"</b><span class='jcf'>"+flds+"</span>"
+    b.className="jchord"+(c.name===s.chord?" sel":"")+(c.lt?" lt":"")+(c.miss?" almost":"");
+    b.innerHTML=(sug?"<span class='sdot"+(sug==="soft"?" soft":"")+"'></span>":"")
+      +"<b>"+fmtChord(c.name)+"</b><span class='jcf'>"+flds+"</span>"
       +(c.miss?"<small class='miss'>no "+c.miss+"</small>":"");
     b.addEventListener("click",()=>{ s.chord=c.name; applyJam(); renderJamDlg(); });
     g.appendChild(b);
@@ -4780,12 +4821,7 @@ function boot(){
     $("jamInfo").classList.add("hidden");
     try{localStorage.setItem("hps.jamInfo","0")}catch(e){}
   });
-  $("jamRemove").addEventListener("click",()=>{
-    if(!jam) return;
-    if(jam.slots.length<=1){ toast("A jam needs at least one chord"); return; }
-    jam.slots.splice(jamEditSlot,1); jamEditSlot=-1;
-    $("jamDlg").close(); applyJam();
-  });
+  $("jamSugBtn").addEventListener("click",()=>{ jamSugOn=!jamSugOn; renderJamDlg(); });
   $("libClose").addEventListener("click",()=>$("libDlg").close());
   $("saveBtn").addEventListener("click",()=>{
     const l=savedPieces(); piece.title=$("title").value;
