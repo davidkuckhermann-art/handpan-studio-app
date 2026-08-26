@@ -360,7 +360,8 @@ body.phone #jamBtn,body.phone #jampanel{display:none !important}
 .gmini i.r{color:var(--hand-r)}
 .gmini i.g{font-size:11px}
 #grooveDlg{width:min(690px,94vw)}
-.jslot{position:relative}
+.jslot{position:relative; touch-action:none}
+.jslot.jdrag{opacity:.8; box-shadow:0 6px 18px -6px rgba(70,52,28,.4); z-index:5}
 .jslot .jx{
   position:absolute; top:-6px; right:-6px; width:17px; height:17px;
   display:grid; place-items:center; border-radius:50%; font-size:9px;
@@ -4249,9 +4250,49 @@ function renderJamPanel(){
   jam.slots.forEach((s,i)=>{
     const b=document.createElement("button");
     b.className="jslot"+(i===jamEditSlot?" sel":"");
+    b.dataset.i=i;
     b.innerHTML="<b>"+fmtChord(s.chord)+"</b><small>"
       +(s.bars>1?s.bars+" bars":"1 bar")+"</small>";
-    b.addEventListener("click",()=>openJamSlot(i));
+    b.addEventListener("click",()=>{
+      if(b.dataset.dragged){ delete b.dataset.dragged; return; }
+      openJamSlot(i);
+    });
+    // drag to reorder, touch or mouse (David, 26 Aug) — a real tap still
+    // opens the picker; movement past 7px turns the gesture into a drag
+    b.addEventListener("pointerdown",e=>{
+      if(e.target.classList.contains("jx")) return;
+      if(e.button!==undefined&&e.button>0) return;
+      const sx=e.clientX, sy=e.clientY; let dragging=false;
+      const cards=()=>[...prog.querySelectorAll(".jslot:not(.jadd)")];
+      const move=ev=>{
+        if(!dragging){
+          if(Math.abs(ev.clientX-sx)<7&&Math.abs(ev.clientY-sy)<7) return;
+          dragging=true; b.classList.add("jdrag");
+          try{ b.setPointerCapture(e.pointerId); }catch(x){}
+        }
+        ev.preventDefault();
+        // the card follows the pointer through the row, live
+        let before=null;
+        for(const o of cards()){ if(o===b) continue;
+          const r=o.getBoundingClientRect();
+          if(ev.clientX<r.left+r.width/2){ before=o; break; } }
+        if(before) prog.insertBefore(b,before);
+        else prog.insertBefore(b,prog.querySelector(".jadd"));
+      };
+      const up=()=>{
+        b.removeEventListener("pointermove",move);
+        b.removeEventListener("pointerup",up);
+        b.removeEventListener("pointercancel",up);
+        if(!dragging) return;
+        b.classList.remove("jdrag"); b.dataset.dragged="1";
+        jam.slots=cards().map(x=>jam.slots[+x.dataset.i]);
+        jamEditSlot=-1;
+        applyJam();
+      };
+      b.addEventListener("pointermove",move);
+      b.addEventListener("pointerup",up);
+      b.addEventListener("pointercancel",up);
+    });
     // quick-delete, top-right (David, 26 Aug)
     const x=document.createElement("span"); x.className="jx"; x.textContent="✕";
     x.title="Remove this chord";
