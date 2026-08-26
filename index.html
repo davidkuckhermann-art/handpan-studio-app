@@ -1107,6 +1107,19 @@ let swing=+(localStorage.getItem("hps.swing")||0);
 let playing=false, timer=null, raf=null, nextTime=0, nextPulse=0, lastPaint=-1, fired=[];
 let loopSec=null;   // {from,to} in pulses, or null = whole piece
 let editing=false, cursor=0, undoStack=[], viewSec=null, selAi=0;
+/* A table the student put on screen by hand: {ai,nm}. While it is set the
+   music does not steal the view, and a second click on the same chip is what
+   finally moves the playhead there (David, 26 Aug). */
+let viewPin=null;
+function pinView(ai,nm){ viewPin={ai,nm}; selAi=ai; viewSec=nm; cursor=0; }
+function goTo(from,to){          // the playhead really moves — the pin is spent
+  viewPin=null; pendingStart=null;
+  // seekToPulse covers all three worlds: playing (jump), stopped (set the
+  // start point and paint it) and follow (seek the video). jumpTo alone
+  // returns early when stopped, which would make a second click do nothing.
+  seekToPulse(from);
+  if(to!=null) mapShowSpan(from,to);
+}
 
 function effBpm(){ return halfSpeed?bpm/2:bpm; }
 function pulseDurOf(pi){ return 60/effBpm()/secOfPulse(pi).sub; }
@@ -1210,9 +1223,29 @@ function clearMarks(){
 }
 function paintPulse(pi){
   const cur=secOfPulse(pi);
-  if(cur){ selAi=cur.ai;
-    if(cur.name!==viewSec){ viewSec=cur.name; render(); } }    // the view follows the music
+  if(cur){
+    /* The view follows the music — UNLESS the student has picked a table by
+       hand (David, 26 Aug). A first click on a section or table only SHOWS
+       it; the playhead stays put and the music keeps going, so you can read
+       ahead. The pin is released when they act on it (a second click, or a
+       click into the notation) or when the music arrives there by itself. */
+    if(viewPin&&viewPin.nm===cur.name) viewPin=null;
+    if(!viewPin){
+      selAi=cur.ai;
+      if(cur.name!==viewSec){ viewSec=cur.name; render(); }
+    }
+  }
   document.querySelectorAll(".chip.playing").forEach(el=>el.classList.remove("playing"));
+  // while a hand-picked table is on screen, the marker would land on the wrong
+  // cells — the music is elsewhere — so leave the notation unmarked
+  if(cur&&viewPin&&cur.name!==viewSec){
+    clearSlotMarks();
+    document.querySelectorAll(".cnow").forEach(el=>el.classList.remove("cnow"));
+    const ch=document.querySelector('[data-ai="'+cur.ai+'"]')||document.querySelector('[data-ai-'+cur.ai+']');
+    if(ch) ch.classList.add("playing");
+    if(panOn) paintPan(pi);
+    return;
+  }
   if(cur){
     const rel=pi-cur.pulse, m=SM(piece,cur.name);
     const barI=Math.floor(rel/m.bp), relBar=rel%m.bp;
@@ -1845,6 +1878,7 @@ function videoSeek(t){ // move the recording — local element or the embed brid
 }
 function seekToPulse(p){ // click in the notation: the playhead goes there
   if(!C) C=compile(piece);
+  viewPin=null;          // acting on the table releases the hand-picked view
   if(follow&&piece.syncMap&&piece.syncMap.length>=2){
     const vt=invMap(p);
     if(vt!=null) videoSeek(vt);
@@ -2824,20 +2858,16 @@ function renderArr(){
     r.ais.forEach(ai=>c.setAttribute("data-ai-"+ai,""));
     c.dataset.ai=r.ais[0]; c.textContent=r.base;
     if(loopSec&&loopSec.from===r.from&&loopSec.to===r.to) c.classList.add("loop");
-    c.title=r===selRun?"Click again: loop this part":"Select — playback starts here";
+    /* First click SHOWS this part, second click goes there (David, 26 Aug).
+       Selecting no longer moves the playhead, so the music plays on while you
+       read somewhere else. (The old second-click-to-loop is gone: looping is
+       a drag across the notation now.) */
+    c.title=r===selRun?"Click again: play from here":"Show this part";
     c.addEventListener("click",()=>{
-      if(r===selRun){
-        if(!loopAllowed()&&!loopSec){ toast("No looping while the notation follows the video"); return; }
-        const wasOn=loopSec&&loopSec.from===r.from;
-        if(wasOn){ const pi=lastPaint>=0?lastPaint:r.from; loopSec=null;
-          if(playing){ nextPulse=pi; } }
-        else { loopSec={from:r.from,to:r.to}; jumpTo(r.from); }
-        toast(loopSec?("Looping "+r.base):"Looping off"); renderArr(); return;
-      }
-      selAi=r.ais[0]; viewSec=piece.arrangement[selAi]; loopSec=null; cursor=0;
-      pendingStart=null;
-      if(follow){ render(); seekToPulse(r.from); }   // following: the video goes there
-      else { jumpTo(r.from); render(); }
+      if(r===selRun){ render(); goTo(r.from,r.to); return; }   // already shown = 2nd click
+      // render FIRST: goTo paints the playhead, and a later render wipes it
+      pinView(r.ais[0],piece.arrangement[r.ais[0]]);
+      render();
       mapShowSpan(r.from,r.to);            // the timeline editor rides along
     });
     el.appendChild(c);
@@ -2849,16 +2879,19 @@ function renderArr(){
   $("subLab").style.display=tabs.length>1?"":"none";
   if(tabs.length>1) for(const nm of tabs){
     const c=document.createElement("button"); c.className="chip"+(nm===viewSec?" on":"");
-    c.textContent=baseOf(nm).num||nm; c.title=nm+" — playback starts here";
+    c.textContent=baseOf(nm).num||nm;
+    c.title=nm===viewSec?"Click again: play from here":"Show "+nm;
     c.addEventListener("click",()=>{
       const inRun=selRun.ais.find(ai=>piece.arrangement[ai]===nm);
       const anywhere=piece.arrangement.indexOf(nm);
-      selAi=inRun!==undefined?inRun:(anywhere>=0?anywhere:selAi);
-      viewSec=nm; cursor=0;
-      const en=arrEntries()[selAi];
-      pendingStart=null;
-      if(follow){ render(); seekToPulse(en.from); }
-      else { jumpTo(en.from); render(); }
+      const ai=inRun!==undefined?inRun:(anywhere>=0?anywhere:selAi);
+      if(nm===viewSec){                    // already shown = second click
+        selAi=ai; const en=arrEntries()[ai];
+        render(); goTo(en.from,en.to); return;   // render first, or it wipes the playhead
+      }
+      pinView(ai,nm);
+      render();
+      const en=arrEntries()[ai];
       mapShowSpan(en.from,en.to);          // the timeline editor rides along
     });
     tv.appendChild(c);
@@ -3035,7 +3068,7 @@ function loadPiece(p){
   piece=JSON.parse(JSON.stringify(p));
   C=compile(piece);
   if(!allPans().find(x=>x.id===piece.writtenFor)){ toast("Unknown pan '"+piece.writtenFor+"' — showing on D Kurd"); piece.writtenFor="d-kurd-9"; }
-  bpm=piece.tempo||72; loopSec=null; cursor=0; undoStack=[]; viewSec=piece.arrangement[0]; selAi=0; mapSel=null; mapHist=[];
+  bpm=piece.tempo||72; loopSec=null; cursor=0; undoStack=[]; viewSec=piece.arrangement[0]; selAi=0; viewPin=null; mapSel=null; mapHist=[];
   if((piece.syncMap||[]).length&&!videoSeen) setSyncMode(true);
   if(videoSeen)updateSyncUI(); loadOv();
   if(playing) stop();
@@ -3449,10 +3482,11 @@ function renderMiniArr(){
     c.className="chip"+(r===selRun?" here":"");
     c.textContent=r.base;
     let held=false,timer=null;
+    // same rule as the desktop chips: first tap shows it, second tap goes there
     const goto=()=>{
-      selAi=r.ais[0]; viewSec=piece.arrangement[selAi]; cursor=0; pendingStart=null;
-      if(follow){ render(); seekToPulse(r.from); }
-      else { jumpTo(r.from); render(); }
+      if(r===selRun){ render(); goTo(r.from,r.to); return; }
+      pinView(r.ais[0],piece.arrangement[r.ais[0]]);
+      render();
       mapShowSpan(r.from,r.to);
     };
     c.addEventListener("pointerdown",e=>{
@@ -3481,12 +3515,10 @@ function openTablePop(anchorEl,run){
       ev.stopPropagation();
       const inRun=run.ais.find(ai=>piece.arrangement[ai]===nm);
       const anywhere=piece.arrangement.indexOf(nm);
-      selAi=inRun!==undefined?inRun:(anywhere>=0?anywhere:selAi);
-      viewSec=nm; cursor=0; pendingStart=null;
-      const en=arrEntries()[selAi];
-      if(follow){ render(); seekToPulse(en.from); }
-      else { jumpTo(en.from); render(); }
-      mapShowSpan(en.from,en.to);
+      const ai=inRun!==undefined?inRun:(anywhere>=0?anywhere:selAi);
+      const en=arrEntries()[ai];
+      if(nm===viewSec){ selAi=ai; render(); goTo(en.from,en.to); }  // render first
+      else { pinView(ai,nm); mapShowSpan(en.from,en.to); render(); }
       closeTablePop();
     });
     pop.appendChild(b);
