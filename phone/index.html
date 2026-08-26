@@ -3789,6 +3789,21 @@ function followTick(t,p){                  // audio only — the marker is on rA
 }
 
 /* ---------------- rendering ---------------- */
+/* STACK ORDER INSIDE ONE SLOT (David, 26 Aug). Mind which way each skin
+   stacks: the TABLE's .slot is `column-reverse`, so its first event sits at
+   the BOTTOM, while the TAB's .tcol is a plain `column`, so its first event
+   sits at the TOP. Same wish, opposite comparators.
+   Table: lowest tone field at the bottom, climbing.
+   Tab:   the RIGHT hand's notes at the bottom, the LEFT hand's above them,
+          each group climbing — so the tab reads as two lanes.
+   The tokens are colours, not letters: stored "L" is the BLACK glyph, which
+   is the RIGHT hand (see handLetter()). Percussion and ghosts carry no field
+   and sit under the tones. */
+const stackField=ev=>ev.v==="field"?ev.f:-1;
+const sortStack=(evs,tab)=>evs.sort(tab
+  // the left hand's lane, then the right hand's; each lane climbing
+  ? (a,b)=>((a.hand==="R"?0:1)-(b.hand==="R"?0:1))||(stackField(a)-stackField(b))
+  : (a,b)=>stackField(a)-stackField(b));
 function glyphFor(ev,disp){
   if(ev.v==="ghost") return {t:"•",cls:"sym gh"};
   if(ev.v==="perc"){
@@ -4143,8 +4158,7 @@ function renderTableView(sc){
           const sl=document.createElement("div"); sl.className="slot"; sl.dataset.rel=rel;
           const _n=(byT.get(t)||[]).length;
           if(_n) sl.classList.add(_n===1?"n1":_n===2?"n2":"n3");
-          const evs=(byT.get(t)||[]).slice(0,4)
-            .sort((a,b)=>(a.v==="field"?a.f:-1)-(b.v==="field"?b.f:-1)); // higher field on top
+          const evs=sortStack((byT.get(t)||[]).slice(0,4),false);
           if(t===0&&bc){ sl.classList.add("haschord");
             const cl=document.createElement("div");
             cl.className="chordlab"+(bc.inf?" inf":"");
@@ -4381,8 +4395,7 @@ function renderTabView(sc){
           const t=b*m.sub+sN, rel=bi*m.bp+t;
           const col=document.createElement("div"); col.className="slot tcol"; col.dataset.rel=rel;
           col.addEventListener("pointerdown",()=>seekToPulse(viewFromPulse()+rel));
-          const evs=(byT.get(t)||[]).slice(0,4)
-            .sort((a,b)=>(a.v==="field"?a.f:-1)-(b.v==="field"?b.f:-1));
+          const evs=sortStack((byT.get(t)||[]).slice(0,4),true);
           const lane=(list,split)=>{
             const sy=document.createElement("span");
             sy.className="tsyms"+(split?" lane":"")
