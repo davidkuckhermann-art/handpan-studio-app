@@ -850,7 +850,10 @@ body.phone #scorefoot,body.phone #scorehead{display:none !important}
 body.phone #srcBadge{display:none !important}
 body.phone header #setBtn{display:none !important}
 @media (orientation:portrait){
-  body.phone #menuBtn{display:grid}
+  /* wider than a square icon button: it is the phone's one way into
+     everything that is not the music (David, 26 Aug) */
+  body.phone #menuBtn{display:grid; width:52px; border-radius:11px}
+  body.phone #menuBtn svg{width:21px; height:21px}
   body.phone .brand{display:none !important}
   body.phone header{gap:8px; margin-bottom:4px}
   body.phone #title{flex:1 1 auto; min-width:0; font-size:17px}
@@ -930,6 +933,17 @@ body.phone .gmini i{font-size:10px}
   body.phone #chordbox .sym{font-size:max(12px,calc(19px*var(--cs,1)))}
   body.phone #chordbox .chordrow{gap:11px}
   body.phone #pvwrap:not(.sides) #pvsvg{width:min(100%,260px)}
+  /* the stroke badges are what stand between the drawing and the card's edge,
+     so they run slim on the phone — every px they give back is drawing */
+  /* portrait: the drawing owns the width, the badges sit under it in one row */
+  body.phone #pvwrap.belowbadges{flex-direction:column; gap:9px}
+  body.phone #pvwrap.belowbadges #pvsvg{width:100%; max-width:none}
+  body.phone #pvwrap.belowbadges .pvrow{display:flex; gap:22px; justify-content:center}
+  body.phone #pvwrap.belowbadges .pvside{flex-direction:row; gap:9px}
+  body.phone #pvwrap.sides{gap:6px}
+  body.phone .pvside{gap:7px}
+  body.phone .pvside .lamp{width:32px; height:32px; font-size:13px}
+  body.phone .pvside .pvperc{width:32px; height:32px; font-size:13px}
   /* ---- jam on the phone: the track in the Chords slot ---- */
   body.phone #jampanel{margin:0; width:100%}
   body.phone #jamtrack{padding:7px 9px; gap:7px; align-items:flex-start;
@@ -1109,7 +1123,9 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <symbol id="is-half" viewBox="0 0 24 24"><text x="12" y="17.5" font-family="Figtree,sans-serif" font-size="15" font-weight="800" text-anchor="middle" fill="currentColor">&#189;</text></symbol>
   <symbol id="is-met" viewBox="0 0 24 24"><path d="M9.4 3.5h5.2L19 20.5H5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M17 6.5L8.5 15.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
   <symbol id="is-mark" viewBox="0 0 24 24"><rect x="2.5" y="7.5" width="19" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="9" y="7.5" width="6" height="9" fill="currentColor" opacity=".22"/><path d="M9 7.5v9M15 7.5v9" stroke="currentColor" stroke-width="1.5"/></symbol>
-  <symbol id="is-dots" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></g></symbol>
+  <!-- three LINES, not dots (David, 26 Aug) — the menu reads as a menu -->
+  <symbol id="is-dots" viewBox="0 0 24 24"><g fill="none" stroke="currentColor"
+    stroke-width="2.4" stroke-linecap="round"><path d="M4 6.5h16"/><path d="M4 12h16"/><path d="M4 17.5h16"/></g></symbol>
   <symbol id="is-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
 </svg>
 
@@ -3561,7 +3577,36 @@ function fitPortraitStack(sc,z,designW){
      leftover. The chords are four short labels — blown up to fill a phone they
      just look wrong (David, 26 Aug), so they grow only a little past the size
      they were designed at. */
-  let cz=panOn?1.9:1.2;
+  /* THE PAN IS SIZED, NOT ZOOMED (David, 26 Aug: "the pan view is currently
+     still not using well the available space"). Zooming the CARD could never
+     grow the drawing here: the card is already full width, so `availW/bw`
+     pinned the zoom at 1 while 69px of height sat unused beneath it, and the
+     drawing itself was capped at 236/260px by CSS. The picture is measured
+     against BOTH axes instead — the card's width minus the stroke badges, and
+     the leftover height minus the card's own chrome — and set in definite
+     pixels, which is also what WebKit needs to lay an svg out at all. */
+  if(panOn){
+    const svg=$("pvsvg");
+    if(svg){
+      const cs=getComputedStyle(box);
+      const padX=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight);
+      // only the FLANKING badges take width from the drawing
+      const sidesW=svg.closest("#pvwrap")&&svg.closest("#pvwrap").classList.contains("sides")
+        ? [...box.querySelectorAll(".pvside")].reduce((s,e)=>s+e.offsetWidth+12,0) : 0;
+      const wAvail=box.clientWidth-padX-sidesW;
+      /* an SVG element has NO offsetHeight — it is not an HTMLElement, and
+         reading it gives undefined, which turned the whole size into NaN and
+         the assignment into a silent no-op. Measure the rect. */
+      const chrome=box.offsetHeight-svg.getBoundingClientRect().height;
+      const hAvail=leftover-chrome;
+      const size=Math.max(150,Math.min(wAvail,hAvail,430));
+      svg.style.width=Math.floor(size)+"px";
+      svg.style.maxWidth="none";
+      svg.style.height="auto";
+    }
+    return;
+  }
+  let cz=1.2;
   if(bh>0&&leftover>0) cz=Math.min(cz,leftover/bh);
   if(bw>0&&availW>0)   cz=Math.min(cz,availW/bw);
   cz=Math.max(0.3,cz);
@@ -3879,8 +3924,21 @@ function renderPanPanelInner(){
     const nm=document.createElement("div"); nm.className="pvchord"; nm.id="pvchord";
     wrap.appendChild(nm);
   } else {
-    wrap.classList.add("sides");
-    wrap.append(left,pan.firstChild,right);
+    /* The badges FLANK the pan to save height — and on the phone in portrait
+       that trade is now backwards (David, 26 Aug: "the pan view is still not
+       using the available space"). A round drawing is limited by WIDTH, and
+       the flanking columns were eating 93px of it while 117px of height sat
+       empty under the card. In portrait they go underneath instead, and the
+       picture takes the whole card. Landscape and the desktop keep the sides. */
+    if(PHONE&&!matchMedia("(orientation:landscape)").matches){
+      wrap.classList.add("belowbadges");
+      const row=document.createElement("div"); row.className="pvrow";
+      row.append(left,right);
+      wrap.append(pan.firstChild,row);
+    } else {
+      wrap.classList.add("sides");
+      wrap.append(left,pan.firstChild,right);
+    }
   }
   box.appendChild(wrap);
   const tapField=f=>{
@@ -6708,6 +6766,8 @@ function placePhoneControls(){
   }
   $("halfBtn").classList.toggle("on",halfSpeed);
   $("metBtn").classList.toggle("on",metOn);
+  // the pan's badge layout is orientation-specific too — rebuild it on rotate
+  if(panOn) renderPanPanel();
 }
 if(PHONE){
   placePhoneControls();
