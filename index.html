@@ -323,6 +323,13 @@ body:not(.phone) #chordbox{padding:14px 22px 16px}
   border:1px solid var(--rule); border-radius:5px; padding:0 4px; line-height:1.5}
 .jchord .miss{font-size:10px; font-weight:600; color:var(--ink3); font-style:italic}
 .jchord.sel{border-color:var(--dixie); background:var(--dixie-soft); box-shadow:0 0 0 1px var(--dixie)}
+/* "nice, but less obvious" chords sit back a little; the obvious family
+   reads at full strength (David, 26 Aug) */
+.jchord.lt{background:var(--card2)}
+.jchord.lt b{color:var(--ink2); font-weight:700}
+.jchord.lt .jcf span{opacity:.75}
+.jchord.lt.sel{background:var(--dixie-soft)}
+.jslot.playing{border-color:var(--dixie); background:var(--dixie-soft)}
 body.jam #authortools{display:none !important}
 /* a jam is ONE section — its arrangement pill in the frame's footer and the
    arrangement card are pure noise ("what does the jam button next to
@@ -1703,6 +1710,7 @@ function paintPulse(pi){
     }
   }
   document.querySelectorAll(".chip.playing").forEach(el=>el.classList.remove("playing"));
+  if(jamOn) jamPaintChord(pi);   // the sounding chord's card lights up
   // while a hand-picked table is on screen, the marker would land on the wrong
   // cells — the music is elsewhere — so leave the notation unmarked
   if(cur&&viewPin&&cur.name!==viewSec){
@@ -4092,19 +4100,23 @@ function jamChordDefs(){
     for(const [q,t3,t5] of [["maj",M3,P5],["min",m3,P5],["dim",m3,d5]]){
       const h3=pcs.has(t3), h5=pcs.has(t5);
       if(!h3&&!h5) continue;
+      // `lt` = "nice, but less obvious" (David, 26 Aug): the pan's obvious
+      // family is its full maj/min triads; dim, almosts and every extension
+      // are drawn lighter in the picker
       out.push({name:PCN[r]+q,group:"Triads",root:r,
         degs:{"1":r,"3":h3?t3:r,"5":h5?t5:r},
-        miss:h3&&h5?null:(h3?"5th":"3rd")});
+        miss:h3&&h5?null:(h3?"5th":"3rd"),
+        lt:q==="dim"||!(h3&&h5)});
     }
     for(const [q,t3,t5,t7] of [["maj7",M3,P5,M7],["7",M3,P5,m7],
                                ["min7",m3,P5,m7],["min7♭5",m3,d5,m7]])
       if(has(t3,t5,t7))
         out.push({name:PCN[r]+q,group:"7th chords",root:r,
-          degs:{"1":r,"3":t3,"5":t7},miss:null});
+          degs:{"1":r,"3":t3,"5":t7},miss:null,lt:true});
     for(const [q,t3,t5,t7] of [["maj9",M3,P5,M7],["9",M3,P5,m7],["min9",m3,P5,m7]])
       if(has(t3,t5,t7,N9))
         out.push({name:PCN[r]+q,group:"9th chords",root:r,
-          degs:{"1":r,"3":t3,"5":N9},miss:null});
+          degs:{"1":r,"3":t3,"5":N9},miss:null,lt:true});
   }
   const gi={"Triads":0,"7th chords":1,"9th chords":2};
   out.sort((a,b)=>gi[a.group]-gi[b.group]||((a.miss?1:0)-(b.miss?1:0))
@@ -4238,6 +4250,21 @@ function applyJam(){
   else loadPiece(built);
   renderJamPanel(); saveJamLS();
 }
+// which chord card is sounding at this pulse — spans follow the slots' bars
+function jamPaintChord(pi){
+  const pat=JAMPATS.find(p=>p.id===jam.patternId)||JAMPATS[0];
+  const bp=pat.meter[0]*pat.sub;
+  let from=0, idx=-1;
+  for(let i=0;i<jam.slots.length;i++){
+    const to=from+(jam.slots[i].bars||1)*bp;
+    if(pi>=from&&pi<to){ idx=i; break; }
+    from=to;
+  }
+  document.querySelectorAll("#jamProg .jslot.playing").forEach(el=>{
+    if(+el.dataset.i!==idx) el.classList.remove("playing"); });
+  if(idx>=0){ const el=document.querySelector('#jamProg .jslot[data-i="'+idx+'"]');
+    if(el) el.classList.add("playing"); }
+}
 function renderJamPanel(){
   const prog=$("jamProg"); prog.innerHTML="";
   jam.slots.forEach((s,i)=>{
@@ -4341,7 +4368,7 @@ function renderJamDlg(){
       .sort((a,b)=>myPan.midiFor(a)-myPan.midiFor(b))
       .map(f=>"<span>"+(f===0?"D":f)+"</span>").join("");
     const b=document.createElement("button");
-    b.className="jchord"+(c.name===s.chord?" sel":"");
+    b.className="jchord"+(c.name===s.chord?" sel":"")+(c.lt?" lt":"");
     b.innerHTML="<b>"+fmtChord(c.name)+"</b><span class='jcf'>"+flds+"</span>"
       +(c.miss?"<small class='miss'>no "+c.miss+"</small>":"");
     b.addEventListener("click",()=>{ s.chord=c.name; applyJam(); renderJamDlg(); });
