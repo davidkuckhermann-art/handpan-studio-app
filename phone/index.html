@@ -325,19 +325,44 @@ body.phone #playBtn::after{content:""; position:absolute; inset:-7px; border-rad
    26 Aug). It lives inside #score so it scales with the notation, and it is
    pointer-transparent — the gesture layer hit-tests its edges itself. Drag
    either handle to grow or shrink the loop by rows. */
+#miniarr{display:none}
+#miniarr .chip{font-size:12.5px; padding:4px 11px; font-weight:700}
+#miniarr .chip.here{background:var(--ink); color:var(--paper); border-color:var(--ink)}
+/* the tables of a held section, popped above the strip */
+#tablepop{position:fixed; z-index:70; display:flex; gap:5px; padding:7px 8px;
+  background:var(--card); border:1px solid var(--rule); border-radius:12px; box-shadow:var(--shadow)}
+#tablepop .chip{font-size:14px; padding:6px 13px}
 #loopframe{position:absolute; left:0; top:0; z-index:3; pointer-events:none; overflow:visible}
 #loopframe polygon{fill:rgba(229,147,21,.06); stroke:var(--dixie); stroke-width:2.5;
   stroke-linejoin:round}
 /* landscape = the notation full-screen, fitted to the screen: no scrolling at
    all, phoneFit() scales the score to the height that's left (David, 26 Aug) */
 @media (orientation:landscape){
-  html.phone,body.phone{height:100%; overflow:hidden}
+  /* hard lock: the landscape view is the whole screen and nothing scrolls or
+     rubber-bands off it (David, 26 Aug). position:fixed pins the body to the
+     viewport, so even a stray overflow can't drag the layout around. */
+  html.phone{height:100%; overflow:hidden; overscroll-behavior:none}
+  body.phone{position:fixed; inset:0; width:100%; height:100%;
+    overflow:hidden; overscroll-behavior:none}
   body.phone header+.row,body.phone #belowrow{display:none}
   body.phone header{margin-bottom:6px}
   body.phone #transport{margin:6px 0 0}
   /* landscape is for playing along, so the transport keeps only what you
      touch mid-tune — the setup controls (and the toggles for the cards that
      are hidden here anyway) would wrap to a second row and eat the notation */
+  /* every pixel here goes straight into the notation: phoneFit turns leftover
+     height into zoom, and the card widens to match (David: "a bit bigger") */
+  body.phone{padding-top:calc(4px + env(safe-area-inset-top));
+             padding-bottom:calc(6px + env(safe-area-inset-bottom))}
+  body.phone header{margin-bottom:2px}
+  body.phone header .ctl{padding:4px 9px; font-size:12.5px}
+  body.phone #title{font-size:16px}
+  body.phone #transport{margin:3px 0 0}
+  body.phone #transport .ctl{padding:5px 9px}
+  body.phone #transport .hint{display:none}
+  /* the arrangement in miniature, bottom right, one row (David, 26 Aug):
+     the sections; hold one for its tables */
+  body.phone #miniarr{display:inline-flex; gap:4px; margin-left:auto; align-items:center}
   body.phone #transport .ctlgroup,body.phone #markSel,body.phone #countSel,
   body.phone #rowsCtl,body.phone #handsBtn,body.phone #takBtn,
   body.phone #colCtl,body.phone #colReset,
@@ -407,7 +432,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <button class="play" id="playBtn" aria-label="Play">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.6l13 7.4-13 7.4z"/></svg>
   </button>
-  <label class="ctl"><b><input type="number" id="bpm" min="30" max="200" step="1" style="border:none;width:44px;padding:0;font-weight:700;background:none"></b>BPM</label>
+  <label class="ctl" id="bpmCtl" title="Swipe up or down to change the tempo"><b><input type="number" id="bpm" min="30" max="200" step="1" style="border:none;width:44px;padding:0;font-weight:700;background:none"></b>BPM</label>
   <button class="ctl" id="countBtn">Count-in</button>
   <button class="ctl" id="halfBtn">Half speed</button>
   <span class="ctlgroup" role="group" aria-label="Panels">
@@ -434,6 +459,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <button class="ctl" id="colReset" title="Hand colours back to black + green">↺</button>
   <span class="spacer"></span>
   <span class="hint">Space bar: play / pause</span>
+  <span id="miniarr" title="Tap a section — hold one for its tables"></span>
 </div>
 
 <div id="syncbar" class="hidden" style="background:var(--card2);border:1px solid var(--rule);border-radius:12px;padding:10px 14px 12px;margin-top:10px">
@@ -736,6 +762,15 @@ function setWet(p){ const w=p/100; wet.gain.value=w*1.1; dry.gain.value=1-w*.35;
 const IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
 const FRAMED_SAFARI=window!==window.top && /apple/i.test(navigator.vendor||"");
 const PHONE=document.body.classList.contains("phone");   // set at body-open
+/* Master volume — the notation's up/down swipe drives this on the phone
+   (David, 26 Aug: tempo moved to the BPM button). Remembered per browser. */
+let vol=(()=>{ try{ const v=parseFloat(localStorage.getItem("hps.vol"));
+  return isFinite(v)?Math.min(1,Math.max(0,v)):.9; }catch(e){ return .9; } })();
+function setVol(v){
+  vol=Math.min(1,Math.max(0,v));
+  if(master) master.gain.value=vol;
+  try{ localStorage.setItem("hps.vol",vol.toFixed(3)); }catch(e){}
+}
 let iosSink=null;
 /* iOS audio, the whole trap in one place (David's phone, 26 Aug 2026):
    - Plain WebAudio obeys the hardware RINGER SWITCH — silent phone, silent app.
@@ -771,7 +806,7 @@ function ensureCtx(){
   if(ctx) return;
   setAudioSession();          // before the context exists, so iOS picks the media route
   ctx=new (window.AudioContext||window.webkitAudioContext)({latencyHint:"playback"});
-  master=ctx.createGain(); master.gain.value=.9; master.connect(ctx.destination);
+  master=ctx.createGain(); master.gain.value=vol; master.connect(ctx.destination);
   limiter=ctx.createWaveShaper(); limiter.curve=softClipCurve(); limiter.oversample="2x";
   limiter.connect(master);
   dry=ctx.createGain(); wet=ctx.createGain(); dry.connect(limiter); wet.connect(limiter);
@@ -2703,6 +2738,7 @@ function renderArr(){
     });
     el.appendChild(c);
   });
+  renderMiniArr();               // the phone's one-row copy, bottom right
   // Table chips: the numbered tables inside the selected run's section
   const tabs=Object.keys(piece.sections).filter(n=>baseOf(n).base===selRun.base);
   const tv=$("subChips"); tv.innerHTML="";
@@ -3186,13 +3222,13 @@ function setTempo(v){
    real tap is passed on as a seek. */
 function phoneTouchNav(){
   const wrap=$("scorewrap"), land=()=>matchMedia("(orientation:landscape)").matches;
-  const TAP=12, BPM_PER_PX=1/4, DBL=340;
-  let sx=0,sy=0,id=null,mode=null,bpm0=72,lastTap=0,lastX=0,lastY=0;
+  const TAP=12, VOL_PX=220, DBL=340;     // a 220px swipe covers silent → full
+  let sx=0,sy=0,id=null,mode=null,vol0=vol,lastTap=0,lastX=0,lastY=0;
   let anchor=null,dragged=false,clearIfNoDrag=false;
   wrap.addEventListener("pointerdown",e=>{
     if(e.pointerType==="mouse"&&e.button!==0) return;
     if(e.target.closest&&e.target.closest("#playBtn")) return;   // the play button keeps its own tap
-    id=e.pointerId; sx=e.clientX; sy=e.clientY; mode=null; bpm0=bpm;
+    id=e.pointerId; sx=e.clientX; sy=e.clientY; mode=null; vol0=vol;
     anchor=null; dragged=false; clearIfNoDrag=false;
     const now=performance.now();
     if(now-lastTap<DBL&&Math.abs(e.clientX-lastX)<28&&Math.abs(e.clientY-lastY)<28){
@@ -3219,11 +3255,11 @@ function phoneTouchNav(){
       e.preventDefault();
       return;
     }
-    if(!land()) return;                  // tempo swipe is landscape-only
-    if(!mode&&Math.abs(dy)>=TAP&&Math.abs(dy)>Math.abs(dx)*1.4) mode="tempo";
-    if(mode==="tempo"){                  // up is faster: screen y grows downward
-      setTempo(bpm0-dy*BPM_PER_PX);
-      toast(bpm+" BPM");
+    if(!land()) return;                  // the volume swipe is landscape-only
+    if(!mode&&Math.abs(dy)>=TAP&&Math.abs(dy)>Math.abs(dx)*1.4) mode="vol";
+    if(mode==="vol"){                    // up is louder: screen y grows downward
+      setVol(vol0-dy/VOL_PX);
+      toast("Volume "+Math.round(vol*100)+"%");
       e.preventDefault();
     }
   },true);
@@ -3236,7 +3272,7 @@ function phoneTouchNav(){
       else { reanchorLoop(); toast(loopBarsLabel()); }
       return;
     }
-    if(mode==="tempo"){ setTempo(bpm0-dy*BPM_PER_PX); toast(bpm+" BPM"); return; }
+    if(mode==="vol"){ setVol(vol0-dy/VOL_PX); toast("Volume "+Math.round(vol*100)+"%"); return; }
     if(Math.abs(dx)>=TAP||Math.abs(dy)>=TAP) return;
     lastTap=performance.now(); lastX=e.clientX; lastY=e.clientY;
     const el=document.elementFromPoint(e.clientX,e.clientY);
@@ -3252,13 +3288,12 @@ function phoneTouchNav(){
    slots seek on pointerdown — the instant a drag begins. */
 function mouseLoopNav(){
   const wrap=$("scorewrap"), TAP=5;
-  let id=null,sx=0,sy=0,anchor=null,moved=false,el0=null;
+  let id=null,sx=0,sy=0,anchor=null,moved=false,dragEnded=0;
   wrap.addEventListener("pointerdown",e=>{
     if(editing||e.pointerType==="touch"||e.button!==0) return;
     if(e.target.closest&&e.target.closest("#playBtn")) return;
     const c=cellAtPoint(e.clientX,e.clientY); if(!c) return;
     id=e.pointerId; sx=e.clientX; sy=e.clientY; anchor=c; moved=false;
-    el0=e.target.closest&&e.target.closest("[data-rel]");
     e.stopPropagation();            // the slot's own seek waits for pointerup
     e.preventDefault();
   },true);
@@ -3276,17 +3311,118 @@ function mouseLoopNav(){
   wrap.addEventListener("pointerup",e=>{
     if(id===null||e.pointerId!==id){ id=null; return; }
     id=null;
-    if(moved){ reanchorLoop(); toast(loopBarsLabel()); return; }
-    if(el0) seekToPulse(viewFromPulse()+(+el0.dataset.rel));   // a plain click: go there
+    if(moved){ dragEnded=performance.now(); reanchorLoop(); toast(loopBarsLabel()); return; }
+    const el=document.elementFromPoint(e.clientX,e.clientY);   // a plain click: go there
+    const sl=el&&el.closest&&el.closest("[data-rel]");
+    if(sl) seekToPulse(viewFromPulse()+(+sl.dataset.rel));
   },true);
   wrap.addEventListener("pointercancel",()=>{ id=null; },true);
   wrap.addEventListener("dblclick",e=>{
     if(editing||!loopSec) return;
+    // A drag's release pairs with the click before it into a dblclick, which
+    // would clear the loop the drag just made (David, 26 Aug: "it deselects
+    // immediately"). Only a real click-click, well after any drag, clears.
+    if(performance.now()-dragEnded<600) return;
     const c=cellAtPoint(e.clientX,e.clientY); if(!c) return;
     if(c.from>=loopSec.from&&c.to<=loopSec.to){
       loopSec=null; paintLoopFrame(); reanchorLoop(); toast("Loop off");
     }
   });
+}
+/* Tempo lives on the BPM button now (David, 26 Aug): swipe it up or down.
+   Works in both orientations — preventDefault keeps the page from scrolling
+   under the finger, and a plain tap still reaches the number field. */
+function phoneTempoPad(){
+  const pad=$("bpmCtl"); if(!pad) return;
+  const BPM_PER_PX=1/4;
+  let id=null,sy=0,bpm0=72,moved=false;
+  pad.addEventListener("pointerdown",e=>{
+    if(e.pointerType==="mouse"&&e.button!==0) return;
+    id=e.pointerId; sy=e.clientY; bpm0=bpm; moved=false;
+  });
+  pad.addEventListener("pointermove",e=>{
+    if(id===null||e.pointerId!==id) return;
+    const dy=e.clientY-sy;
+    if(!moved&&Math.abs(dy)<6) return;
+    moved=true;
+    setTempo(bpm0-dy*BPM_PER_PX);        // up is faster
+    toast(bpm+" BPM");
+    e.preventDefault();
+  });
+  const end=e=>{
+    if(id===null||(e&&e.pointerId!==id)) { id=null; return; }
+    id=null;
+    if(!moved) return;
+    if(e&&e.clientY!=null) setTempo(bpm0-(e.clientY-sy)*BPM_PER_PX);  // the release position counts
+    toast(bpm+" BPM"); $("bpm").blur();
+  };
+  pad.addEventListener("pointerup",end);
+  pad.addEventListener("pointercancel",end);
+}
+/* The arrangement in miniature, bottom right, one row (David, 26 Aug):
+   the SECTIONS only — hold one to pick a table inside it. */
+function renderMiniArr(){
+  const el=$("miniarr"); if(!el||!PHONE) return;
+  el.innerHTML=""; closeTablePop();
+  if(editing) return;
+  const runs=arrRuns(), selRun=runs.find(r=>r.ais.includes(selAi))||runs[0];
+  runs.forEach(r=>{
+    const c=document.createElement("button");
+    c.className="chip"+(r===selRun?" here":"");
+    c.textContent=r.base;
+    let held=false,timer=null;
+    const goto=()=>{
+      selAi=r.ais[0]; viewSec=piece.arrangement[selAi]; cursor=0; pendingStart=null;
+      if(follow){ render(); seekToPulse(r.from); }
+      else { jumpTo(r.from); render(); }
+      mapShowSpan(r.from,r.to);
+    };
+    c.addEventListener("pointerdown",e=>{
+      held=false;
+      timer=setTimeout(()=>{ held=true; openTablePop(c,r); },480);
+      e.stopPropagation();
+    });
+    const cancel=()=>{ clearTimeout(timer); };
+    c.addEventListener("pointerup",e=>{ cancel(); if(!held){ goto(); } e.stopPropagation(); });
+    c.addEventListener("pointercancel",cancel);
+    c.addEventListener("pointerleave",cancel);
+    el.appendChild(c);
+  });
+}
+function closeTablePop(){ const p=document.getElementById("tablepop"); if(p) p.remove(); }
+function openTablePop(anchorEl,run){
+  closeTablePop();
+  const tabs=Object.keys(piece.sections).filter(n=>baseOf(n).base===run.base);
+  if(tabs.length<2){ toast(run.base+" has one table"); return; }
+  const pop=document.createElement("div"); pop.id="tablepop";
+  tabs.forEach(nm=>{
+    const b=document.createElement("button");
+    b.className="chip"+(nm===viewSec?" on":"");
+    b.textContent=baseOf(nm).num||nm;
+    b.addEventListener("click",ev=>{
+      ev.stopPropagation();
+      const inRun=run.ais.find(ai=>piece.arrangement[ai]===nm);
+      const anywhere=piece.arrangement.indexOf(nm);
+      selAi=inRun!==undefined?inRun:(anywhere>=0?anywhere:selAi);
+      viewSec=nm; cursor=0; pendingStart=null;
+      const en=arrEntries()[selAi];
+      if(follow){ render(); seekToPulse(en.from); }
+      else { jumpTo(en.from); render(); }
+      mapShowSpan(en.from,en.to);
+      closeTablePop();
+    });
+    pop.appendChild(b);
+  });
+  document.body.appendChild(pop);
+  const r=anchorEl.getBoundingClientRect(), pr=pop.getBoundingClientRect();
+  pop.style.left=Math.max(6,Math.min(innerWidth-pr.width-6,r.left+r.width/2-pr.width/2))+"px";
+  pop.style.top=Math.max(6,r.top-pr.height-8)+"px";
+  setTimeout(()=>document.addEventListener("pointerdown",onceAway,true),0);
+}
+function onceAway(e){
+  const p=document.getElementById("tablepop");
+  if(p&&!p.contains(e.target)){ closeTablePop(); document.removeEventListener("pointerdown",onceAway,true); }
+  else if(!p) document.removeEventListener("pointerdown",onceAway,true);
 }
 function loopBarsLabel(){
   if(!loopSec) return "Loop off";
@@ -3299,8 +3435,10 @@ boot();
 if(PHONE){ // the play button lives inside the notation frame here (David, 26 Aug)
   $("scorewrap").appendChild($("playBtn"));
   phoneTouchNav();
+  phoneTempoPad();
+  renderMiniArr();
   phoneFit();
-}
+} else mouseLoopNav();   // the mouse draws loops the same way the finger does
 if(PHONE){ // refit on rotation / viewport changes (debounced — zoom relayouts)
   let pfT; const pf=()=>{ clearTimeout(pfT); pfT=setTimeout(phoneFit,80); };
   window.addEventListener("resize",pf);
