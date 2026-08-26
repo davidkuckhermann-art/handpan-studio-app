@@ -5802,16 +5802,35 @@ function boot(){
      and shrink again on change or blur. Nothing else has to know — the
      values, the handlers and `__new` are untouched. */
   const panLong=p=>p.name+"  —  "+pc(p.ding)+" / "+p.fields.map(pc).join(" ");
+  /* A select is naturally as wide as its LONGEST option, so the row was
+     carrying "C Harmonic Minor 9" even while showing "D Kurd 9". The closed
+     control is measured to the SELECTED name instead (David, 26 Aug: "it only
+     has to show the full name") — same mirror trick as fitTitle, and re-run
+     after the webfonts land, because the first measurement uses fallback
+     metrics. The open list is unaffected: it sizes to its own contents. */
+  function fitPanSel(){
+    const o=sel.options[sel.selectedIndex]; if(!o) return;
+    let m=$("panSelMirror");
+    if(!m){ m=document.createElement("span"); m.id="panSelMirror";
+      m.style.cssText="position:absolute;visibility:hidden;white-space:pre;left:-9999px;top:0";
+      document.body.appendChild(m); }
+    const cs=getComputedStyle(sel);
+    m.style.font=cs.font; m.style.letterSpacing=cs.letterSpacing;
+    m.textContent=o.textContent;
+    // text + the control's own padding, borders and the arrow it draws itself
+    sel.style.width=Math.ceil(m.offsetWidth+46)+"px";
+  }
   function panFaces(long){
     // hold the closed width while the list is open, or the control itself
     // jumps wider the instant the long options land in it
-    if(long&&!sel.style.width) sel.style.width=sel.getBoundingClientRect().width+"px";
+    const held=sel.style.width;
     for(const o of sel.options){
       if(o.value==="__new") continue;
       const p=panById(o.value); if(!p) continue;
       o.textContent=long?panLong(p):p.name;
     }
-    if(!long) sel.style.width="";
+    if(long) sel.style.width=held;   // keep the measured, closed width
+    else fitPanSel();
   }
   function fillPans(){ sel.innerHTML="";
     for(const p of allPans()){ const o=document.createElement("option");
@@ -5822,16 +5841,17 @@ function boot(){
     const add=document.createElement("option");
     add.value="__new"; add.textContent="＋ My own pan…";
     sel.appendChild(add);
-    sel.value=myPanId; }
+    sel.value=myPanId; fitPanSel(); }
   fillPans();
+  try{ document.fonts.ready.then(fitPanSel); }catch(e){}
   sel.addEventListener("pointerdown",()=>panFaces(true));
   sel.addEventListener("keydown",e=>{
     if(e.key===" "||e.key==="Enter"||e.key.indexOf("Arrow")===0) panFaces(true); });
   sel.addEventListener("blur",()=>panFaces(false));
   sel.addEventListener("change",()=>{
     panFaces(false);
-    if(sel.value==="__new"){ sel.value=myPanId; openDlg($("panDlg")); return; }
-    myPanId=sel.value; refresh(); });
+    if(sel.value==="__new"){ sel.value=myPanId; fitPanSel(); openDlg($("panDlg")); return; }
+    myPanId=sel.value; fitPanSel(); refresh(); });
   $("modePos").addEventListener("click",()=>setMode("pos"));
   $("modeTrans").addEventListener("click",()=>setMode("trans"));
   setView(view,{skipRender:true});   // body class + pill state before the first render
