@@ -359,8 +359,14 @@ body.phone #playBtn::after{content:""; position:absolute; inset:-7px; border-rad
      are hidden here anyway) would wrap to a second row and eat the notation */
   /* every pixel here goes straight into the notation: phoneFit turns leftover
      height into zoom, and the card widens to match (David: "a bit bigger") */
+  /* Half the home-indicator inset, not all of it: the bottom chrome is what
+     limits a screen-centred card (the notation can only be as tall as twice
+     the smaller gap from the screen's middle), so every px here costs two px
+     of notation. The bottom bar still clears the indicator, and its middle —
+     where the indicator actually sits — is empty between BPM and the
+     arrangement chips. */
   body.phone{padding-top:calc(4px + env(safe-area-inset-top));
-             padding-bottom:calc(6px + env(safe-area-inset-bottom))}
+             padding-bottom:calc(6px + env(safe-area-inset-bottom) / 2)}
   /* the notation sits CENTERED in whatever height is left between the header
      and the bottom bar (David, 26 Aug) — the wrapper takes the leftover space
      and centres the card in it, so any slack is split evenly above and below */
@@ -2292,19 +2298,24 @@ function phoneFit(){
      and w = W/z then fills the width exactly. Bars simply get wider, and the
      glyphs come out BIGGER than a width-only fit. */
   if(land){
-    // the wrapper is a flex item filling the space between header and bottom
-    // bar, so its own height IS the budget — no arithmetic over the chrome
-    // leave a few px so the card's own border and shadow aren't clipped by
-    // the wrapper's overflow:hidden
-    const availH=wrap.clientHeight-8;
+    /* Centred ON THE SCREEN, not merely inside its band (David, 26 Aug — he
+       had to say it twice). The chrome is lopsided: the header takes ~33px at
+       the top while the bottom bar plus the home-indicator safe area takes
+       ~60, so a card that simply fills the band sits above the screen's true
+       middle. The card is therefore capped at the tallest size that can still
+       be centred — twice the SMALLER distance from the screen's middle to the
+       band's edges. It costs a few px of height and buys the symmetry. */
+    wrap.style.paddingTop="";
+    const wr=wrap.getBoundingClientRect(), mid=innerHeight/2;
+    const band=wrap.clientHeight-8;    // -8 so the card's border isn't clipped
+    const centrable=2*Math.min(mid-wr.top,wr.bottom-mid)-8;
+    const availH=Math.max(40,Math.min(band,centrable));
     sc.style.width=W+"px";             // measure the height at full width
-    if(availH>0){
-      for(let i=0;i<2;i++){            // the narrower card can reflow slightly
-        const natH=sc.scrollHeight;
-        if(natH<=0) break;
-        z=Math.max(0.35,Math.min(2.4,availH/natH));
-        sc.style.width=(W/z)+"px";
-      }
+    for(let i=0;i<2;i++){              // the narrower card can reflow slightly
+      const natH=sc.scrollHeight;
+      if(natH<=0) break;
+      z=Math.max(0.35,Math.min(2.4,availH/natH));
+      sc.style.width=(W/z)+"px";
     }
   }
   sc.style.zoom=z;
@@ -2315,8 +2326,10 @@ function phoneFit(){
      unzoomed size (David, 26 Aug: "still not centered vertically"). */
   wrap.style.paddingTop="";
   if(land){
-    const slack=wrap.clientHeight-sc.getBoundingClientRect().height;
-    if(slack>1) wrap.style.paddingTop=(slack/2)+"px";
+    // place it so the card's own middle sits on the SCREEN's middle
+    const h=sc.getBoundingClientRect().height, wr=wrap.getBoundingClientRect();
+    const want=(innerHeight/2-h/2)-wr.top;
+    if(want>1) wrap.style.paddingTop=want+"px";
   }
   // anchor the play button to the CARD's top-right, not the wrapper's — when
   // the card is narrower than the screen the two are far apart
@@ -3346,6 +3359,7 @@ function mouseLoopNav(){
   wrap.addEventListener("pointerdown",e=>{
     if(editing||e.pointerType==="touch"||e.button!==0) return;
     if(e.target.closest&&e.target.closest("#playBtn")) return;
+    if(!loopAllowed()) return;      // follow mode owns the clock — no loops there
     const c=cellAtPoint(e.clientX,e.clientY); if(!c) return;
     id=e.pointerId; sx=e.clientX; sy=e.clientY; anchor=c; moved=false;
     e.stopPropagation();            // the slot's own seek waits for pointerup
@@ -3510,7 +3524,13 @@ if(PHONE){ // the play button lives inside the notation frame here (David, 26 Au
 if(PHONE){ // refit on rotation / viewport changes (debounced — zoom relayouts)
   let pfT; const pf=()=>{ clearTimeout(pfT); pfT=setTimeout(phoneFit,80); };
   window.addEventListener("resize",pf);
-  window.addEventListener("orientationchange",pf);
+  // iOS reports the OLD dimensions during orientationchange, so fit again after
+  window.addEventListener("orientationchange",()=>{ pf(); setTimeout(phoneFit,260); });
+  // belt and braces: neither event is reliable in a standalone iOS web app, and
+  // a missed one leaves the landscape sizing applied to a portrait screen
+  const mq=matchMedia("(orientation:landscape)");
+  if(mq.addEventListener) mq.addEventListener("change",pf); else if(mq.addListener) mq.addListener(pf);
+  if(window.visualViewport) visualViewport.addEventListener("resize",pf);
 }
 if("serviceWorker" in navigator && /github\.io$/.test(location.hostname))
   navigator.serviceWorker.register("../sw.js").catch(()=>{});
