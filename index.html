@@ -279,8 +279,13 @@ dialog textarea{width:100%; min-height:70px; font-family:ui-monospace,monospace;
    The score renders at a fixed design width and the whole card is zoomed to
    the screen (David, 26 Aug: shrink to fit; a reflow option comes later).
    All cards full width, stacked; the page never scrolls sideways. */
-body.phone{padding:10px 10px calc(30px + env(safe-area-inset-bottom))}
+/* the Dynamic Island eats the left or right edge in landscape, and the home
+   indicator the bottom — every side is an inset (David, 26 Aug) */
+body.phone{padding:calc(10px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right))
+           calc(30px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left))}
 body.phone #syncOpen,body.phone #editBtn{display:none !important}
+#sndBtn{display:none}
+body.phone #sndBtn{display:inline-flex}   /* the phone's only way to see the audio route */
 body.phone #scorewrap{overflow-x:hidden}
 body.phone #score{min-width:0; width:540px}
 body.phone.design-tab #score{width:700px}
@@ -292,17 +297,44 @@ body.phone #panwrap{margin:0; width:100%}
 body.phone #panwrap .chordframe{display:block}
 body.phone #pvsvg{margin:0 auto}
 body.phone button,body.phone select,body.phone .chip{touch-action:manipulation}
-/* landscape = the notation full-screen: just the top bar, score, transport */
+/* the play button rides inside the notation frame, top right (David, 26 Aug).
+   It sits in #scorewrap, NOT in the zoomed #score, so it keeps its real size
+   at any zoom; phoneFit() clears a band at the top of the card for it. */
+body.phone #playBtn{position:absolute; top:6px; right:6px; z-index:4; width:30px; height:30px;
+  box-shadow:0 0 0 3px var(--sc-bg), 0 2px 8px -2px rgba(229,147,21,.7)}
+body.phone #playBtn svg{width:14px; height:14px}
+/* the visual stays small so it doesn't cover the notation, but the thumb gets
+   a 44px target — the iOS minimum */
+body.phone #playBtn::after{content:""; position:absolute; inset:-7px; border-radius:50%}
+/* the looped row: a ring in the marker's amber, drawn outside the cells so it
+   never shifts the grid (double tap a row to set it) */
+.nrow.looped{outline:2.5px solid var(--dixie); outline-offset:3px; border-radius:3px}
+/* landscape = the notation full-screen, fitted to the screen: no scrolling at
+   all, phoneFit() scales the score to the height that's left (David, 26 Aug) */
 @media (orientation:landscape){
+  html.phone,body.phone{height:100%; overflow:hidden}
   body.phone header+.row,body.phone #belowrow{display:none}
+  body.phone header{margin-bottom:6px}
+  body.phone #transport{margin:6px 0 0}
+  /* landscape is for playing along, so the transport keeps only what you
+     touch mid-tune — the setup controls (and the toggles for the cards that
+     are hidden here anyway) would wrap to a second row and eat the notation */
+  body.phone #transport .ctlgroup,body.phone #markSel,body.phone #countSel,
+  body.phone #rowsCtl,body.phone #handsBtn,body.phone #takBtn,
+  body.phone #colCtl,body.phone #colReset,
+  body.phone #transport label:has(#swing),
+  body.phone #transport label:has(#markSel),
+  body.phone #transport label:has(#countSel){display:none !important}
 }
 </style>
 </head>
 <body>
 <script>/* the phone build lives at pages/phone/ (?phone=1 for local testing) —
    the class must land before first paint, so this runs right at body-open */
-if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has("phone"))
+if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has("phone")){
   document.body.classList.add("phone");
+  document.documentElement.classList.add("phone");  // landscape locks scrolling on <html> too
+}
 </script>
 
 <header>
@@ -310,6 +342,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <input id="title" value="" aria-label="Piece title">
   <span class="spacer"></span>
   <button class="ctl" id="syncOpen" title="Enter or leave video sync mode">Video sync</button>
+  <button class="ctl" id="sndBtn" title="Play a test tone and report the audio route">Sound</button>
   <button class="ctl" id="libBtn">Library</button>
   <button class="ctl" id="shareBtn">Share…</button>
   <button class="ctl" id="editBtn">Edit</button>
@@ -434,6 +467,14 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 
 <div id="report" class="hidden"></div>
 
+<dialog id="sndDlg">
+  <h3>Sound check</h3>
+  <p class="hint" style="margin:0 0 8px">A test tone should sound now. If it doesn't,
+    check the side switch (silent mode) and the volume, then tap again.</p>
+  <div id="sndInfo" style="font-family:ui-monospace,monospace; font-size:12px; line-height:1.7"></div>
+  <div class="row"><button class="ctl on" id="sndAgain">Test tone</button>
+  <span class="spacer"></span><button class="ctl" id="sndClose">Close</button></div>
+</dialog>
 <dialog id="shareDlg">
   <h3>Share this piece</h3>
   <div class="row" style="margin-top:0">
@@ -677,9 +718,27 @@ const IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="Mac
 const FRAMED_SAFARI=window!==window.top && /apple/i.test(navigator.vendor||"");
 const PHONE=document.body.classList.contains("phone");   // set at body-open
 let iosSink=null;
-function ensureSink(){ // Kajabi strips allow="autoplay"; a media-element sink unmutes framed Safari (WGG, 21 Aug 2026)
-  if(PHONE&&!FRAMED_SAFARI) return;  // top-level phone app: plain WebAudio. The stream
-     // sink takes iOS's call-style media path and distorted the speaker (David, 26 Aug).
+/* iOS audio, the whole trap in one place (David's phone, 26 Aug 2026):
+   - Plain WebAudio obeys the hardware RINGER SWITCH — silent phone, silent app.
+     That was "the app loads but no sound".
+   - Routing through a MediaStreamDestination + <audio> escapes the switch, but
+     iOS then treats it as a VOICE stream (AGC + voice processing) — that was
+     "audio distorts heavily on the phone speakers".
+   navigator.audioSession (Safari 16.4+) is the real answer: declaring
+   "playback" ignores the ringer AND keeps the clean media route. The sink
+   stays only as the fallback for older iOS and for framed Safari, where
+   Kajabi strips allow="autoplay" (WGG, 21 Aug 2026). */
+let audioSessionSet=false;
+function setAudioSession(){
+  if(audioSessionSet) return;
+  try{ if(navigator.audioSession){ navigator.audioSession.type="playback"; audioSessionSet=true; } }
+  catch(e){}
+}
+function haveAudioSession(){ try{ return !!navigator.audioSession; }catch(e){ return false; } }
+function ensureSink(){
+  setAudioSession();
+  // top-level phone app on a modern iOS: the session type does it, cleanly
+  if(PHONE&&!FRAMED_SAFARI&&haveAudioSession()) return;
   if((!IOS&&!FRAMED_SAFARI)||!ctx) return;
   if(iosSink&&iosSink!=="failed"){ if(iosSink.paused) iosSink.play().catch(()=>{}); return; }
   if(iosSink==="failed") iosSink=null;
@@ -691,6 +750,7 @@ function ensureSink(){ // Kajabi strips allow="autoplay"; a media-element sink u
 }
 function ensureCtx(){
   if(ctx) return;
+  setAudioSession();          // before the context exists, so iOS picks the media route
   ctx=new (window.AudioContext||window.webkitAudioContext)({latencyHint:"playback"});
   master=ctx.createGain(); master.gain.value=.9; master.connect(ctx.destination);
   limiter=ctx.createWaveShaper(); limiter.curve=softClipCurve(); limiter.oversample="2x";
@@ -2120,13 +2180,62 @@ function render(){
 function phoneFit(){
   if(!PHONE) return;
   const wrap=$("scorewrap"), sc=$("score");
-  if(wrap.clientWidth) sc.style.zoom=wrap.clientWidth/(view==="tab"?700:540);
+  if(!wrap.clientWidth) return;
+  const designW=view==="tab"?700:540;
+  const land=matchMedia("(orientation:landscape)").matches;
+  sc.style.zoom=1;
+  let z=wrap.clientWidth/designW;
+  // Landscape must not scroll: the score also has to fit the height left over
+  // once the header and transport have taken theirs. The play button overlays
+  // the card's top-right corner — it reserves no space, so the card never
+  // grows to make room for it (David, 26 Aug).
+  if(land){
+    const tp=$("transport");
+    const availH=innerHeight-wrap.getBoundingClientRect().top
+                 -(tp.offsetHeight+14)-parseFloat(getComputedStyle(document.body).paddingBottom||0);
+    const natH=sc.scrollHeight;        // still at zoom 1
+    if(natH>0&&availH>0) z=Math.min(z,availH/natH);
+  }
+  sc.style.zoom=z;
   const cw=$("chordwrap"), cb=$("chordbox");
   if(!cw.classList.contains("hidden")){
     cb.style.zoom="";
     const w=cb.offsetWidth;
     if(w>cw.clientWidth) cb.style.zoom=cw.clientWidth/w;
   }
+}
+/* A notation row carries its own pulse span (section-relative, like data-rel)
+   and paints itself when it IS the loop — the class is applied at render, so
+   the ring survives every repaint. Shared by the Table and Tab skins. */
+function markRow(rowEl,r0,r1){
+  rowEl.className="nrow"; rowEl.dataset.r0=r0; rowEl.dataset.r1=r1;
+  const base=viewFromPulse();
+  if(loopSec&&base+r0>=loopSec.from&&base+r1<=loopSec.to) rowEl.classList.add("looped");
+}
+/* Double tap a row to loop it; double tap another row to EXTEND the loop over
+   both (and everything between — the loop is one span); double tap any row
+   already inside the loop to clear it (David, 26 Aug). loopSec is the same
+   {from,to} the arrangement strip's loop uses, so the scheduler needs no new
+   machinery — but it counts pulses from loopSec.from, so whenever the span
+   changes mid-playback we re-anchor with jumpTo. */
+function toggleRowLoop(rowEl){
+  const base=viewFromPulse();
+  const from=base+ +rowEl.dataset.r0, to=base+ +rowEl.dataset.r1;
+  const inside=loopSec&&from>=loopSec.from&&to<=loopSec.to;
+  if(inside){
+    const at=lastPaint;
+    loopSec=null;
+    if(playing&&at>=0) jumpTo(at);        // carry on from where the music is
+    render(); toast("Loop off"); return;
+  }
+  loopSec=loopSec?{from:Math.min(loopSec.from,from),to:Math.max(loopSec.to,to)}:{from,to};
+  if(playing){
+    const at=(lastPaint>=loopSec.from&&lastPaint<loopSec.to)?lastPaint:loopSec.from;
+    jumpTo(at);
+  }
+  render();
+  const rows=Math.max(1,Math.round((loopSec.to-loopSec.from)/Math.max(1,(+rowEl.dataset.r1)-(+rowEl.dataset.r0))));
+  toast(rows>1?("Looping "+rows+" rows"):"Looping this row");
 }
 // One count line, shared by the Table and Tab skins; [data-ct] carries the
 // header-numbers marker (countMark) across the row's barsPerRow bars.
@@ -2153,6 +2262,8 @@ function renderTableView(sc){
   sc.appendChild(buildCountRow(m));
   for(let b0=0;b0<sec.bars.length;b0+=m.bpr){
     const rowEl=document.createElement("div");
+    // the row knows its own pulse span, so a double tap can loop it (David, 26 Aug)
+    markRow(rowEl,b0*m.bp,Math.min(b0+m.bpr,sec.bars.length)*m.bp);
     rowEl.style.display="grid";
     rowEl.style.gridTemplateColumns="repeat("+m.bpr+",1fr)";
     rowEl.style.gap="0 14px";
@@ -2308,6 +2419,8 @@ function renderTabView(sc){
   sc.appendChild(buildCountRow(m,"tcount"));
   for(let b0=0;b0<sec.bars.length;b0+=m.bpr){
     const rowEl=document.createElement("div");
+    // the row knows its own pulse span, so a double tap can loop it (David, 26 Aug)
+    markRow(rowEl,b0*m.bp,Math.min(b0+m.bpr,sec.bars.length)*m.bp);
     rowEl.style.display="grid";
     rowEl.style.gridTemplateColumns="repeat("+m.bpr+",1fr)";
     rowEl.style.gap="0 14px";
@@ -2940,6 +3053,29 @@ function boot(){
   window.addEventListener("beforeunload",()=>{
     try{ localStorage.setItem("hps.lastPiece","HPS1:"+enc(piece)); }catch(e){}
   });
+  // Sound check — the phone has no console, so the app reports its own route
+  const sndTest=()=>{
+    ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
+    try{ const o=ctx.createOscillator(), g=ctx.createGain();
+      o.frequency.value=440; g.gain.value=0;
+      const t=ctx.currentTime;
+      g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(.25,t+.02);
+      g.gain.setValueAtTime(.25,t+.45); g.gain.linearRampToValueAtTime(0,t+.6);
+      o.connect(g); g.connect(dry); o.start(t); o.stop(t+.65);
+    }catch(e){}
+    const sink=iosSink==="failed"?"failed":(iosSink?"on (voice route)":"off");
+    $("sndInfo").innerHTML=[
+      ["context",ctx?ctx.state:"none"],
+      ["sample rate",ctx?Math.round(ctx.sampleRate)+" Hz":"–"],
+      ["audio session",haveAudioSession()?(audioSessionSet?"playback":"available"):"not supported"],
+      ["media sink",sink],
+      ["bank",window.HPS_BANK?BANKBUF.size+" decoded":"not loaded"],
+      ["master",master?master.gain.value.toFixed(2):"–"],
+    ].map(([k,v])=>"<b>"+k+"</b> — "+v).join("<br>");
+  };
+  $("sndBtn").addEventListener("click",()=>{ sndTest(); openDlg($("sndDlg")); });
+  $("sndAgain").addEventListener("click",sndTest);
+  $("sndClose").addEventListener("click",()=>$("sndDlg").close());
   $("libBtn").addEventListener("click",()=>{ renderLib(); openDlg($("libDlg")); });
   $("libClose").addEventListener("click",()=>$("libDlg").close());
   $("saveBtn").addEventListener("click",()=>{
@@ -2965,7 +3101,74 @@ function boot(){
   restoreSession();
   try{ ensureCtx(); preloadBank(); }catch(e){}   // warm the bank before the first tap
 }
+/* Step through the arrangement — the order the piece is actually played, so a
+   swipe lands on the next table you'd play, run changes included. */
+function stepTable(dir){
+  const es=arrEntries(), i=selAi+dir;
+  if(i<0||i>=es.length){ toast(dir>0?"Last table":"First table"); return; }
+  selAi=i; viewSec=es[i].nm; cursor=0; pendingStart=null;
+  if(follow){ render(); seekToPulse(es[i].from); }
+  else { jumpTo(es[i].from); render(); }
+  mapShowSpan(es[i].from,es[i].to);
+  toast(es[i].nm);
+}
+function setTempo(v){
+  bpm=Math.min(200,Math.max(30,Math.round(v)));
+  piece.tempo=bpm; $("bpm").value=bpm;
+}
+/* Landscape touch navigation (David, 26 Aug): tap a cell to go there, swipe
+   sideways for the next/previous table, swipe up/down for tempo — up faster,
+   down slower, live while the finger moves. The slots seek on POINTERDOWN,
+   which fires the moment a swipe begins, so the wrap takes the gesture in the
+   capture phase and only a real tap is passed on as a seek. */
+function phoneTouchNav(){
+  const wrap=$("scorewrap"), land=()=>matchMedia("(orientation:landscape)").matches;
+  const SWIPE=45, TAP=12, BPM_PER_PX=1/4, DBL=340;
+  let sx=0,sy=0,id=null,mode=null,bpm0=72,lastTap=0,lastX=0,lastY=0;
+  wrap.addEventListener("pointerdown",e=>{
+    if(e.pointerType==="mouse"&&e.button!==0) return;
+    if(e.target.closest&&e.target.closest("#playBtn")) return;   // the play button keeps its own tap
+    id=e.pointerId; sx=e.clientX; sy=e.clientY; mode=null; bpm0=bpm;
+    e.stopPropagation();                 // no seek until the gesture is known
+  },true);
+  wrap.addEventListener("pointermove",e=>{
+    if(id===null||e.pointerId!==id||!land()) return;   // swipes are landscape-only
+    const dx=e.clientX-sx, dy=e.clientY-sy;
+    if(!mode&&Math.max(Math.abs(dx),Math.abs(dy))>=TAP)
+      mode=Math.abs(dy)>Math.abs(dx)*1.4?"tempo":(Math.abs(dx)>Math.abs(dy)*1.4?"table":null);
+    if(mode==="tempo"){                  // up is faster: screen y grows downward
+      setTempo(bpm0-dy*BPM_PER_PX);
+      toast(bpm+" BPM");
+      e.preventDefault();
+    }
+  },true);
+  wrap.addEventListener("pointerup",e=>{
+    if(id===null||e.pointerId!==id){ id=null; return; }
+    id=null;
+    const dx=e.clientX-sx, dy=e.clientY-sy;
+    if(mode==="tempo"){ setTempo(bpm0-dy*BPM_PER_PX); toast(bpm+" BPM"); return; }
+    if(land()&&Math.abs(dx)>=SWIPE&&Math.abs(dx)>Math.abs(dy)*1.4){ stepTable(dx<0?1:-1); return; }
+    if(Math.abs(dx)>=TAP||Math.abs(dy)>=TAP) return;
+    const el=document.elementFromPoint(e.clientX,e.clientY);
+    // second tap in the same spot: loop this row (David, 26 Aug)
+    const now=performance.now();
+    if(now-lastTap<DBL&&Math.abs(e.clientX-lastX)<28&&Math.abs(e.clientY-lastY)<28){
+      lastTap=0;
+      const row=el&&el.closest&&el.closest(".nrow");
+      if(row){ toggleRowLoop(row); return; }
+    }
+    lastTap=now; lastX=e.clientX; lastY=e.clientY;
+    const sl=el&&el.closest&&el.closest("[data-rel]");
+    if(sl) seekToPulse(viewFromPulse()+(+sl.dataset.rel));
+  },true);
+  wrap.addEventListener("pointercancel",()=>{ id=null; mode=null; },true);
+}
 boot();
+if(PHONE){ // the play button lives inside the notation frame here (David, 26 Aug)
+  $("scorewrap").appendChild($("playBtn"));
+  phoneTouchNav();
+  phoneFit();
+}
 if(PHONE){ // refit on rotation / viewport changes (debounced — zoom relayouts)
   let pfT; const pf=()=>{ clearTimeout(pfT); pfT=setTimeout(phoneFit,80); };
   window.addEventListener("resize",pf);
