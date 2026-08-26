@@ -38,6 +38,10 @@ html,body{overflow-x:hidden; overscroll-behavior-x:none}  /* Magic-Mouse swipes 
   color:var(--ink3); box-shadow:var(--shadow)}
 #handInd.hand-L{border-color:var(--hand-l); background:var(--hand-l); color:#fff}
 #handInd.hand-R{border-color:var(--hand-r); background:var(--hand-r); color:#fff}
+/* The notation is an instrument, not a document: a double-click sets a loop,
+   it must never select glyphs (David, 26 Aug). Typing fields stay selectable. */
+body{-webkit-user-select:none; user-select:none}
+input,textarea,select{-webkit-user-select:text; user-select:text}
 button{font:inherit; cursor:pointer}
 .ctlgroup{display:inline-flex; gap:6px; padding:4px 7px; border:1px solid var(--rule);
   border-radius:12px; background:var(--card)}                /* the three panel toggles live together */
@@ -296,19 +300,27 @@ body.phone #chordwrap{flex:none; max-width:none; overflow-x:hidden; width:100%}
 body.phone #panwrap{margin:0; width:100%}
 body.phone #panwrap .chordframe{display:block}
 body.phone #pvsvg{margin:0 auto}
-body.phone button,body.phone select,body.phone .chip{touch-action:manipulation}
+/* "manipulation" keeps panning and pinch but kills DOUBLE-TAP ZOOM, which was
+   firing on every double tap meant for the loop (David, 26 Aug) */
+body.phone,body.phone *{touch-action:manipulation}
+body.phone #score{position:relative}      /* the loop frame is placed against it */
 /* the play button rides inside the notation frame, top right (David, 26 Aug).
-   It sits in #scorewrap, NOT in the zoomed #score, so it keeps its real size
-   at any zoom; phoneFit() clears a band at the top of the card for it. */
+   It sits in #scorewrap, NOT in the zoomed #score, so it keeps its real size at
+   any zoom — phoneFit() anchors it to the CARD's corner, not the wrapper's, or
+   it floats off to the side whenever the card is narrower than the screen. */
 body.phone #playBtn{position:absolute; top:6px; right:6px; z-index:4; width:30px; height:30px;
   box-shadow:0 0 0 3px var(--sc-bg), 0 2px 8px -2px rgba(229,147,21,.7)}
 body.phone #playBtn svg{width:14px; height:14px}
 /* the visual stays small so it doesn't cover the notation, but the thumb gets
    a 44px target — the iOS minimum */
 body.phone #playBtn::after{content:""; position:absolute; inset:-7px; border-radius:50%}
-/* the looped row: a ring in the marker's amber, drawn outside the cells so it
-   never shifts the grid (double tap a row to set it) */
-.nrow.looped{outline:2.5px solid var(--dixie); outline-offset:3px; border-radius:3px}
+/* The loop is ONE frame around the whole span, not a ring per row (David,
+   26 Aug). It lives inside #score so it scales with the notation, and it is
+   pointer-transparent — the gesture layer hit-tests its edges itself. Drag
+   either handle to grow or shrink the loop by rows. */
+#loopframe{position:absolute; left:0; top:0; z-index:3; pointer-events:none; overflow:visible}
+#loopframe polygon{fill:rgba(229,147,21,.06); stroke:var(--dixie); stroke-width:2.5;
+  stroke-linejoin:round}
 /* landscape = the notation full-screen, fitted to the screen: no scrolling at
    all, phoneFit() scales the score to the height that's left (David, 26 Aug) */
 @media (orientation:landscape){
@@ -2172,6 +2184,7 @@ function render(){
   renderChordRow();
   renderArr();
   phoneFit();
+  paintLoopFrame();     // the loop survives every repaint
 }
 /* Phone shrink-to-fit: the score keeps its fixed design width (540 table /
    700 tab) and the card is zoomed so that width IS the screen — same layout
@@ -2184,19 +2197,36 @@ function phoneFit(){
   const designW=view==="tab"?700:540;
   const land=matchMedia("(orientation:landscape)").matches;
   sc.style.zoom=1;
-  let z=wrap.clientWidth/designW;
-  // Landscape must not scroll: the score also has to fit the height left over
-  // once the header and transport have taken theirs. The play button overlays
-  // the card's top-right corner — it reserves no space, so the card never
-  // grows to make room for it (David, 26 Aug).
+  const W=wrap.clientWidth;
+  let z=W/designW;
+  sc.style.width=designW+"px";
+  /* Landscape fills the screen in BOTH directions. Scaling the fixed design
+     width to the height that's left leaves the card at half the screen —
+     which is what "landscape doesn't focus the notation any more" looked like
+     (David, 26 Aug). So the card's own width becomes the free variable: with
+     row heights essentially fixed, z = availH/naturalHeight fills the height,
+     and w = W/z then fills the width exactly. Bars simply get wider, and the
+     glyphs come out BIGGER than a width-only fit. */
   if(land){
     const tp=$("transport");
     const availH=innerHeight-wrap.getBoundingClientRect().top
                  -(tp.offsetHeight+14)-parseFloat(getComputedStyle(document.body).paddingBottom||0);
-    const natH=sc.scrollHeight;        // still at zoom 1
-    if(natH>0&&availH>0) z=Math.min(z,availH/natH);
+    sc.style.width=W+"px";             // measure the height at full width
+    const natH=sc.scrollHeight;
+    if(natH>0&&availH>0){
+      z=Math.max(0.35,Math.min(2.4,availH/natH));
+      sc.style.width=(W/z)+"px";
+    }
   }
   sc.style.zoom=z;
+  // anchor the play button to the CARD's top-right, not the wrapper's — when
+  // the card is narrower than the screen the two are far apart
+  const pb=$("playBtn");
+  if(pb&&pb.parentElement===wrap){
+    const cr=sc.getBoundingClientRect(), wr=wrap.getBoundingClientRect();
+    pb.style.right=Math.max(0,wr.right-cr.right+7)+"px";
+    pb.style.top=Math.max(0,cr.top-wr.top+7)+"px";
+  }
   const cw=$("chordwrap"), cb=$("chordbox");
   if(!cw.classList.contains("hidden")){
     cb.style.zoom="";
@@ -2209,33 +2239,64 @@ function phoneFit(){
    the ring survives every repaint. Shared by the Table and Tab skins. */
 function markRow(rowEl,r0,r1){
   rowEl.className="nrow"; rowEl.dataset.r0=r0; rowEl.dataset.r1=r1;
-  const base=viewFromPulse();
-  if(loopSec&&base+r0>=loopSec.from&&base+r1<=loopSec.to) rowEl.classList.add("looped");
 }
-/* Double tap a row to loop it; double tap another row to EXTEND the loop over
-   both (and everything between — the loop is one span); double tap any row
-   already inside the loop to clear it (David, 26 Aug). loopSec is the same
-   {from,to} the arrangement strip's loop uses, so the scheduler needs no new
-   machinery — but it counts pulses from loopSec.from, so whenever the span
-   changes mid-playback we re-anchor with jumpTo. */
-function toggleRowLoop(rowEl){
-  const base=viewFromPulse();
-  const from=base+ +rowEl.dataset.r0, to=base+ +rowEl.dataset.r1;
-  const inside=loopSec&&from>=loopSec.from&&to<=loopSec.to;
-  if(inside){
-    const at=lastPaint;
-    loopSec=null;
-    if(playing&&at>=0) jumpTo(at);        // carry on from where the music is
-    render(); toast("Loop off"); return;
+/* The beat cell under a point, as an absolute pulse span. Loop ends always sit
+   on a cell boundary (David, 26 Aug), so every loop edge comes from here. */
+function cellAtPoint(x,y){
+  const el=document.elementFromPoint(x,y);
+  const cell=el&&el.closest&&el.closest(".beat");
+  if(!cell) return null;
+  const sl=cell.querySelector("[data-rel]");
+  if(!sl) return null;
+  const from=viewFromPulse()+(+sl.dataset.rel);
+  return {from,to:from+SM(piece,viewSec).sub,cell};
+}
+/* ONE frame around the whole loop, not a box per row (David, 26 Aug). A loop
+   that starts and ends mid-row is shaped like selected text, so the outline is
+   an SVG polygon walking the covered cells: down the right edges, back up the
+   left ones. Drawn inside #score, so it rides the zoom with the notation. */
+function paintLoopFrame(){
+  const sc=$("score");
+  let svg=sc.querySelector("#loopframe");
+  if(!loopSec){ if(svg) svg.remove(); return; }
+  const rects=[];
+  sc.querySelectorAll(".nrow").forEach(row=>{
+    let l=Infinity,r=-Infinity;
+    row.querySelectorAll(".beat").forEach(cell=>{
+      const sl=cell.querySelector("[data-rel]"); if(!sl) return;
+      const p=viewFromPulse()+(+sl.dataset.rel);
+      if(p>=loopSec.from&&p<loopSec.to){
+        l=Math.min(l,cell.offsetLeft); r=Math.max(r,cell.offsetLeft+cell.offsetWidth);
+      }
+    });
+    if(r>l) rects.push({l:l-3,r:r+3,top:row.offsetTop,bot:row.offsetTop+row.offsetHeight});
+  });
+  if(!rects.length){ if(svg) svg.remove(); return; }
+  // neighbouring rows must SHARE their boundary, or the outline steps
+  // diagonally across the gap between rows
+  rects.forEach((q,i)=>{
+    q.t=i===0?q.top-4:(rects[i-1].bot+q.top)/2;
+    q.b=i===rects.length-1?q.bot+4:(q.bot+rects[i+1].top)/2;
+  });
+  const pts=[];
+  for(const q of rects) pts.push([q.r,q.t],[q.r,q.b]);
+  for(let i=rects.length-1;i>=0;i--) pts.push([rects[i].l,rects[i].b],[rects[i].l,rects[i].t]);
+  if(!svg){
+    svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
+    svg.id="loopframe"; sc.appendChild(svg);
   }
-  loopSec=loopSec?{from:Math.min(loopSec.from,from),to:Math.max(loopSec.to,to)}:{from,to};
-  if(playing){
-    const at=(lastPaint>=loopSec.from&&lastPaint<loopSec.to)?lastPaint:loopSec.from;
-    jumpTo(at);
-  }
-  render();
-  const rows=Math.max(1,Math.round((loopSec.to-loopSec.from)/Math.max(1,(+rowEl.dataset.r1)-(+rowEl.dataset.r0))));
-  toast(rows>1?("Looping "+rows+" rows"):"Looping this row");
+  svg.setAttribute("width",sc.scrollWidth); svg.setAttribute("height",sc.scrollHeight);
+  svg.innerHTML='<polygon points="'+pts.map(p=>p.join(",")).join(" ")+'"/>';
+}
+/* loopSec is the same {from,to} the arrangement strip's loop uses, so the
+   scheduler needs no new machinery — but it counts pulses from loopSec.from,
+   so every span change during playback has to re-anchor. */
+function reanchorLoop(){
+  if(!playing) return;
+  const at=loopSec
+    ? ((lastPaint>=loopSec.from&&lastPaint<loopSec.to)?lastPaint:loopSec.from)
+    : lastPaint;
+  if(at>=0) jumpTo(at);
 }
 // One count line, shared by the Table and Tab skins; [data-ct] carries the
 // header-numbers marker (countMark) across the row's barsPerRow bars.
@@ -3101,41 +3162,58 @@ function boot(){
   restoreSession();
   try{ ensureCtx(); preloadBank(); }catch(e){}   // warm the bank before the first tap
 }
-/* Step through the arrangement — the order the piece is actually played, so a
-   swipe lands on the next table you'd play, run changes included. */
-function stepTable(dir){
-  const es=arrEntries(), i=selAi+dir;
-  if(i<0||i>=es.length){ toast(dir>0?"Last table":"First table"); return; }
-  selAi=i; viewSec=es[i].nm; cursor=0; pendingStart=null;
-  if(follow){ render(); seekToPulse(es[i].from); }
-  else { jumpTo(es[i].from); render(); }
-  mapShowSpan(es[i].from,es[i].to);
-  toast(es[i].nm);
-}
 function setTempo(v){
   bpm=Math.min(200,Math.max(30,Math.round(v)));
   piece.tempo=bpm; $("bpm").value=bpm;
 }
-/* Landscape touch navigation (David, 26 Aug): tap a cell to go there, swipe
-   sideways for the next/previous table, swipe up/down for tempo — up faster,
-   down slower, live while the finger moves. The slots seek on POINTERDOWN,
-   which fires the moment a swipe begins, so the wrap takes the gesture in the
-   capture phase and only a real tap is passed on as a seek. */
+/* Phone touch (David, 26 Aug — sideways navigation dropped, the sideways drag
+   belongs to the loop now):
+     tap a cell            go there
+     DOUBLE TAP a cell     loop start at that cell; keep the finger down and
+                           drag to any other cell to set the end — both ends
+                           always land on a cell boundary
+     double tap the loop's own start cell again    loop off
+     swipe up / down       tempo, live under the finger (landscape)
+   The notation slots seek on POINTERDOWN, which fires the instant a drag
+   begins, so the wrap takes every gesture in the CAPTURE phase and only a
+   real tap is passed on as a seek. */
 function phoneTouchNav(){
   const wrap=$("scorewrap"), land=()=>matchMedia("(orientation:landscape)").matches;
-  const SWIPE=45, TAP=12, BPM_PER_PX=1/4, DBL=340;
+  const TAP=12, BPM_PER_PX=1/4, DBL=340;
   let sx=0,sy=0,id=null,mode=null,bpm0=72,lastTap=0,lastX=0,lastY=0;
+  let anchor=null,dragged=false,clearIfNoDrag=false;
   wrap.addEventListener("pointerdown",e=>{
     if(e.pointerType==="mouse"&&e.button!==0) return;
     if(e.target.closest&&e.target.closest("#playBtn")) return;   // the play button keeps its own tap
     id=e.pointerId; sx=e.clientX; sy=e.clientY; mode=null; bpm0=bpm;
+    anchor=null; dragged=false; clearIfNoDrag=false;
+    const now=performance.now();
+    if(now-lastTap<DBL&&Math.abs(e.clientX-lastX)<28&&Math.abs(e.clientY-lastY)<28){
+      const c=cellAtPoint(e.clientX,e.clientY);
+      if(c){                              // second tap: this cell starts the loop
+        lastTap=0; mode="loop"; anchor=c;
+        clearIfNoDrag=!!loopSec&&loopSec.from===c.from;   // same start twice = off
+        loopSec={from:c.from,to:c.to};
+        paintLoopFrame();
+      }
+    }
     e.stopPropagation();                 // no seek until the gesture is known
   },true);
   wrap.addEventListener("pointermove",e=>{
-    if(id===null||e.pointerId!==id||!land()) return;   // swipes are landscape-only
+    if(id===null||e.pointerId!==id) return;
     const dx=e.clientX-sx, dy=e.clientY-sy;
-    if(!mode&&Math.max(Math.abs(dx),Math.abs(dy))>=TAP)
-      mode=Math.abs(dy)>Math.abs(dx)*1.4?"tempo":(Math.abs(dx)>Math.abs(dy)*1.4?"table":null);
+    if(mode==="loop"){                   // the finger draws the loop's other end
+      const c=cellAtPoint(e.clientX,e.clientY);
+      if(c&&(c.from!==loopSec.from||c.to!==loopSec.to)) dragged=true;
+      if(c){
+        loopSec={from:Math.min(anchor.from,c.from),to:Math.max(anchor.to,c.to)};
+        paintLoopFrame();
+      }
+      e.preventDefault();
+      return;
+    }
+    if(!land()) return;                  // tempo swipe is landscape-only
+    if(!mode&&Math.abs(dy)>=TAP&&Math.abs(dy)>Math.abs(dx)*1.4) mode="tempo";
     if(mode==="tempo"){                  // up is faster: screen y grows downward
       setTempo(bpm0-dy*BPM_PER_PX);
       toast(bpm+" BPM");
@@ -3146,22 +3224,69 @@ function phoneTouchNav(){
     if(id===null||e.pointerId!==id){ id=null; return; }
     id=null;
     const dx=e.clientX-sx, dy=e.clientY-sy;
-    if(mode==="tempo"){ setTempo(bpm0-dy*BPM_PER_PX); toast(bpm+" BPM"); return; }
-    if(land()&&Math.abs(dx)>=SWIPE&&Math.abs(dx)>Math.abs(dy)*1.4){ stepTable(dx<0?1:-1); return; }
-    if(Math.abs(dx)>=TAP||Math.abs(dy)>=TAP) return;
-    const el=document.elementFromPoint(e.clientX,e.clientY);
-    // second tap in the same spot: loop this row (David, 26 Aug)
-    const now=performance.now();
-    if(now-lastTap<DBL&&Math.abs(e.clientX-lastX)<28&&Math.abs(e.clientY-lastY)<28){
-      lastTap=0;
-      const row=el&&el.closest&&el.closest(".nrow");
-      if(row){ toggleRowLoop(row); return; }
+    if(mode==="loop"){
+      if(clearIfNoDrag&&!dragged){ loopSec=null; paintLoopFrame(); reanchorLoop(); toast("Loop off"); }
+      else { reanchorLoop(); toast(loopBarsLabel()); }
+      return;
     }
-    lastTap=now; lastX=e.clientX; lastY=e.clientY;
+    if(mode==="tempo"){ setTempo(bpm0-dy*BPM_PER_PX); toast(bpm+" BPM"); return; }
+    if(Math.abs(dx)>=TAP||Math.abs(dy)>=TAP) return;
+    lastTap=performance.now(); lastX=e.clientX; lastY=e.clientY;
+    const el=document.elementFromPoint(e.clientX,e.clientY);
     const sl=el&&el.closest&&el.closest("[data-rel]");
     if(sl) seekToPulse(viewFromPulse()+(+sl.dataset.rel));
   },true);
   wrap.addEventListener("pointercancel",()=>{ id=null; mode=null; },true);
+}
+/* Desktop mouse (David, 26 Aug): DRAG across the notation to set the loop —
+   both ends land on a beat-cell boundary, so the loop is always musical. A
+   plain click still seeks; a double-click inside the loop clears it. Like the
+   phone handler, this takes the gesture in the CAPTURE phase, because the
+   slots seek on pointerdown — the instant a drag begins. */
+function mouseLoopNav(){
+  const wrap=$("scorewrap"), TAP=5;
+  let id=null,sx=0,sy=0,anchor=null,moved=false,el0=null;
+  wrap.addEventListener("pointerdown",e=>{
+    if(editing||e.pointerType==="touch"||e.button!==0) return;
+    if(e.target.closest&&e.target.closest("#playBtn")) return;
+    const c=cellAtPoint(e.clientX,e.clientY); if(!c) return;
+    id=e.pointerId; sx=e.clientX; sy=e.clientY; anchor=c; moved=false;
+    el0=e.target.closest&&e.target.closest("[data-rel]");
+    e.stopPropagation();            // the slot's own seek waits for pointerup
+    e.preventDefault();
+  },true);
+  wrap.addEventListener("pointermove",e=>{
+    if(id===null||e.pointerId!==id) return;
+    if(!moved&&Math.max(Math.abs(e.clientX-sx),Math.abs(e.clientY-sy))<TAP) return;
+    moved=true;
+    const c=cellAtPoint(e.clientX,e.clientY);
+    if(c){
+      loopSec={from:Math.min(anchor.from,c.from),to:Math.max(anchor.to,c.to)};
+      paintLoopFrame();
+    }
+    e.preventDefault();
+  },true);
+  wrap.addEventListener("pointerup",e=>{
+    if(id===null||e.pointerId!==id){ id=null; return; }
+    id=null;
+    if(moved){ reanchorLoop(); toast(loopBarsLabel()); return; }
+    if(el0) seekToPulse(viewFromPulse()+(+el0.dataset.rel));   // a plain click: go there
+  },true);
+  wrap.addEventListener("pointercancel",()=>{ id=null; },true);
+  wrap.addEventListener("dblclick",e=>{
+    if(editing||!loopSec) return;
+    const c=cellAtPoint(e.clientX,e.clientY); if(!c) return;
+    if(c.from>=loopSec.from&&c.to<=loopSec.to){
+      loopSec=null; paintLoopFrame(); reanchorLoop(); toast("Loop off");
+    }
+  });
+}
+function loopBarsLabel(){
+  if(!loopSec) return "Loop off";
+  const m=SM(piece,viewSec), beats=(loopSec.to-loopSec.from)/m.sub;
+  return beats>=m.beats&&beats%m.beats===0
+    ? ("Looping "+(beats/m.beats)+(beats/m.beats>1?" bars":" bar"))
+    : ("Looping "+beats+(beats>1?" beats":" beat"));
 }
 boot();
 if(PHONE){ // the play button lives inside the notation frame here (David, 26 Aug)
