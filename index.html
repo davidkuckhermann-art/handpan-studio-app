@@ -355,6 +355,10 @@ body.haspan:not(.phone) #panwrap{grid-column:3; justify-self:end}
 #chordwrap{flex:0 1 auto; overflow-x:auto; text-align:center; padding-bottom:4px}
 #panwrap{flex:0 0 auto; text-align:center}
 #pvwrap{display:flex; flex-direction:column; align-items:center; gap:8px}
+/* strokes mode: the badges flank the instrument, so the drawing owns the height */
+#pvwrap.sides{flex-direction:row; align-items:center; justify-content:center; gap:10px}
+.pvside{display:flex; flex-direction:column; align-items:center; gap:9px; flex:none}
+#pvwrap.sides #pvsvg{flex:1 1 auto; min-width:0; width:auto; max-width:none}
 #pvsvg{width:min(100%,340px); height:auto; display:block}
 .pvf{cursor:pointer}
 .pvf .pvtint,.pvf .pvring{opacity:0; pointer-events:none}
@@ -522,12 +526,12 @@ body.phone header #setBtn{display:none !important}
   body.phone #belowrow{gap:8px}
   /* the two companion cards were sized for a desktop — trim them or the pan
      cannot fit under the notation at all (measured: 227 + 172 + 385 > screen) */
-  body.phone #chordbox{padding:12px 16px 14px}
-  body.phone #chordbox .cchip{padding:8px 13px 9px; border-radius:13px}
-  body.phone #chordbox .cname{font-size:23px}
-  body.phone #chordbox .sym{font-size:23px}
-  body.phone #chordbox .chordrow{gap:14px}
-  body.phone #pvsvg{width:min(100%,250px,32vh)}
+  body.phone #chordbox{padding:9px 13px 11px}
+  body.phone #chordbox .cchip{padding:6px 10px 7px; border-radius:11px}
+  body.phone #chordbox .cname{font-size:19px}
+  body.phone #chordbox .sym{font-size:19px}
+  body.phone #chordbox .chordrow{gap:11px}
+  body.phone #pvwrap:not(.sides) #pvsvg{width:min(100%,260px)}
   body.phone #panbox{padding:8px 10px 10px}
 }
 /* landscape keeps its own arrangement (#miniarr), so the flattened card hides */
@@ -3115,18 +3119,29 @@ function renderPanPanel(){
   box.appendChild(sw);
   const wrap=document.createElement("div"); wrap.id="pvwrap";
   const pan=document.createElement("div"); pan.innerHTML=panViewSVG();
-  const lamps=document.createElement("div"); lamps.className="pvlamps";
-  // the green hand is the LEFT one: green lamp lettered L on the left, black R on the right
-  lamps.innerHTML='<span class="lamp lampR" id="pvlampR" title="Left hand">'+handLetter("R")+'</span><span class="pvgap"></span>'
-    +'<span class="pvperc" id="pvp-slap" title="Slap">^</span>'
+  /* The strokes flank the instrument in two columns instead of sitting in a row
+     beneath it (David, 26 Aug): that row cost ~50px of height, and height is
+     what limits the pan on a phone — so moving them sideways is what lets the
+     drawing grow. His layout: LEFT is the green (left) hand, K and slap; RIGHT
+     is the black (right) hand, T and knock. */
+  const side=(cls,html)=>{ const d=document.createElement("div");
+    d.className="pvside "+cls; d.innerHTML=html; return d; };
+  const left=side("pvleft",
+     '<span class="lamp lampR" id="pvlampR" title="Left hand">'+handLetter("R")+'</span>'
+    +'<span class="pvperc" id="pvp-tak2" title="Tak (K)">K</span>'
+    +'<span class="pvperc" id="pvp-slap" title="Slap">^</span>');
+  const right=side("pvright",
+     '<span class="lamp lampL" id="pvlampL" title="Right hand">'+handLetter("L")+'</span>'
     +'<span class="pvperc" id="pvp-tak" title="Tak">T</span>'
-    +'<span class="pvperc" id="pvp-knock" title="Knock">°</span>'
-    +'<span class="pvgap"></span><span class="lamp lampL" id="pvlampL" title="Right hand">'+handLetter("L")+'</span>';
-  wrap.appendChild(pan.firstChild);
+    +'<span class="pvperc" id="pvp-knock" title="Knock">°</span>');
   if(panMode==="chords"){          // a chord has no hand: the name takes the lamps' place
+    wrap.appendChild(pan.firstChild);
     const nm=document.createElement("div"); nm.className="pvchord"; nm.id="pvchord";
     wrap.appendChild(nm);
-  } else wrap.appendChild(lamps);
+  } else {
+    wrap.classList.add("sides");
+    wrap.append(left,pan.firstChild,right);
+  }
   box.appendChild(wrap);
   const tapField=f=>{
     ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
@@ -3138,17 +3153,17 @@ function renderPanPanel(){
     g.addEventListener("pointerdown",()=>tapField(+g.dataset.f));
     g.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); tapField(+g.dataset.f); } });
   });
-  const tapPerc=s=>{ // the badges sound like the fields do (David, 26 Aug)
+  const tapPerc=(s,id)=>{ // the badges sound like the fields do (David, 26 Aug)
     ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
     fire(bankBuf("p_"+s+"R")||percBuf(s),ctx.currentTime+0.01,0.9);
-    pvFlash($("pvp-"+s),["hT"]);
+    pvFlash($(id||("pvp-"+s)),["hT"]);
   };
-  ["slap","tak","knock"].forEach(s=>{
-    const el=$("pvp-"+s); if(!el) return;
+  [["slap","pvp-slap"],["tak","pvp-tak"],["knock","pvp-knock"],["tak","pvp-tak2"]].forEach(([s,id])=>{
+    const el=$(id); if(!el) return;
     el.setAttribute("role","button"); el.tabIndex=0;
     el.setAttribute("aria-label","Play "+s);
-    el.addEventListener("pointerdown",()=>tapPerc(s));
-    el.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); tapPerc(s); } });
+    el.addEventListener("pointerdown",()=>tapPerc(s,id));
+    el.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); tapPerc(s,id); } });
   });
   if(panMode==="chords") paintPanChord(panCursor());
 }
@@ -3198,7 +3213,10 @@ function paintPan(pi){
     const hand=ev.hand==="R"?"hR":"hL";
     pvFlash($(ev.hand==="R"?"pvlampR":"pvlampL"),ev.v==="ghost"?["soft"]:[]);
     if(ev.v==="ghost") continue;
-    if(ev.v==="perc"){ pvFlash($("pvp-"+ev.s),[hand]); continue; }
+    if(ev.v==="perc"){
+      // tak wears two glyphs, one per side — light the one for this hand
+      const id=ev.s==="tak"?(ev.hand==="R"?"pvp-tak2":"pvp-tak"):("pvp-"+ev.s);
+      pvFlash($(id),[hand]); continue; }
     const f=effField(ev.f); if(f===null) continue;
     pvFlash($("pvf"+f),[hand]);
   }
