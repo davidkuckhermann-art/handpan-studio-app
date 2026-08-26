@@ -395,6 +395,10 @@ body.phone #jamBtn,body.phone #jampanel{display:none !important}
 }
 .jslot .jx:hover{color:var(--clay); border-color:var(--clay)}
 .jslot.jadd .jx{display:none}
+/* a chord the current pan can't voice: still in the row, clearly asleep */
+.jslot.na{opacity:.55; border-style:dashed}
+.jtools{display:inline-flex; gap:6px; align-items:center; margin-left:10px;
+  padding-left:12px; border-left:1px solid var(--rule)}
 
 /* ---- transposition report ---- */
 #report{background:var(--card2); border:1px solid var(--rule); border-radius:12px; padding:13px 15px; margin-top:12px}
@@ -3887,8 +3891,8 @@ function refresh(){
   // a jam is always written FOR the student's pan — switching pans re-voices
   // the whole progression (chords the new pan can't form are dropped)
   if(jamOn&&piece.writtenFor!==myPanId){
-    jam.slots=jam.slots.filter(s=>jamVoice(s.chord));
-    if(!jam.slots.length) jam=defaultJam();
+    // the progression SURVIVES a pan switch — chords the new pan can't
+    // voice show dashed and play as silent bars (David, 26 Aug)
     piece=buildJamPiece(); C=compile(piece);
     viewSec="Jam"; selAi=0; viewPin=null;
     srcPan=derive(panById(piece.writtenFor));
@@ -4209,6 +4213,22 @@ function jamVoice(name){
   }
   return best.map;
 }
+// Shift every chord's root by n semitones, names rebuilt in the app's own
+// spelling; chords the pan can't voice at the new root stay in the row,
+// dashed, playing silent bars — transposing back restores them (David, 26 Aug).
+function jamTranspose(n){
+  if(!jam.slots.length){ toast("No chords to transpose"); return; }
+  jam.slots=jam.slots.map(s=>{
+    const m=String(s.chord).match(/^([A-Ga-g])([b♭#♯]?)(.*)$/);
+    if(!m) return s;
+    let r=PC[m[1].toUpperCase()];
+    if(m[2]==="#"||m[2]==="♯")r++; if(m[2]==="b"||m[2]==="♭")r--;
+    return {chord:PCN[((r+n)%12+12)%12]+m[3],bars:s.bars};
+  });
+  jamEditSlot=-1;
+  try{ $("jamDlg").close(); }catch(e){}
+  applyJam();
+}
 // A follow-up chord that makes musical sense, with dice in it (David, 26
 // Aug): the FAMILY is drawn first at his stated odds — 55% triad, 30% 7th,
 // 15% 9th (a family the pan lacks gives its share to the others) — then the
@@ -4237,8 +4257,11 @@ function buildJamPiece(){
   const pat=JAMPATS.find(p=>p.id===jam.patternId)||JAMPATS[0];
   const bars=[];
   for(const slot of jam.slots){
-    const v=jamVoice(slot.chord); if(!v) continue;
+    const v=jamVoice(slot.chord);
     for(let b=0;b<(slot.bars||1);b++){
+      // a chord this pan can't voice keeps its BARS — the form survives,
+      // that chord simply doesn't sound (David, 26 Aug)
+      if(!v){ bars.push([]); continue; }
       const bar=pat.ev.map(([t,k,h])=>
         k==="g"?G(t,h):k==="^"?P(t,"slap",h):F(t,v[k],h));
       if(b===0&&bar.length) bar[0]=Object.assign({},bar[0],{chord:slot.chord});
@@ -4268,9 +4291,9 @@ function enterJam(){
   if(videoSeen) setSyncMode(false);
   jamPrev={piece:JSON.parse(JSON.stringify(piece)),bpm};
   try{ jam=JSON.parse(localStorage.getItem("hps.jam")||"null"); }catch(e){ jam=null; }
-  if(!jam||!Array.isArray(jam.slots)||!jam.slots.length) jam=defaultJam();
-  jam.slots=jam.slots.filter(s=>jamVoice(s.chord));   // stored chords may not fit this pan
-  if(!jam.slots.length) jam=defaultJam();
+  // an EMPTY progression is a legal state (David, 26 Aug) — only a missing
+  // one gets the default; chords this pan can't voice stay as silent bars
+  if(!jam||!Array.isArray(jam.slots)) jam=defaultJam();
   if(!JAMPATS.some(p=>p.id===jam.patternId)) jam.patternId=JAMPATS[0].id;
   if(jam.bpm) bpm=jam.bpm;
   jamOn=true; document.body.classList.add("jam");
@@ -4328,7 +4351,9 @@ function renderJamPanel(){
   const prog=$("jamProg"); prog.innerHTML="";
   jam.slots.forEach((s,i)=>{
     const b=document.createElement("button");
-    b.className="jslot"+(i===jamEditSlot?" sel":"");
+    const na=!jamVoice(s.chord);
+    b.className="jslot"+(i===jamEditSlot?" sel":"")+(na?" na":"");
+    if(na) b.title="Not on this pan — these bars play silent";
     b.dataset.i=i;
     b.innerHTML="<b>"+fmtChord(s.chord)+"</b><small>"
       +(s.bars>1?s.bars+" bars":"1 bar")+"</small>";
@@ -4398,7 +4423,6 @@ function renderJamPanel(){
     const x=document.createElement("span"); x.className="jx"; x.textContent="✕";
     x.title="Remove this chord";
     x.addEventListener("click",e=>{ e.stopPropagation();
-      if(jam.slots.length<=1){ toast("A jam needs at least one chord"); return; }
       jam.slots.splice(i,1); if(jamEditSlot===i) jamEditSlot=-1; applyJam(); });
     b.appendChild(x);
     prog.appendChild(b);
@@ -4417,6 +4441,20 @@ function renderJamPanel(){
   sug.title="Add a chord that fits — with a little randomness";
   sug.addEventListener("click",jamSuggest);
   prog.appendChild(sug);
+  // transpose the WHOLE progression by semitones; clear starts fresh
+  const tools=document.createElement("span"); tools.className="jtools";
+  const mk=(txt,title,fn)=>{ const t=document.createElement("button");
+    t.className="ctl"; t.textContent=txt; t.title=title;
+    t.addEventListener("click",fn); tools.appendChild(t); };
+  mk("♭","Transpose the whole progression down a semitone",()=>jamTranspose(-1));
+  mk("♯","Transpose the whole progression up a semitone",()=>jamTranspose(1));
+  mk("Clear","Remove all chords and start fresh",()=>{
+    if(!jam.slots.length) return;
+    jam.slots=[]; jamEditSlot=-1;
+    try{ $("jamDlg").close(); }catch(e){}
+    applyJam(); toast("Chords cleared — add or suggest to begin");
+  });
+  prog.appendChild(tools);
   // the groove: one button naming the current one — the pill row would not
   // survive a growing library (David, 26 Aug); the browser dialog has them all
   const pats=$("jamPats"); pats.innerHTML="";
