@@ -1667,10 +1667,28 @@ async function togglePlay(){
   ensureCtx();
   // the first stroke must already be the recorded pan, not the synth stand-in
   await Promise.race([preloadBank(), new Promise(r=>setTimeout(r,800))]);
-  start();
+  await start();
 }
-function start(){
-  ensureCtx(); ensureSink(); ctx.resume().catch(()=>{});
+/* THE FIRST NOTE SOMETIMES DIDN'T PLAY (David, 26 Aug). The cause was the
+   context being SUSPENDED when play was pressed — after an idle page, a hidden
+   tab, or an iOS interruption. `ctx.currentTime` is FROZEN while suspended, so
+   t0 was computed off a dead clock and the whole first window was scheduled at
+   frozen+0.12; resume() was fired and not awaited, and by the time the graph
+   actually began rendering the clock had already run 115–264 ms PAST that
+   moment (measured). A BufferSource whose start time is already gone when
+   audio starts flowing is skipped — hence the missing first stroke, and only
+   "sometimes", because it depended on how long the resume took.
+   fire()'s own `Math.max(at,ctx.currentTime)` could not save it: it read the
+   same frozen clock. So: wait for the context to be RUNNING, then build the
+   schedule against a live clock. */
+async function start(){
+  ensureCtx(); ensureSink();
+  if(ctx.state!=="running"){
+    try{ await ctx.resume(); }catch(e){}
+    // Safari can report "running" a beat before the clock actually moves
+    const t=ctx.currentTime;
+    for(let i=0;i<10&&ctx.currentTime===t;i++) await new Promise(r=>setTimeout(r,10));
+  }
   preloadBank();
   C=compile(piece);
   const beat=60/effBpm(); let t0=ctx.currentTime+0.12;
