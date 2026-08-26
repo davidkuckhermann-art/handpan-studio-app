@@ -2281,6 +2281,35 @@ function render(){
    700 tab) and the card is zoomed so that width IS the screen — same layout
    as the desktop, smaller ink. The chord card gets the same treatment only
    when its natural width overflows. zoom affects layout, so heights follow. */
+/* The TALLEST table in the piece, measured at a given card width.
+   Landscape scales the card to the screen, so fitting each table on its own
+   made the glyphs change size table to table — B's ghost-dot rows are taller
+   than A's, so B came out ~11% smaller (David, 26 Aug: "single symbols are
+   smaller in the B section"). Scaling every table by the tallest one keeps
+   one size across the whole piece; shorter tables simply sit centred with a
+   little air. Measured off-screen and cached — this runs inside render(). */
+let natCache={key:"",h:0};
+function pieceNaturalHeight(W){
+  const names=Object.keys(piece.sections);
+  const key=view+"|"+Math.round(W)+"|"+(piece.title||"")+"|"+names.join(",");
+  if(natCache.key===key) return natCache.h;
+  const tmp=document.createElement("div");
+  tmp.className="score";
+  tmp.style.cssText="position:absolute; visibility:hidden; left:-10000px; top:0; width:"+W+"px";
+  document.body.appendChild(tmp);
+  const save=viewSec;
+  let h=0;
+  try{
+    for(const nm of names){
+      viewSec=nm; tmp.innerHTML="";
+      if(view==="tab") renderTabView(tmp); else renderTableView(tmp);
+      h=Math.max(h,tmp.scrollHeight);
+    }
+  }catch(e){}
+  viewSec=save; tmp.remove();
+  natCache={key,h};
+  return h;
+}
 function phoneFit(){
   if(!PHONE) return;
   const wrap=$("scorewrap"), sc=$("score");
@@ -2315,7 +2344,8 @@ function phoneFit(){
     const availH=Math.max(40,Math.min(band,centrable));
     sc.style.width=W+"px";             // measure the height at full width
     for(let i=0;i<2;i++){              // the narrower card can reflow slightly
-      const natH=sc.scrollHeight;
+      // the TALLEST table decides the scale, so every table reads the same size
+      const natH=Math.max(sc.scrollHeight,pieceNaturalHeight(parseFloat(sc.style.width)||W));
       if(natH<=0) break;
       z=Math.max(0.35,Math.min(2.4,availH/natH));
       sc.style.width=(W/z)+"px";
