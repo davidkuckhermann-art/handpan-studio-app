@@ -1109,15 +1109,25 @@ function jumpTo(pulse){
   for(const g of live){ try{ g.gain.setValueAtTime(g.gain.value,now);
     g.gain.linearRampToValueAtTime(0,now+.05);}catch(e){} }
   live=[];
-  if(loopSec&&(pulse<loopSec.from||pulse>=loopSec.to)) loopSec=null;
-  nextPulse=loopSec?pulse-loopSec.from:pulse;
+  if(loopSec&&pulse>=loopSec.to){
+    // Jumping PAST the loop leaves it behind — and that must SAY so and drop
+    // the frame, or the notation still looks looped while playback runs on
+    // (David, 26 Aug). Jumping BEFORE it keeps the loop: the run-in plays and
+    // the loop engages when the music arrives.
+    loopSec=null; paintLoopFrame(); toast("Loop off — jumped past it");
+  }
+  nextPulse=pulse;
   nextTime=now+0.1; fired=[]; lastPaint=-1;
   renderArr();
 }
+/* The pulse counter is ABSOLUTE: playback may start before the loop, play the
+   run-in, and the loop engages when it arrives (David, 26 Aug). Only pulses
+   from the loop's start on are folded back into the span. */
 function loopedPulse(n){
-  if(!loopSec) return n%C.total;
-  const span=loopSec.to-loopSec.from;
-  return loopSec.from+(n%span);
+  if(!loopSec) return ((n%C.total)+C.total)%C.total;
+  if(n<loopSec.from) return n;                    // the run-in, played once
+  const span=Math.max(1,loopSec.to-loopSec.from);
+  return loopSec.from+((n-loopSec.from)%span);
 }
 function sched(){
   try{
@@ -1250,7 +1260,8 @@ function start(){
   if(countIn){ for(let i=0;i<cBeats;i++) fire(clickBuf(i===0),t0+i*beat,1);
     t0+=cBeats*beat; }
   const e=arrEntries()[Math.min(selAi,piece.arrangement.length-1)];
-  nextTime=t0; nextPulse=loopSec?0:(pendingStart!=null?pendingStart:(e?e.from:0));
+  // a click before the loop wins (the run-in); otherwise a loop starts itself
+  nextTime=t0; nextPulse=pendingStart!=null?pendingStart:(loopSec?loopSec.from:(e?e.from:0));
   pendingStart=null; lastPaint=-1; fired=[];
   playing=true; timer=setInterval(sched,60); sched();
   raf=requestAnimationFrame(tick);
@@ -2134,7 +2145,25 @@ function onVideoTime(t){
     }
   }
 }
+let lastVidLoop=0;
 function followTick(t,p){
+  /* In follow mode the video IS the clock, so a loop has to loop the VIDEO:
+     when the playhead passes the loop's end, the recording jumps back to the
+     loop's start (David, 26 Aug — "looping works, but not in follow video
+     mode"). The map converts the loop's pulses into video seconds; a loop
+     before the video reaches it is left alone, so the run-in still plays. */
+  if(loopSec&&piece.syncMap&&piece.syncMap.length>=2){
+    const t0=invMap(loopSec.from), t1=invMap(loopSec.to);
+    if(t0!=null&&t1!=null&&t1>t0+0.2&&t>=t1-0.015&&performance.now()-lastVidLoop>350){
+      lastVidLoop=performance.now();
+      const now=ctx?ctx.currentTime:0;
+      for(const g of live){ try{ g.gain.setValueAtTime(g.gain.value,now);
+        g.gain.linearRampToValueAtTime(0,now+.05);}catch(e){} }
+      live=[]; vCursor=null;
+      videoSeek(t0);
+      return;
+    }
+  }
   const pr=Math.round(p);
   if(pr>=C.total){ // past the last hit: the marker leaves the page
     clearMarks();
