@@ -1056,11 +1056,15 @@ body.phone .gmini i{font-size:10px}
   body.phone .jslot{padding:5px 10px 4px; min-width:52px}
   body.phone .jslot b{font-size:15px}
   body.phone .jslot small{font-size:9.5px}
-  /* the tools live under the chord card, not in it: two left-aligned lines */
-  body.phone .jtoolbox{display:flex; align-items:center; justify-content:flex-start;
-    margin-top:9px}
+  /* the tools sit flush UNDER THE NOTATION and above the chords, pushed right;
+     the groove selector has the line below the chords to itself (27 Aug) */
+  body.phone .jtoolbox{display:flex; align-items:center; justify-content:flex-end;
+    margin:0 0 7px}
+  body.phone .jgroovebox{display:flex; align-items:center; margin-top:9px}
+  body.phone .jgroovebox .ctl{max-width:100%; white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis}
   body.phone .jtools{margin:0; padding:0; border-left:none; width:100%;
-    justify-content:flex-start; overflow-x:auto; scrollbar-width:none; gap:5px}
+    justify-content:flex-end; overflow-x:auto; scrollbar-width:none; gap:5px}
   body.phone .jtools::-webkit-scrollbar{display:none}
   body.phone .jtools .ctl{font-size:12px; padding:6px 9px; white-space:nowrap}
   body.phone #jamInfo{font-size:11.5px; padding:6px 9px; margin-bottom:7px}
@@ -1173,7 +1177,9 @@ body.phone .gmini i{font-size:10px}
   /* Save · Load · Undo take the Chords|Pan place while a groove is written */
   #gwTools{display:none}
   body.phone.editing #gwTools{display:inline-flex; gap:6px; margin-left:auto}
-  body.phone.gedit #cpHost{display:none}
+  /* no editor ever needs the chord card — the deck replaces #belowrow
+     entirely (David, 27 Aug) */
+  body.phone.editing #cpHost{display:none}
   #gwTools .ctl{font-size:12.5px; padding:6px 10px}
   /* one undo is enough: the lane's ↺ steps aside wherever the tools row has
      it — the arrangement editor too (David, 27 Aug) */
@@ -4520,7 +4526,11 @@ function paintPan(pi){
    in this view, by David's call. Columns keep .slot[data-rel], so the
    playback marker machinery is the table's, untouched. ---- */
 function renderTabView(sc){
-  const nm=viewSec, sec=piece.sections[nm], m=SM(piece,nm);
+  const nm=viewSec, sec=piece.sections[nm], m0=SM(piece,nm);
+  // short bars pair up here exactly as in the table skin (David, 27 Aug:
+  // "the short grooves are notated 2/row also goes for the Tab notation")
+  const m=((editing||jamOn)&&m0.bpr===1&&m0.bp<=8&&sec.bars.length>1)
+    ?Object.assign({},m0,{bpr:2}):m0;
   const sr=document.createElement("div"); sr.className="secrow";
   sr.innerHTML='<span class="secname">'+nm+'</span>';
   sc.appendChild(sr);
@@ -5944,7 +5954,7 @@ function jamSuggest(){
   };
   let sum=0; const acc=cands.map(c=>(sum+=wOf(c)));
   const x=Math.random()*sum, i=acc.findIndex(v=>x<v);
-  jam.slots.push({chord:cands[i].name,bars:last?last.bars:1});
+  jam.slots.push({chord:cands[i].name,bars:1});
   applyJam();
 }
 function buildJamPiece(){
@@ -6216,7 +6226,9 @@ function renderJamPanel(){
   add.addEventListener("click",()=>{
     if(jam.slots.length>=JAM_MAX){ toast("Eight chords is the most for now"); return; }
     const last=jam.slots[jam.slots.length-1];
-    jam.slots.push({chord:last?last.chord:(jamDefs().list[0]||{}).name,bars:last?last.bars:1});
+    // one bar, so the chord lands in the next FREE BAR rather than starting a
+    // row of its own (David, 27 Aug); its length is editable in the chord card
+    jam.slots.push({chord:last?last.chord:(jamDefs().list[0]||{}).name,bars:1});
     applyJam(); openJamSlot(jam.slots.length-1);
   });
   if(jam.slots.length>=JAM_MAX){ add.classList.add("na");
@@ -6253,11 +6265,19 @@ function renderJamPanel(){
      either way, and renderJamPanel only clears #jamProg, so the old block has
      to go first or the rows stack up (that was the "several grooves selected
      at once" bug). */
-  $("jampanel").querySelectorAll(".jtoolbox").forEach(el=>el.remove());
+  $("jampanel").querySelectorAll(".jtoolbox,.jgroovebox").forEach(el=>el.remove());
   if(PHONE){
+    /* THE TWO KINDS OF CONTROL ARE SEPARATED (David, 27 Aug). The tools —
+       ♭ ♯ Clear, Open in editor — ride their OWN line ABOVE the chord strip,
+       pushed right, which puts them directly under the notation card (nothing
+       may live INSIDE it: the card carries a CSS zoom and everything in it
+       shrinks with the music, which is why "integrate into the bottom of the
+       notation window" has to mean flush beneath it). The groove selector,
+       the one control that names what you are playing, gets its own line
+       under the chords. */
     const boxT=document.createElement("div"); boxT.className="jtoolbox";
-    boxT.appendChild(tools);           // ONE row: the tools, then the groove
-    $("jampanel").appendChild(boxT);
+    boxT.appendChild(tools);
+    $("jampanel").insertBefore(boxT,$("jamtrack"));
   } else prog.appendChild(tools);
   // the groove: one button naming the current one, sitting at the score
   // frame's TOP LEFT beside the section name (David, 26 Aug) — the browser
@@ -6275,9 +6295,9 @@ function renderJamPanel(){
      of the tools"). The spacer collapses when the row overflows, so a long
      groove name still just scrolls. */
   if(PHONE){
-    const sp=document.createElement("span"); sp.className="spacer";
-    tools.insertBefore(sp,tools.firstChild);
-    tools.insertBefore(cur,sp);
+    const boxG=document.createElement("div"); boxG.className="jgroovebox";
+    boxG.appendChild(cur);
+    $("jampanel").appendChild(boxG);   // its own line, under the chords
   }
   else host.appendChild(cur);
 }
@@ -7530,7 +7550,12 @@ function startGrooveEdit(opts){    // opts: {id?, name, meter, sub, unit?, ref, 
   if(editing){ toast("Leave editing first"); return; }
   const def=jamDefs().byName[opts.ref];
   if(!def||def.miss){ toast("Pick a chord your pan plays in full"); return; }
-  const gBars=Math.max(1,opts.bars||defaultGrooveBars(opts.meter[0],opts.sub));
+  /* An existing groove keeps ITS OWN bar count; the two-bar default belongs to
+     a NEW groove only. Opening the one-bar "Uptempo backbeat" as a copy was
+     giving it a second, EMPTY bar — which is what David saw as chords landing
+     on their own rows with nothing beside them (27 Aug). */
+  const gBars=opts.ev?Math.max(1,opts.bars||1)
+    :Math.max(1,opts.bars||defaultGrooveBars(opts.meter[0],opts.sub));
   const bp=opts.meter[0]*opts.sub;
   let bars=Array.from({length:gBars},()=>[]);
   if(opts.ev){                     // re-editing: degrees back to fields on THIS pan
