@@ -1538,7 +1538,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
         right INSIDE the notation window, level with the play button
         (David, 27 Aug). The phone keeps its own copy in the jam tools. -->
    <span id="scoreheadR">
-     <button class="ctl" id="genBtn" title="Fill the whole progression — suggested, or truly random">🎲 Generate</button>
+     <button class="ctl" id="genBtn" title="Fill the whole progression with a fresh chord sequence">🎲 Generate</button>
    </span>
   </div>
   <div id="score"></div>
@@ -1850,23 +1850,6 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <span class="spacer"></span>
     <button class="ctl" id="geCancel">Cancel</button>
   </div>
-</dialog>
-
-<!-- THE RANDOM GENERATOR (27 Aug, David): two ways to fill the whole
-     progression — his tuned suggestion rules, or a flat draw. -->
-<dialog id="genDlg">
-  <h3>Generate a progression</h3>
-  <div class="drow-btns" style="display:flex; gap:9px; padding:4px 0 2px">
-    <button class="ctl" id="genSug" style="flex:1; justify-content:center; padding:12px; font-size:14px">Suggested</button>
-    <button class="ctl" id="genRnd" style="flex:1; justify-content:center; padding:12px; font-size:14px">Truly random</button>
-  </div>
-  <p class="hint" id="genHint"></p>
-  <div class="row" id="genLenRow" style="margin:6px 0 0">
-    <span class="lab">How many bars</span>
-    <select class="ctl" id="genLen" aria-label="How many bars"></select>
-  </div>
-  <div class="row" style="margin:0"><span class="spacer"></span>
-    <button class="ctl" id="genClose">Cancel</button></div>
 </dialog>
 
 <!-- OPEN IN EDITOR asks WHICH editor (27 Aug, David) — the jam is two
@@ -2657,6 +2640,8 @@ function applyHandColors(){
 }
 let swing=+(localStorage.getItem("hps.swing")||0);
 let playing=false, timer=null, raf=null, nextTime=0, nextPulse=0, lastPaint=-1, fired=[];
+/* a generated progression restarts at the next bar line — see jamGenerate */
+let jamRestartDue=null, jamRestartAt=0;
 let loopSec=null;   // {from,to} in pulses, or null = whole piece
 let editing=false, cursor=0, undoStack=[], viewSec=null, selAi=0;
 /* A table the student put on screen by hand: {ai,nm}. While it is set the
@@ -2734,6 +2719,11 @@ function sched(){
     // after a stall (hidden tab), resync instead of firing every missed pulse
     if(nextTime<ctx.currentTime-0.5) nextTime=ctx.currentTime+0.06;
     while(nextTime<ctx.currentTime+0.4){
+      /* a freshly generated progression starts at ITS beginning, once the bar
+         being played has finished (David, 27 Aug) */
+      if(jamRestartDue!=null&&nextPulse>=jamRestartDue){
+        nextPulse=jamRestartAt; jamRestartDue=null; fired=[]; lastPaint=-1;
+      }
       const pi=loopedPulse(nextPulse);
       const sec=secOfPulse(pi), rel=pi-sec.pulse, m=SM(piece,sec.name);
       let at=nextTime;   // swing: the off subdivision leans toward the triplet
@@ -2907,7 +2897,7 @@ async function start(){
   const e=arrEntries()[Math.min(selAi,piece.arrangement.length-1)];
   // a click before the loop wins (the run-in); otherwise a loop starts itself
   nextTime=t0; nextPulse=pendingStart!=null?pendingStart:(loopSec?loopSec.from:(e?e.from:0));
-  pendingStart=null; lastPaint=-1; fired=[];
+  pendingStart=null; lastPaint=-1; fired=[]; jamRestartDue=null;
   playing=true; timer=setInterval(sched,60); sched();
   raf=requestAnimationFrame(tick);
   updatePlayBtn();
@@ -6354,56 +6344,38 @@ function suggestPick(){
    (David's call — a 4-chord loop with a 2-bar ending regenerates as 5
    one-bar chords). With nothing there yet he picks the length himself. */
 function jamBarCount(){ return jam.slots.reduce((n,s)=>n+Math.max(1,s.bars||1),0); }
-function jamGenerate(kind,bars){
+/* ONE BUTTON, NO QUESTION (David, 27 Aug — the sheet and the "truly random"
+   half are gone): Generate fills the whole progression by the same rules the
+   Suggest button follows, one chord per bar currently held, four if there is
+   nothing to measure. And it RESTARTS the loop: a new progression heard from
+   the middle of itself is not the progression, so playback finishes the bar
+   it is in and begins again at chord one. */
+function jamGenerate(bars){
   const n=Math.max(1,Math.min(JAM_MAX,bars||jamBarCount()||4));
   jamPreviewStop();
   const before=jam.slots;
   jam.slots=[];
-  if(kind==="random"){
-    const pool=jamDefs().list.filter(c=>!c.miss);
-    if(!pool.length){ jam.slots=before; toast("This pan has no complete chord to draw from"); return; }
-    let prev=null;
-    for(let i=0;i<n;i++){
-      let pick, guard=0;
-      do{ pick=pool[Math.floor(Math.random()*pool.length)]; }
-      while(pool.length>1&&pick.name===prev&&++guard<20);
-      prev=pick.name;
-      jam.slots.push({chord:pick.name,bars:1});
-    }
-  } else {
-    for(let i=0;i<n;i++){
-      const pick=suggestPick();          // reads the slots built so far
-      if(!pick){ if(!jam.slots.length){ jam.slots=before; return; } break; }
-      jam.slots.push({chord:pick.name,bars:1});
-    }
+  for(let i=0;i<n;i++){
+    const pick=suggestPick();            // reads the slots built so far
+    if(!pick){ if(!jam.slots.length){ jam.slots=before; return; } break; }
+    jam.slots.push({chord:pick.name,bars:1});
   }
   jamEditSlot=-1;
   applyJam();
-  toast((kind==="random"?"Random":"Suggested")+" progression — "+jam.slots.length
-        +(jam.slots.length===1?" chord":" chords"));
+  jamRestartNextBar();
+  toast("New progression — "+jam.slots.length+(jam.slots.length===1?" chord":" chords"));
 }
-function openGenDlg(){
-  const bars=jamBarCount();
-  const sel=$("genLen"), row=$("genLenRow");
-  // with chords already down the length is decided: one chord per bar held
-  row.classList.toggle("hidden",bars>0);
-  $("genHint").textContent=bars>0
-    ? "Replaces the "+bars+(bars===1?" bar":" bars")+" you have with "+bars
-      +(bars===1?" chord":" chords"+", one per bar")+"."
-    : "Nothing to measure yet — choose how long the loop should be.";
-  if(!bars&&!sel.options.length){
-    for(let i=2;i<=JAM_MAX;i++){
-      const o=document.createElement("option"); o.value=String(i);
-      o.textContent=i+" bars"; if(i===4) o.selected=true; sel.appendChild(o);
-    }
-  }
-  openDlg($("genDlg"));
+/* Let the bar you are in finish, then drop the playhead on chord one. The
+   scheduler counts absolute pulses, so "the next bar" is the next multiple of
+   the groove's bar length at or after where the counter has reached. */
+function jamRestartNextBar(){
+  if(!playing||!C) return;
+  const pat=allPats().find(p=>p.id===jam.patternId)||JAMPATS[0];
+  const bp=Math.max(1,pat.meter[0]*pat.sub);
+  jamRestartDue=Math.ceil(nextPulse/bp)*bp;   // the coming bar line
+  jamRestartAt=0;                            // …and then chord one
 }
-function jamGenFrom(kind){
-  const bars=jamBarCount()||+$("genLen").value||4;
-  $("genDlg").close();
-  jamGenerate(kind,bars);
-}
+
 // Can this pan put a chord's ROOT at the bottom of a voicing? On a D Kurd it
 // cannot for C7 — the ♭7 sits below the root, and David: "the C7 voicing is
 // awkward … include this rule only for scales that have a 7th voicing with
@@ -6773,7 +6745,7 @@ function renderJamPanel(){
   });
   // between Clear and Open in editor (David, 27 Aug); the desktop's copy
   // lives in the notation head's right cell instead
-  if(PHONE) mk("🎲 Generate","Fill the whole progression — suggested, or truly random",openGenDlg);
+  if(PHONE) mk("🎲 Generate","Fill the whole progression with a fresh chord sequence",()=>jamGenerate());
   mk("Open in editor","Edit the arrangement, or the groove itself",
     ()=>openDlg($("openEdDlg")));
   /* on the phone the tools get their OWN line under the strip — inside it they
@@ -9089,10 +9061,7 @@ function boot(){
   $("geSave").addEventListener("click",()=>grooveExit(true));
   $("geDrop").addEventListener("click",()=>grooveExit(false));
   $("geCancel").addEventListener("click",()=>{ afterEdit=null; $("grooveExitDlg").close(); });
-  $("genBtn").addEventListener("click",openGenDlg);
-  $("genClose").addEventListener("click",()=>$("genDlg").close());
-  $("genSug").addEventListener("click",()=>jamGenFrom("sug"));
-  $("genRnd").addEventListener("click",()=>jamGenFrom("random"));
+  $("genBtn").addEventListener("click",()=>jamGenerate());
   $("oeClose").addEventListener("click",()=>$("openEdDlg").close());
   $("oeArr").addEventListener("click",()=>{ $("openEdDlg").close(); jamToPiece(); });
   $("oeGroove").addEventListener("click",()=>{ $("openEdDlg").close(); editThisGroove(); });
