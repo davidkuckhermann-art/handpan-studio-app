@@ -1126,8 +1126,14 @@ body.phone .gmini i{font-size:10px}
   body.phone .jgroovebox{display:flex; align-items:center; margin-top:9px}
   body.phone .jgroovebox .ctl{max-width:100%; white-space:nowrap; overflow:hidden;
     text-overflow:ellipsis}
+  /* right-aligned WHILE IT FITS: justify-content:flex-end pushes the overflow
+     off the START of a scrolling row, which hid the first tool once the row
+     grew past the screen (David's Narrow button, 27 Aug). An auto margin on
+     the first child does the same job and collapses to nothing when the row
+     is full, so the overflow goes to the right where it can be scrolled to. */
   body.phone .jtools{margin:0; padding:0; border-left:none; width:100%;
-    justify-content:flex-end; overflow-x:auto; scrollbar-width:none; gap:5px}
+    justify-content:flex-start; overflow-x:auto; scrollbar-width:none; gap:5px}
+  body.phone .jtools>:first-child{margin-left:auto}
   body.phone .jtools::-webkit-scrollbar{display:none}
   body.phone .jtools .ctl{font-size:12px; padding:6px 9px; white-space:nowrap}
   body.phone #jamInfo{font-size:11.5px; padding:6px 9px; margin-bottom:7px}
@@ -6181,6 +6187,34 @@ const JV_TOK=["1","3","5","7","9","11","13","15"];
    picker, the groove preview and the workbench ask for. */
 /* Everything is priced in the SAME units — squared semitones of melodic
    motion — so the rules can argue with each other honestly. */
+/* NARROW CHORDS — "the upper register of the instrument is free" (David, 27
+   Aug). It is the same instinct as the register rule, measured at the other
+   end: wide mode prefers the lowest BOTTOM (grounded, rich), narrow mode
+   prefers the lowest TOP, so the pan's high notes are left for the student's
+   own melody. No per-pan ceiling has to be chosen — "as low as this chord can
+   put its top" is already instrument-relative. Compactness comes second, and
+   the wide/open bonus is simply off, being the opposite goal. */
+const JV_TOP=3;        // per semitone the top sits above the lowest it could
+const JV_SPAN=1;       // per semitone of span, so close voicings win ties
+/* …BUT NOT DOWN INTO THE BASS (David, 27 Aug: "if you have instruments with
+   base notes on the bottom and you play the chords very narrow, it's not
+   gonna sound good — the middle range should always be available"). The floor
+   is the pan's OWN lower third, so it travels between instruments: on a D
+   Kurd (D3–C5) it lands on 57.3, which is A3 — the very line David drew by
+   hand for that pan, arrived at from the instrument's range instead. On the
+   F Low Pygmy (F2–G4) it sits at 49.7, far lower, as it must. */
+const JV_FLOOR=4;      // per semitone a voicing sits below that line
+function panMudLine(){
+  const lo=myPan.midiFor(0);
+  let hi=lo;
+  for(const f of myPan.fields) hi=Math.max(hi,myPan.midiFor(f.n));
+  return lo+(hi-lo)/3;
+}
+/* A SEMITONE LOW DOWN IS MUD — it is what made B♭maj7 sound wrong as A3·B♭3·D4
+   (David, 27 Aug). Priced in both modes; it changes nothing in wide mode,
+   where no approved voicing has one, and it stops narrow mode from
+   rediscovering exactly the sound he rejected. */
+const JV_RUB=24;
 const JV_WIDE=24;      // what a wide/open voicing is worth
 const JV_REG=2;        // per semitone a voicing sits above the lowest legal one
 const JV_ROOT=8;       // the close root at the bottom
@@ -6304,7 +6338,7 @@ function jvChordPool(name,V){
 /* every legal voicing of one chord, ranked by his per-chord rules —
    bass legality, then the close root at the bottom, then lowest register.
    The wide/open ones are FLAGGED, not promoted: the melody pays for them. */
-function jvCandidates(name,V){
+function jvCandidates(name,V,narrow){
   const P=jvChordPool(name,V); if(!P) return null;
   const {def,imp,kept,pool,Vp}=P;
   const rootPc=imp[0];
@@ -6336,12 +6370,23 @@ function jvCandidates(name,V){
   const legal=out.filter(c=>c.bassOk);
   const use=legal.length?legal:out;
   const low=Math.min.apply(null,use.map(c=>c.ms[0]));
+  for(const c of use) c.top=Math.max.apply(null,c.ms);
+  const lowTop=Math.min.apply(null,use.map(c=>c.top));
   const reg=(a,b)=>{ for(let i=0;i<a.ms.length;i++) if(a.ms[i]!==b.ms[i]) return a.ms[i]-b.ms[i]; return 0; };
+  const rub=c=>{               // a semitone (or tone) between neighbouring voices, low down
+    let n=0;
+    for(let i=1;i<c.ms.length;i++)
+      if(c.ms[i]-c.ms[i-1]<=2&&c.ms[i-1]<60) n++;
+    return n*JV_RUB;
+  };
+  const mud=narrow?panMudLine():0;
   for(const c of use){
-    c.top=Math.max.apply(null,c.ms);
-    c.pen=JV_REG*(c.ms[0]-low)                                   // lower register
-      -(c.wide?JV_WIDE:0)                                        // wide/open
-      -(c.rootBottom&&c.ms[0]-low<=ROOT_CLOSE?JV_ROOT:0);        // the close root
+    c.pen=(narrow
+        ? JV_TOP*(c.top-lowTop)+JV_SPAN*(c.top-c.ms[0])          // keep the top low and tight
+          +JV_FLOOR*Math.max(0,mud-c.ms[0])                      // …without sinking into the bass
+        : JV_REG*(c.ms[0]-low)-(c.wide?JV_WIDE:0))               // keep the bottom low; open is a bonus
+      -(c.rootBottom&&c.ms[0]-low<=ROOT_CLOSE?JV_ROOT:0)         // the close root, either way
+      +rub(c);
   }
   use.sort((a,b)=>(a.pen-b.pen)||reg(a,b));
   const CAP=14;               // plenty for the DP, and it stays instant
@@ -6355,9 +6400,9 @@ function jvMap(c,V){          // ranks onto voices — order kept, ends pinned
 /* the whole progression at once: cheapest total of squared melodic jumps
    between neighbouring tops (cyclic — the loop returns to its first chord)
    plus each voicing's own penalty (its rank, less the wide bonus). */
-function jamProgVoices(names,V){
+function jamProgVoices(names,V,narrow){
   V=Math.max(1,Math.min(V||3,JV_TOK.length));
-  const cands=names.map(n=>jvCandidates(n,V));
+  const cands=names.map(n=>jvCandidates(n,V,narrow));
   const idx=[]; cands.forEach((c,i)=>{ if(c) idx.push(i); });
   const out=names.map(()=>null);
   if(!idx.length) return out;
@@ -6397,8 +6442,8 @@ function jamProgVoices(names,V){
   idx.forEach((i,n)=>{ out[i]=jvMap(seq[n][bestPath[n]],V); });
   return out;
 }
-function jamVoice(name,V){    // one chord, alone: the same rules, no neighbours
-  return jamProgVoices([name],V)[0];
+function jamVoice(name,V,narrow){   // one chord, alone: same rules, no neighbours
+  return jamProgVoices([name],V,narrow)[0];
 }
 /* SHORT BARS, TWO OF THEM (David, 27 Aug): "if the time signature is short
    … the groove can be 2 bars long. Let's make this the default length for
@@ -6682,7 +6727,7 @@ function buildJamPiece(){
   const VV=patVoices(pat);            // grooves may carry more than three voices
   // the WHOLE progression is voiced together — the melody between chords is
   // what decides wide against narrow (David, 27 Aug)
-  const vs=jamProgVoices(jam.slots.map(s=>s.chord),VV);
+  const vs=jamProgVoices(jam.slots.map(s=>s.chord),VV,!!jam.narrow);
   const bars=[];
   jam.slots.forEach((slot,si)=>{
     const v=vs[si];
@@ -6739,7 +6784,7 @@ function jamToPiece(){
   toast("Copied into a new piece — save it from the Library");
 }
 function saveJamLS(){ try{localStorage.setItem("hps.jam",JSON.stringify(
-  {slots:jam.slots,patternId:jam.patternId,bpm:bpm}))}catch(e){} }
+  {slots:jam.slots,patternId:jam.patternId,bpm:bpm,narrow:!!jam.narrow}))}catch(e){} }
 /* THE PROGRESSION A STUDENT MEETS FIRST (David, 27 Aug): Dmin · B♭maj · Fmaj
    · Cmaj on a D-minor pan — i · VI · III · VII — and "the equivalent on the
    selected scale" everywhere else. So it is built from the pan's own home
@@ -6770,7 +6815,7 @@ function defaultJam(){
   let slots=names.slice(0,4).map(chord=>({chord,bars:1}));
   if(!slots.length) slots=full.slice(0,4).map(c=>({chord:c.name,bars:1}));
   return {slots:slots.length?slots:[{chord:full[0]&&full[0].name||"Cmaj",bars:1}],
-    patternId:JAMPATS[0].id,bpm:72};
+    patternId:JAMPATS[0].id,bpm:72,narrow:false};
 }
 function enterJam(){
   if(jamOn) return;
@@ -7001,6 +7046,20 @@ function renderJamPanel(){
   const mk=(txt,title,fn)=>{ const t=document.createElement("button");
     t.className="ctl"; t.textContent=txt; t.title=title;
     t.addEventListener("click",fn); tools.appendChild(t); };
+  /* the voicing switch leads the tools (David, 27 Aug: "to the left of the
+     flattening and sharpening buttons") */
+  const vb=document.createElement("button");
+  vb.className="ctl"+(jam.narrow?" on":"");
+  vb.id="jamNarrow"; vb.textContent="Narrow";
+  vb.title=jam.narrow
+    ?"Narrow chords — the pan's high notes stay free for your melody"
+    :"Wide chords — switch to narrow to keep the upper register free";
+  vb.addEventListener("click",()=>{
+    jam.narrow=!jam.narrow; applyJam(); saveJamLS();
+    toast(jam.narrow?"Narrow chords — the top of the pan is yours"
+                    :"Wide chords");
+  });
+  tools.appendChild(vb);
   mk("♭","Transpose the whole progression down a semitone",()=>jamTranspose(-1));
   mk("♯","Transpose the whole progression up a semitone",()=>jamTranspose(1));
   mk("Clear","Remove all chords and start fresh",()=>{
@@ -7128,7 +7187,7 @@ function renderJamDlg(){
 function jamHear(){
   const s=jam.slots[jamEditSlot]; if(!s) return;
   ensureCtx();
-  const v=jamVoice(s.chord); if(!v) return;
+  const v=jamVoice(s.chord,3,!!jam.narrow); if(!v) return;
   const flds=[...new Set(["1","3","5"].map(d=>v[d]))]
     .sort((a,b)=>myPan.midiFor(a)-myPan.midiFor(b));
   flds.forEach((f,i)=>{ const m=myPan.midiFor(f);
@@ -8219,7 +8278,7 @@ function jamFadeLive(dur){
   live=[];
 }
 function grooveMini(pat){
-  const v=jamVoice(jam.slots[0]&&jam.slots[0].chord,patVoices(pat))
+  const v=jamVoice(jam.slots[0]&&jam.slots[0].chord,patVoices(pat),!!jam.narrow)
     ||Object.fromEntries(JV_TOK.map(k=>[k,0]));
   const bp=pat.meter[0]*pat.sub, total=bp*patBars(pat);
   const box=document.createElement("div"); box.className="gmini";
@@ -8256,7 +8315,7 @@ function jamPreviewToggle(patId,btn){
   if(jpv&&jpv.patId===patId){ jamPreviewStop(); return; }
   jamPreviewStop(); ensureCtx();
   const pat=allPats().find(p=>p.id===patId); if(!pat) return;
-  const v=jamVoice(jam.slots[0]&&jam.slots[0].chord,patVoices(pat));
+  const v=jamVoice(jam.slots[0]&&jam.slots[0].chord,patVoices(pat),!!jam.narrow);
   if(!v){ toast("Add a chord first"); return; }
   const evs=pat.ev.map(([t,k,h])=>k==="g"?null:k==="^"?P(t,"slap",h):F(t,v[k],h))
     .filter(Boolean);
@@ -8621,7 +8680,7 @@ function openJamLibDlg(){
 function jamRecipe(){
   const pat=allPats().find(p=>p.id===jam.patternId);
   const r={v:1, slots:jam.slots.map(s=>({chord:s.chord,bars:s.bars||1})),
-    patternId:jam.patternId, bpm:bpm};
+    patternId:jam.patternId, bpm:bpm, narrow:!!jam.narrow};
   if(pat&&pat.user) r.groove=pat;      // travels with it
   return r;
 }
@@ -8654,6 +8713,7 @@ function importJam(r){
   }
   jam.slots=r.slots.map(s=>({chord:s.chord,bars:Math.max(1,s.bars||1)}));
   jam.patternId=allPats().some(p=>p.id===r.patternId)?r.patternId:JAMPATS[0].id;
+  jam.narrow=!!r.narrow;
   if(r.bpm){ bpm=r.bpm; $("bpm").value=bpm; }
   jamEditSlot=-1; jamFitSlots(); applyJam(); saveJamLS();
   toast("Jam loaded — "+jam.slots.length+" chords");
