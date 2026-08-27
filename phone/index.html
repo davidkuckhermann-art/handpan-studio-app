@@ -1941,6 +1941,13 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <h4>Notation &amp; display</h4>
   <div class="drow"><span>Show notation</span><span id="mNota"></span></div>
   <div class="drow"><span>All settings</span><span id="mSet"></span></div>
+  <!-- the switch lives HERE too (David, 27 Aug: "on mobile I don't see it in
+       the settings menu at all" — it was a level deeper, in All settings) -->
+  <div class="drow"><span>Tutorial notes</span>
+    <span style="display:flex; gap:6px">
+      <button class="ctl tutswitch" id="mTutBtn" title="Show the explanation banners around the app">On</button>
+      <button class="ctl tutreset" id="mTutReset" title="Show every explanation again, as if the app were new">Reset</button>
+    </span></div>
 
   <!-- the author's door (26 Aug, ABC'd via mockups-edit-phone.html): never
        shown in the lesson embed — html.player hides the pair below -->
@@ -1962,10 +1969,13 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <select class="ctl" id="countSel" aria-label="Count-line marker">
       <option value="off">Off</option><option value="16th">16th</option><option value="8th">8th</option>
       <option value="subdiv">Subdivision</option></select></div>
-  <div class="drow"><span>Tutorial</span>
+  <div class="dsep"></div>
+  <!-- Tutorial is not a playback setting; it has its own room (27 Aug) -->
+  <h4>Help</h4>
+  <div class="drow"><span>Tutorial notes</span>
     <span style="display:flex; gap:6px">
-      <button class="ctl" id="setTutBtn" title="Show the explanation banners around the app">On</button>
-      <button class="ctl" id="setTutReset" title="Show every explanation again, as if the app were new">Reset</button>
+      <button class="ctl tutswitch" id="setTutBtn" title="Show the explanation banners around the app">On</button>
+      <button class="ctl tutreset" id="setTutReset" title="Show every explanation again, as if the app were new">Reset</button>
     </span></div>
   <div class="dsep"></div>
   <h4>Notation</h4>
@@ -6453,8 +6463,8 @@ function paintTutorials(){
     if(show&&!tutShown.has("jam")){ tutShown.add("jam");
       try{localStorage.setItem("hps.jamInfo","1")}catch(e){} }
   }
-  const t=$("setTutBtn");
-  if(t){ t.classList.toggle("on",on); t.textContent=on?"On":"Off"; }
+  document.querySelectorAll(".tutswitch").forEach(b=>{
+    b.classList.toggle("on",on); b.textContent=on?"On":"Off"; });
 }
 // The Suggest button: one chord onto the end, from the shared core above.
 function jamSuggest(){
@@ -8980,7 +8990,12 @@ function boot(){
     // one ✕, three rooms: a groove saves itself, editing offers the library
     // on the way out (David, 26 Aug), practice just leaves
     if(editing){
-      if(grooveEdit){ $("editBtn").click(); return; }   // finish + save
+      // the groove bench asks for itself, and only when something changed
+      if(grooveEdit){ $("editBtn").click(); return; }
+      /* NOTHING CHANGED, NOTHING TO SAVE — so don't ask (David, 27 Aug). The
+         question is about keeping work; with no work to keep it is a step for
+         its own sake. */
+      if(!pieceDirty()){ $("editBtn").click(); return; }
       openDlg($("editExitDlg")); return;
     }
     leavePractice();
@@ -9098,8 +9113,10 @@ function boot(){
     const b=x.closest(".tutbanner");
     if(b){ b.dataset.closed="1"; b.classList.add("hidden"); }
   });
-  $("setTutReset").addEventListener("click",resetTutorials);
-  $("setTutBtn").addEventListener("click",()=>setTutorials(!tutorialsOn()));
+  document.addEventListener("click",e=>{
+    if(e.target.closest&&e.target.closest(".tutreset")) resetTutorials();
+    else if(e.target.closest&&e.target.closest(".tutswitch")) setTutorials(!tutorialsOn());
+  });
   paintTutorials();
   $("jamInfoX").addEventListener("click",()=>{
     $("jamInfo").classList.add("hidden");
