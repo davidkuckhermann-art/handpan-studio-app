@@ -1186,14 +1186,15 @@ body.phone .gmini i{font-size:10px}
      loses to `#edLaneHead .ib` above, so it has to be said the same way */
   #edLaneHead #edDel{font-size:21px}
   body.phone #grooveLoadDlg,body.phone #jamLibDlg{max-height:74vh; overflow-y:auto; overscroll-behavior:contain}
+  body.phone #wrongFileDlg .row{flex-wrap:wrap}
   body.phone #newDlg,body.phone #editExitDlg,body.phone #grooveNewDlg,
-  body.phone #grooveLoadDlg,body.phone #jamLibDlg{
+  body.phone #grooveLoadDlg,body.phone #jamLibDlg,body.phone #wrongFileDlg{
     border:none; border-radius:18px 18px 0 0; padding:14px 16px 26px;
     width:100%; max-width:none; margin:auto auto 0; background:var(--card);
     box-shadow:0 -12px 40px -14px rgba(70,52,28,.55)}
   body.phone #newDlg::backdrop,body.phone #editExitDlg::backdrop,
   body.phone #grooveNewDlg::backdrop,body.phone #grooveLoadDlg::backdrop,
-  body.phone #jamLibDlg::backdrop{background:rgba(30,27,22,.34)}
+  body.phone #jamLibDlg::backdrop,body.phone #wrongFileDlg::backdrop{background:rgba(30,27,22,.34)}
 }
 /* landscape keeps its own arrangement (#miniarr), so the flattened card hides */
 @media (orientation:landscape){
@@ -1791,6 +1792,13 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <p class="hint">The arrangement editor copies this jam into a new piece you can write on. The groove editor opens the groove itself — one bar (or two), replayed on every chord.</p>
   <div class="row" style="margin:0"><span class="spacer"></span>
     <button class="ctl" id="oeClose">Cancel</button></div>
+</dialog>
+
+<!-- a file that belongs in another room (27 Aug, David) -->
+<dialog id="wrongFileDlg">
+  <h3>Open it where it belongs?</h3>
+  <p class="hint" id="wfText"></p>
+  <div class="row" id="wfBtns" style="margin:0"></div>
 </dialog>
 
 <!-- the jams saved on this device (27 Aug) -->
@@ -7797,7 +7805,17 @@ function jamFromText(txt){
   return jamRecipeOk(r)?r:null;
 }
 function importJam(r){
+  /* A JAM REPLACES THE WHOLE ROOM, so it must never land while an editor is
+     open (David asked what happens when you open the wrong kind of file, 27
+     Aug — and the honest answer was: something bad, quietly). On the groove
+     bench it used to overwrite the stored progression with nothing on screen
+     to show for it; in the arrangement editor it swapped the piece being
+     edited for a generated jam, which is deliberately never persisted, so
+     unsaved work went with it. */
+  if(grooveEdit){ toast("Finish the groove first — a jam replaces the whole screen"); return false; }
+  if(editing){ toast("Leave the editor first — a jam replaces the piece you are editing"); return false; }
   if(!jamOn) enterJam();
+  if(!jamOn){ toast("Could not open jam mode"); return false; }
   if(r.groove&&grooveOk(r.groove)){    // a groove that came with it
     const l=userGrooves();
     if(!l.some(x=>x.id===r.groove.id)){ l.push(Object.assign({},r.groove,{user:true})); setUserGrooves(l); }
@@ -7807,6 +7825,7 @@ function importJam(r){
   if(r.bpm){ bpm=r.bpm; $("bpm").value=bpm; }
   jamEditSlot=-1; jamFitSlots(); applyJam(); saveJamLS();
   toast("Jam loaded — "+jam.slots.length+" chords");
+  return true;
 }
 /* ONE SHARE BUTTON, THREE ROOMS (David, 27 Aug). Which thing it saves and
    loads is decided by where you are: the groove on the bench, the jam you are
@@ -7848,22 +7867,80 @@ function ctxShareText(){
   const first=r.slots[0]&&r.slots[0].chord;
   return {txt:"HPJ1:"+enc(r), name:("Jam in "+(first||"D")), ext:"hpj"};
 }
-function ctxShareLoad(txt){
-  const g=grooveFromText(txt);
-  if(g){
-    if(grooveEdit) grooveLoadInto(g);    // straight onto the bench
-    else { importGroove(g); if(jamOn){ jam.patternId=g.id; jamFitSlots(); applyJam(); } }
+/* WHAT KIND OF FILE IS THIS, AND DOES IT BELONG HERE? (David, 27 Aug: "we
+   need a dialog box … this is not the fitting file, do you want to open it in
+   the … editor?") One router behind every sheet: a file that fits the room
+   opens straight away; one that belongs somewhere else ASKS, names where it
+   goes, and says what leaving costs. Nothing is ever half-applied. */
+function classifyText(txt){
+  const g=grooveFromText(txt); if(g) return {kind:"groove",obj:g};
+  const r=jamFromText(txt);    if(r) return {kind:"jam",obj:r};
+  const p=pieceFromText(txt);  if(p) return {kind:"piece",obj:p};
+  return null;
+}
+const KINDNAME={groove:"a groove",jam:"a jam",piece:"an arrangement"};
+function fitsHere(kind){
+  if(kind==="groove") return true;              // it can always join your grooves
+  if(kind==="jam")    return jamOn&&!editing;
+  return !grooveEdit&&!jamOn;                   // a piece needs the reading room
+}
+function applyFile(kind,obj){
+  if(kind==="groove"){
+    if(grooveEdit){ grooveLoadInto(obj); return true; }
+    importGroove(obj);
+    if(jamOn){ jam.patternId=obj.id; jamFitSlots(); applyJam(); }
+    else toast("Saved to your grooves — pick it in Jam mode");
     return true;
   }
-  const r=jamFromText(txt);
-  if(r){ importJam(r); return true; }
-  const p=pieceFromText(txt);
-  if(p){                                  // a piece: leave the room it belongs to
-    if(grooveEdit){ toast("That is a piece — finish the groove first"); return true; }
-    loadPiece(p); toast("Imported: "+(p.title||"Untitled")); return true;
-  }
-  return false;
+  if(kind==="jam") return importJam(obj);
+  loadPiece(obj); toast("Opened: "+(obj.title||"Untitled")); return true;
 }
+let wrongFile=null;
+function offerOpenElsewhere(kind,obj){
+  wrongFile={kind,obj};
+  const name=KINDNAME[kind];
+  const where=kind==="jam"?"Jam mode":(kind==="piece"?"the arrangement":"the groove editor");
+  const from=grooveEdit?"the groove editor":(editing?"the editor":(jamOn?"Jam mode":"here"));
+  $("wfText").innerHTML="That is <b>"+name+"</b> file, and this is "+from
+    +". Opening it means leaving "+(from==="here"?"this screen":from)+".";
+  const row=$("wfBtns"); row.innerHTML="";
+  const mk=(label,primary,fn)=>{ const b=document.createElement("button");
+    b.className="ctl"+(primary?" on":""); b.textContent=label;
+    b.addEventListener("click",()=>{ $("wrongFileDlg").close(); fn(); });
+    row.appendChild(b); };
+  if(grooveEdit){
+    // leaving the bench SAVES the groove — that is the established rule
+    mk("Save the groove and open "+where,true,()=>{
+      $("editBtn").click();                    // finishes and saves, returns to jam
+      setTimeout(()=>applyFile(kind,obj),0);
+    });
+  } else if(editing){
+    const title=piece.title||"this piece";
+    mk("Save and open "+where,true,()=>{
+      $("spSave")&&$("spSave").click();        // writes to the piece library
+      $("editBtn").click();
+      setTimeout(()=>applyFile(kind,obj),0);
+    });
+    mk("Open without saving",false,()=>{
+      $("editBtn").click();
+      setTimeout(()=>applyFile(kind,obj),0);
+    });
+    $("wfText").innerHTML+=" Unsaved changes to <b>"+title+"</b> would be lost.";
+  } else {
+    mk("Open "+where,true,()=>applyFile(kind,obj));
+  }
+  mk("Cancel",false,()=>{});
+  openDlg($("wrongFileDlg"));
+}
+/* the one door every sheet uses */
+function openAnyText(txt){
+  const c=classifyText(txt);
+  if(!c) return false;
+  if(fitsHere(c.kind)) return applyFile(c.kind,c.obj);
+  offerOpenElsewhere(c.kind,c.obj);
+  return true;
+}
+function ctxShareLoad(txt){ return openAnyText(txt); }
 function grooveFromText(txt){
   txt=String(txt).trim(); let g=null;
   const m=txt.match(/HPG1:([A-Za-z0-9_-]{10,})\s*$/);
@@ -8138,24 +8215,14 @@ function boot(){
   $("impFileInput").addEventListener("change",e=>{
     const f=e.target.files[0]; if(!f) return;
     f.text().then(txt=>{
-      const p=pieceFromText(txt);
-      if(p){ loadPiece(p); $("shareDlg").close(); toast("Imported: "+(p.title||"Untitled")); return; }
-      const g=grooveFromText(txt);        // .hpg — a groove for jam mode
-      if(g){ importGroove(g); $("shareDlg").close(); return; }
-      const r=jamFromText(txt);           // .hpj — a whole jam
-      if(r){ importJam(r); $("shareDlg").close(); return; }
-      toast("That file could not be read");
+      if(openAnyText(txt)) $("shareDlg").close();
+      else toast("That file could not be read");
     });
     e.target.value="";
   });
   $("impBtn").addEventListener("click",()=>{
-    const p=pieceFromText($("impTxt").value);
-    if(p){ loadPiece(p); $("shareDlg").close(); toast("Imported: "+(p.title||"Untitled")); return; }
-    const g=grooveFromText($("impTxt").value);
-    if(g){ importGroove(g); $("shareDlg").close(); return; }
-    const r=jamFromText($("impTxt").value);
-    if(r){ importJam(r); $("shareDlg").close(); return; }
-    toast("That code could not be read"); });
+    if(openAnyText($("impTxt").value)) $("shareDlg").close();
+    else toast("That code could not be read"); });
   $("followBtn").addEventListener("click",()=>{ follow=!follow;
     if(follow){ if(playing) stop(); ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
       if(loopSec){ loopSec=null; render(); }    // loops don't survive into follow mode
