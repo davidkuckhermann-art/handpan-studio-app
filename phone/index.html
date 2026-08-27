@@ -441,6 +441,17 @@ html.player #modebar{display:none}
 body.phone .tutbanner{font-size:11.5px; padding:6px 9px; margin-bottom:7px}
 #tutGroove{display:none}
 body.gedit #tutGroove{display:flex}
+/* EDITING SHOWS ON THE PAPER'S EDGE (David, 27 Aug — variant 7 of
+   mockups-editframe.html, his pick). A steel ring OUTSIDE the frame: the
+   card's own rim keeps its weight, nothing inside the notation moves, and
+   STEEL rather than amber because amber already means "sounding now" here —
+   the playhead, the loop frame, an engaged toggle. Covers both editing modes,
+   since the groove bench carries body.editing too. */
+body.editing #scorecard{border-color:var(--steel);
+  box-shadow:0 0 0 3px var(--steel-soft), 0 0 0 4.5px rgba(51,96,126,.55), var(--shadow)}
+/* the ring is drawn outside the card, and the wrapper clips — give it the few
+   px back or the ring is shaved off at the sides */
+body.editing #scorewrap{padding-left:5px; padding-right:5px}
 /* EDITING CENTRES THE PAN on the desktop, in every editing mode (David, 27
    Aug). Piece editing shows the pan alone, so flex already centred it; the
    groove bench also shows the reference chord's card, which pushed the pan
@@ -4224,7 +4235,11 @@ function phoneFit(){
   const hdr=document.querySelector("header");
   hdr.style.marginTop="";              // measure from a clean slate every time
   sc.style.zoom=1;
-  const W=wrap.clientWidth;
+  /* clientWidth INCLUDES padding, and the editing ring gives the wrapper some
+     — measuring with it made the card 10px too wide and pushed the ring off
+     the right edge (27 Aug). The card gets the CONTENT width. */
+  const wcs=getComputedStyle(wrap);
+  const W=wrap.clientWidth-(parseFloat(wcs.paddingLeft)||0)-(parseFloat(wcs.paddingRight)||0);
   let z=W/designW;
   sc.style.width=designW+"px";
   /* Landscape fills the screen in BOTH directions. Scaling the fixed design
@@ -6278,10 +6293,21 @@ function suggestPick(){
   // reach for another.
   const firstIsTonic=!!fd&&tonics.some(c=>c.root===fd.root);
   const lastDom=!!lastDef&&jamMaj3(lastDef)&&jamMin7(lastDef);
+  /* ROOTS KEEP THEIR DISTANCE (David, 27 Aug: "decrease the chance of chords
+     with the same root being close to each other"). How many chords back a
+     root last stood, 1 being the chord just played. The damping eases off
+     with distance — twice running stays rare, two or three apart is merely
+     less likely, and beyond that a root is free again. */
+  const seen={};
+  for(let i=jam.slots.length-1,n=1;i>=0;i--,n++){
+    const d=jamDefs().byName[jam.slots[i].chord];
+    if(d&&seen[d.root]===undefined) seen[d.root]=n;
+  }
+  const NEAR={1:.12,2:.3,3:.55};
   const wOf=c=>{
     let w=MOT[ivOf(lr,c.root)]||1;
-    // the same root twice running: it can happen, but rarely (David, 27 Aug)
-    if(c.root===lr) w*=.12;
+    const back=seen[c.root];
+    if(back&&NEAR[back]) w*=NEAR[back];
     // a dominant seventh just played wants its resolution, and gets a better
     // chance of it (David, 27 Aug) — the old roll gave it none at all
     if(lastDom&&(lr+5)%12===c.root) w*=4;
