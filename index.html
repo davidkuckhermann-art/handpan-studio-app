@@ -1088,6 +1088,9 @@ body.phone .gmini i{font-size:10px}
   body.phone #transport .arrline{margin:0; gap:5px; flex-wrap:nowrap}
   body.phone #transport #subChips{margin-left:auto}
   body.phone #transport .lab{display:none}
+  /* …but the drawer is inside the transport and its labels are the point —
+     "Chord voicings:" was hidden by this rule (David, 27 Aug) */
+  body.phone #transport #drawerExtra .lab{display:inline-block}
   body.phone #arrbox .chip{font-size:13px; padding:5px 12px}
   /* the notation gets the room the bar leaves */
   body.phone #scorewrap{margin-bottom:6px}
@@ -1136,7 +1139,10 @@ body.phone .gmini i{font-size:10px}
      is full, so the overflow goes to the right where it can be scrolled to. */
   body.phone .jtools{margin:0; padding:0; border-left:none; width:100%;
     justify-content:flex-start; overflow-x:auto; scrollbar-width:none; gap:5px}
-  body.phone .jtools>:first-child{margin-left:auto}
+  /* only the row UNDER THE NOTATION is right-aligned; the drawer's copy reads
+     left-to-right like every other setting there (27 Aug) */
+  body.phone .jtoolbox .jtools>:first-child{margin-left:auto}
+  body.phone #drawerExtra .jtools{justify-content:flex-start; overflow:visible}
   body.phone .jtools::-webkit-scrollbar{display:none}
   body.phone .jtools .ctl{font-size:12px; padding:6px 9px; white-space:nowrap}
   body.phone #jamInfo{font-size:11.5px; padding:6px 9px; margin-bottom:7px}
@@ -1297,14 +1303,21 @@ body.phone .gmini i{font-size:10px}
     cursor:grab; touch-action:none; background:none; border:none}
   /* the drawer's own play button, top right, for when it stands in for the
      writing deck (David, 27 Aug) */
-  body.phone #drawerPlayHost{position:absolute; right:0; top:-2px; display:none}
-  body.phone.editing.drawer-open #drawerPlayHost{display:block}
+  /* clear of the drawer's upper edge (David, 27 Aug: "too close to the upper
+     edge") — the handle's row is 22px, so this sits below it, not on it */
+  body.phone #drawerPlayHost{position:absolute; right:0; top:14px; display:none}
+  body.phone.editing.drawer-open #drawerPlayHost{display:block; animation:pbIn .18s ease}
+  @keyframes pbIn{ from{ opacity:0; transform:scale(.9) } to{ opacity:1; transform:none } }
+  body.phone.editing.drawer-open #drawerHead{padding-bottom:26px}
   /* IN EDITING THE DRAWER REPLACES THE DECK, it does not sit above it: the
      lane, the pan and the chips fold away as the settings arrive (David, 27
      Aug), so the screen holds one tool surface at a time. */
   body.phone.editing #editdeck{overflow:hidden;
     transition:height .24s cubic-bezier(.22,.61,.36,1), opacity .16s ease}
-  body.phone.editing.drawer-open #editdeck{height:0 !important; opacity:0}
+  /* BOTH height and opacity are driven from setDrawer. Tying the fade to the
+     body class was what made the deck "suddenly come back" (David, 27 Aug):
+     the class is only dropped when the move ENDS, so the deck grew invisible
+     and then popped. Driven from JS, it fades in as it grows. */
   body.phone #drawerGrip i{display:block; width:40px; height:4px; border-radius:2px;
     background:var(--rule); transition:background .15s}
   body.phone.drawer-open #drawerGrip i{background:var(--dixie)}
@@ -1337,6 +1350,9 @@ body.phone .gmini i{font-size:10px}
   body.phone #drawerExtra .dsec{font-size:9.5px; font-weight:800; letter-spacing:.12em;
     text-transform:uppercase; color:var(--ink3); margin:10px 0 3px}
   body.phone #drawerExtra .drow{display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:0}
+  /* the label belongs to the switch beside it — they wrap as one (27 Aug) */
+  body.phone #drawerExtra .jtools{flex-wrap:wrap; gap:6px}
+  body.phone #drawerExtra .vlab{white-space:nowrap}
   body.phone #drawerExtra .drow:empty,body.phone #drawerExtra .dsec.hidden{display:none}
   body.phone #drawerExtra select.ctl{max-width:100%}
   /* the rows whose controls moved into the drawer leave the menu sheet */
@@ -7164,8 +7180,8 @@ function renderJamPanel(){
     t.addEventListener("click",fn); (into||tools).appendChild(t); };
   /* named for what it chooses, not for one of its two states (David, 27 Aug:
      "chord voicings: narrow/wide") */
-  const vlab=document.createElement("span"); vlab.className="lab";
-  vlab.textContent="Chord voicings"; deep.appendChild(vlab);
+  const vlab=document.createElement("span"); vlab.className="lab vlab";
+  vlab.textContent="Chord voicings:"; deep.appendChild(vlab);
   const vpills=document.createElement("span");
   vpills.className="pills"; vpills.id="jamVoicing";
   vpills.setAttribute("role","group"); vpills.setAttribute("aria-label","Chord voicings");
@@ -7194,7 +7210,8 @@ function renderJamPanel(){
   // between Clear and Open in editor (David, 27 Aug); the desktop's copy
   // lives in the notation head's right cell instead
   if(PHONE) mk("🎲 Generate","Fill the whole progression with a fresh chord sequence",()=>jamGenerate());
-  mk("Open in editor","Edit the arrangement, or the groove itself",
+  mk(PHONE?"Open this jam in editor":"Open in editor",
+    "Edit the arrangement, or the groove itself",
     ()=>openDlg($("openEdDlg")),PHONE?deep:tools);
   /* on the phone the tools get their OWN line under the strip — inside it they
      would scroll away with the chords */
@@ -10120,36 +10137,50 @@ function setDrawer(on){
     ex.style.transition=""; ex.style.height=to+"px";
     drawerT=setTimeout(finish,300);
   };
+  /* THE DECK AND THE DRAWER TRADE PLACES IN ONE MOVE (David, 27 Aug: the old
+     way "looks a bit strange … the drawer animates down and then suddenly the
+     deck is back"). Both heights are driven together, in opposite directions,
+     over the same duration — so the bar's total height barely changes and it
+     reads as one surface turning over rather than two things taking turns.
+     Nothing pops at the end, because neither side is restored by a callback:
+     they simply arrive. */
+  const dk=$("editdeck"), wasEditing=editing&&!!dk;
   if(on){
-    /* editing hands its deck over: the lane, the pan and the chips fold away
-       and the drawer takes their place, with the transport moving into the
-       drawer's own head so play is never lost (David, 27 Aug) */
-    if(editing){
-      const dk=$("editdeck");
+    if(wasEditing){
+      dk.style.transition="none";
       dk.style.height=dk.offsetHeight+"px";     // a height to animate FROM
+      dk.style.opacity="1";
       dk.getBoundingClientRect();
+      dk.style.transition="";
       $("drawerPlayHost").appendChild($("playBtn"));
     }
     document.body.classList.add("drawer-open");
     sh.classList.remove("hidden");
-    ex.style.height="auto";                    // measure the natural height…
+    ex.style.height="auto";                     // measure the natural height…
     const h=ex.offsetHeight;
+    if(wasEditing){ dk.style.height="0px"; dk.style.opacity="0"; }  // fold as it grows
     grow(0,h,()=>{ ex.style.height="auto"; phoneFit(); });
     requestAnimationFrame(()=>sh.classList.add("lit"));
   } else {
     const h=ex.offsetHeight;
     sh.classList.remove("lit");
+    /* the deck comes back WITH the panel going down, not after it: measured
+       while still collapsed, then given its own height to grow into */
+    if(wasEditing){
+      dk.style.transition="none"; dk.style.height="auto";
+      const deckH=dk.offsetHeight;
+      dk.style.height="0px"; dk.style.opacity="0"; dk.getBoundingClientRect();
+      dk.style.transition="";
+      $("edPlayHost").appendChild($("playBtn"));  // it travels with the deck
+      dk.style.height=deckH+"px"; dk.style.opacity="1";   // grows AND fades in
+    }
     grow(h,0,()=>{
       document.body.classList.remove("drawer-open");
       ex.style.transition=""; ex.style.height="";
       sh.classList.add("hidden");
       tr.scrollTop=0;
-      if(editing){                              // the deck comes back
-        const dk=$("editdeck");
-        $("edPlayHost").appendChild($("playBtn"));
-        dk.style.height="";
-      }
-      phoneFit();                               // sizes settle against the bar again
+      if(wasEditing){ dk.style.height=""; dk.style.opacity=""; }
+      phoneFit();                                // sizes settle against the bar
     });
   }
 }
