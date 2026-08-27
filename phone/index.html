@@ -5537,8 +5537,25 @@ function jamDefs(){
    He named the future himself: extended scales and bottom notes will make
    this richer — this is the agreed starting point. */
 const JV_TOK=["1","3","5","7","9","11","13","15"];
-function jamVoice(name,V){
-  V=Math.max(1,Math.min(V||3,JV_TOK.length));
+/* MELODY DECIDES (David, 27 Aug, after hearing it): a wide voicing that
+   forces the top voice to leap out and back is worse than a narrow one that
+   walks. "If a wide voicing would lead to large melody jumps before and
+   after … I would not go for a wide voicing" — and his refinement, that ONE
+   gap is often fine if the other side is close while TWO gaps sound bad,
+   needs no rule of its own: the cost of a jump is its SQUARE, so two fifths
+   (49+49) dwarf a fifth and a step (49+1), and the wide bonus can pay for
+   one gap but never two.
+   Voicing is therefore a property of the PROGRESSION, not of a chord: the
+   whole loop is solved at once (jamProgVoices), cyclically, because a jam
+   plays its last chord back into its first. jamVoice() is the same solver
+   with a one-chord progression, which is what the quiz filter, the chord
+   picker, the groove preview and the workbench ask for. */
+/* Everything is priced in the SAME units — squared semitones of melodic
+   motion — so the rules can argue with each other honestly. */
+const JV_WIDE=24;      // what a wide/open voicing is worth
+const JV_REG=2;        // per semitone a voicing sits above the lowest legal one
+const JV_ROOT=8;       // the close root at the bottom
+function jvChordPool(name,V){
   const def=jamDefs().byName[name];
   let imp;                    // the chord's pcs by importance: root, 3rd, the
   if(def){                    // characteristic upper voice, then the shed tail
@@ -5554,36 +5571,30 @@ function jamVoice(name,V){
   for(const f of myPan.fields) if(kept.includes(jpc(f.midi))) pool.push(f.n);
   pool.sort((a,b)=>myPan.midiFor(a)-myPan.midiFor(b));
   if(!kept.length||!kept.every(pc=>pool.some(f=>jpc(myPan.midiFor(f))===pc))) return null;
-  const Vp=Math.min(V,pool.length);
+  return {def,imp,kept,pool,Vp:Math.min(V,pool.length)};
+}
+/* every legal voicing of one chord, ranked by his per-chord rules —
+   bass legality, then the close root at the bottom, then lowest register.
+   The wide/open ones are FLAGGED, not promoted: the melody pays for them. */
+function jvCandidates(name,V){
+  const P=jvChordPool(name,V); if(!P) return null;
+  const {def,imp,kept,pool,Vp}=P;
   const rootPc=imp[0];
-  /* the WIDE/OPEN voicing — root, 5th, 3rd above the octave, like Dmin's
-     D·1·6 — is "usually the default choice, because these sound best"
-     (David, 27 Aug). Triads only, three voices only; among wide options the
-     register rule still picks the lowest. */
   const isTriad=!!def&&def.group==="Triads"&&!def.miss;
   const thirdPc=def?def.degs["3"]:null, fifthPc=def?def.degs["5"]:null;
   const BASS_TOP=57;          // midi A3 — "below A3" is bass (David)
   const ROOT_CLOSE=3;         // a minor third — "close-by" (David)
-  const beats=(cand,inc)=>{
-    if(!inc) return true;
-    if(cand.bassOk!==inc.bassOk) return cand.bassOk;
-    for(let i=0;i<cand.ms.length;i++)
-      if(cand.ms[i]!==inc.ms[i]) return cand.ms[i]<inc.ms[i];
-    return false;
-  };
-  let best=null, bestRoot=null, bestWide=null;
-  const pick=[];
+  const out=[], pick=[];
   const walk=i=>{
     if(pick.length===Vp){
       const pcs=new Set(pick.map(f=>jpc(myPan.midiFor(f))));
       if(!kept.every(pc=>pcs.has(pc))) return;     // the chord stays complete
       const ms=pick.map(f=>myPan.midiFor(f));
-      const bassOk=ms[0]>=BASS_TOP||jpc(ms[0])===rootPc;
-      const cand={ms,bassOk,sel:pick.slice()};
-      if(beats(cand,best)) best=cand;
-      if(jpc(ms[0])===rootPc&&beats(cand,bestRoot)) bestRoot=cand;
-      if(isTriad&&V===3&&Vp===3&&jpc(ms[0])===rootPc&&jpc(ms[1])===fifthPc
-        &&jpc(ms[2])===thirdPc&&ms[2]-ms[0]>12&&beats(cand,bestWide)) bestWide=cand;
+      out.push({sel:pick.slice(), ms,
+        bassOk:ms[0]>=BASS_TOP||jpc(ms[0])===rootPc,
+        rootBottom:jpc(ms[0])===rootPc,
+        wide:isTriad&&V===3&&Vp===3&&jpc(ms[0])===rootPc&&jpc(ms[1])===fifthPc
+          &&jpc(ms[2])===thirdPc&&ms[2]-ms[0]>12});
       return;
     }
     if(i>=pool.length||pool.length-i<Vp-pick.length) return;
@@ -5591,16 +5602,75 @@ function jamVoice(name,V){
     walk(i+1);
   };
   walk(0);
-  if(!best) return null;
-  if(bestWide) best=bestWide;          // wide/open sounds best — the default
-  else if(bestRoot&&jpc(best.ms[0])!==rootPc&&bestRoot.ms[0]-best.ms[0]<=ROOT_CLOSE)
-    best=bestRoot;
-  // ranks 0..V-1 onto voices 0..Vp-1 — order preserved, ends pinned, so a
-  // five-voice groove on a three-note chord shares notes instead of dying
-  const map={};
-  for(let r=0;r<V;r++)
-    map[JV_TOK[r]]=best.sel[V===1?0:Math.round(r*(Vp-1)/(V-1))];
+  if(!out.length) return null;
+  // a bass below A3 that is not the root is out entirely — while anything
+  // legal exists (his hard rule); with nothing legal, every option stands
+  const legal=out.filter(c=>c.bassOk);
+  const use=legal.length?legal:out;
+  const low=Math.min.apply(null,use.map(c=>c.ms[0]));
+  const reg=(a,b)=>{ for(let i=0;i<a.ms.length;i++) if(a.ms[i]!==b.ms[i]) return a.ms[i]-b.ms[i]; return 0; };
+  for(const c of use){
+    c.top=Math.max.apply(null,c.ms);
+    c.pen=JV_REG*(c.ms[0]-low)                                   // lower register
+      -(c.wide?JV_WIDE:0)                                        // wide/open
+      -(c.rootBottom&&c.ms[0]-low<=ROOT_CLOSE?JV_ROOT:0);        // the close root
+  }
+  use.sort((a,b)=>(a.pen-b.pen)||reg(a,b));
+  const CAP=14;               // plenty for the DP, and it stays instant
+  return use.slice(0,CAP);
+}
+function jvMap(c,V){          // ranks onto voices — order kept, ends pinned
+  const map={}, Vp=c.sel.length;
+  for(let r=0;r<V;r++) map[JV_TOK[r]]=c.sel[V===1?0:Math.round(r*(Vp-1)/(V-1))];
   return map;
+}
+/* the whole progression at once: cheapest total of squared melodic jumps
+   between neighbouring tops (cyclic — the loop returns to its first chord)
+   plus each voicing's own penalty (its rank, less the wide bonus). */
+function jamProgVoices(names,V){
+  V=Math.max(1,Math.min(V||3,JV_TOK.length));
+  const cands=names.map(n=>jvCandidates(n,V));
+  const idx=[]; cands.forEach((c,i)=>{ if(c) idx.push(i); });
+  const out=names.map(()=>null);
+  if(!idx.length) return out;
+  const pen=c=>c.pen;
+  const jump=(a,b)=>{ const d=a.top-b.top; return d*d; };
+  if(idx.length===1){
+    const L=cands[idx[0]];
+    let bi=0; for(let i=1;i<L.length;i++) if(pen(L[i])<pen(L[bi])) bi=i;
+    out[idx[0]]=jvMap(L[bi],V); return out;
+  }
+  const seq=idx.map(i=>cands[i]);
+  let bestTotal=Infinity, bestPath=null;
+  for(let s=0;s<seq[0].length;s++){          // fix the first, then close the cycle
+    let cost=seq.map(()=>[]), from=seq.map(()=>[]);
+    for(let k=0;k<seq[0].length;k++) cost[0][k]=(k===s)?pen(seq[0][k]):Infinity;
+    for(let n=1;n<seq.length;n++)
+      for(let k=0;k<seq[n].length;k++){
+        let bc=Infinity, bf=0;
+        for(let j=0;j<seq[n-1].length;j++){
+          const c=cost[n-1][j]; if(c===Infinity) continue;
+          const v=c+jump(seq[n-1][j],seq[n][k]);
+          if(v<bc){ bc=v; bf=j; }
+        }
+        cost[n][k]=bc+pen(seq[n][k]); from[n][k]=bf;
+      }
+    const last=seq.length-1;
+    for(let k=0;k<seq[last].length;k++){
+      const total=cost[last][k]+jump(seq[last][k],seq[0][s]);   // the wrap
+      if(total<bestTotal){
+        bestTotal=total;
+        const path=[k];
+        for(let n=last;n>0;n--) path.unshift(from[n][path[0]]);
+        bestPath=path;
+      }
+    }
+  }
+  idx.forEach((i,n)=>{ out[i]=jvMap(seq[n][bestPath[n]],V); });
+  return out;
+}
+function jamVoice(name,V){    // one chord, alone: the same rules, no neighbours
+  return jamProgVoices([name],V)[0];
 }
 // how many voices a pattern actually uses — its highest rank token, plus one
 function patVoices(pat){
@@ -5665,9 +5735,12 @@ function jamSuggest(){
 function buildJamPiece(){
   const pat=allPats().find(p=>p.id===jam.patternId)||JAMPATS[0];
   const VV=patVoices(pat);            // grooves may carry more than three voices
+  // the WHOLE progression is voiced together — the melody between chords is
+  // what decides wide against narrow (David, 27 Aug)
+  const vs=jamProgVoices(jam.slots.map(s=>s.chord),VV);
   const bars=[];
-  for(const slot of jam.slots){
-    const v=jamVoice(slot.chord,VV);
+  jam.slots.forEach((slot,si)=>{
+    const v=vs[si];
     for(let b=0;b<(slot.bars||1);b++){
       // a chord this pan can't voice keeps its BARS — the form survives,
       // that chord simply doesn't sound (David, 26 Aug)
@@ -5677,7 +5750,7 @@ function buildJamPiece(){
       if(b===0&&bar.length) bar[0]=Object.assign({},bar[0],{chord:slot.chord});
       bars.push(bar);
     }
-  }
+  });
   return { format:"hpd-1", id:"jam", title:"Jam mode", author:"",
     writtenFor:myPanId, tempo:bpm||72, meter:pat.meter, sub:pat.sub,
     unit:pat.unit||4,
