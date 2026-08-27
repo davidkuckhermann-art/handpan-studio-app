@@ -154,6 +154,10 @@ body.nonota #scorefoot{margin-top:0; border-top:none}
 /* The notation is an instrument, not a document: a double-click sets a loop,
    it must never select glyphs (David, 26 Aug). Typing fields stay selectable. */
 body{-webkit-user-select:none; user-select:none}
+/* iOS answers a long press on text with the loupe and the callout bar, which
+   fired on the editor's own long-press menu (David, 27 Aug: "sometimes a
+   magnifying effect when I long-click into the notation") */
+body,#score,#scorewrap,#scorecard{-webkit-touch-callout:none}
 input,textarea,select{-webkit-user-select:text; user-select:text}
 button{font:inherit; cursor:pointer}
 .ctlgroup{display:inline-flex; gap:6px; padding:4px 7px; border:1px solid var(--rule);
@@ -867,6 +871,11 @@ dialog.flat[open]{position:fixed; top:9vh; left:50%; transform:translateX(-50%);
   z-index:60; margin:0; max-height:78vh; overflow:auto}
 #dlgShade{position:fixed; inset:0; background:rgba(30,27,22,.35); z-index:55}
 dialog h3{margin:0 0 10px; font-size:16px}
+/* the editor's long-press menu: copy / paste (27 Aug) */
+#editPop{position:fixed; z-index:120; display:flex; gap:6px; padding:6px;
+  background:var(--card); border:1px solid var(--rule); border-radius:12px;
+  box-shadow:0 10px 30px -10px rgba(70,52,28,.5)}
+#editPop .ctl{font-size:14px; padding:9px 15px; font-weight:700}
 /* the Piece sheet (sections & arrangement, 26 Aug) */
 #pieceDlg{width:min(560px,94vw); max-height:86vh; overflow-y:auto; overscroll-behavior:contain}
 #pieceDlg .pslab{font-size:10px; font-weight:800; letter-spacing:.12em; text-transform:uppercase;
@@ -4127,6 +4136,9 @@ function cellAtPoint(x,y){
    an SVG polygon walking the covered cells: down the right edges, back up the
    left ones. Drawn inside #score, so it rides the zoom with the notation. */
 function paintLoopFrame(){
+  // the editor's lane button lights for ITS bar only, so every loop change —
+  // a drag, a double tap, the button itself — has to repaint it (David, 27 Aug)
+  if(PHONE&&editing&&typeof paintEditLoopBtn==="function") setTimeout(paintEditLoopBtn,0);
   updateScoreTools();
   const sc=$("score");
   let svg=sc.querySelector("#loopframe");
@@ -4198,7 +4210,15 @@ function renderTableView(sc){
   // a section with fewer bars than its bars-per-row spreads them across the
   // full row — a one-bar jam fills the width instead of sitting in an empty
   // grid (David, 26 Aug); longer sections keep their print-like columns
-  const m=sec.bars.length<m0.bpr?Object.assign({},m0,{bpr:Math.max(1,sec.bars.length)}):m0;
+  let m=sec.bars.length<m0.bpr?Object.assign({},m0,{bpr:Math.max(1,sec.bars.length)}):m0;
+  /* SHORT BARS PAIR UP WHILE EDITING (David, 27 Aug: "if we have a shorter
+     time signature — everything up to 2/4 or 8/8 — 2 bars can be displayed in
+     one row"). Both of his examples are EIGHT SLOTS wide (2/4 in 16ths, 8/8 in
+     eighths), which is the honest measure here, since this is about how much
+     room a bar takes on the page. Display only — the piece's own barsPerRow is
+     untouched. */
+  if(editing&&m.bpr===1&&m.bp<=8&&sec.bars.length>1)
+    m=Object.assign({},m,{bpr:2});
   const sr=document.createElement("div"); sr.className="secrow";
   sr.innerHTML='<span class="secname">'+nm+'</span>';
   sc.appendChild(sr);
@@ -5012,7 +5032,8 @@ function renderEditbar(){
      +key("pg","Ghost •",false)+key("ps","Slap ^",false)+'</div>'
    +'<div class="lab">Groove</div><div class="pal">'
      +key("gsv","Save",false)+key("gld","Load…",false)+key("uz","Undo",false)+'</div>'
-   +'<p class="hint">One bar on <b>'+grooveEdit.ref+'</b> — '
+   +'<p class="hint">'+((piece.sections.Groove||{bars:[0]}).bars.length>1
+     ?(piece.sections.Groove.bars.length+' bars on <b>'):'One bar on <b>')+grooveEdit.ref+'</b> — '
      +grooveNotes(jamDefs().byName[grooveEdit.ref])
      +'. The title above is the groove’s name; <b>Edit</b> (or the phone’s ✕) finishes and saves it.</p>'
    +'</div>'
@@ -5036,7 +5057,8 @@ function renderEditbar(){
     else if(k==="pg")place({v:"ghost",hand:nextHand()});
     else if(k==="ps")placePerc("slap"); else if(k==="pt")placePerc("tak");
     else if(k==="pk")placePerc("tak","K"); else if(k==="pn")placePerc("knock");
-    else if(k==="b+"){ if(grooveEdit){ toast("A groove is one bar"); return; }
+    else if(k==="b+"){ if(grooveEdit&&piece.sections.Groove.bars.length>=4){
+        toast("Four bars is the most for a groove"); return; }
       snapshot(); piece.sections[viewSec].bars.push([]); refresh(); return; }
     else if(k==="b-"){ const loc=viewLoc(); if(loc&&piece.sections[viewSec].bars.length>1){
       snapshot(); piece.sections[viewSec].bars.splice(loc.bar,1);
@@ -5112,10 +5134,7 @@ function paintEditDeck(){
     }
     box.appendChild(be);
   }
-  // the loop button lights while ITS bar is the loop
-  const lb=$("edLoopBar");
-  if(lb){ const lf=viewFromPulse()+bar*m.bp;
-    lb.classList.toggle("on",!!loopSec&&loopSec.from===lf&&loopSec.to===lf+m.bp); }
+  paintEditLoopBtn();
   // the groove workbench's time row reads the piece, never the other way round
   if(grooveEdit){
     $("edTS").value=piece.meter[0]+"/"+piece.meter[1];
@@ -5138,6 +5157,14 @@ function paintEditDeck(){
       g.addEventListener("pointerdown",()=>{ placeField(+g.dataset.f); pvFlash(g,["hT"]); });
     });
   }
+}
+/* the lane's loop button is lit only while the loop IS the bar it shows, so
+   a hand-drawn loop elsewhere turns it off by itself (David, 27 Aug) */
+function paintEditLoopBtn(){
+  const lb=$("edLoopBar"); if(!lb||!PHONE||!editing||!piece.sections[viewSec]) return;
+  const m=SM(piece,viewSec), bar=Math.floor(cursor/m.bp);
+  const lf=viewFromPulse()+bar*m.bp;
+  lb.classList.toggle("on",!!loopSec&&loopSec.from===lf&&loopSec.to===lf+m.bp);
 }
 function edPill(id,on){ const b=$(id); if(b) b.setAttribute("aria-pressed",on?"true":"false"); }
 function edStep(dir){
@@ -5171,6 +5198,81 @@ function edCrossSection(dir){
       +Math.floor((m.bp-1)/winBP)*winBP;
   }
   refresh();
+}
+
+/* ---------------- COPY AND PASTE in the editor (27 Aug, David) ----------
+   "If a loop is active, a long press into the looped area should bring up a
+   copy/paste button. A long click at any location should bring up a paste
+   option, should something have been copied earlier." The loop is the
+   selection — it is already the app's one way of saying "this stretch" — so
+   Copy takes the looped span and Paste writes it wherever the finger lands,
+   replacing what is there. Both go through snapshot(), so ⌘Z / ↺ undo them. */
+let edClip=null;                  // {span, ev:[{t relative, …}]}
+function edPasteAt(rel0){
+  if(!edClip) return;
+  const m=SM(piece,viewSec), sec=piece.sections[viewSec];
+  const total=sec.bars.length*m.bp;
+  if(rel0>=total){ toast("Nothing here to paste into"); return; }
+  snapshot();
+  const span=Math.min(edClip.span,total-rel0);
+  for(let bi=0;bi<sec.bars.length;bi++){            // clear the target span
+    const b0=bi*m.bp;
+    sec.bars[bi]=sec.bars[bi].filter(e=>{
+      const r=b0+e.t; return r<rel0||r>=rel0+span; });
+  }
+  let wrote=0;
+  for(const ev of edClip.ev){
+    const r=rel0+ev.t; if(r>=rel0+span) continue;
+    const bi=Math.floor(r/m.bp); if(bi>=sec.bars.length) continue;
+    sec.bars[bi].push(Object.assign({},ev,{t:r-bi*m.bp}));
+    wrote++;
+  }
+  refresh();
+  toast(wrote?("Pasted "+wrote+(wrote===1?" note":" notes")):"Pasted an empty stretch");
+}
+function edCopyLoop(){
+  if(!loopSec) return;
+  const m=SM(piece,viewSec), sec=piece.sections[viewSec], base=viewFromPulse();
+  const r0=loopSec.from-base, r1=loopSec.to-base;
+  const ev=[];
+  sec.bars.forEach((bar,bi)=>{ for(const e of bar){
+    const r=bi*m.bp+e.t;
+    if(r>=r0&&r<r1) ev.push(Object.assign({},e,{t:r-r0}));
+  }});
+  edClip={span:r1-r0, ev};
+  const bars=(r1-r0)/m.bp;
+  toast("Copied "+(Number.isInteger(bars)&&bars>=1
+    ?bars+(bars===1?" bar":" bars"):(r1-r0)+" slots")
+    +" · "+ev.length+(ev.length===1?" note":" notes"));
+}
+/* the little menu the long press opens — built and thrown away each time, so
+   nothing has to be kept in sync with what the clipboard holds */
+function edPopAt(x,y){
+  edPopClose();
+  const c=cellAtPoint(x,y);
+  if(!c){ return; }
+  const inLoop=!!loopSec&&c.from>=loopSec.from&&c.to<loopSec.to;
+  const canCopy=inLoop, canPaste=!!edClip;
+  if(!canCopy&&!canPaste) return;          // nothing to offer: stay out of the way
+  const pop=document.createElement("div"); pop.id="editPop";
+  const mk=(label,fn)=>{ const b=document.createElement("button");
+    b.className="ctl"; b.textContent=label;
+    b.addEventListener("click",ev=>{ ev.stopPropagation(); edPopClose(); fn(); });
+    pop.appendChild(b); };
+  if(canCopy) mk("Copy",edCopyLoop);
+  if(canPaste) mk("Paste",()=>edPasteAt(c.from-viewFromPulse()));
+  document.body.appendChild(pop);
+  const r=pop.getBoundingClientRect();
+  pop.style.left=Math.max(8,Math.min(innerWidth-r.width-8,x-r.width/2))+"px";
+  pop.style.top=(y-r.height-14>8?y-r.height-14:y+16)+"px";
+  setTimeout(()=>{
+    document.addEventListener("pointerdown",edPopOutside,true);
+  },0);
+}
+function edPopOutside(e){ if(!e.target.closest||!e.target.closest("#editPop")) edPopClose(); }
+function edPopClose(){
+  const p=$("editPop"); if(p) p.remove();
+  document.removeEventListener("pointerdown",edPopOutside,true);
 }
 
 /* ---------------- the Piece sheet (26 Aug, ABC'd) ----------------
@@ -5665,6 +5767,14 @@ function jamProgVoices(names,V){
 function jamVoice(name,V){    // one chord, alone: the same rules, no neighbours
   return jamProgVoices([name],V)[0];
 }
+/* SHORT BARS, TWO OF THEM (David, 27 Aug): "if the time signature is short
+   … the groove can be 2 bars long. Let's make this the default length for
+   short time signatures, people can simply repeat bar 1." Same eight-slot
+   measure the notation pairs rows by. A groove's `bars` defaults to 1, so
+   every existing groove and all ten built-ins are unchanged. */
+function patBars(pat){ return Math.max(1,pat.bars||1); }
+function shortBar(beats,sub){ return beats*sub<=8; }
+function defaultGrooveBars(beats,sub){ return shortBar(beats,sub)?2:1; }
 // how many voices a pattern actually uses — its highest rank token, plus one
 function patVoices(pat){
   let mx=2;
@@ -5734,12 +5844,17 @@ function buildJamPiece(){
   const bars=[];
   jam.slots.forEach((slot,si)=>{
     const v=vs[si];
+    const gb=patBars(pat), bp=pat.meter[0]*pat.sub;
     for(let b=0;b<(slot.bars||1);b++){
       // a chord this pan can't voice keeps its BARS — the form survives,
       // that chord simply doesn't sound (David, 26 Aug)
       if(!v){ bars.push([]); continue; }
-      const bar=pat.ev.map(([t,k,h])=>
-        k==="g"?G(t,h):k==="^"?P(t,"slap",h):F(t,v[k],h));
+      // a multi-bar groove lays its bars in turn and repeats from the top if
+      // the chord lasts longer, so bar 1 alone is still a complete groove
+      const gi=b%gb;
+      const bar=pat.ev.filter(([t])=>Math.floor(t/bp)===gi)
+        .map(([t,k,h])=>{ const tt=t-gi*bp;
+          return k==="g"?G(tt,h):k==="^"?P(tt,"slap",h):F(tt,v[k],h); });
       if(b===0&&bar.length) bar[0]=Object.assign({},bar[0],{chord:slot.chord});
       bars.push(bar);
     }
@@ -5824,6 +5939,17 @@ function leaveJam(){
 // Regenerate from the recipe. Mid-playback the piece is swapped under the
 // running scheduler (loopedPulse folds the counter into the new length), so
 // a chord or groove change lands without stopping the music.
+/* a 2-bar groove needs 2 bars of chord, or its second half would never be
+   heard — slots round UP to a whole number of grooves when one is chosen */
+function jamFitSlots(){
+  const pat=allPats().find(p=>p.id===jam.patternId)||JAMPATS[0];
+  const gb=patBars(pat);
+  if(gb<2) return;
+  for(const s of jam.slots){
+    const n=Math.max(1,s.bars||1);
+    s.bars=Math.ceil(n/gb)*gb;
+  }
+}
 function applyJam(){
   const built=buildJamPiece();
   if(playing){
@@ -6044,7 +6170,8 @@ function renderJamPanel(){
 }
 function jamPatLabel(p){
   const mt=p.tag!==undefined?p.tag:p.meter[0]+"/"+p.meter[1];
-  return p.name+(!mt||p.name.includes(mt)?"":' <span class="hint">'+mt+"</span>");
+  const bars=patBars(p)>1?' <span class="hint">'+patBars(p)+" bars</span>":"";
+  return p.name+(!mt||p.name.includes(mt)?"":' <span class="hint">'+mt+"</span>")+bars;
 }
 function openJamSlot(i){
   jamEditSlot=i; renderJamPanel(); renderJamDlg(); openDlg($("jamDlg"));
@@ -7194,17 +7321,19 @@ function jamFadeLive(dur){
 function grooveMini(pat){
   const v=jamVoice(jam.slots[0]&&jam.slots[0].chord,patVoices(pat))
     ||Object.fromEntries(JV_TOK.map(k=>[k,0]));
-  const bp=pat.meter[0]*pat.sub;
+  const bp=pat.meter[0]*pat.sub, total=bp*patBars(pat);
   const box=document.createElement("div"); box.className="gmini";
-  box.style.gridTemplateColumns="repeat("+bp+",1fr)";
+  box.style.gridTemplateColumns="repeat("+total+",1fr)";
   const slots=[];
-  for(let t=0;t<bp;t++){ const s=document.createElement("div");
+  for(let t=0;t<total;t++){ const s=document.createElement("div");
     if(t&&t%pat.sub===0) s.classList.add("gb");
+    if(t&&t%bp===0) s.classList.add("gbar");
     slots.push(s); box.appendChild(s); }
   const byT=new Map();
   for(const [t,k,h] of pat.ev){ if(!byT.has(t)) byT.set(t,[]); byT.get(t).push([k,h]); }
   for(const [t,evs] of byT){
     const midiOfK=k=>k==="g"||k==="^"?-1:(v[k]===0?0:myPan.midiFor(v[k])||0);
+    if(!slots[t]) continue;
     for(const [k,h] of evs.slice().sort((a,b)=>midiOfK(b[0])-midiOfK(a[0]))){
       const el=document.createElement("i");
       if(h==="R") el.classList.add("r");
@@ -7275,6 +7404,12 @@ function grooveSetTime(tsVal,subVal){
   piece.sub=+subVal;
   resub("Groove",oldSub,+subVal);   // notes stay where they SOUND
   psTrim("Groove");                 // then anything past the new bar goes
+  // a bar that just became long enough to stand alone drops the second one,
+  // and a bar that became short gains it — the default follows the meter
+  const want=defaultGrooveBars(beats,+subVal), have=piece.sections.Groove.bars.length;
+  if(want===1&&have>1&&!piece.sections.Groove.bars.slice(1).some(b=>b.length))
+    piece.sections.Groove.bars=[piece.sections.Groove.bars[0]];
+  else if(want>have) while(piece.sections.Groove.bars.length<want) piece.sections.Groove.bars.push([]);
   cursor=0;
   refresh();
 }
@@ -7282,11 +7417,16 @@ function startGrooveEdit(opts){    // opts: {id?, name, meter, sub, unit?, ref, 
   if(editing){ toast("Leave editing first"); return; }
   const def=jamDefs().byName[opts.ref];
   if(!def||def.miss){ toast("Pick a chord your pan plays in full"); return; }
-  let bar=[];
+  const gBars=Math.max(1,opts.bars||defaultGrooveBars(opts.meter[0],opts.sub));
+  const bp=opts.meter[0]*opts.sub;
+  let bars=Array.from({length:gBars},()=>[]);
   if(opts.ev){                     // re-editing: degrees back to fields on THIS pan
     const v=jamVoice(opts.ref,patVoices({ev:opts.ev}));
     if(!v){ toast("Your pan can't voice "+opts.ref+" right now"); return; }
-    bar=opts.ev.map(([t,k,h])=>k==="g"?G(t,h):k==="^"?P(t,"slap",h):F(t,v[k],h));
+    for(const [t,k,h] of opts.ev){
+      const bi=Math.min(gBars-1,Math.floor(t/bp)), tt=t-bi*bp;
+      bars[bi].push(k==="g"?G(tt,h):k==="^"?P(tt,"slap",h):F(tt,v[k],h));
+    }
   }
   const wasJam=jamOn;
   if(jamOn) leaveJam();            // restores the pre-jam piece first
@@ -7294,7 +7434,7 @@ function startGrooveEdit(opts){    // opts: {id?, name, meter, sub, unit?, ref, 
   const prevPiece=JSON.parse(JSON.stringify(piece)), prevBpm=bpm;
   const p={ format:"hpd-1", id:"groove-edit", title:opts.name||"My groove",
     writtenFor:myPanId, tempo:prevBpm||72, meter:opts.meter, sub:opts.sub,
-    barsPerRow:1, sections:{Groove:{bars:[bar]}}, arrangement:["Groove"] };
+    barsPerRow:1, sections:{Groove:{bars}}, arrangement:["Groove"] };
   if(opts.unit&&opts.unit!==4) p.unit=opts.unit;
   grooveEdit={id:opts.id||null, ref:opts.ref, wasJam, prevPiece, prevBpm};
   document.body.classList.add("gedit");
@@ -7311,7 +7451,9 @@ function startGrooveEdit(opts){    // opts: {id?, name, meter, sub, unit?, ref, 
    pinned to the saved groove, so every further Save overwrites the same one. */
 function grooveSaveNow(quietEmpty){
   if(!grooveEdit) return null;
-  const bar=(piece.sections.Groove&&piece.sections.Groove.bars[0])||[];
+  const gbars=(piece.sections.Groove&&piece.sections.Groove.bars)||[[]];
+  const gbp=piece.meter[0]*piece.sub;
+  const bar=gbars.flatMap((b,bi)=>b.map(e=>Object.assign({},e,{t:e.t+bi*gbp})));
   // tokens are RANKS now (David, 27 Aug): the distinct pitches the student
   // used, lowest→"1", middle→"3", highest→"5" — so a groove written D·1·6 on
   // Dmin carries its SHAPE to every chord, not its chord functions (function
@@ -7336,7 +7478,7 @@ function grooveSaveNow(quietEmpty){
     ||(l.find(x=>x.name===name)||{}).id
     ||"ug-"+Date.now().toString(36);
   const g={id, name, user:true,
-    meter:piece.meter, sub:piece.sub, bpr:1, ev, ref:grooveEdit.ref};
+    meter:piece.meter, sub:piece.sub, bpr:1, bars:gbars.length, ev, ref:grooveEdit.ref};
   if(piece.unit&&piece.unit!==4) g.unit=piece.unit;
   const i=l.findIndex(x=>x.id===g.id);
   if(i>=0) l[i]=g; else l.push(g);
@@ -7362,8 +7504,13 @@ function grooveLoadInto(g){
   piece.meter=g.meter.slice(); piece.sub=g.sub||1;
   if(g.unit&&g.unit!==4) piece.unit=g.unit; else delete piece.unit;
   piece.title=g.name; $("title").value=g.name; fitTitle();
-  piece.sections.Groove.bars=[g.ev.map(([t,k,h])=>
-    k==="g"?G(t,h):k==="^"?P(t,"slap",h):F(t,v[k],h))];
+  const lbp=piece.meter[0]*piece.sub, lb=patBars(g);
+  const nb=Array.from({length:lb},()=>[]);
+  for(const [t,k,h] of g.ev){
+    const bi=Math.min(lb-1,Math.floor(t/lbp)), tt=t-bi*lbp;
+    nb[bi].push(k==="g"?G(tt,h):k==="^"?P(tt,"slap",h):F(tt,v[k],h));
+  }
+  piece.sections.Groove.bars=nb;
   cursor=0;
   refresh();
   toast(g.user?("Loaded: "+g.name):("Loaded a copy of "+g.name+" — Save makes it yours"));
@@ -7398,7 +7545,7 @@ function grooveEditFinish(){
   bpm=ge.prevBpm||bpm; $("bpm").value=bpm;
   if(ge.wasJam){
     enterJam();
-    if(savedId){ jam.patternId=savedId; applyJam(); }
+    if(savedId){ jam.patternId=savedId; jamFitSlots(); applyJam(); }
     openGrooveDlg();               // back to the browser, the new groove in it
   }
 }
@@ -7414,7 +7561,7 @@ function grooveOk(g){ return !!(g&&Array.isArray(g.meter)&&g.meter.length===2
   &&g.ev.every(e=>Array.isArray(e)&&typeof e[0]==="number"&&(JV_TOK.includes(e[1])||e[1]==="g"||e[1]==="^"))); }
 function importGroove(g){
   if(!g.id||JAMPATS.some(p=>p.id===g.id)) g.id="ug-"+Date.now().toString(36);
-  g.user=true; g.bpr=g.bpr||1; g.sub=g.sub||1;
+  g.user=true; g.bpr=g.bpr||1; g.sub=g.sub||1; g.bars=Math.max(1,g.bars||1);
   const l=userGrooves(), i=l.findIndex(x=>x.id===g.id);
   if(i>=0) l[i]=g; else l.push(g);
   setUserGrooves(l);
@@ -7447,7 +7594,7 @@ function renderGrooveDlg(){
     nm.innerHTML=jamPatLabel(p);
     row.appendChild(play); row.appendChild(nm); row.appendChild(grooveMini(p));
     row.addEventListener("click",()=>{ jamPreviewStop();
-      jam.patternId=p.id; applyJam(); $("grooveDlg").close(); });
+      jam.patternId=p.id; jamFitSlots(); applyJam(); $("grooveDlg").close(); });
     L.appendChild(row);
   }
   /* the student's own grooves, under the built-in ten (26 Aug, David's yes) */
@@ -7484,7 +7631,7 @@ function renderGrooveDlg(){
       if(jam.patternId===p.id){ jam.patternId=JAMPATS[0].id; applyJam(); }
       renderGrooveDlg(); toast("Groove deleted"); }));
     row.addEventListener("click",()=>{ jamPreviewStop();
-      jam.patternId=p.id; applyJam(); $("grooveDlg").close(); });
+      jam.patternId=p.id; jamFitSlots(); applyJam(); $("grooveDlg").close(); });
     L.appendChild(row);
   }
 }
@@ -7903,9 +8050,11 @@ function boot(){
   $("glClose").addEventListener("click",()=>$("grooveLoadDlg").close());
   $("gnCreate").addEventListener("click",()=>{
     const mv=$("gnMeter").value.split("/"), beats=+mv[0], den=+mv[1];
+    const sub=+$("gnSub").value;
     startGrooveEdit({
       name:$("gnName").value.trim()||"My groove",
-      meter:[beats,den], sub:+$("gnSub").value,
+      meter:[beats,den], sub,
+      bars:defaultGrooveBars(beats,sub),   // short bars start as two
       unit:den===8?8:undefined,
       ref:$("gnChord").value });
   });
@@ -8009,26 +8158,22 @@ function phoneTouchNav(){
   const wrap=$("scorewrap"), land=()=>matchMedia("(orientation:landscape)").matches;
   const TAP=12, DBL=340;
   let sx=0,sy=0,id=null,mode=null,lastTap=0,lastX=0,lastY=0;
-  let anchor=null,dragged=false,clearIfNoDrag=false;
+  let anchor=null,dragged=false,clearIfNoDrag=false,holdT=null;
+  const HOLD=480;                        // the app's own long-press, everywhere
   wrap.addEventListener("pointerdown",e=>{
     if(e.pointerType==="mouse"&&e.button!==0) return;
     if(e.target.closest&&e.target.closest("#playBtn")) return;   // the play button keeps its own tap
     id=e.pointerId; sx=e.clientX; sy=e.clientY; mode=null;
     anchor=null; dragged=false; clearIfNoDrag=false;
     const now=performance.now();
-    // editing owns the tap (pointerup) — no NEW loops, and stopPropagation
-    // still runs so the slots' own ~11px listeners stay out of it. But a
-    // double tap inside an EXISTING loop clears it in every view, the editor
-    // included (David, 27 Aug: "I have a loop here that I cannot get rid of").
-    if(editing&&now-lastTap<DBL&&Math.abs(e.clientX-lastX)<28&&Math.abs(e.clientY-lastY)<28&&loopSec){
-      const c=cellAtPoint(e.clientX,e.clientY);
-      if(c&&c.from>=loopSec.from&&c.to<=loopSec.to){
-        lastTap=0; loopSec=null; paintLoopFrame(); reanchorLoop(); toast("Loop off");
-      }
-    }
-    else if(!editing&&now-lastTap<DBL&&Math.abs(e.clientX-lastX)<28&&Math.abs(e.clientY-lastY)<28&&!loopAllowed()){
+    /* The loop gesture works in EVERY view now, the editor included (David,
+       27 Aug: "in the editor, it should still be able to manually create a
+       loop") — double tap starts it, the held finger drags its end, a double
+       tap inside it clears it. Editing keeps its single-tap for the cursor. */
+    const dbl=now-lastTap<DBL&&Math.abs(e.clientX-lastX)<28&&Math.abs(e.clientY-lastY)<28;
+    if(dbl&&!loopAllowed()){
       lastTap=0; toast("No looping while the notation follows the video");
-    } else if(!editing&&now-lastTap<DBL&&Math.abs(e.clientX-lastX)<28&&Math.abs(e.clientY-lastY)<28){
+    } else if(dbl){
       const c=cellAtPoint(e.clientX,e.clientY);
       if(c){                              // second tap: this cell starts the loop
         lastTap=0; mode="loop"; anchor=c;
@@ -8040,11 +8185,18 @@ function phoneTouchNav(){
         if(!clearIfNoDrag){ loopSec={from:c.from,to:c.to}; paintLoopFrame(); }
       }
     }
+    // a long press in the editor offers copy and paste (David, 27 Aug)
+    clearTimeout(holdT);
+    if(editing&&!dbl){
+      const hx=e.clientX, hy=e.clientY;
+      holdT=setTimeout(()=>{ if(id!==null&&mode===null){ mode="held"; edPopAt(hx,hy); } },HOLD);
+    }
     e.stopPropagation();                 // no seek until the gesture is known
   },true);
   wrap.addEventListener("pointermove",e=>{
     if(id===null||e.pointerId!==id) return;
     const dx=e.clientX-sx, dy=e.clientY-sy;
+    if(Math.abs(dx)>TAP||Math.abs(dy)>TAP) clearTimeout(holdT);
     if(mode==="loop"){                   // the finger draws the loop's other end
       const c=cellAtPoint(e.clientX,e.clientY);
       if(c&&(!loopSec||c.from!==loopSec.from||c.to!==loopSec.to)) dragged=true;
@@ -8059,8 +8211,9 @@ function phoneTouchNav(){
   },true);
   wrap.addEventListener("pointerup",e=>{
     if(id===null||e.pointerId!==id){ id=null; return; }
-    id=null;
+    id=null; clearTimeout(holdT);
     const dx=e.clientX-sx, dy=e.clientY-sy;
+    if(mode==="held") return;            // the menu is open; the tap was for it
     if(mode==="loop"){
       if(clearIfNoDrag&&!dragged){ loopSec=null; paintLoopFrame(); reanchorLoop(); toast("Loop off"); }
       else { reanchorLoop(); toast(loopBarsLabel()); }
@@ -8082,7 +8235,7 @@ function phoneTouchNav(){
     const sl=el&&el.closest&&el.closest("[data-rel]");
     if(sl) seekToPulse(viewFromPulse()+(+sl.dataset.rel));
   },true);
-  wrap.addEventListener("pointercancel",()=>{ id=null; mode=null; },true);
+  wrap.addEventListener("pointercancel",()=>{ id=null; mode=null; clearTimeout(holdT); },true);
 }
 /* Desktop mouse (David, 26 Aug): DRAG across the notation to set the loop —
    both ends land on a beat-cell boundary, so the loop is always musical. A
@@ -8093,13 +8246,18 @@ function mouseLoopNav(){
   const wrap=$("scorewrap"), TAP=5;
   let id=null,sx=0,sy=0,anchor=null,moved=false,dragEnded=0;
   wrap.addEventListener("pointerdown",e=>{
-    if(editing||e.pointerType==="touch"||e.button!==0) return;
+    if(e.pointerType==="touch"||e.button!==0) return;
     if(e.target.closest&&e.target.closest("#playBtn")) return;
     if(!loopAllowed()) return;      // follow mode owns the clock — no loops there
     const c=cellAtPoint(e.clientX,e.clientY); if(!c) return;
     id=e.pointerId; sx=e.clientX; sy=e.clientY; anchor=c; moved=false;
-    e.stopPropagation();            // the slot's own seek waits for pointerup
-    e.preventDefault();
+    /* While EDITING the click belongs to the slot — it places the cursor at
+       slot precision, which a mouse can hit — so the drag is only taken over
+       once the pointer actually moves (David, 27 Aug: loops in the editor). */
+    if(!editing){
+      e.stopPropagation();          // the slot's own seek waits for pointerup
+      e.preventDefault();
+    }
   },true);
   wrap.addEventListener("pointermove",e=>{
     if(id===null||e.pointerId!==id) return;
@@ -8116,11 +8274,17 @@ function mouseLoopNav(){
     if(id===null||e.pointerId!==id){ id=null; return; }
     id=null;
     if(moved){ dragEnded=performance.now(); reanchorLoop(); toast(loopBarsLabel()); return; }
+    if(editing) return;             // the slot already took this click
     const el=document.elementFromPoint(e.clientX,e.clientY);   // a plain click: go there
     const sl=el&&el.closest&&el.closest("[data-rel]");
     if(sl) seekToPulse(viewFromPulse()+(+sl.dataset.rel));
   },true);
   wrap.addEventListener("pointercancel",()=>{ id=null; },true);
+  // right-click in the editor is the mouse's long press: copy and paste
+  wrap.addEventListener("contextmenu",e=>{
+    if(!editing) return;
+    e.preventDefault(); edPopAt(e.clientX,e.clientY);
+  });
   wrap.addEventListener("dblclick",e=>{
     // clearing works in EVERY view, the editor included (David, 27 Aug: "I
     // have a loop here that I cannot get rid of") — only CREATING loops
@@ -8375,10 +8539,10 @@ else{
   $("edTakK").addEventListener("click",()=>placePerc("tak","K"));
   $("edKnock").addEventListener("click",()=>placePerc("knock"));
   $("edBarAdd").addEventListener("click",()=>{
-    if(grooveEdit){ toast("A groove is one bar"); return; }
+    if(grooveEdit&&piece.sections.Groove.bars.length>=4){
+      toast("Four bars is the most for a groove"); return; }
     snapshot(); piece.sections[viewSec].bars.push([]); refresh(); });
   $("edBarDel").addEventListener("click",()=>{
-    if(grooveEdit){ toast("A groove is one bar"); return; }
     const loc=viewLoc();
     if(loc&&piece.sections[viewSec].bars.length>1){
       snapshot(); piece.sections[viewSec].bars.splice(loc.bar,1); cursor=0; refresh(); } });
