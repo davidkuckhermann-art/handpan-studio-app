@@ -1012,9 +1012,19 @@ body.phone header #setBtn{display:none !important}
   body.phone #viewrow .lab,body.phone #viewrow .ctlgroup{display:none !important}
 }
 /* the sheet */
-#menuDlg{border:none; border-radius:18px 18px 0 0; padding:8px 16px 26px;
-  width:100%; max-width:none; margin:auto auto 0; background:var(--card);
-  box-shadow:0 -12px 40px -14px rgba(70,52,28,.55)}
+/* IT COMES DOWN FROM THE TOP (David, 27 Aug) — the drawer rises from the
+   bottom, so the settings window must arrive from the opposite side or the
+   two read as the same surface. */
+#menuDlg{border:none; border-radius:0 0 18px 18px; padding:calc(10px + env(safe-area-inset-top)) 16px 16px;
+  width:100%; max-width:none; margin:0 auto auto; background:var(--card);
+  max-height:88vh; overflow-y:auto; overscroll-behavior:contain;
+  box-shadow:0 14px 40px -14px rgba(70,52,28,.55);
+  animation:menuDrop .22s cubic-bezier(.22,.61,.36,1)}
+@keyframes menuDrop{ from{ transform:translateY(-14px); opacity:.4 } to{ transform:none; opacity:1 } }
+@media (prefers-reduced-motion:reduce){ #menuDlg{animation:none} }
+/* the handle belongs to the drawer now; a top sheet is closed by its own
+   Close button or by tapping outside */
+#menuDlg .grab{display:none}
 #menuDlg::backdrop{background:rgba(30,27,22,.34)}
 /* PRACTICE'S DIALOGS BECOME BOTTOM SHEETS ON THE PHONE (26 Aug, ABC'd): the
    same box, thumb-reachable, scrolling INSIDE itself. `overscroll-behavior:
@@ -1282,8 +1292,19 @@ body.phone .gmini i{font-size:10px}
 /* ---- THE SETTINGS DRAWER (27 Aug, ABC'd) — portrait phone only ---- */
 #drawerGrip,#drawerExtra,#drawerShade{display:none}
 @media (orientation:portrait){
+  body.phone #drawerHead{position:relative}
   body.phone #drawerGrip{display:grid; place-items:center; height:22px; margin:-4px 0 2px;
     cursor:grab; touch-action:none; background:none; border:none}
+  /* the drawer's own play button, top right, for when it stands in for the
+     writing deck (David, 27 Aug) */
+  body.phone #drawerPlayHost{position:absolute; right:0; top:-2px; display:none}
+  body.phone.editing.drawer-open #drawerPlayHost{display:block}
+  /* IN EDITING THE DRAWER REPLACES THE DECK, it does not sit above it: the
+     lane, the pan and the chips fold away as the settings arrive (David, 27
+     Aug), so the screen holds one tool surface at a time. */
+  body.phone.editing #editdeck{overflow:hidden;
+    transition:height .24s cubic-bezier(.22,.61,.36,1), opacity .16s ease}
+  body.phone.editing.drawer-open #editdeck{height:0 !important; opacity:0}
   body.phone #drawerGrip i{display:block; width:40px; height:4px; border-radius:2px;
     background:var(--rule); transition:background .15s}
   body.phone.drawer-open #drawerGrip i{background:var(--dixie)}
@@ -1497,7 +1518,10 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <button id="viewTab" aria-pressed="false">Tab</button>
   </div>
   <span class="ctlgroup" role="group" aria-label="Panels">
-    <button class="ctl" id="notaBtn">Notation</button>
+    <!-- retired (David, 27 Aug): the notation is always on, so a switch for
+         it had only one useful position. Kept in the DOM because setNota and
+         its listener still paint it, and hidden everywhere. -->
+    <button class="ctl hidden" id="notaBtn">Notation</button>
     <button class="ctl" id="chordBtn">Chords</button>
     <button class="ctl" id="panBtn">Pan</button>
   </span>
@@ -1650,18 +1674,16 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
      belongs to iOS — reveals the rest. Only the handle opens it, or the swipe
      would fight the tempo scrubber that lives in this bar. -->
 <div class="row" id="transport">
-  <div id="drawerGrip" role="button" tabindex="0" aria-expanded="false"
-       aria-label="Settings for what you are doing"><i></i></div>
-  <div id="drawerExtra">
-    <div class="dsec" id="dsMode"></div>
-    <div class="drow" id="dwMode"></div>
-    <div class="dsec">While you play</div>
-    <div class="drow" id="dwNow"></div>
-    <div class="dsec">My pan</div>
-    <div class="drow" id="dwPan"></div>
-    <div class="dsec">Under the notation</div>
-    <div class="drow" id="dwShow"></div>
+  <div id="drawerHead">
+    <div id="drawerGrip" role="button" tabindex="0" aria-expanded="false"
+         aria-label="Settings for what you are doing"><i></i></div>
+    <!-- while the drawer replaces the writing deck, the transport must still
+         be here — the deck's own play button has gone with it (27 Aug) -->
+    <span id="drawerPlayHost"></span>
   </div>
+  <!-- The panel sits BELOW the resting buttons, so opening lifts them upward
+       and the settings arrive under your thumb (David, 27 Aug: "the original
+       buttons move upwards, and the menu opens below those buttons"). -->
   <div class="prow" id="prow1">
     <span class="spacer"></span>
     <span class="hint">Space bar: play / pause</span>
@@ -1669,6 +1691,17 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <span id="ptools"></span>
   </div>
   <div class="prow" id="prow2"></div>
+  <div id="drawerExtraAnchor"></div>
+  <div id="drawerExtra">
+    <div class="dsec" id="dsMode"></div>
+    <div class="drow" id="dwMode"></div>
+    <div class="dsec">While you play</div>
+    <div class="drow" id="dwNow"></div>
+    <div class="dsec">My pan</div>
+    <div class="drow" id="dwPan"></div>
+    <div class="dsec" id="dsFeel">Feel</div>
+    <div class="drow" id="dwFeel"></div>
+  </div>
   <!-- PHONE EDITING (26 Aug, ABC'd — mockups-edit-phone.html, David chose A):
        the cockpit's rows step aside and this deck takes the bar. A STATIC
        skeleton, like the quiz's cheer pill: paintEditDeck() rewrites only
@@ -1991,9 +2024,10 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <div class="grab"></div>
   <!-- the library leads the sheet and Jam & Learn sits right under it
        (David, 27 Aug): the two things a student reaches for most -->
-  <h4>Pieces</h4>
-  <div class="drow"><span>Your library</span><span id="mLib"></span></div>
-  <div class="drow" id="mShareRow"><span>Load/save</span><span id="mShare"></span></div>
+  <!-- the library is reached from the share button at the top of the screen,
+       so it does not need a door here too (David, 27 Aug) -->
+  <div class="drow hidden"><span>Your library</span><span id="mLib"></span></div>
+  <div class="drow hidden" id="mShareRow"><span>Load/save</span><span id="mShare"></span></div>
 
   <!-- each mode gets its OWN button here (David, 26 Aug): on the phone the
        menu IS the practice menu, so routing through a second sheet just to
@@ -2013,22 +2047,28 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
        up to where the lone "Show" row used to be (David, 26 Aug) -->
   <!-- global settings only, now that "what I'm doing" moved into the drawer
        (David, 27 Aug): hand colours, the count line, the tutorial switch -->
+  <!-- ONE settings window (David, 27 Aug: "we can get rid of the extra
+       settings menu — put all these settings in the main settings window").
+       The rows below are the SAME elements, moved here from #setDlg at boot,
+       so every handler keeps working. -->
   <h4>Settings</h4>
-  <div class="drow" id="mNotaRow"><span>Show notation</span><span id="mNota"></span></div>
-  <div class="drow"><span>All settings</span><span id="mSet"></span></div>
-  <!-- the switch lives HERE too (David, 27 Aug: "on mobile I don't see it in
-       the settings menu at all" — it was a level deeper, in All settings) -->
+  <div class="drow hidden" id="mNotaRow"><span>Show notation</span><span id="mNota"></span></div>
+  <div class="drow hidden"><span>All settings</span><span id="mSet"></span></div>
+  <div id="mSettingsHost"></div>
   <div class="drow"><span>Tutorial notes</span>
     <span style="display:flex; gap:6px">
-      <button class="ctl tutswitch" id="mTutBtn" title="Show the explanation banners around the app">On</button>
+      <span class="pills tutpills" role="group" aria-label="Tutorial notes">
+        <button class="tuton" title="Show the explanation banners around the app">On</button>
+        <button class="tutoff" title="Hide every explanation banner">Off</button>
+      </span>
       <button class="ctl tutreset" id="mTutReset" title="Show every explanation again, as if the app were new">Reset</button>
     </span></div>
 
   <!-- the author's door (26 Aug, ABC'd via mockups-edit-phone.html): never
        shown in the lesson embed — html.player hides the pair below -->
-  <h4 id="mAuthorHead">Author</h4>
+  <h4 id="mAuthorHead">Arrangement editor</h4>
   <div class="drow drow-btns" id="mAuthorRow">
-    <button class="ctl" id="mEditBtn">Edit piece</button>
+    <button class="ctl" id="mEditBtn">Edit this piece</button>
     <button class="ctl" id="mNewBtn">New piece…</button>
   </div>
 
@@ -2038,7 +2078,9 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 <dialog id="setDlg">
   <h3>Settings</h3>
   <h4>Playback</h4>
-  <div class="drow"><span>Count-in</span>
+  <!-- count-in lives in the drawer now, where you reach it while playing
+       (David, 27 Aug) — one button, one home -->
+  <div class="drow hidden"><span>Count-in</span>
     <button class="ctl" id="setCountBtn" title="A bar of clicks before the music starts">Count-in</button></div>
   <div class="drow"><span>Count line</span>
     <select class="ctl" id="countSel" aria-label="Count-line marker">
@@ -2069,7 +2111,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
       <button class="ctl" id="colReset" title="Hand colours back to black + green">↺</button></span></div>
   <div class="dsep"></div>
   <h4>Feel</h4>
-  <div class="drow"><span>Swing</span>
+  <div class="drow" id="swingRow"><span>Swing</span>
     <span style="display:flex;gap:9px;align-items:center">
       <input type="range" id="swing" min="0" max="100" step="5" style="width:110px">
       <b id="swingVal" style="font-size:13px;font-variant-numeric:tabular-nums">0%</b></span></div>
@@ -2133,7 +2175,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <h3>Done editing?</h3>
   <p class="hint">Save the piece to your library so it survives closing the app. Either way, your changes stay in the open piece.</p>
   <div class="row"><button class="ctl on" id="exSave">Save to library</button>
-    <button class="ctl" id="exNoSave">Not now</button>
+    <button class="ctl" id="exNoSave">Discard changes</button>
     <span class="spacer"></span><button class="ctl" id="exStay">Keep editing</button></div>
 </dialog>
 
@@ -4360,7 +4402,15 @@ function centrePortraitStack(wrap){
 function fitPortraitStack(sc,z,designW){
   const wrap=$("scorewrap"), bar=$("transport");
   const top=wrap.getBoundingClientRect().top;
-  const space=innerHeight-top-(bar?bar.offsetHeight:0)-10;
+  /* THE OPEN DRAWER TAKES NO SPACE FROM THE NOTATION — it is position:fixed
+     and floats over it — so the stack must be fitted against the bar's
+     RESTING height. Counting the open panel shrank the room the chord and pan
+     cards were sized into, and they came out tiny (David, 27 Aug: "the chord
+     tab opens very small when the drawer is open"). The size then stuck,
+     because nothing re-fitted when it closed. */
+  const ex=$("drawerExtra");
+  const barH=bar?bar.offsetHeight-((drawerOpen()&&ex)?ex.offsetHeight:0):0;
+  const space=innerHeight-top-barH-10;
   if(space<=0) return;
   let h=sc.getBoundingClientRect().height;
   if(h>space){                                  // the music alone is too tall
@@ -6770,6 +6820,9 @@ function paintTutorials(){
   }
   document.querySelectorAll(".tutswitch").forEach(b=>{
     b.classList.toggle("on",on); b.textContent=on?"On":"Off"; });
+  // the three-way: On and Off are states you can SEE, Reset is an action
+  document.querySelectorAll(".tutpills .tuton").forEach(b=>b.setAttribute("aria-pressed",String(on)));
+  document.querySelectorAll(".tutpills .tutoff").forEach(b=>b.setAttribute("aria-pressed",String(!on)));
 }
 // The Suggest button: one chord onto the end, from the shared core above.
 function jamSuggest(){
@@ -7101,24 +7154,35 @@ function renderJamPanel(){
   sug.addEventListener("click",jamSuggest);
   prog.appendChild(sug);
   // transpose the WHOLE progression by semitones; clear starts fresh
+  /* THE TOOLS SPLIT IN TWO (David, 27 Aug). What you reach for while building
+     a progression — ♭ ♯ Clear and Generate — goes back UNDER THE NOTATION; the
+     settings behind it (the voicing, Open in editor) live in the drawer. */
   const tools=document.createElement("span"); tools.className="jtools";
-  const mk=(txt,title,fn)=>{ const t=document.createElement("button");
+  const deep=document.createElement("span"); deep.className="jtools";
+  const mk=(txt,title,fn,into)=>{ const t=document.createElement("button");
     t.className="ctl"; t.textContent=txt; t.title=title;
-    t.addEventListener("click",fn); tools.appendChild(t); };
-  /* the voicing switch leads the tools (David, 27 Aug: "to the left of the
-     flattening and sharpening buttons") */
-  const vb=document.createElement("button");
-  vb.className="ctl"+(jam.narrow?" on":"");
-  vb.id="jamNarrow"; vb.textContent="Narrow";
-  vb.title=jam.narrow
-    ?"Narrow chords — the pan's high notes stay free for your melody"
-    :"Wide chords — switch to narrow to keep the upper register free";
-  vb.addEventListener("click",()=>{
-    jam.narrow=!jam.narrow; applyJam(); saveJamLS();
-    toast(jam.narrow?"Narrow chords — the top of the pan is yours"
-                    :"Wide chords");
+    t.addEventListener("click",fn); (into||tools).appendChild(t); };
+  /* named for what it chooses, not for one of its two states (David, 27 Aug:
+     "chord voicings: narrow/wide") */
+  const vlab=document.createElement("span"); vlab.className="lab";
+  vlab.textContent="Chord voicings"; deep.appendChild(vlab);
+  const vpills=document.createElement("span");
+  vpills.className="pills"; vpills.id="jamVoicing";
+  vpills.setAttribute("role","group"); vpills.setAttribute("aria-label","Chord voicings");
+  [["Narrow",true],["Wide",false]].forEach(([label,nar])=>{
+    const b=document.createElement("button");
+    b.textContent=label;
+    b.setAttribute("aria-pressed",String(!!jam.narrow===nar));
+    b.title=nar?"The pan's high notes stay free for your melody"
+               :"Grounded voicings that use the whole pan";
+    b.addEventListener("click",()=>{
+      if(!!jam.narrow===nar) return;
+      jam.narrow=nar; applyJam(); saveJamLS();
+      toast(nar?"Narrow chords — the top of the pan is yours":"Wide chords");
+    });
+    vpills.appendChild(b);
   });
-  tools.appendChild(vb);
+  deep.appendChild(vpills);
   mk("♭","Transpose the whole progression down a semitone",()=>jamTranspose(-1));
   mk("♯","Transpose the whole progression up a semitone",()=>jamTranspose(1));
   mk("Clear","Remove all chords and start fresh",()=>{
@@ -7131,7 +7195,7 @@ function renderJamPanel(){
   // lives in the notation head's right cell instead
   if(PHONE) mk("🎲 Generate","Fill the whole progression with a fresh chord sequence",()=>jamGenerate());
   mk("Open in editor","Edit the arrangement, or the groove itself",
-    ()=>openDlg($("openEdDlg")));
+    ()=>openDlg($("openEdDlg")),PHONE?deep:tools);
   /* on the phone the tools get their OWN line under the strip — inside it they
      would scroll away with the chords */
   /* On the phone the tools sit OUTSIDE the chord card entirely (David, 26
@@ -7152,10 +7216,11 @@ function renderJamPanel(){
        under the chords. */
     /* the tools moved INTO THE DRAWER (David, 27 Aug, ABC'd) — the groove
        selector stays on screen, because it names what is playing */
+    // the everyday tools go back under the notation, the settings to the drawer
+    const boxT=document.createElement("div"); boxT.className="jtoolbox";
+    boxT.appendChild(tools); $("jampanel").insertBefore(boxT,$("jamtrack"));
     const host=$("dwMode");
-    if(host){ dwModeReset(); host.appendChild(tools); }
-    else{ const boxT=document.createElement("div"); boxT.className="jtoolbox";
-      boxT.appendChild(tools); $("jampanel").insertBefore(boxT,$("jamtrack")); }
+    if(host){ dwModeReset(); host.appendChild(deep); }
   } else prog.appendChild(tools);
   // the groove: one button naming the current one, sitting at the score
   // frame's TOP LEFT beside the section name (David, 26 Aug) — the browser
@@ -8604,7 +8669,7 @@ function paintAuthorRow(){
     n.textContent="Edit jam in arrangement editor";
     n.title="Copy this jam into a piece you can write on";
   } else {
-    e.textContent="Edit piece"; e.title="Write on this piece";
+    e.textContent="Edit this piece"; e.title="Write on this piece";
     n.textContent="New piece…"; n.title="Start a new piece";
   }
 }
@@ -9081,7 +9146,8 @@ function boot(){
   $("panBtn").classList.toggle("on",panOn);
   document.body.classList.toggle("haspan",panOn);
   $("panBtn").addEventListener("click",()=>setPan(PHONE?true:!panOn));
-  setNota(notaOn);
+  notaOn=true; try{ localStorage.setItem("hps.nota","1"); }catch(e){}
+  setNota(true);            // always on now — a stored "off" must not strand it
   $("notaBtn").addEventListener("click",()=>setNota(!notaOn));
   wireMarkPop();
   $("countSel").value=countMark;
@@ -9481,6 +9547,8 @@ function boot(){
   });
   document.addEventListener("click",e=>{
     if(e.target.closest&&e.target.closest(".tutreset")) resetTutorials();
+    else if(e.target.closest&&e.target.closest(".tuton")) setTutorials(true);
+    else if(e.target.closest&&e.target.closest(".tutoff")) setTutorials(false);
     else if(e.target.closest&&e.target.closest(".tutswitch")) setTutorials(!tutorialsOn());
   });
   paintTutorials();
@@ -10053,11 +10121,20 @@ function setDrawer(on){
     drawerT=setTimeout(finish,300);
   };
   if(on){
+    /* editing hands its deck over: the lane, the pan and the chips fold away
+       and the drawer takes their place, with the transport moving into the
+       drawer's own head so play is never lost (David, 27 Aug) */
+    if(editing){
+      const dk=$("editdeck");
+      dk.style.height=dk.offsetHeight+"px";     // a height to animate FROM
+      dk.getBoundingClientRect();
+      $("drawerPlayHost").appendChild($("playBtn"));
+    }
     document.body.classList.add("drawer-open");
     sh.classList.remove("hidden");
     ex.style.height="auto";                    // measure the natural height…
     const h=ex.offsetHeight;
-    grow(0,h,()=>{ ex.style.height="auto"; }); // …then let it be free again
+    grow(0,h,()=>{ ex.style.height="auto"; phoneFit(); });
     requestAnimationFrame(()=>sh.classList.add("lit"));
   } else {
     const h=ex.offsetHeight;
@@ -10067,6 +10144,12 @@ function setDrawer(on){
       ex.style.transition=""; ex.style.height="";
       sh.classList.add("hidden");
       tr.scrollTop=0;
+      if(editing){                              // the deck comes back
+        const dk=$("editdeck");
+        $("edPlayHost").appendChild($("playBtn"));
+        dk.style.height="";
+      }
+      phoneFit();                               // sizes settle against the bar again
     });
   }
 }
@@ -10088,7 +10171,7 @@ function placeDrawer(){
   // bar — without this guard the boot order handed them to a drawer that
   // landscape never shows, and Half speed / Metronome simply vanished there
   if(!PHONE||matchMedia("(orientation:landscape)").matches) return;
-  const now=$("dwNow"), pan=$("dwPan"), show=$("dwShow"),
+  const now=$("dwNow"), pan=$("dwPan"), feel=$("dwFeel"),
         mode=$("dwMode"), head=$("dsMode");
   if(!now) return;
   // while you play — the practice controls leave the resting bar
@@ -10101,10 +10184,13 @@ function placeDrawer(){
   const ps=$("panSel"); if(ps) pan.appendChild(ps);
   const mp=document.querySelector('.pills[aria-label="Playback mode"]');
   if(mp) pan.appendChild(mp);
-  // under the notation
-  const nb=$("notaBtn"); if(nb) show.appendChild(nb);
-  const cp=$("cpHost")&&$("cpHost").querySelector(".pills");
-  if(cp) show.appendChild(cp);
+  // swing is something you feel your way to while playing, not a global (27 Aug)
+  const sw=$("swingRow"); if(sw) feel.appendChild(sw);
+  /* The Chords|Pan switch went back to the top right, where it was (David,
+     27 Aug), and the Notation toggle retired with it — the notation is always
+     on now, so a switch for it was a control with one useful position. */
+  const cp=$("drawerExtra").querySelector('.pills[aria-label="Under the notation"]');
+  if(cp&&$("cpHost")) $("cpHost").appendChild(cp);
   // the mode's own section
   head.textContent=jamOn?"This jam":(editing?(grooveEdit?"This groove":"This piece"):"");
   head.classList.toggle("hidden",!(jamOn||editing));
@@ -10165,6 +10251,15 @@ function placePhoneControls(){
     $("halfBtn").className="ib"; $("halfBtn").innerHTML=ico("is-half");
     $("metBtn").className="ib";  $("metBtn").innerHTML=ico("is-met");
     $("mLib").appendChild($("libBtn"));
+    /* the global settings move OUT of their own dialog and INTO this sheet,
+       which is now the one settings window (David, 27 Aug) */
+    const host=$("mSettingsHost");
+    [...$("setDlg").querySelectorAll(".drow")].forEach(r=>{
+      if(r.querySelector("#setCountBtn")) return;      // count-in lives in the drawer
+      if(r.querySelector("#swing")) return;            // swing lives in the drawer
+      if(r.querySelector("#setTutBtn")) return;        // the sheet has its own tutorial row
+      host.appendChild(r);
+    });
     // Share rides the header on every page — piece, jam or groove (27 Aug)
     document.querySelector("header").insertBefore($("shareBtn"),$("leaveBtn"));
     placeDrawer();          // …and portrait hands them to the drawer again
