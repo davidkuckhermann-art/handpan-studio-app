@@ -1057,7 +1057,8 @@ dialog .dsec.later{margin-top:16px}
 #pieceDlg{width:min(560px,94vw); max-height:86vh; overflow-y:auto; overscroll-behavior:contain}
 #pieceDlg .pslab{font-size:10px; font-weight:800; letter-spacing:.12em; text-transform:uppercase;
   color:var(--ink3); margin:12px 0 4px}
-.psrow{border:1px solid var(--rule); border-radius:12px; padding:8px 10px; margin:6px 0; background:var(--card2)}
+/* more air between the rows (David, 28 Aug) — the sheet is read, not scanned */
+.psrow{border:1px solid var(--rule); border-radius:12px; padding:10px 10px; margin:11px 0; background:var(--card2)}
 .psl1{display:flex; align-items:center; gap:8px}
 .psname{font-size:15px; font-weight:800; background:none; border:none; padding:2px 5px;
   color:var(--ink); border-radius:6px; cursor:pointer}
@@ -1067,7 +1068,7 @@ dialog .dsec.later{margin-top:16px}
 /* the load/save glyph is a WIDE one — two arrows and a tray — so it gets its
    own box rather than the square every other icon button uses (David, 28 Aug) */
 #shareBtn svg{width:23px; height:17px}
-#psArr{display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:4px 0}
+#psArr{display:flex; flex-wrap:wrap; gap:6px 6px; row-gap:10px; align-items:center; padding:6px 0 2px}
 /* The arrangement chips ARE the piece's order, so they carry the weight the
    navigator's current chip carries: black (David, 28 Aug). They are dragged to
    reorder, so they take the pointer themselves and never scroll the sheet. */
@@ -1553,7 +1554,13 @@ body.phone .gmini i{font-size:10px}
   body.phone #mNotaRow{display:none}
 }
 body.phone #scorewrap{overflow-x:hidden}
-body.phone #scorecard{min-width:0; width:540px}
+/* CENTRED, ALWAYS (David, 28 Aug). The card has a fixed design width and is
+   scaled by `zoom`; when the fit shrinks it to make the music fit the height —
+   which is what the editors do, with the deck taking half the screen — the
+   card ends up narrower than its row, and a plain block leaves ALL of that
+   slack on the right. Auto margins resolve inside the zoomed coordinate space
+   and split it evenly; when the card fills the width they are simply zero. */
+body.phone #scorecard{min-width:0; width:540px; margin-left:auto; margin-right:auto}
 body.phone.design-tab #scorecard{width:700px}
 body.phone #belowrow{flex-direction:column; align-items:stretch}
 body.phone #arrbox{width:100%; min-width:0}
@@ -2416,7 +2423,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
      own time, duplicate/rename/delete, and the arrangement as chips. Every
      change goes through snapshot(), so undo covers structure like notes. -->
 <dialog id="pieceDlg">
-  <h3>Sections &amp; arrangement</h3>
+  <h3>Sections</h3>
   <!-- THE ARRANGEMENT COMES FIRST (David, 28 Aug): it is the piece as it is
        actually played, so it is what you look at when you open this sheet. -->
   <h4 class="pslab">Arrangement</h4>
@@ -5474,7 +5481,7 @@ function renderArr(){
      Aug). The desktop keeps it — there the row stands alone. */
   if(editing&&!PHONE){
     const ed=document.createElement("button"); ed.className="chip";
-    ed.textContent="⋯"; ed.title="Sections & arrangement…";
+    ed.textContent="⋯"; ed.title="Sections…";
     ed.addEventListener("click",openPieceDlg);
     el.appendChild(ed);
   }
@@ -8810,11 +8817,14 @@ function qzKey(e){
    become the same sound; that is this quiz's version of the chord quiz's
    superset rule.
 
-   AND THE COUNT-IN MUST NOT GIVE THE ANSWER AWAY. It ticks every slot of one
-   bar with an accent on the first, so the pulse, the downbeat and the length
-   of the bar are all stated — David: "that way the relationship of the
-   pattern to the pulse is clearly defined" — while the grouping, which is
-   the question, is left to the pattern to say.
+   AND THE COUNT-IN MUST NOT GIVE THE ANSWER AWAY. It is FOUR PULSES, always,
+   whatever the metre (David, 28 Aug: "the count-in should always give 4
+   pulses, otherwise it gives away the rhythm"). An earlier build ticked one
+   whole bar, which stated the pulse — his "that way the relationship of the
+   pattern to the pulse is clearly defined" — but also handed over the bar's
+   LENGTH, and the length is half the answer: fifteen clicks and the student
+   knows it is 15/16 before a note is played. Four pulses give the speed and
+   nothing else; the downbeat, which always sounds, says where one is.
    ====================================================================== */
 
 /* Konnakol in DAVID'S OWN SPELLINGS, from his 15/16 example:
@@ -8899,6 +8909,7 @@ function rqPickGrouping(n){
    below is a WEIGHT, and the unusual shape stays reachable. Only rule 3, the
    one he said "always", is a gate. */
 const RQACC=1, RQFILL=0.55;          // how hard an accent is struck against a fill
+const RQCOUNTIN=4;                   // pulses before the bar — never the bar's own length
 /* WHERE A FILLING DOUM BELONGS (David, 28 Aug): at the END of its group,
    leading into a following doum accent. "A low stroke in the very end can
    lead into another low stroke. This is actually also the convention for
@@ -8908,6 +8919,7 @@ const RQACC=1, RQFILL=0.55;          // how hard an accent is struck against a f
    is rare (which is what keeps a Belledi, whose filling doum sits second,
    reachable at all). */
 const RQDLEAD=0.55, RQDELSE=0.02;
+const RQMAXREAD=3;   // how many ways one bar may honestly be counted and still be asked
 
 /* Rule 4 is about the ACCENTS, not the strokes: "a back and forth between low
    (D) and high (T) accents". Each accent either holds the last one or turns
@@ -8936,31 +8948,44 @@ function rqAccentSeq(k){
   }
   return null;
 }
-/* Rules 5 and 6, as weights. `dens` is the student's How-full setting. */
+/* HOW A GROUP IS FILLED — David's shapes, not coin flips per slot.
+   His lists, with the accent shown as the leading x:
+
+     a 2:  x-   xx                          (filling after a doum is rarer)
+     a 3:  x--  x-x  xxx
+     a 4:  x---  x-x-  x-xx  xxxx           common
+           x--x  xx-x                       less common
+
+   And the rule underneath all three, which is what an earlier build got wrong
+   (David on the 16/16 example: "in a grouping of 4, it's not really done to
+   fill the 2nd step and leave the next 2 free"): A FILL ON THE SECOND STEP OF
+   A GROUP MUST BE FOLLOWED BY ONE ON THE LAST. That is exactly what rules out
+   xx-- and xxx- in a four, and xx- in a three, and it is why filling each slot
+   on an independent coin flip cannot work however the odds are tuned — the
+   slots are not independent. The tables below are literal; the rule is written
+   here so the next person knows why they are the shapes they are.
+   `dens` is the student's How-full setting. */
+const RQFILLS={
+  2:[[["-"],1],[["t"],1]],                                  // weights set below
+  3:[[["-","-"],1],[["-","t"],1],[["t","t"],1]],
+  4:[[["-","-","-"],1],[["-","t","-"],1],[["-","t","t"],1],
+     [["t","t","t"],1],[["-","-","t"],1],[["t","-","t"],1]]
+};
 function rqFillOf(size,acc,dens){
   const p = dens===1?0.20 : dens===2?0.45 : 0.72;
   const pick=t=>{ let sum=0; for(const [,w] of t) sum+=w;
     let r=Math.random()*sum;
-    for(const [v,w] of t){ r-=w; if(r<=0) return v; }
-    return t[t.length-1][0]; };
-  if(size===2)
-    // rule 5: filling after a doum is the less common of the two
-    return [Math.random()<(acc==="D"?p*0.45:p)?"t":"-"];
-  if(size===3)
-    return pick([[["-","-"],1-p], [["-","t"],p*0.42], [["t","t"],p*0.38],
-                 [["t","-"],p*0.30]]);   // he named T-T and TTT; Tt- stays rarer
-  /* A FOUR MAY HAVE ITS MIDDLE SLOT FILLED, and the answer simply widens.
-     An earlier build kept it empty, reasoning that a fill there is the same
-     note in the same place as the accent that makes it two twos and only
-     weight would say which. That was solving a problem rule 7 had already
-     solved: a TAK in the middle means both labellings are right anyway, so
-     the bar is offered with both readings instead of being refused. Measured
-     cost of the old restriction: three of David's twelve rhythms — Ayoub,
-     Felahi and Masmoudi all need a stroke in a four's middle — went from
-     reachable to impossible. A DOUM in the middle is a different matter and
-     is never written there (rule 7: a doum keeps two twos apart). */
-  return [Math.random()<p*0.5?"t":"-", Math.random()<p*0.35?"t":"-",
-          Math.random()<p?"t":"-"];
+    for(const [v,w] of t){ r-=w; if(r<=0) return v.slice(); }
+    return t[t.length-1][0].slice(); };
+  // rule 5: filling after a doum is the less common of the two
+  if(size===2) return pick([[["-"],1-(acc==="D"?p*0.45:p)],[["t"],acc==="D"?p*0.45:p]]);
+  if(size===3) return pick([[["-","-"],1-p],[["-","t"],p*0.55],[["t","t"],p*0.45]]);
+  return pick([[["-","-","-"],1-p],                          // x---
+               [["-","t","-"],p*0.32],                       // x-x-
+               [["-","t","t"],p*0.27],                       // x-xx
+               [["t","t","t"],p*0.21],                       // xxxx
+               [["-","-","t"],p*0.12],                       // x--x  less common
+               [["t","-","t"],p*0.08]]);                     // xx-x  less common
 }
 function rqMakeBar(grid,dens){
   const starts=rqStarts(grid.groups);
@@ -8988,6 +9013,25 @@ function rqMakeBar(grid,dens){
   // doums, or nothing but taks, is not the back and forth he asked for
   const str=slots.join("");
   if(!/[Dd]/.test(str)||!/[Tt]/.test(str)) return null;
+  /* A BAR MUST NOT BE A SHORTER BAR PLAYED TWICE. David, on an 8/8 the
+     generator wrote as two identical halves: "this feels more like a bar of
+     2/4" — and he is describing a hole in the quiz, not only a dull bar. If
+     the slots repeat with a period that divides the bar, the SOUND has that
+     period, and no listener can tell 8/8 from 4/8 twice over; the answer would
+     not be derivable from what they hear. Same family as the rotation rule.
+     Prime metres are untouched, having no proper period to fall into. */
+  for(let per=1;per<grid.n;per++){
+    if(grid.n%per) continue;
+    let same=true;
+    for(let i=per;i<grid.n&&same;i++) if(slots[i]!==slots[i-per]) same=false;
+    if(same) return null;
+  }
+  /* AND A BAR THAT COULD BE COUNTED A DOZEN WAYS IS NOT A QUESTION. Two or
+     three honest readings is the lesson David wanted ("3-2-2 or 3-4, both
+     correct"); a bar of four x-x- fours has sixteen, and asking it would be
+     asking nothing. Such bars are thrown back rather than having their real
+     ambiguity papered over. */
+  if(rqReadings(grid.groups,acc,slots).length>RQMAXREAD) return null;
   return {slots,acc};
 }
 
@@ -9009,9 +9053,21 @@ function rqReadings(groups,acc,slots){
     if(groups[i]===2&&groups[i+1]===2&&acc[i+1]==="T"){
       sofar.push(4); walk(i+2,sofar); sofar.pop();
     }
-    // …and the same door the other way: a four whose middle slot sounds a TAK
-    // may be felt as two twos. A doum there is never written (see rqMakeBar).
-    if(groups[i]===4&&slots&&slots[starts[i]+2]==="t"){
+    /* AND THE SAME DOOR THE OTHER WAY, because David showed it is a real one:
+       of a generated 9/8 he said "from the phrasing it feels more like 3-4-2,
+       because it's so much more common to have the last step of a subdivision
+       filled than the 2nd one". PHRASING CAN OVERRULE WEIGHT. A four whose
+       middle sounds — x-x-, x-xx, xxxx — is two legal twos laid end to end
+       (x-|x-, x-|xx, xx|xx), and a listener may honestly hear it that way, so
+       both labels count. The three shapes with a silent middle — x---, x--x,
+       xx-x — cannot be split and are fours only.
+       This was removed once, on the grounds that a fill is quieter than an
+       accent, and that was the wrong call: it is exactly the case he was
+       describing. What made removal tempting was the answer count exploding
+       (a 16/16 of x-x- fours came back with sixteen right answers), and that
+       is handled where it belongs — such a bar is simply not asked (see the
+       reading cap in rqMakeBar). */
+    if(groups[i]===4&&slots&&slots[starts[i]+2]!=="-"){
       sofar.push(2); sofar.push(2); walk(i+1,sofar); sofar.pop(); sofar.pop();
     }
     sofar.push(groups[i]); walk(i+1,sofar); sofar.pop();
@@ -9139,18 +9195,41 @@ function rqVoiceGroove(pat,def){
         if(alt!=null) f=alt;
       }
     }
-    /* NEVER RESTRIKE THE NOTE JUST PLAYED — with David's one exception. A
-       repeated rung reads as a stutter, not as movement, and it showed up at
-       once in the first 7/8 samples (3 - 5 5 - 9 9). But "a low stroke in the
-       very end can lead into another low stroke": when the last slot of a
-       group hands over to the next group's LOW accent, the repeat is the
-       point, and it is the same gesture as his filling doums. */
+    /* TWO RULES THAT CAN EACH UNDO THE OTHER, so they are settled together
+       rather than in sequence — running them once each in a fixed order was
+       tried both ways round and each ordering broke the other rule about four
+       times in a hundred.
+
+       NEVER RESTRIKE THE NOTE JUST PLAYED. A repeated rung reads as a stutter,
+       not as movement (the first 7/8 samples came out 3 - 5 5 - 9 9). David's
+       one exception: "a low stroke in the very end can lead into another low
+       stroke" — when the last slot of a group hands over to the next group's
+       LOW accent, the repeat is the gesture, the same one as his filling doums.
+
+       AND THE DING IS NOT A PASSING NOTE. On a generated 9/8 closing 1 D - he
+       said: "very unusual … D is not often used as filler. If it is, it
+       usually leads into a low accent." The pan's lowest voice may fill only
+       when it is handing over to a low accent; otherwise it steps up a rung. A
+       descending arpeggio still reaches the bottom, it just arrives there on
+       an accent, which is where it belongs.
+
+       `near` exists because f may be a PASSING TONE, off the ladder entirely.
+       lad.indexOf then returns -1, and stepping "up one rung" from -1 lands on
+       rung 0 — the ding — which is how the second rule was being broken by the
+       first. */
+    const near=x=>{ const j=lad.indexOf(x); if(j>=0) return j;
+      let bi=0,bd=Infinity;
+      lad.forEach((g,gi)=>{ const d=Math.abs(myPan.midiFor(g)-myPan.midiFor(x));
+        if(d<bd){ bd=d; bi=gi; } });
+      return bi; };
+    const nxt=on[k+1];
     const leadIn = e.acc && e.c==="D" && k>0 && on[k-1].p===e.p-1
-                   && lad.indexOf(f)<=Math.floor(top/2);
-    if(f===prev&&lad.length>1&&!leadIn){
-      const j=lad.indexOf(f);
-      i = j<top ? j+1 : j-1;
-      f = lad[i];
+                   && near(f)<=Math.floor(top/2);
+    const dingOk = ()=> e.acc || f!==0 || (nxt&&nxt.acc&&nxt.c==="D");
+    for(let guard=0; guard<5 && lad.length>1; guard++){
+      if(!dingOk()){ i=Math.min(top,lad.indexOf(0)+1); f=lad[i]; continue; }
+      if(f===prev&&!leadIn){ const j=near(f); i=j<top?j+1:j-1; f=lad[i]; continue; }
+      break;
     }
     prev=f;
     out[e.p]=[f];
@@ -9281,8 +9360,8 @@ function rqPlay(pat,voice,o){
     const t0=ctx.currentTime+.2;
     let t=t0;
     if(o.countIn!==false){
-      for(let k=0;k<g.n;k++) fire(clickBuf(k===0),t0+k*step,1);
-      t=t0+barSec;
+      for(let k=0;k<RQCOUNTIN;k++) fire(clickBuf(k===0),t0+k*step,1);
+      t=t0+RQCOUNTIN*step;
     }
     rqPlaying=true;
     for(let r=0;r<reps;r++){
@@ -9505,9 +9584,9 @@ function renderRQ(){
 
   if(RQ.phase==="listen"){
     const p=document.createElement("div"); p.className="rqsaid";
-    p.textContent="A count-in, then the rhythm "+rqcfg.plays+" times. The count-in ticks every "
-      +"pulse of one bar so you know where one is and how long the bar is — the grouping is for "
-      +"you to hear.";
+    p.textContent="Four pulses to count you in, then the rhythm "+rqcfg.plays+" times. The "
+      +"count-in gives you the speed and nothing else — how long the bar is, and how it is cut "
+      +"up, are both for you to hear.";
     card.appendChild(p);
     const r=document.createElement("div"); r.className="row";
     const skip=document.createElement("button"); skip.className="ctl";
@@ -11671,7 +11750,7 @@ function placeDrawer(){
     const mk=(label,fn)=>{ const b=document.createElement("button");
       b.className="ctl"; b.textContent=label;
       b.addEventListener("click",()=>{ setDrawer(false); fn(); }); mode.appendChild(b); };
-    mk("Sections & arrangement…",openPieceDlg);
+    mk("Sections…",openPieceDlg);
     // − before ＋ (David, 28 Aug)
     const ba=$("edBarAdd"), bd=$("edBarDel");
     if(bd) mode.appendChild(bd);
