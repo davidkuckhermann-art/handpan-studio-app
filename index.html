@@ -1091,6 +1091,9 @@ body.phone .gmini i{font-size:10px}
   /* …but the drawer is inside the transport and its labels are the point —
      "Chord voicings:" was hidden by this rule (David, 27 Aug) */
   body.phone #transport #drawerExtra .lab{display:inline-block}
+  /* …except the navigator's own ARRANGEMENT / TABLE captions, which the phone
+     has always dropped — re-showing them stacked the chips two rows high */
+  body.phone #transport #drawerExtra #arrbox .lab{display:none}
   body.phone #arrbox .chip{font-size:13px; padding:5px 12px}
   /* the notation gets the room the bar leaves */
   body.phone #scorewrap{margin-bottom:6px}
@@ -1303,12 +1306,24 @@ body.phone .gmini i{font-size:10px}
     cursor:grab; touch-action:none; background:none; border:none}
   /* the drawer's own play button, top right, for when it stands in for the
      writing deck (David, 27 Aug) */
-  /* clear of the drawer's upper edge (David, 27 Aug: "too close to the upper
-     edge") — the handle's row is 22px, so this sits below it, not on it */
-  body.phone #drawerPlayHost{position:absolute; right:0; top:14px; display:none}
-  body.phone.editing.drawer-open #drawerPlayHost{display:block; animation:pbIn .18s ease}
-  @keyframes pbIn{ from{ opacity:0; transform:scale(.9) } to{ opacity:1; transform:none } }
-  body.phone.editing.drawer-open #drawerHead{padding-bottom:26px}
+  /* the drawer's own transport row: navigator left, play right */
+  body.phone #dwTop{display:none}
+  body.phone.editing.drawer-open #dwTop{display:flex; align-items:center; gap:8px;
+    flex-wrap:nowrap; margin:2px 0 4px; animation:pbIn .18s ease}
+  @keyframes pbIn{ from{ opacity:0; transform:translateY(-3px) } to{ opacity:1; transform:none } }
+  body.phone #drawerNavHost{flex:1 1 auto; min-width:0; overflow-x:auto;
+    scrollbar-width:none; -webkit-overflow-scrolling:touch}
+  body.phone #drawerNavHost::-webkit-scrollbar{display:none}
+  /* one scrolling line, not two wrapped ones — the row sits beside a 44px
+     play button and should read as its equal */
+  body.phone #drawerNavHost #arrbox{width:auto; gap:12px; flex-wrap:nowrap}
+  body.phone #drawerNavHost .arrline{flex-wrap:nowrap}
+  /* the chips live one level deeper, in #arrChips / #subChips — those are the
+     flex boxes that were wrapping, and the renderer writes flex-wrap:wrap as an
+     INLINE style, so nothing but !important can reach them */
+  body.phone #drawerNavHost #arrChips,
+  body.phone #drawerNavHost #subChips{flex-wrap:nowrap !important}
+  body.phone #drawerNavHost .chip{flex:none}
   /* IN EDITING THE DRAWER REPLACES THE DECK, it does not sit above it: the
      lane, the pan and the chips fold away as the settings arrive (David, 27
      Aug), so the screen holds one tool surface at a time. */
@@ -1320,7 +1335,8 @@ body.phone .gmini i{font-size:10px}
      and then popped. Driven from JS, it fades in as it grows. */
   body.phone #drawerGrip i{display:block; width:40px; height:4px; border-radius:2px;
     background:var(--rule); transition:background .15s}
-  body.phone.drawer-open #drawerGrip i{background:var(--dixie)}
+  /* it stays neutral: the open panel says it is open, and a lit handle was
+     turning up orange when it had no business being (David, 27 Aug) */
   /* OPEN, IT COVERS THE NOTATION (David's call): pushing the music up would
      make phoneFit re-zoom the score every time the drawer moves, and the
      notation would visibly resize under the finger. */
@@ -1693,9 +1709,6 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <div id="drawerHead">
     <div id="drawerGrip" role="button" tabindex="0" aria-expanded="false"
          aria-label="Settings for what you are doing"><i></i></div>
-    <!-- while the drawer replaces the writing deck, the transport must still
-         be here — the deck's own play button has gone with it (27 Aug) -->
-    <span id="drawerPlayHost"></span>
   </div>
   <!-- The panel sits BELOW the resting buttons, so opening lifts them upward
        and the settings arrive under your thumb (David, 27 Aug: "the original
@@ -1709,6 +1722,16 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <div class="prow" id="prow2"></div>
   <div id="drawerExtraAnchor"></div>
   <div id="drawerExtra">
+    <!-- While the drawer stands in for the writing deck it carries the deck's
+         transport: the arrangement navigator on the left, play on the right
+         (David, 27 Aug). It lives INSIDE the panel, so it grows and folds with
+         it — a row in the head would appear and vanish on its own and jolt the
+         bar at each end of the move. -->
+    <div class="drow" id="dwTop">
+      <span id="drawerNavHost"></span>
+      <span class="spacer"></span>
+      <span id="drawerPlayHost"></span>
+    </div>
     <div class="dsec" id="dsMode"></div>
     <div class="drow" id="dwMode"></div>
     <div class="dsec">While you play</div>
@@ -10114,8 +10137,12 @@ else{
 function drawerOpen(){ return document.body.classList.contains("drawer-open"); }
 let drawerT=null, drawerGen=0;
 function setDrawer(on){
-  if(!PHONE||matchMedia("(orientation:landscape)").matches) return;
+  /* CLOSING is always allowed. Refusing it in landscape left `drawer-open` on
+     the body when the phone was turned while the drawer was up — which is how
+     the handle turned up orange with nothing open (David, 27 Aug). */
+  if(!PHONE) return;
   on=!!on;
+  if(on&&matchMedia("(orientation:landscape)").matches) return;
   if(on===drawerOpen()) return;
   const tr=$("transport"), ex=$("drawerExtra"), sh=$("drawerShade");
   clearTimeout(drawerT);
@@ -10152,7 +10179,10 @@ function setDrawer(on){
       dk.style.opacity="1";
       dk.getBoundingClientRect();
       dk.style.transition="";
+      // the deck's transport comes up with the drawer: play, and the
+      // arrangement navigator that the editor otherwise has nowhere to show
       $("drawerPlayHost").appendChild($("playBtn"));
+      $("drawerNavHost").appendChild($("arrbox"));
     }
     document.body.classList.add("drawer-open");
     sh.classList.remove("hidden");
@@ -10176,6 +10206,7 @@ function setDrawer(on){
          393 and then snapped to 405 the instant the button returned — that
          was the hiccup David could see (27 Aug). */
       $("edPlayHost").appendChild($("playBtn"));
+      $("prow2").appendChild($("arrbox"));        // …and goes back with it
       dk.style.transition="none"; dk.style.opacity="0"; dk.style.height="auto";
       phoneFit();                                 // the pan takes its resting size
       const deckH=dk.offsetHeight;                // …now this is the real height
