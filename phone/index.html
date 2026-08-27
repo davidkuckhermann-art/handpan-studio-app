@@ -742,6 +742,10 @@ body.jam #srcBadge{display:none !important}
 .jslot.jadd .jx{display:none}
 /* a chord the current pan can't voice: still in the row, clearly asleep */
 .jslot.na{opacity:.55; border-style:dashed}
+/* a chord the pan can only partly sound — it PLAYS, but it is not the chord
+   you wrote, so it says so in the app's red (David, 27 Aug) */
+.jslot.part{border-color:var(--clay); color:var(--clay)}
+.jslot.part small{color:var(--clay); opacity:.85}
 .jtools{display:inline-flex; gap:6px; align-items:center; margin-left:10px;
   padding-left:12px; border-left:1px solid var(--rule)}
 
@@ -1836,6 +1840,17 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <textarea id="csTxt" placeholder="HPJ1:…"></textarea>
   <div class="row"><button class="ctl" id="csImp">Load pasted code</button>
   <span class="spacer"></span><button class="ctl" id="csClose">Close</button></div>
+</dialog>
+
+<!-- CHANGING INSTRUMENT WITH A JAM DOWN (27 Aug, David): the progression can
+     follow the new scale's home, or stay where it is. -->
+<dialog id="panMoveDlg">
+  <h3>Transpose the jam?</h3>
+  <p class="hint" id="pmText"></p>
+  <div class="row" style="margin:8px 0 0">
+    <button class="ctl on" id="pmYes">Transpose</button>
+    <button class="ctl" id="pmNo">Keep the chords</button>
+  </div>
 </dialog>
 
 <!-- LEAVING THE GROOVE BENCH (27 Aug, David): it used to save on the way out
@@ -6055,6 +6070,100 @@ const JV_TOK=["1","3","5","7","9","11","13","15"];
 const JV_WIDE=24;      // what a wide/open voicing is worth
 const JV_REG=2;        // per semitone a voicing sits above the lowest legal one
 const JV_ROOT=8;       // the close root at the bottom
+/* WHAT THIS PAN CAN SOUND OF A CHORD (David, 27 Aug). After a scale change a
+   progression keeps its chords, and a chord whose ROOT the new pan hasn't got
+   does not even exist in jamChordDefs() — the list is built from the roots the
+   pan has. So completeness is measured off the NAME instead: how many of the
+   chord's tones this instrument owns. Anything with at least one is played
+   with the notes that are there and marked; nothing is dropped silently. */
+/* ---- A PAN'S HOME KEYS, and transposing a jam between instruments --------
+   (David, 27 Aug.) Every pan has two homes, and they are READ OFF THE PAN
+   rather than looked up by name — the same principle the suggester already
+   follows, and the one that answers the Hijaz question without a special
+   case. A home is a root whose triad the instrument can play IN FULL,
+   preferring the ding, which is the note the scale is built on:
+     D Kurd  → minor D (the ding), major F
+     E Amara → minor E (the ding), major G
+     C Aegean→ major C (the ding), minor A
+     G Hijaz → MAJOR G (its ding triad really is major), minor C
+   Switching instruments transposes by the distance between the two pans'
+   homes OF THE SAME FLAVOUR: a minor-rooted pan to a minor-rooted pan moves
+   root to root (D Kurd → E Amara is +2), and a major pan to D Kurd goes
+   C major → F major, which is his own example. */
+function panHomes(pan){
+  // works on a pan in either shape: cooked (midi numbers / {midi}) or raw off
+  // BUILTIN_PANS (note names), so a pan can be measured without being loaded
+  const pcOf=v=>jpc(typeof v==="number"?v:(v&&v.midi!=null?v.midi:(midiOf(v)||0)));
+  const pcs=new Set([pcOf(pan.ding),...pan.fields.map(pcOf)]);
+  const full=(r,third)=>pcs.has((r+third)%12)&&pcs.has((r+7)%12);
+  const ding=pcOf(pan.ding);
+  const pick=third=>{
+    if(full(ding,third)) return ding;              // the scale's own note first
+    for(const r of pcs) if(full(r,third)&&jamTonicLikeOn(pcs,r)===2) return r;
+    for(const r of pcs) if(full(r,third)) return r;
+    return null;
+  };
+  return {minor:pick(3),major:pick(4),ding};
+}
+/* jamTonicLike reads the CURRENT pan; this is the same test against any set,
+   so a pan can be measured without being selected. */
+function jamTonicLikeOn(pcs,root){
+  const has=i=>pcs.has((root+i)%12);
+  if(!has(7)) return 0;
+  if(has(1)) return 1;
+  if(has(4)) return has(5)&&has(11)?2:1;
+  if(has(3)) return has(8)&&has(10)?2:1;
+  return 0;
+}
+/* Which flavour the OLD instrument was speaking in: whichever home its ding
+   carries. That is what decides which home we land on in the new one. */
+function panFlavour(pan){
+  const h=panHomes(pan);
+  if(h.minor===h.ding) return "minor";
+  if(h.major===h.ding) return "major";
+  return h.minor!=null?"minor":"major";
+}
+function askPanMove(oldPan){
+  const t=jamTransposeBetween(oldPan,myPan);
+  if(!t||!t.semis){ renderJamPanel(); return; }   // same home: nothing to move
+  panMove=t;
+  const up=t.semis, down=12-t.semis;
+  $("pmText").textContent="This pan's "+t.flav+" home is "+PCN[t.to]
+    +", where the last one's was "+PCN[t.from]
+    +". Move the progression with it — "+PCN[t.from]+" "+t.flav+" to "+PCN[t.to]+" "+t.flav
+    +" ("+(up<=down?"+"+up:"-"+down)+" semitones)?";
+  openDlg($("panMoveDlg"));
+}
+let panMove=null;
+function doPanMove(){
+  if(!panMove) return;
+  const n=panMove.semis; panMove=null;
+  jam.slots=jam.slots.map(s=>{
+    const t=chordPCs(s.chord);
+    if(!t) return s;
+    const root=jpc(jpc(t[0])+n);
+    const q=String(s.chord).replace(/^[A-Ga-g][b♭#♯]?/,"");
+    return Object.assign({},s,{chord:PCN[root]+q});
+  });
+  jamEditSlot=-1;
+  applyJam();
+  toast("Progression transposed");
+}
+function jamTransposeBetween(oldPan,newPan){
+  const a=panHomes(oldPan), b=panHomes(newPan);
+  const flav=panFlavour(oldPan);
+  const from=flav==="minor"?a.minor:a.major, to=flav==="minor"?b.minor:b.major;
+  if(from==null||to==null) return null;
+  return {semis:((to-from)%12+12)%12, from, to, flav};
+}
+function panPcSet(){ return new Set([jpc(myPan.ding),...myPan.fields.map(f=>jpc(f.midi))]); }
+function chordFitOn(name){
+  const t=chordPCs(name);
+  if(!t||!t.length) return {have:0,total:0};
+  const pcs=panPcSet();
+  const have=[...new Set(t)].filter(pc=>pcs.has(pc));
+  return {have:have.length,total:new Set(t).size,root:pcs.has(jpc(t[0]))};
+}
 function jvChordPool(name,V){
   const def=jamDefs().byName[name];
   let imp;                    // the chord's pcs by importance: root, 3rd, the
@@ -6065,12 +6174,17 @@ function jvChordPool(name,V){
     const t=chordPCs(name); if(!t) return null;   // legacy stored name
     imp=[...new Set(t)];
   }
-  const kept=imp.slice(0,Math.min(V,imp.length));
+  /* Only the tones this pan HAS can be voiced. It used to refuse the whole
+     chord if any were missing, which is why a progression lost chords on a
+     scale change; it now plays what is there (David, 27 Aug) and the strip
+     marks the chord red. A chord with nothing left is still nothing. */
+  const own=panPcSet();
+  const kept=imp.filter(pc=>own.has(pc)).slice(0,Math.min(V,imp.length));
   const pool=[];              // every field sounding a kept pc, low to high
   if(kept.includes(jpc(myPan.ding))) pool.push(0);
   for(const f of myPan.fields) if(kept.includes(jpc(f.midi))) pool.push(f.n);
   pool.sort((a,b)=>myPan.midiFor(a)-myPan.midiFor(b));
-  if(!kept.length||!kept.every(pc=>pool.some(f=>jpc(myPan.midiFor(f))===pc))) return null;
+  if(!kept.length||!pool.length) return null;
   return {def,imp,kept,pool,Vp:Math.min(V,pool.length)};
 }
 /* every legal voicing of one chord, ranked by his per-chord rules —
@@ -6599,12 +6713,17 @@ function renderJamPanel(){
   const prog=$("jamProg"); prog.innerHTML="";
   jam.slots.forEach((s,i)=>{
     const b=document.createElement("button");
-    const na=!jamVoice(s.chord);
-    b.className="jslot"+(i===jamEditSlot?" sel":"")+(na?" na":"");
+    const fit=chordFitOn(s.chord);
+    const na=!jamVoice(s.chord);                 // nothing of it on this pan
+    const part=!na&&fit.total&&fit.have<fit.total;   // some of it, not all
+    b.className="jslot"+(i===jamEditSlot?" sel":"")+(na?" na":"")+(part?" part":"");
     if(na) b.title="Not on this pan — these bars play silent";
+    else if(part) b.title="This pan has "+fit.have+" of the "+fit.total
+      +" notes"+(fit.root?"":", and not the root")+" — it plays what it has";
     b.dataset.i=i;
     b.innerHTML="<b>"+fmtChord(s.chord)+"</b><small>"
-      +(s.bars>1?s.bars+" bars":"1 bar")+(na?" · silent":"")+"</small>";
+      +(s.bars>1?s.bars+" bars":"1 bar")
+      +(na?" · silent":part?" · "+fit.have+"/"+fit.total:"")+"</small>";
     b.addEventListener("click",()=>{
       if(b.dataset.dragged){ delete b.dataset.dragged; return; }
       openJamSlot(i);
@@ -8659,7 +8778,11 @@ function boot(){
   sel.addEventListener("change",()=>{
     panFaces(false);
     if(sel.value==="__new"){ sel.value=myPanId; fitPanSel(); openDlg($("panDlg")); return; }
-    myPanId=sel.value; fitPanSel(); refresh(); });
+    const wasPan=myPan, wasId=myPanId;
+    myPanId=sel.value; fitPanSel(); refresh();
+    // only in jam mode, and only when there is a progression to move
+    if(jamOn&&jam&&jam.slots.length&&wasPan&&wasId!==myPanId) askPanMove(wasPan);
+  });
   $("modePos").addEventListener("click",()=>setMode("pos"));
   $("modeTrans").addEventListener("click",()=>setMode("trans"));
   setView(view,{skipRender:true});   // body class + pill state before the first render
@@ -9056,6 +9179,8 @@ function boot(){
   $("csImp").addEventListener("click",()=>{
     if(ctxShareLoad($("csTxt").value)) $("ctxShareDlg").close();
     else toast("That code could not be read"); });
+  $("pmYes").addEventListener("click",()=>{ $("panMoveDlg").close(); doPanMove(); });
+  $("pmNo").addEventListener("click",()=>{ $("panMoveDlg").close(); panMove=null; renderJamPanel(); });
   $("geSave").addEventListener("click",()=>grooveExit(true));
   $("geDrop").addEventListener("click",()=>grooveExit(false));
   $("geCancel").addEventListener("click",()=>{ afterEdit=null; $("grooveExitDlg").close(); });
