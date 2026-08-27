@@ -4946,15 +4946,10 @@ function placeField(f){
     // only the reference chord's tones may land — the whole point of a groove
     // is that its notes are chord DEGREES, replayable on any chord
     const def=jamDefs().byName[grooveEdit.ref];
-    if(!grooveDegOf(f,def)){
+    if(!(def.pcs||[]).includes(jpc(myPan.midiFor(f)))){
       toast(grooveEdit.ref+" is "+grooveNotes(def)+" — that field isn't in it"); return; }
-    // one FIELD per voice (David's positional model, 27 Aug): the same note
-    // in a second octave would be a fourth rank, which a groove cannot carry
-    const clash=(piece.sections.Groove.bars[0]||[]).find(e=>
-      e.v==="field"&&e.f!==f&&jpc(myPan.midiFor(e.f))===jpc(myPan.midiFor(f)));
-    if(clash){
-      toast("The groove already plays that note as "+(clash.f===0?"the ding":"field "+clash.f)
-        +" — one octave per voice"); return; }
+    // a second octave of the same note is simply another VOICE (David, 27
+    // Aug: "there can be jam grooves with more than 3 voices")
     place({v:"field",f,hand:nextHand()});   // grooves carry no articulation
     return;
   }
@@ -5519,46 +5514,99 @@ function jamDefs(){
   return JAMDEFC;
 }
 /* POSITIONAL VOICING (David, 27 Aug — replaces the function-based solve).
-   A pattern's tokens 1/3/5 are RANKS, not chord functions: the voicing's
-   lowest, middle and highest voice. The pattern's shape (lowest→highest,
-   never reordered) is what travels from chord to chord — 3·5·7 on Cmaj
-   becomes 1·3·6 on Fmaj and 2·4·7 on Gmin, whatever the root lands on.
+   A pattern's tokens are RANKS, not chord functions: 1/3/5/7/9… name the
+   voicing's voices from the bottom up, and the pattern's SHAPE
+   (lowest→highest, never reordered) is what travels from chord to chord —
+   3·5·7 on Cmaj becomes 1·3·6 on Fmaj and 2·4·7 on Gmin, whatever the root
+   lands on. A groove may carry MORE than three voices (his correction, 27
+   Aug): V comes from the pattern, and when the pan offers fewer notes of the
+   chord than the groove has voices, neighbouring voices SHARE a note — order
+   preserved, ends pinned. Fewer voices than chord tones sheds the FIFTH
+   first (the quiz's shell doctrine), then the tail of the extensions.
    Choosing AMONG the ascending voicings, his rules, in order:
    - a note BELOW A3 may only lead the voicing when it is the chord's ROOT
-     (a non-root bass never leads while any legal option exists) — which is
-     why Gmin refuses the D3 ding and Dmin gets the wide, beautiful D·1·6;
-   - then the LOWEST REGISTER wins, compared voice by voice from the bottom
+     (a non-root bass never leads while any legal option exists) — why Gmin
+     refuses the D3 ding and Dmin gets the wide, beautiful D·1·6;
+   - the LOWEST REGISTER wins, compared voice by voice from the bottom
      ("for groove-based playing, we want to prioritize lower registers" —
-     why Fmaj is 1·3·6 and not the root-position 6·8·9).
-   A missing degree already points at the root pc, so it doubles the root.
+     why Fmaj is 1·3·6 and not the root-position 6·8·9);
+   - but when a ROOT-BOTTOM voicing sits within a minor third of the lowest
+     one, the root takes the bottom ("if the root is close-by… choose the
+     root as lowest note" — B♭maj7 gets 2·4·8, and 4-voice B♭maj7 2·4·6·8,
+     instead of the seventh grinding a semitone under the root).
    He named the future himself: extended scales and bottom notes will make
    this richer — this is the agreed starting point. */
-function jamVoice(name){
+const JV_TOK=["1","3","5","7","9","11","13","15"];
+function jamVoice(name,V){
+  V=Math.max(1,Math.min(V||3,JV_TOK.length));
   const def=jamDefs().byName[name];
-  let degs;
-  if(def) degs=def.degs;
-  else { const t=chordPCs(name); if(!t) return null;   // legacy stored name
-    degs={"1":t[0],"3":t[1]!==undefined?t[1]:t[0],"5":t[2]!==undefined?t[2]:t[0]}; }
-  const fieldsOf=v=>{ const o=[]; if(jpc(myPan.ding)===v) o.push(0);
-    for(const f of myPan.fields) if(jpc(f.midi)===v) o.push(f.n); return o; };
-  const rootPc=degs["1"];
-  const s1=fieldsOf(degs["1"]), s3=fieldsOf(degs["3"]), s5=fieldsOf(degs["5"]);
-  if(!s1.length||!s3.length||!s5.length) return null;
-  const BASS_TOP=57;                     // midi A3 — "below A3" is bass (David)
-  let best=null;
-  for(const f1 of s1) for(const f2 of s3) for(const f3 of s5){
-    const trio=[f1,f2,f3].sort((a,b)=>myPan.midiFor(a)-myPan.midiFor(b));
-    const ms=trio.map(f=>myPan.midiFor(f));
-    const bassOk=ms[0]>=BASS_TOP||jpc(ms[0])===rootPc;
-    let better=false;
-    if(!best) better=true;
-    else if(bassOk!==best.bassOk) better=bassOk;
-    else for(let i=0;i<3;i++){
-      if(ms[i]!==best.ms[i]){ better=ms[i]<best.ms[i]; break; }
-    }
-    if(better) best={ms,bassOk,map:{"1":trio[0],"3":trio[1],"5":trio[2]}};
+  let imp;                    // the chord's pcs by importance: root, 3rd, the
+  if(def){                    // characteristic upper voice, then the shed tail
+    imp=[...new Set([def.degs["1"],def.degs["3"],def.degs["5"]])];
+    for(const p of (def.pcs||[])) if(!imp.includes(p)) imp.push(p);
+  } else {
+    const t=chordPCs(name); if(!t) return null;   // legacy stored name
+    imp=[...new Set(t)];
   }
-  return best&&best.map;
+  const kept=imp.slice(0,Math.min(V,imp.length));
+  const pool=[];              // every field sounding a kept pc, low to high
+  if(kept.includes(jpc(myPan.ding))) pool.push(0);
+  for(const f of myPan.fields) if(kept.includes(jpc(f.midi))) pool.push(f.n);
+  pool.sort((a,b)=>myPan.midiFor(a)-myPan.midiFor(b));
+  if(!kept.length||!kept.every(pc=>pool.some(f=>jpc(myPan.midiFor(f))===pc))) return null;
+  const Vp=Math.min(V,pool.length);
+  const rootPc=imp[0];
+  /* the WIDE/OPEN voicing — root, 5th, 3rd above the octave, like Dmin's
+     D·1·6 — is "usually the default choice, because these sound best"
+     (David, 27 Aug). Triads only, three voices only; among wide options the
+     register rule still picks the lowest. */
+  const isTriad=!!def&&def.group==="Triads"&&!def.miss;
+  const thirdPc=def?def.degs["3"]:null, fifthPc=def?def.degs["5"]:null;
+  const BASS_TOP=57;          // midi A3 — "below A3" is bass (David)
+  const ROOT_CLOSE=3;         // a minor third — "close-by" (David)
+  const beats=(cand,inc)=>{
+    if(!inc) return true;
+    if(cand.bassOk!==inc.bassOk) return cand.bassOk;
+    for(let i=0;i<cand.ms.length;i++)
+      if(cand.ms[i]!==inc.ms[i]) return cand.ms[i]<inc.ms[i];
+    return false;
+  };
+  let best=null, bestRoot=null, bestWide=null;
+  const pick=[];
+  const walk=i=>{
+    if(pick.length===Vp){
+      const pcs=new Set(pick.map(f=>jpc(myPan.midiFor(f))));
+      if(!kept.every(pc=>pcs.has(pc))) return;     // the chord stays complete
+      const ms=pick.map(f=>myPan.midiFor(f));
+      const bassOk=ms[0]>=BASS_TOP||jpc(ms[0])===rootPc;
+      const cand={ms,bassOk,sel:pick.slice()};
+      if(beats(cand,best)) best=cand;
+      if(jpc(ms[0])===rootPc&&beats(cand,bestRoot)) bestRoot=cand;
+      if(isTriad&&V===3&&Vp===3&&jpc(ms[0])===rootPc&&jpc(ms[1])===fifthPc
+        &&jpc(ms[2])===thirdPc&&ms[2]-ms[0]>12&&beats(cand,bestWide)) bestWide=cand;
+      return;
+    }
+    if(i>=pool.length||pool.length-i<Vp-pick.length) return;
+    pick.push(pool[i]); walk(i+1); pick.pop();
+    walk(i+1);
+  };
+  walk(0);
+  if(!best) return null;
+  if(bestWide) best=bestWide;          // wide/open sounds best — the default
+  else if(bestRoot&&jpc(best.ms[0])!==rootPc&&bestRoot.ms[0]-best.ms[0]<=ROOT_CLOSE)
+    best=bestRoot;
+  // ranks 0..V-1 onto voices 0..Vp-1 — order preserved, ends pinned, so a
+  // five-voice groove on a three-note chord shares notes instead of dying
+  const map={};
+  for(let r=0;r<V;r++)
+    map[JV_TOK[r]]=best.sel[V===1?0:Math.round(r*(Vp-1)/(V-1))];
+  return map;
+}
+// how many voices a pattern actually uses — its highest rank token, plus one
+function patVoices(pat){
+  let mx=2;
+  for(const e of (pat.ev||[])){ const i=JV_TOK.indexOf(e[1]); if(i>mx) mx=i; }
+  return mx+1;
 }
 // "Jam mode" in the header while jamming; the word "mode" collapses when the
 // header runs out of room (David, 26 Aug). The fit test SUMS natural widths
@@ -5616,9 +5664,10 @@ function jamSuggest(){
 }
 function buildJamPiece(){
   const pat=allPats().find(p=>p.id===jam.patternId)||JAMPATS[0];
+  const VV=patVoices(pat);            // grooves may carry more than three voices
   const bars=[];
   for(const slot of jam.slots){
-    const v=jamVoice(slot.chord);
+    const v=jamVoice(slot.chord,VV);
     for(let b=0;b<(slot.bars||1);b++){
       // a chord this pan can't voice keeps its BARS — the form survives,
       // that chord simply doesn't sound (David, 26 Aug)
@@ -7077,7 +7126,8 @@ function jamFadeLive(dur){
   live=[];
 }
 function grooveMini(pat){
-  const v=jamVoice(jam.slots[0]&&jam.slots[0].chord)||{"1":0,"3":0,"5":0};
+  const v=jamVoice(jam.slots[0]&&jam.slots[0].chord,patVoices(pat))
+    ||Object.fromEntries(JV_TOK.map(k=>[k,0]));
   const bp=pat.meter[0]*pat.sub;
   const box=document.createElement("div"); box.className="gmini";
   box.style.gridTemplateColumns="repeat("+bp+",1fr)";
@@ -7111,7 +7161,7 @@ function jamPreviewToggle(patId,btn){
   if(jpv&&jpv.patId===patId){ jamPreviewStop(); return; }
   jamPreviewStop(); ensureCtx();
   const pat=allPats().find(p=>p.id===patId); if(!pat) return;
-  const v=jamVoice(jam.slots[0]&&jam.slots[0].chord);
+  const v=jamVoice(jam.slots[0]&&jam.slots[0].chord,patVoices(pat));
   if(!v){ toast("Add a chord first"); return; }
   const evs=pat.ev.map(([t,k,h])=>k==="g"?null:k==="^"?P(t,"slap",h):F(t,v[k],h))
     .filter(Boolean);
@@ -7142,15 +7192,9 @@ function userGrooves(){ try{return JSON.parse(localStorage.getItem("hps.grooves"
 function setUserGrooves(l){ try{localStorage.setItem("hps.grooves",JSON.stringify(l))}catch(e){} }
 function allPats(){ return JAMPATS.concat(userGrooves()); }
 let grooveEdit=null;   // {id, ref, wasJam, prevPiece, prevBpm} while writing one
-function grooveDegOf(f,def){       // which voice of the reference chord this field is
-  const pc=jpc(myPan.midiFor(f));
-  if(pc===def.degs["1"]) return "1";
-  if(pc===def.degs["3"]) return "3";
-  if(pc===def.degs["5"]) return "5";
-  return null;
-}
 function grooveNotes(def){
-  return PCN[def.degs["1"]]+" · "+PCN[def.degs["3"]]+" · "+PCN[def.degs["5"]];
+  return (def.pcs&&def.pcs.length?def.pcs:[def.degs["1"],def.degs["3"],def.degs["5"]])
+    .map(p=>PCN[p]).join(" · ");
 }
 /* the workbench's LIVE time controls (26 Aug, David: "there also needs to be
    a time signature selector, ideally above the groove editor") — one mutation
@@ -7171,10 +7215,10 @@ function grooveSetTime(tsVal,subVal){
 function startGrooveEdit(opts){    // opts: {id?, name, meter, sub, unit?, ref, ev?}
   if(editing){ toast("Leave editing first"); return; }
   const def=jamDefs().byName[opts.ref];
-  if(!def||def.group!=="Triads"||def.miss){ toast("Pick a full triad your pan can play"); return; }
+  if(!def||def.miss){ toast("Pick a chord your pan plays in full"); return; }
   let bar=[];
   if(opts.ev){                     // re-editing: degrees back to fields on THIS pan
-    const v=jamVoice(opts.ref);
+    const v=jamVoice(opts.ref,patVoices({ev:opts.ev}));
     if(!v){ toast("Your pan can't voice "+opts.ref+" right now"); return; }
     bar=opts.ev.map(([t,k,h])=>k==="g"?G(t,h):k==="^"?P(t,"slap",h):F(t,v[k],h));
   }
@@ -7209,7 +7253,9 @@ function grooveSaveNow(quietEmpty){
   // placement, so there are never more than three ranks.
   const used=[...new Set(bar.filter(e=>e.v==="field").map(e=>e.f))]
     .sort((a,b)=>myPan.midiFor(a)-myPan.midiFor(b));
-  const rankOf=new Map(used.map((f,i)=>[f,["1","3","5"][i]]));
+  if(used.length>JV_TOK.length){
+    toast("A groove carries at most "+JV_TOK.length+" voices"); return null; }
+  const rankOf=new Map(used.map((f,i)=>[f,JV_TOK[i]]));
   const ev=bar.map(e=>
       e.v==="ghost"?[e.t,"g",e.hand]
       :e.v==="perc"?[e.t,"^",e.hand]
@@ -7242,7 +7288,7 @@ function grooveLoadInto(g){
   if(!grooveEdit) return;
   const own=g.ref&&jamDefs().byName[g.ref]&&!jamDefs().byName[g.ref].miss;
   const ref=own?g.ref:grooveEdit.ref;
-  const v=jamVoice(ref);
+  const v=jamVoice(ref,patVoices(g));
   if(!v){ toast("Your pan can't voice "+ref+" right now"); return; }
   snapshot();                       // the bar being replaced is one undo away
   grooveEdit.ref=ref;
@@ -7299,7 +7345,7 @@ function grooveFromText(txt){
 }
 function grooveOk(g){ return !!(g&&Array.isArray(g.meter)&&g.meter.length===2
   &&Array.isArray(g.ev)&&g.ev.length
-  &&g.ev.every(e=>Array.isArray(e)&&typeof e[0]==="number"&&["1","3","5","g","^"].includes(e[1]))); }
+  &&g.ev.every(e=>Array.isArray(e)&&typeof e[0]==="number"&&(JV_TOK.includes(e[1])||e[1]==="g"||e[1]==="^"))); }
 function importGroove(g){
   if(!g.id||JAMPATS.some(p=>p.id===g.id)) g.id="ug-"+Date.now().toString(36);
   g.user=true; g.bpr=g.bpr||1; g.sub=g.sub||1;
@@ -7311,11 +7357,11 @@ function importGroove(g){
 }
 function openGrooveNewDlg(){
   const sel=$("gnChord"); sel.innerHTML="";
-  for(const c of jamDefs().list.filter(c=>c.group==="Triads"&&!c.miss)){
+  for(const c of jamDefs().list.filter(c=>!c.miss)){
     const o=document.createElement("option"); o.value=c.name; o.textContent=c.name;
     sel.appendChild(o);
   }
-  if(!sel.options.length){ toast("This pan has no full triad to write on"); return; }
+  if(!sel.options.length){ toast("This pan has no full chord to write on"); return; }
   openDlg($("grooveNewDlg"));
 }
 function openGrooveDlg(){ renderGrooveDlg(); openDlg($("grooveDlg")); }
