@@ -2180,6 +2180,11 @@ const BUILTIN_PANS=[
  {id:"f-pygmy-9",  name:"F Low Pygmy 9",      ding:"F2", fields:["C3","E♭3","F3","G3","A♭3","C4","E♭4","F4","G4"]},
  {id:"c-harm-9",   name:"C Harmonic Minor 9", ding:"C3", fields:["G3","A♭3","B3","C4","D4","E♭4","F4","G4","C5"]},
  {id:"g-hijaz-9",  name:"G Hijaz 9",          ding:"G2", fields:["D3","E♭3","F♯3","G3","A3","B♭3","C4","D4","E♭4"]},
+ /* two more diatonic instruments (David, 27 Aug). Aegean is the major-rooted
+    one the transposition rule needed a real example of; Celtic Minor is the
+    scale most students own after Kurd. */
+ {id:"c-aegean-9", name:"C Aegean 9",         ding:"C3", fields:["G3","A3","B3","C4","D4","E4","F4","G4","A4"]},
+ {id:"d-celtic-9", name:"D Celtic Minor 9",   ding:"D3", fields:["A3","C4","D4","E4","F4","G4","A4","C5","D5"]},
 ];
 function userPans(){ try{return JSON.parse(localStorage.getItem("hps.pans")||"[]")}catch(e){return[]} }
 function allPans(){ return BUILTIN_PANS.concat(userPans()); }
@@ -6614,12 +6619,35 @@ function jamToPiece(){
 }
 function saveJamLS(){ try{localStorage.setItem("hps.jam",JSON.stringify(
   {slots:jam.slots,patternId:jam.patternId,bpm:bpm}))}catch(e){} }
+/* THE PROGRESSION A STUDENT MEETS FIRST (David, 27 Aug): Dmin · B♭maj · Fmaj
+   · Cmaj on a D-minor pan — i · VI · III · VII — and "the equivalent on the
+   selected scale" everywhere else. So it is built from the pan's own home
+   (panHomes) by INTERVAL, not from those four names: on E Amara it comes out
+   Emin · Cmaj · Gmaj · Dmaj, and a major-rooted pan gets the same idea read
+   from its relative minor, which is where that shape lives. Any chord the
+   instrument can't play in full drops the whole set back to what it has. */
 function defaultJam(){
   const full=jamDefs().list.filter(c=>!c.miss&&c.group==="Triads");
-  const prefer=["Dmin","B♭maj","Fmaj","Cmaj"];
-  const slots=prefer.every(n=>full.some(c=>c.name===n))
-    ?prefer.map(chord=>({chord,bars:1}))
-    :full.slice(0,4).map(c=>({chord:c.name,bars:1}));
+  const plain=full.filter(c=>!jamDim(c));       // a first jam never opens on a diminished
+  const h=panHomes(myPan);
+  const base=h.minor!=null?h.minor:h.major;
+  const names=[];
+  if(base!=null){
+    // i · VI · III · VII off the home, or the major reading of the same shape
+    const want=h.minor!=null?[[0,"min"],[8,"maj"],[3,"maj"],[10,"maj"]]
+                            :[[0,"maj"],[9,"min"],[5,"maj"],[7,"maj"]];
+    for(const [iv,q] of want){
+      const n=PCN[jpc(base+iv)]+q;
+      if(plain.some(c=>c.name===n)) names.push(n);
+    }
+  }
+  /* A pan that hasn't got one of them (E Amara has no C, so no VI) keeps the
+     ones it has and fills from its own complete triads rather than falling
+     back to an arbitrary four — which is how a Hijaz was opening on a pair of
+     diminished chords. */
+  for(const c of plain){ if(names.length>=4) break; if(!names.includes(c.name)) names.push(c.name); }
+  let slots=names.slice(0,4).map(chord=>({chord,bars:1}));
+  if(!slots.length) slots=full.slice(0,4).map(c=>({chord:c.name,bars:1}));
   return {slots:slots.length?slots:[{chord:full[0]&&full[0].name||"Cmaj",bars:1}],
     patternId:JAMPATS[0].id,bpm:72};
 }
