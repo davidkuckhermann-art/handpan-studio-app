@@ -1180,13 +1180,15 @@ body.phone .gmini i{font-size:10px}
   /* the clear-slot glyph reads small at 16px (David, 27 Aug) — the id alone
      loses to `#edLaneHead .ib` above, so it has to be said the same way */
   #edLaneHead #edDel{font-size:21px}
-  body.phone #grooveLoadDlg{max-height:74vh; overflow-y:auto; overscroll-behavior:contain}
-  body.phone #newDlg,body.phone #editExitDlg,body.phone #grooveNewDlg,body.phone #grooveLoadDlg{
+  body.phone #grooveLoadDlg,body.phone #jamLibDlg{max-height:74vh; overflow-y:auto; overscroll-behavior:contain}
+  body.phone #newDlg,body.phone #editExitDlg,body.phone #grooveNewDlg,
+  body.phone #grooveLoadDlg,body.phone #jamLibDlg{
     border:none; border-radius:18px 18px 0 0; padding:14px 16px 26px;
     width:100%; max-width:none; margin:auto auto 0; background:var(--card);
     box-shadow:0 -12px 40px -14px rgba(70,52,28,.55)}
   body.phone #newDlg::backdrop,body.phone #editExitDlg::backdrop,
-  body.phone #grooveNewDlg::backdrop,body.phone #grooveLoadDlg::backdrop{background:rgba(30,27,22,.34)}
+  body.phone #grooveNewDlg::backdrop,body.phone #grooveLoadDlg::backdrop,
+  body.phone #jamLibDlg::backdrop{background:rgba(30,27,22,.34)}
 }
 /* landscape keeps its own arrangement (#miniarr), so the flattened card hides */
 @media (orientation:landscape){
@@ -1649,6 +1651,11 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 <dialog id="shareDlg">
   <h3>Share this piece</h3>
   <div class="row" style="margin-top:0">
+    <button class="ctl on" id="spSave">Save</button>
+    <button class="ctl" id="spLoad">Load…</button>
+  </div>
+  <p class="hint">…or move it off this device:</p>
+  <div class="row" style="margin-top:0">
     <button class="ctl" id="cpCode">Copy code</button>
     <button class="ctl" id="cpLink">Copy link</button>
     <button class="ctl" id="dlFile">Save .hps file</button>
@@ -1748,6 +1755,14 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
      the room. Pieces keep their own dialog; jams and grooves share this one. -->
 <dialog id="ctxShareDlg">
   <h3 id="csTitle">Share</h3>
+  <!-- the local library first: what you reach for daily (David, 27 Aug) -->
+  <div class="row" id="csNameRow" style="margin-top:0"><span class="lab">Name</span>
+    <input type="text" id="csName" placeholder="Jam in Dmin" style="flex:1"></div>
+  <div class="row" style="margin-top:0">
+    <button class="ctl on" id="csSave">Save</button>
+    <button class="ctl" id="csLoad">Load…</button>
+  </div>
+  <p class="hint">…or move it off this device:</p>
   <div class="row" style="margin-top:0">
     <button class="ctl" id="csFile">Save file</button>
     <button class="ctl" id="csCode">Copy code</button>
@@ -1756,7 +1771,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   </div>
   <p class="hint" id="csHint">Paste a code to load it:</p>
   <textarea id="csTxt" placeholder="HPJ1:…"></textarea>
-  <div class="row"><button class="ctl on" id="csImp">Load</button>
+  <div class="row"><button class="ctl" id="csImp">Load pasted code</button>
   <span class="spacer"></span><button class="ctl" id="csClose">Close</button></div>
 </dialog>
 
@@ -1771,6 +1786,13 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <p class="hint">The arrangement editor copies this jam into a new piece you can write on. The groove editor opens the groove itself — one bar (or two), replayed on every chord.</p>
   <div class="row" style="margin:0"><span class="spacer"></span>
     <button class="ctl" id="oeClose">Cancel</button></div>
+</dialog>
+
+<!-- the jams saved on this device (27 Aug) -->
+<dialog id="jamLibDlg">
+  <h3>Your jams</h3>
+  <div class="list" id="jlList"></div>
+  <div class="row"><span class="spacer"></span><button class="ctl" id="jlClose">Close</button></div>
 </dialog>
 
 <!-- LOAD into the groove workbench (26 Aug, David: "save and load commands").
@@ -7713,6 +7735,44 @@ function grooveEditFinish(){
    The file EMBEDS the groove it uses when that groove is the student's own,
    or the receiver would get a progression pointing at a groove they have
    never seen. Built-ins are named, not embedded: everyone has those. */
+/* JAMS GET A LOCAL LIBRARY of their own (David, 27 Aug) — the same shape as
+   the piece library and the groove list: saved here, on this device. */
+function savedJams(){ try{return JSON.parse(localStorage.getItem("hps.jams")||"[]")}catch(e){return[]} }
+function setSavedJams(l){ try{localStorage.setItem("hps.jams",JSON.stringify(l))}catch(e){} }
+function jamDefaultName(){
+  const c=jam.slots.map(s=>s.chord);
+  if(!c.length) return "Empty jam";
+  return c.length<=3?c.join(" · "):(c.slice(0,3).join(" · ")+" +"+(c.length-3));
+}
+function jamSaveToLib(name){
+  const r=jamRecipe(); r.name=(name||"").trim()||jamDefaultName();
+  const l=savedJams(), i=l.findIndex(x=>x.name===r.name);
+  if(i>=0) l[i]=r; else l.push(r);
+  setSavedJams(l);
+  toast("Saved: "+r.name);
+}
+function openJamLibDlg(){
+  const L=$("jlList"); L.innerHTML="";
+  const list=savedJams();
+  if(!list.length){
+    const e=document.createElement("p"); e.className="hint";
+    e.textContent="Nothing saved yet — Save puts the chords, the groove and the tempo here.";
+    L.appendChild(e);
+  }
+  list.forEach((r,i)=>{
+    const d=document.createElement("div"); d.className="lrow"; d.style.cursor="pointer";
+    const pat=allPats().find(p=>p.id===r.patternId);
+    d.innerHTML='<span class="nm">'+(r.name||"Untitled")+'</span>'
+      +'<span class="hint">'+r.slots.length+" chords · "+((pat&&pat.name)||"groove")+"</span>";
+    d.addEventListener("click",()=>{ importJam(r); $("jamLibDlg").close(); });
+    const x=document.createElement("button"); x.className="ctl"; x.textContent="✕";
+    x.title="Delete"; x.addEventListener("click",ev=>{ ev.stopPropagation();
+      const l=savedJams(); l.splice(i,1); setSavedJams(l); openJamLibDlg(); });
+    d.appendChild(x);
+    L.appendChild(d);
+  });
+  openDlg($("jamLibDlg"));
+}
 function jamRecipe(){
   const pat=allPats().find(p=>p.id===jam.patternId);
   const r={v:1, slots:jam.slots.map(s=>({chord:s.chord,bars:s.bars||1})),
@@ -7758,14 +7818,18 @@ function openShareForContext(){
   const c=shareContext();
   if(c==="piece"){ openDlg($("shareDlg")); return; }
   const groove=c==="groove";
-  const g=groove?null:null;
-  $("csTitle").textContent=groove?"Share this groove":"Share this jam";
+  $("csTitle").textContent=groove?"This groove":"This jam";
   $("csFile").textContent=groove?"Save .hpg file":"Save .hpj file";
   $("csTxt").placeholder=groove?"HPG1:…":"HPJ1:…";
   $("csHint").textContent=groove
     ?"Paste a groove code to load it — it opens on the bench you are writing on:"
     :"Paste a jam code to load it — chords, groove and tempo:";
   $("csTxt").value="";
+  // a groove is named by the title above the notation; a jam has no such field
+  $("csNameRow").style.display=groove?"none":"";
+  if(!groove) $("csName").value=jamDefaultName();
+  $("csSave").textContent=groove?"Save to my grooves":"Save to my jams";
+  $("csLoad").textContent=groove?"My grooves…":"My jams…";
   openDlg($("ctxShareDlg"));
 }
 /* what the CURRENT context would save, as text — the same encoding pieces
@@ -8300,6 +8364,29 @@ function boot(){
   $("gnClose").addEventListener("click",()=>$("grooveNewDlg").close());
   $("glClose").addEventListener("click",()=>$("grooveLoadDlg").close());
   $("csClose").addEventListener("click",()=>$("ctxShareDlg").close());
+  /* SAVE and LOAD talk to the LOCAL library — the thing you reach for daily;
+     the file buttons below are for moving work off the device (David, 27 Aug) */
+  $("csSave").addEventListener("click",()=>{
+    if(shareContext()==="groove"){ if(grooveSaveNow()) $("ctxShareDlg").close(); }
+    else { jamSaveToLib($("csName").value); $("ctxShareDlg").close(); }
+  });
+  $("csLoad").addEventListener("click",()=>{
+    $("ctxShareDlg").close();
+    if(shareContext()==="groove") openGrooveLoadDlg();   // built-ins and your own
+    else openJamLibDlg();
+  });
+  $("jlClose").addEventListener("click",()=>$("jamLibDlg").close());
+  // the piece's own dialog gets the same pair, against the piece library
+  $("spSave").addEventListener("click",()=>{
+    if(!quizOn) piece.title=$("title").value;
+    const l=savedPieces();
+    const i=l.findIndex(x=>x.id===piece.id&&x.title===piece.title);
+    if(i>=0)l[i]=piece; else l.push(JSON.parse(JSON.stringify(piece)));
+    setSaved(l); renderLib();
+    $("shareDlg").close(); toast("Saved: "+(piece.title||"Untitled"));
+  });
+  $("spLoad").addEventListener("click",()=>{
+    $("shareDlg").close(); renderLib(); openDlg($("libDlg")); });
   $("csFile").addEventListener("click",()=>{
     const s=ctxShareText(); if(!s) return;
     const a=document.createElement("a");
