@@ -421,11 +421,29 @@ body.phone #practiceGroup,body.phone #modebar{display:none !important}
   cursor:pointer; padding:2px 4px; white-space:nowrap}
 #modebar button:hover{color:var(--ink)}
 html.player #modebar{display:none}
-#jamInfo{display:flex; align-items:center; gap:10px; background:var(--dixie-soft);
+/* TUTORIAL BANNERS (27 Aug, David) — one look for every explanation in the
+   app, taken from the jam note that already existed: amber ground, hairline
+   border, a ✕ that remembers. Each carries a key; Settings ▸ Tutorial is the
+   master switch, and turning it back ON brings the dismissed ones back —
+   otherwise a ✕ would silence a lesson for good with no way to ask again. */
+#jamInfo,.tutbanner{display:flex; align-items:center; gap:10px; background:var(--dixie-soft);
   border:1px solid var(--rule); border-radius:9px; padding:7px 12px;
   margin-bottom:10px; font-size:13px; color:var(--ink2)}
-#jamInfo button{margin-left:auto; border:none; background:none; cursor:pointer;
+#jamInfo button,.tutbanner button{margin-left:auto; border:none; background:none; cursor:pointer;
   color:var(--ink3); font:inherit; font-size:11px; padding:2px 5px}
+body.phone .tutbanner{font-size:11.5px; padding:6px 9px; margin-bottom:7px}
+#tutGroove{display:none}
+body.gedit #tutGroove{display:flex}
+/* EDITING CENTRES THE PAN on the desktop, in every editing mode (David, 27
+   Aug). Piece editing shows the pan alone, so flex already centred it; the
+   groove bench also shows the reference chord's card, which pushed the pan
+   off to the right. A three-column grid puts the pan in the middle column
+   whatever else is on the row, and the chord card keeps its place at the
+   left rather than being taken away. */
+body:not(.phone).editing #belowrow{display:grid; grid-template-columns:1fr auto 1fr;
+  align-items:start; gap:12px}
+body:not(.phone).editing #belowrow>*{grid-column:1; justify-self:start}
+body:not(.phone).editing #belowrow>#panwrap{grid-column:2; justify-self:center; margin:0}
 .jgroup{flex-basis:100%; margin:6px 0 -1px; font-size:11px; font-weight:700;
   letter-spacing:.09em; text-transform:uppercase; color:var(--ink3)}
 #jamChordGrid .jgroup:first-child{margin-top:0}
@@ -1471,6 +1489,12 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <button class="ctl" id="vidClose" title="Unload the video — the tempo map is kept"><svg width="14" height="14"><use href="#is-x"/></svg> Close video</button>
   </div>
 </div>
+<!-- the groove bench explains itself (27 Aug, David) — above the music, so
+     both platforms show it; #tutGroove only exists while body.gedit -->
+<div id="tutGroove" class="tutbanner">
+  <span>Jam grooves are built on the notes of ONE chord. In jam mode the pattern you write here is carried to every chord of your progression.</span>
+  <button data-tutx="groove" aria-label="Close this note" title="Close">✕</button>
+</div>
 <div id="scorewrap">
  <div class="score" id="scorecard">
   <!-- the frame's HEAD: section name left, transport CENTRED over the music
@@ -1917,6 +1941,8 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <select class="ctl" id="countSel" aria-label="Count-line marker">
       <option value="off">Off</option><option value="16th">16th</option><option value="8th">8th</option>
       <option value="subdiv">Subdivision</option></select></div>
+  <div class="drow"><span>Tutorial</span>
+    <button class="ctl" id="setTutBtn" title="Show the explanation banners around the app">On</button></div>
   <div class="dsep"></div>
   <h4>Notation</h4>
   <div class="drow"><span>Hand letters</span>
@@ -6352,34 +6378,103 @@ function jamGenFrom(kind){
   $("genDlg").close();
   jamGenerate(kind,bars);
 }
-/* SUGGEST: BACK TO THE SIMPLE ROLL (David, 27 Aug). Six rounds of making
-   this cleverer — key awareness, cadence weighting, dominant resolution,
-   extension and diminished damping, a sharpened draw — produced worse music
-   than the plain interval table it replaced, and he said so after listening
-   to both: "the progressions with the earlier, much simpler algorithms were
-   much better." His ear decides this, not the theory, so the roll is the old
-   one again, unchanged: a symmetric root-interval table, his 55/30/15 family
-   odds, and the position 4/8 turn back towards chord 1.
+/* SUGGEST: THE SIMPLE ROLL (David, 27 Aug). Six rounds of making this
+   cleverer — key awareness, cadence weighting, a sharpened draw — produced
+   worse music than the plain interval table it replaced, and he said so
+   after listening to both. His ear decides this, not the theory. So the
+   roll is the old one: a symmetric root-interval table, his 55/30/15 family
+   odds, the position 4/8 turn back towards chord 1.
 
-   THREE THINGS ARE KEPT, and only because he asked for each by name:
-     · no two chords in a row on the same root (the Dmin7 → Dmin9 → Dmin he
-       reported); the old code only blocked the identical NAME.
-     · Dmin and Fmaj likelier to open a jam — read off the pan as the roots
-       that head a full Ionian or Aeolian, so it holds on any tuning.
-     · a dominant gets its seventh at the turn.
-   Everything else the clever version did is gone. The picker's suggestion
-   dots are a DIFFERENT feature and keep the harmony engine — he asked for
-   those, reviewed them, and has not complained about them. */
+   What sits on top are HIS rules, each asked for by name and each kept
+   small. Nothing here reasons about harmony; they are nudges to the dice.
+   The picker's suggestion dots are a different feature and keep the harmony
+   engine — he asked for those, reviewed them, and likes them. */
+
+// Can this pan put a chord's ROOT at the bottom of a voicing? On a D Kurd it
+// cannot for C7 — the ♭7 sits below the root, and David: "the C7 voicing is
+// awkward … include this rule only for scales that have a 7th voicing with
+// the root in the bass". True on the Hijaz and Harmonic Minor, false on Kurd.
+function jamRootInBass(name){
+  const cs=jvCandidates(name,3);
+  return !!(cs&&cs.some(c=>c.rootBottom));
+}
+/* ---- TUTORIAL BANNERS (27 Aug, David) ------------------------------------
+   Explanations that live in the app rather than in a manual. One master
+   switch (Settings ▸ Tutorial) and a per-banner ✕ that remembers; switching
+   the master back ON forgets every ✕, which is how a student asks for the
+   lessons again. New banners need markup only: a .tutbanner with a
+   [data-tutx="key"] close button, and a paintTutorials() call if it appears
+   without a render. */
+function tutorialsOn(){ try{ return localStorage.getItem("hps.tut")!=="0"; }catch(e){ return true; } }
+function tutDismissed(key){ try{ return localStorage.getItem("hps.tut."+key)==="0"; }catch(e){ return false; } }
+function setTutorials(on){
+  try{
+    localStorage.setItem("hps.tut",on?"1":"0");
+    if(on) Object.keys(localStorage).filter(k=>k.indexOf("hps.tut.")===0)
+      .forEach(k=>localStorage.removeItem(k));   // asking for them back means ALL of them
+    if(on) localStorage.removeItem("hps.jamInfo");
+  }catch(e){}
+  paintTutorials();
+}
+function paintTutorials(){
+  const on=tutorialsOn();
+  document.querySelectorAll(".tutbanner").forEach(b=>{
+    const x=b.querySelector("[data-tutx]");
+    const key=x?x.dataset.tutx:"";
+    b.classList.toggle("hidden",!on||tutDismissed(key));
+  });
+  // the jam note predates this and keeps its own key; the switch owns it too
+  const ji=$("jamInfo");
+  if(ji){ let seen=null; try{seen=localStorage.getItem("hps.jamInfo")}catch(e){}
+    ji.classList.toggle("hidden",!on||seen==="0"); }
+  const t=$("setTutBtn");
+  if(t){ t.classList.toggle("on",on); t.textContent=on?"On":"Off"; }
+}
 function jamSuggest(){
   if(jam.slots.length>=JAM_MAX){ toast("Eight chords is the most for now"); return; }
   const last=jam.slots[jam.slots.length-1];
   const lastDef=last&&jamDefs().byName[last.chord];
   const lr=lastDef?lastDef.root:jpc(myPan.ding);
-  // his one repetition rule: the same ROOT twice running, not just the same
-  // name — Dmin7 into Dmin9 was the complaint and they are different names
-  const pool=jamDefs().list.filter(c=>!c.miss&&!(last&&c.root===lr));
+  const pool=jamDefs().list.filter(c=>!c.miss);
   if(!pool.length){ toast("No chord to suggest on this pan"); return; }
-  const share={"Triads":55,"7th chords":30,"9th chords":15};
+  const ding=jpc(myPan.ding);
+  // the roots that can carry a key on this pan — D and F on a Kurd, the
+  // ding's own first. Read off the instrument, so it holds on any tuning.
+  const tonics=pool.filter(c=>c.group==="Triads"&&jamTonicLike(c.root)===2)
+    .sort((a,b)=>(a.root===ding?0:1)-(b.root===ding?0:1)).slice(0,2);
+  /* OPENING A JAM (David, 27 Aug: "35% Dmin and 20% Fmaj"). His numbers are
+     kept at the ROOT: 35% of jams open on something D, 20% on something F.
+     Which chord on that root is a separate question, and the answer is not
+     "the plain triad" — opening on a Dmin9 or an Fmaj7 is less likely but
+     wanted ("it can be a bit less likely, but it's nice when it happens").
+     The same tilt runs across the rest of the pool, so an extension is a
+     little rarer than a triad everywhere, never shut out. */
+  if(!last){
+    const TARGET=[.35,.20], FAM={"Triads":.6,"7th chords":.25,"9th chords":.15};
+    const fw=c=>FAM[c.group]||.2;
+    const tRoots=[]; for(const c of tonics)
+      if(tRoots.indexOf(c.root)<0) tRoots.push(c.root);
+    const wt=new Map();
+    tRoots.forEach((r,i)=>{
+      const mine=pool.filter(c=>c.root===r);
+      const sum=mine.reduce((a,c)=>a+fw(c),0);
+      if(sum) mine.forEach(c=>wt.set(c,TARGET[i]*fw(c)/sum));
+    });
+    const rest=pool.filter(c=>!wt.has(c));
+    const left=Math.max(.1,1-tRoots.reduce((a,_,i)=>a+TARGET[i],0));
+    const rsum=rest.reduce((a,c)=>a+fw(c),0);
+    if(rsum) rest.forEach(c=>wt.set(c,left*fw(c)/rsum));
+    let sum=0; const acc=pool.map(c=>(sum+=wt.get(c)||0));
+    const x=Math.random()*sum, k=acc.findIndex(v=>x<v);
+    jam.slots.push({chord:pool[k].name,bars:1}); applyJam(); return;
+  }
+  /* COLOUR CHORDS RARELY COME IN CROWDS (David, 27 Aug, on a suggested
+     Amin7 · Dmin9 · Emin7♭5 · Fmaj9: "it should be rare to happen"). His
+     55/30/15 is the resting mix; an extension just played leans the next
+     chord plain. */
+  const lastExt=lastDef&&lastDef.group!=="Triads";
+  const share=lastExt?{"Triads":88,"7th chords":9,"9th chords":3}
+                     :{"Triads":55,"7th chords":30,"9th chords":15};
   const fams=Object.keys(share).filter(g=>pool.some(c=>c.group===g));
   let fx=Math.random()*fams.reduce((s,g)=>s+share[g],0), fam=fams[0];
   for(const g of fams){ if(fx<share[g]){ fam=g; break; } fx-=share[g]; }
@@ -6387,39 +6482,41 @@ function jamSuggest(){
   /* THE PHRASE HAS TO COME HOME (David, 26 Aug). Everywhere else this stays a
      pure "what comes next" roll off the previous chord — but a chord landing
      in position 4 or 8 is the last one before the loop turns over, so there
-     it is weighed on how it leads BACK to chord 1 as well: the same root-
-     motion table read towards the first chord, the V→I pull counted double,
-     and chord 1 repeated at the turn all but ruled out. */
+     it is weighed on how it leads BACK to chord 1 as well. */
   const MOT={0:1.5,1:1,2:3,3:4,4:4,5:6,6:.7};
   const ivOf=(a,b)=>Math.min((b-a+12)%12,(a-b+12)%12);
   const pos=jam.slots.length+1;                  // where the new chord lands
   const first=jam.slots[0];
   const fd=first&&jamDefs().byName[first.chord];
   const closing=(pos===4||pos===8)&&!!fd;
+  // ONE END, NOT BOTH (David, 27 Aug): a generated series wants a tonic at
+  // the start OR at the finish. If chord 1 already is one, the close does not
+  // reach for another.
+  const firstIsTonic=!!fd&&tonics.some(c=>c.root===fd.root);
+  const lastDom=!!lastDef&&jamMaj3(lastDef)&&jamMin7(lastDef);
   const wOf=c=>{
-    /* OPENING A JAM (David, 27 Aug: "Dmin and Fmaj should have an increased
-       possibility for the first chord on a D Kurd, but not too much"). With
-       nothing to move away from there is no interval to weigh, so the roll is
-       flat here but for his nudge towards the roots that can carry a key. */
-    if(!last) return (c.group==="Triads"&&jamTonicLike(c.root)===2)?3:1;
-    const w=MOT[ivOf(lr,c.root)]||1;
+    let w=MOT[ivOf(lr,c.root)]||1;
+    // the same root twice running: it can happen, but rarely (David, 27 Aug)
+    if(c.root===lr) w*=.12;
+    // a dominant seventh just played wants its resolution, and gets a better
+    // chance of it (David, 27 Aug) — the old roll gave it none at all
+    if(lastDom&&(lr+5)%12===c.root) w*=4;
     if(!closing) return w;
-    if(c.name===first.chord) return w*.15;       // chord 1 twice over is no turn
-    const back=(MOT[ivOf(c.root,fd.root)]||1)*((c.root+5)%12===fd.root?2:1);
-    return w*back;
+    if(c.name===first.chord) w*=.15;             // chord 1 twice over is no turn
+    if(!firstIsTonic&&tonics.some(t=>t.root===c.root&&t.name===c.name)) w*=6;
+    return w*(MOT[ivOf(c.root,fd.root)]||1)*((c.root+5)%12===fd.root?2:1);
   };
   let sum=0; const acc=cands.map(c=>(sum+=wOf(c)));
   const x=Math.random()*sum, i=acc.findIndex(v=>x<v);
   let pick=cands[i];
-  /* A DOMINANT WANTS ITS SEVENTH (David, 27 Aug: "where appropriate it would
-     be good to add the 7th degree — not as a 100% rule, but as a strong
-     possibility — when there is a dominant relationship going on, V major →
-     I"). At the turn, the one position where this roll knows what follows,
-     and only when the triad drawn really is the MAJOR V of that chord. */
+  /* A DOMINANT WANTS ITS SEVENTH (David, 27 Aug) — at the turn, and only when
+     the triad drawn really is the major V of chord 1. Restricted to pans that
+     can actually voice that seventh with its root in the bass: on a D Kurd
+     they cannot, and he found the C7 awkward there. */
   if(closing&&pick&&pick.group==="Triads"&&jamMaj3(pick)
      &&(pick.root+5)%12===fd.root&&Math.random()<.67){
     const sev=jamDefs().byName[PCN[pick.root]+"7"];
-    if(sev&&!sev.miss) pick=sev;
+    if(sev&&!sev.miss&&jamRootInBass(sev.name)) pick=sev;
   }
   jam.slots.push({chord:pick.name,bars:1});
   applyJam();
@@ -8063,6 +8160,7 @@ function startGrooveEdit(opts){    // opts: {id?, name, meter, sub, unit?, ref, 
   loadPiece(p);
   if(!editing) $("editBtn").click();
   grooveEdit.sig0=grooveSig();   // the bench as it opened, for the dirty check
+  paintTutorials();              // the bench's own explanation, unless silenced
   toast("Write it on "+opts.ref+" — "+grooveNotes(def));
 }
 /* runs AFTER the Edit toggle has left editing mode (both platforms route
@@ -9016,6 +9114,14 @@ function boot(){
       unit:den===8?8:undefined,
       ref:$("gnChord").value });
   });
+  document.addEventListener("click",e=>{
+    const x=e.target.closest&&e.target.closest("[data-tutx]");
+    if(!x) return;
+    try{ localStorage.setItem("hps.tut."+x.dataset.tutx,"0"); }catch(err){}
+    const b=x.closest(".tutbanner"); if(b) b.classList.add("hidden");
+  });
+  $("setTutBtn").addEventListener("click",()=>setTutorials(!tutorialsOn()));
+  paintTutorials();
   $("jamInfoX").addEventListener("click",()=>{
     $("jamInfo").classList.add("hidden");
     try{localStorage.setItem("hps.jamInfo","0")}catch(e){}
