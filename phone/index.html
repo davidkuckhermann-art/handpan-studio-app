@@ -1299,10 +1299,27 @@ body.phone .gmini i{font-size:10px}
      notation would visibly resize under the finger. */
   body.phone.drawer-open #transport{position:fixed; left:0; right:0; bottom:0; z-index:60;
     max-height:86vh; overflow-y:auto; overscroll-behavior:contain;
-    border-radius:16px 16px 0 0; border-top:1px solid var(--rule)}
+    border-radius:16px 16px 0 0; border-top:1px solid var(--rule);
+    /* FIXED, IT LOSES THE BODY'S PADDING, so the row widened by 10px a side
+       and the play button jumped outward as the drawer opened (David, 27
+       Aug). Carrying the body's inset here keeps every control still. */
+    padding-left:calc(20px + 2*env(safe-area-inset-left));
+    padding-right:calc(20px + 2*env(safe-area-inset-right))}
   body.phone.drawer-open #drawerExtra{display:block}
   body.phone.drawer-open #drawerShade{display:block; position:fixed; inset:0; z-index:55;
     background:rgba(30,27,22,.3)}
+  /* IT GROWS UPWARD, it does not slide. Translating the whole panel would
+     carry the play button and the tempo with it — the very thing David asked
+     to stop moving — so the REVEALED PART animates its height instead: the
+     panel's top edge travels, everything anchored to the bottom stays exactly
+     where it was. */
+  body.phone #drawerExtra{overflow:hidden;
+    transition:height .24s cubic-bezier(.22,.61,.36,1)}
+  body.phone #drawerShade{opacity:0; transition:opacity .24s ease}
+  body.phone #drawerShade.lit{opacity:1}
+  @media (prefers-reduced-motion:reduce){
+    body.phone #drawerExtra,body.phone #drawerShade{transition:none}
+  }
   body.phone #drawerExtra .dsec{font-size:9.5px; font-weight:800; letter-spacing:.12em;
     text-transform:uppercase; color:var(--ink3); margin:10px 0 3px}
   body.phone #drawerExtra .drow{display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:0}
@@ -7143,7 +7160,7 @@ function renderJamPanel(){
     /* the tools moved INTO THE DRAWER (David, 27 Aug, ABC'd) — the groove
        selector stays on screen, because it names what is playing */
     const host=$("dwMode");
-    if(host){ host.innerHTML=""; host.appendChild(tools); }
+    if(host){ dwModeReset(); host.appendChild(tools); }
     else{ const boxT=document.createElement("div"); boxT.className="jtoolbox";
       boxT.appendChild(tools); $("jampanel").insertBefore(boxT,$("jamtrack")); }
   } else prog.appendChild(tools);
@@ -10017,16 +10034,62 @@ else{
    reveals the rest. Contents are the SAME elements moved here, the menu
    sheet's own trick, so no handler is rewritten. */
 function drawerOpen(){ return document.body.classList.contains("drawer-open"); }
+let drawerT=null, drawerGen=0;
 function setDrawer(on){
-  if(!PHONE) return;
-  document.body.classList.toggle("drawer-open",!!on);
-  $("drawerShade").classList.toggle("hidden",!on);
+  if(!PHONE||matchMedia("(orientation:landscape)").matches) return;
+  on=!!on;
+  if(on===drawerOpen()) return;
+  const tr=$("transport"), ex=$("drawerExtra"), sh=$("drawerShade");
+  clearTimeout(drawerT);
   $("drawerGrip").setAttribute("aria-expanded",on?"true":"false");
-  if(!on) $("transport").scrollTop=0;
+  /* the end of the move is the TRANSITION's own event, with a timer behind it
+     — reduced-motion turns the transition off, and then transitionend never
+     comes at all */
+  const gen=++drawerGen;          // a later toggle wins; this one goes quiet
+  const grow=(from,to,after)=>{
+    let done=false;
+    const finish=()=>{ if(done) return; done=true;
+      ex.removeEventListener("transitionend",onEnd);
+      if(gen!==drawerGen) return;  // superseded — leave the new state alone
+      after(); };
+    const onEnd=e=>{ if(e.target===ex&&e.propertyName==="height") finish(); };
+    ex.addEventListener("transitionend",onEnd);
+    ex.style.transition="none"; ex.style.height=from+"px";
+    ex.getBoundingClientRect();                // let the browser take that in
+    ex.style.transition=""; ex.style.height=to+"px";
+    drawerT=setTimeout(finish,300);
+  };
+  if(on){
+    document.body.classList.add("drawer-open");
+    sh.classList.remove("hidden");
+    ex.style.height="auto";                    // measure the natural height…
+    const h=ex.offsetHeight;
+    grow(0,h,()=>{ ex.style.height="auto"; }); // …then let it be free again
+    requestAnimationFrame(()=>sh.classList.add("lit"));
+  } else {
+    const h=ex.offsetHeight;
+    sh.classList.remove("lit");
+    grow(h,0,()=>{
+      document.body.classList.remove("drawer-open");
+      ex.style.transition=""; ex.style.height="";
+      sh.classList.add("hidden");
+      tr.scrollTop=0;
+    });
+  }
 }
 /* what the drawer holds, per mode. Called at boot and whenever the room
    changes; it never runs while the drawer is open, so nothing moves under
    the finger. */
+/* The mode section BORROWS controls that live elsewhere (the deck's +/- Bar).
+   Clearing it with innerHTML would DESTROY them — they are the same elements,
+   not copies, and the next render would find nothing. So they go home first. */
+function dwModeReset(){
+  const m=$("dwMode"), chips=$("edChips");
+  if(!m) return;
+  ["edBarAdd","edBarDel"].forEach(id=>{ const el=$(id);
+    if(el&&m.contains(el)&&chips) chips.appendChild(el); });
+  m.innerHTML="";
+}
 function placeDrawer(){
   // LANDSCAPE HAS NO DRAWER, and it keeps the practice controls on its own
   // bar — without this guard the boot order handed them to a drawer that
@@ -10053,13 +10116,15 @@ function placeDrawer(){
   head.textContent=jamOn?"This jam":(editing?(grooveEdit?"This groove":"This piece"):"");
   head.classList.toggle("hidden",!(jamOn||editing));
   if(editing){
-    mode.innerHTML="";
+    dwModeReset();
     const mk=(label,fn)=>{ const b=document.createElement("button");
       b.className="ctl"; b.textContent=label;
       b.addEventListener("click",()=>{ setDrawer(false); fn(); }); mode.appendChild(b); };
     if(!grooveEdit) mk("Sections & arrangement…",openPieceDlg);
-    mode.appendChild($("edBarAdd")); mode.appendChild($("edBarDel"));
-  } else if(!jamOn) mode.innerHTML="";
+    const ba=$("edBarAdd"), bd=$("edBarDel");
+    if(ba) mode.appendChild(ba);
+    if(bd) mode.appendChild(bd);
+  } else if(!jamOn) dwModeReset();
   // jam fills its own section from renderJamPanel, which rebuilds the tools
 }
 function drawerGesture(){
