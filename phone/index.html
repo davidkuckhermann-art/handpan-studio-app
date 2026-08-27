@@ -278,7 +278,12 @@ input[type=text]{width:auto}
 .mkbox.mkbR{border-right:1px solid var(--dixie);
   border-top-right-radius:4px; border-bottom-right-radius:4px}
 /* box markers (subdivision / half / bar): band fill + a hairline outline */
-.beat.nowbeat{background:var(--sc-band); box-shadow:inset 0 0 0 1px rgba(229,147,21,.7)}
+/* THE MARKER SITS ON THE CELL'S OWN GRIDLINES (David, 27 Aug: "the timing
+   marker misses its lower borderline"). An INSET ring paints inside the 1px
+   border, and the cells overlap by a negative margin, so the neighbour's
+   border covered the bottom edge. Colouring the border itself and lifting the
+   cell above its neighbours puts all four edges exactly on the lines. */
+.beat.nowbeat{background:var(--sc-band); border-color:var(--dixie); z-index:1}
 .bar.nowbar{background:var(--sc-band); box-shadow:inset 0 0 0 1px rgba(229,147,21,.7)}
 .count span.cnow{color:var(--dixie)}
 .count span.cnow::after{content:""; position:absolute; left:1px; right:1px; bottom:-3px;
@@ -746,6 +751,9 @@ body.jam #srcBadge{display:none !important}
    you wrote, so it says so in the app's red (David, 27 Aug) */
 .jslot.part{border-color:var(--clay); color:var(--clay)}
 .jslot.part small{color:var(--clay); opacity:.85}
+/* one note short, root intact — a voicing, not a wrong chord */
+.jslot.thin{color:var(--ink3); border-color:var(--rule)}
+.jslot.thin small{color:var(--ink3)}
 .jtools{display:inline-flex; gap:6px; align-items:center; margin-left:10px;
   padding-left:12px; border-left:1px solid var(--rule)}
 
@@ -2259,6 +2267,10 @@ function renderTone(midi,art){
 function renderPerc(kind){
   const sr=ctx.sampleRate;
   const cfg={ slap:{dur:.16,pk:.42}, tak:{dur:.09,pk:.4}, knock:{dur:.18,pk:.45}, ghosttap:{dur:.09,pk:.16} }[kind];
+  /* a kind nobody renders is silence, not a crash: a mis-transcribed
+     P(t,"mute") used to throw here on every pass, and the scheduler sat on
+     that pulse for good (David, 27 Aug — "stopped at the same spot") */
+  if(!cfg) return null;
   const n=Math.floor(sr*cfg.dur), b=ctx.createBuffer(2,n,sr);
   for(let ch=0;ch<2;ch++){
     const d=b.getChannelData(ch); let lp=0, prev=0;
@@ -2434,14 +2446,16 @@ const DEMOS=[
      F(8,2,"R"),F(9,5,"L"),F(10,5,"L"),F(11,6,"R"),
      F(12,7,"R"),F(12,6,"R"),F(13,6,"R"),F(14,5,"L"),F(15,4,"R")]
    ]},
-   B:{bars:[
+   B1:{bars:[
     [F(0,0,"L"),G(1,"R"),G(2,"L"),F(3,6,"R"),F(3,4,"R"),  P(4,"slap","L"),G(5,"R"),G(6,"L"),G(7,"R"),
      F(8,0,"L"),G(9,"R"),G(10,"L"),F(11,4,"R"),F(11,2,"R"), P(12,"slap","L"),G(13,"R"),G(14,"L"),G(15,"R")],
     [F(0,0,"L"),G(1,"R"),G(2,"L"),F(3,5,"R"),F(3,3,"R"),  P(4,"slap","L"),G(5,"R"),G(6,"L"),G(7,"R"),
      F(8,0,"L"),G(9,"R"),G(10,"L"),F(11,3,"R"),F(11,1,"R"), P(12,"slap","L"),G(13,"R"),
      F(14,3,"L"),F(14,1,"R"),F(15,3,"L"),F(15,1,"R")],
+   ]},
+   B2:{bars:[
     [F(0,0,"L"),G(1,"R"),G(2,"L"),F(3,6,"R"),F(3,4,"R"),  P(4,"slap","L"),G(5,"R"),G(6,"L"),G(7,"R"),
-     P(8,"mute","L"),G(9,"R"),G(10,"L"),F(11,4,"R"),F(11,2,"R"), P(12,"slap","L"),G(13,"R"),G(14,"L"),G(15,"R")],
+     F(8,0,"L",{art:"mute"}),G(9,"R"),G(10,"L"),F(11,4,"R"),F(11,2,"R"), P(12,"slap","L"),G(13,"R"),G(14,"L"),G(15,"R")],
     [F(0,0,"L"),G(1,"R"),G(2,"L"),F(3,5,"R"),F(3,3,"R"),  P(4,"slap","L"),G(5,"R"),G(6,"L"),F(7,5,"R"),F(7,3,"R"),
      F(8,0,"L"),G(9,"R"),F(10,3,"R"),F(10,1,"R"),F(11,3,"R"),F(11,1,"R"),
      F(12,4,"R"),F(12,2,"R"),F(13,5,"R"),F(13,3,"R"),F(14,6,"R"),F(14,4,"R"),G(15,"R")]
@@ -2464,7 +2478,7 @@ const DEMOS=[
      F(8,2,"R"),F(9,3,"L"),F(10,5,"L"),F(11,7,"R"), F(12,7,"L"),F(13,6,"R"),F(14,5,"L"),F(15,4,"R")]
    ]}
   },
-  arrangement:["Intro","A","B","B","Bridge","C","A","A"] },
+  arrangement:["Intro","A","B1","B2","Bridge","C","A","A"] },
 { format:"hpd-1", id:"kurd-groove", title:"Kurd Groove", author:"David Kuckhermann",
   writtenFor:"d-kurd-9", tempo:72, meter:[4,4], sub:4, barsPerRow:1,
   sections:{ A:{bars:[
@@ -2892,7 +2906,7 @@ function paintPulse(pi){
     document.querySelectorAll(".cnow").forEach(el=>el.classList.remove("cnow"));
     const ch=document.querySelector('[data-ai="'+cur.ai+'"]')||document.querySelector('[data-ai-'+cur.ai+']');
     if(ch) ch.classList.add("playing");
-    if(panOn) paintPan(pi);
+    if(panOn&&(playing||follow)) paintPan(pi);
     return;
   }
   if(cur){
@@ -2934,7 +2948,10 @@ function paintPulse(pi){
         if(c) c.classList.add("cnow");
       }
     }
-    if(panOn) paintPan(pi);
+    /* the pan lights what SOUNDS — so it stays dark on a mere seek, which
+       looked like playing without audio (David, 27 Aug: "the playing
+       animation goes off, but without sound") */
+    if(panOn&&(playing||follow)) paintPan(pi);
     const chip=document.querySelector('[data-ai="'+cur.ai+'"]')||document.querySelector('[data-ai-'+cur.ai+']');
     if(chip) chip.classList.add("playing");
     document.querySelectorAll(".cchip.playing").forEach(el=>el.classList.remove("playing"));
@@ -6574,6 +6591,11 @@ function jamRestartNextBar(){
   const bp=Math.max(1,pat.meter[0]*pat.sub);
   jamRestartDue=Math.ceil(nextPulse/bp)*bp;   // the coming bar line
   jamRestartAt=0;                            // …and then chord one
+  /* and let the bar you are in FADE into it, if there is time for one
+     (David, 27 Aug). The ramp ends on the bar line, so the new progression
+     starts from silence rather than cutting the old one off. */
+  const left=(jamRestartDue-nextPulse)*pulseDurOf(loopedPulse(nextPulse));
+  if(left>0.25) jamFadeLive(Math.min(left,0.5));
 }
 
 // Can this pan put a chord's ROOT at the bottom of a voicing? On a D Kurd it
@@ -6826,10 +6848,17 @@ function renderJamPanel(){
     const b=document.createElement("button");
     const fit=chordFitOn(s.chord);
     const na=!jamVoice(s.chord);                 // nothing of it on this pan
-    const part=!na&&fit.total&&fit.have<fit.total;   // some of it, not all
-    b.className="jslot"+(i===jamEditSlot?" sel":"")+(na?" na":"")+(part?" part":"");
+    const miss=fit.total?fit.total-fit.have:0;
+    /* HOW WRONG IS IT? (David, 27 Aug.) One note short and still rooted is a
+       voicing, not a different chord — that is grey, the way an "almost" was
+       drawn before. Missing the ROOT, or missing more than one, and it no
+       longer says what it says: red. */
+    const red=!na&&miss>0&&(miss>1||!fit.root);
+    const thin=!na&&miss===1&&fit.root;
+    b.className="jslot"+(i===jamEditSlot?" sel":"")+(na?" na":"")
+      +(red?" part":"")+(thin?" thin":"");
     if(na) b.title="Not on this pan — these bars play silent";
-    else if(part) b.title="This pan has "+fit.have+" of the "+fit.total
+    else if(red||thin) b.title="This pan has "+fit.have+" of the "+fit.total
       +" notes"+(fit.root?"":", and not the root")+" — it plays what it has";
     b.dataset.i=i;
     b.innerHTML="<b>"+fmtChord(s.chord)+"</b><small>"
