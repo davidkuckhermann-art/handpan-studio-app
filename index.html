@@ -43,6 +43,10 @@ html,body{overflow-x:hidden; overscroll-behavior-x:none}  /* Magic-Mouse swipes 
 #scorecard{position:relative}
 #score{min-width:0; position:relative}   /* the loop frame is placed against it */
 #sctools{justify-self:center; display:flex; align-items:center; gap:6px}
+#scoreheadR{justify-self:end; display:flex; align-items:center; gap:6px}
+#genBtn{display:none}
+body.jam #genBtn{display:inline-flex}
+body.phone #genBtn{display:none !important}
 /* the frame's footer bar: practice left, arrangement right */
 /* Three columns, so the transport is TRULY centred whatever the two sides
    weigh (equal 1fr flanks; a flex row with two spacers only centres when the
@@ -1355,7 +1359,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
        can't nest, so they abut and share an edge to read as one control). -->
   <!-- the ✕ that used to abut the pill moved into the MODE BAR (David, 26 Aug) -->
   <span class="pgroup" id="practiceGroup">
-    <button class="ctl" id="practiceBtn" title="Jam along or quiz yourself on chords">Play &amp; Explore</button>
+    <button class="ctl" id="practiceBtn" title="Jam along or quiz yourself on chords">Jam &amp; Learn</button>
   </span>
   <button class="ctl" id="libBtn">Library</button>
   <button class="ctl" id="shareBtn">Share…</button>
@@ -1485,7 +1489,12 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
       <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.6l13 7.4-13 7.4z"/></svg>
     </button>
    </div>
-   <span></span>
+   <!-- the head's right cell: on the desktop the generator sits here, top
+        right INSIDE the notation window, level with the play button
+        (David, 27 Aug). The phone keeps its own copy in the jam tools. -->
+   <span id="scoreheadR">
+     <button class="ctl" id="genBtn" title="Fill the whole progression — suggested, or truly random">🎲 Generate</button>
+   </span>
   </div>
   <div id="score"></div>
   <!-- THE FRAME'S FOOTER (David, 26 Aug): practice left, transport CENTRED,
@@ -1679,7 +1688,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 
 <!-- The practice menu: one door, two rooms. -->
 <dialog id="practiceDlg">
-  <h3>Play &amp; Explore</h3>
+  <h3>Jam &amp; Learn</h3>
   <button class="pchoice" id="pcJam">
     <b>Jam mode</b>
     <span>Pick a chord progression and a groove — the app plays a backing on your
@@ -1784,6 +1793,37 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <span class="spacer"></span><button class="ctl" id="csClose">Close</button></div>
 </dialog>
 
+<!-- LEAVING THE GROOVE BENCH (27 Aug, David): it used to save on the way out
+     and drop you in the groove browser. Now it asks, and only when something
+     changed — then puts you back where you came from. -->
+<dialog id="grooveExitDlg">
+  <h3 id="geTitle">Keep this groove?</h3>
+  <p class="hint">Saving puts it in your groove library, where jam mode and the groove browser can reach it.</p>
+  <div class="row" style="margin:8px 0 0">
+    <button class="ctl on" id="geSave">Save to my grooves</button>
+    <button class="ctl" id="geDrop">Discard changes</button>
+    <span class="spacer"></span>
+    <button class="ctl" id="geCancel">Cancel</button>
+  </div>
+</dialog>
+
+<!-- THE RANDOM GENERATOR (27 Aug, David): two ways to fill the whole
+     progression — his tuned suggestion rules, or a flat draw. -->
+<dialog id="genDlg">
+  <h3>Generate a progression</h3>
+  <div class="drow-btns" style="display:flex; gap:9px; padding:4px 0 2px">
+    <button class="ctl" id="genSug" style="flex:1; justify-content:center; padding:12px; font-size:14px">Suggested</button>
+    <button class="ctl" id="genRnd" style="flex:1; justify-content:center; padding:12px; font-size:14px">Truly random</button>
+  </div>
+  <p class="hint" id="genHint"></p>
+  <div class="row" id="genLenRow" style="margin:6px 0 0">
+    <span class="lab">How many bars</span>
+    <select class="ctl" id="genLen" aria-label="How many bars"></select>
+  </div>
+  <div class="row" style="margin:0"><span class="spacer"></span>
+    <button class="ctl" id="genClose">Cancel</button></div>
+</dialog>
+
 <!-- OPEN IN EDITOR asks WHICH editor (27 Aug, David) — the jam is two
      things at once: an arrangement of chords and the groove playing them. -->
 <dialog id="openEdDlg">
@@ -1831,7 +1871,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
      here at boot, so every handler keeps working. -->
 <dialog id="menuDlg">
   <div class="grab"></div>
-  <!-- the library leads the sheet and Play & explore sits right under it
+  <!-- the library leads the sheet and Jam & Learn sits right under it
        (David, 27 Aug): the two things a student reaches for most -->
   <h4>Pieces</h4>
   <div class="drow"><span>Your library</span><span id="mLib"></span></div>
@@ -1840,7 +1880,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <!-- each mode gets its OWN button here (David, 26 Aug): on the phone the
        menu IS the practice menu, so routing through a second sheet just to
        choose between two things was a step for nothing -->
-  <h4>Play &amp; explore</h4>
+  <h4>Jam &amp; Learn</h4>
   <!-- these two need no describing labels — the buttons ARE the choice
        (David, 26 Aug), so they sit side by side instead of in rows -->
   <div class="drow drow-btns" id="mPlayRow">
@@ -5843,9 +5883,19 @@ function jamDim(c){ return /dim|♭5/.test(c.name); }
 /* How well chord `c` sits between two neighbours, in a key centred on
    `home`. `nextRoot` may be null — Suggest away from the turn is only ever
    asked what comes NEXT, and has no chord after it to answer to. */
-function jamFit(c,prevRoot,nextRoot,home){
+function jamFit(c,prevRoot,nextRoot,home,prevDef){
   let s=JAM_FN[(c.root-home+12)%12]||0;
-  if(prevRoot!=null) s+=JAM_FROM[jamMotion(prevRoot,c.root)];
+  if(prevRoot!=null){
+    s+=JAM_FROM[jamMotion(prevRoot,c.root)];
+    /* A DOMINANT IS A QUESTION AND IT WANTS ANSWERING (David, 27 Aug, on a
+       suggested C7 → B♭maj). Until now the "from" side read pure root motion
+       and knew nothing of the chord it was leaving, so seven dominant
+       sevenths in ten went somewhere other than their resolution. If the
+       chord before this one is dominant-shaped — major third and ♭7 — then
+       the chord a fourth above it is what the ear is waiting for. */
+    if(prevDef&&jamMaj3(prevDef)&&jamMin7(prevDef)
+       &&(prevRoot+5)%12===c.root) s+=2.6;
+  }
   if(nextRoot!=null){
     const m=jamMotion(c.root,nextRoot);
     let v=JAM_INTO[m];
@@ -5874,6 +5924,10 @@ function jamFit(c,prevRoot,nextRoot,home){
 function jamTonicLike(root){
   const P=new Set(jamDefs().scale), has=i=>P.has((root+i)%12);
   if(!has(7)) return 0;                       // no fifth: nothing to stand on
+  // a ♭2 hanging over the root is Phrygian: it LEANS somewhere, it does not
+  // sit. Aeolian and Phrygian differ in nothing else, and without this test
+  // A came out a home on a D Kurd and took the opening chord off D and F.
+  if(has(1)) return 1;
   if(has(4)) return has(5)&&has(11)?2:1;      // Ionian, against Lydian/Mixolydian
   if(has(3)) return has(8)&&has(10)?2:1;      // Aeolian, against Dorian
   return 0;
@@ -6111,12 +6165,19 @@ function jamTranspose(n){
 // Aug): the FAMILY is drawn first at his stated odds — 55% triad, 30% 7th,
 // 15% 9th (a family the pan lacks gives its share to the others) — then the
 // chord within it by root motion: 4ths/5ths first, then 3rds, then steps.
-function jamSuggest(){
-  if(jam.slots.length>=JAM_MAX){ toast("Eight chords is the most for now"); return; }
+/* The suggester's CORE — everything David tuned about which chord comes next
+   (root repetition, the family mix, coming home at the turn, the wild roll,
+   a dominant's seventh) lives here and returns the chord it picked. The
+   Suggest button appends one; the random generator (27 Aug) calls it in a
+   loop to build a whole progression, so both obey exactly the same rules. */
+function suggestPick(){
   const last=jam.slots[jam.slots.length-1];
   const byName=jamDefs().byName;
   const lastDef=last&&byName[last.chord];
-  const lr=lastDef?lastDef.root:jpc(myPan.ding);
+  /* AN EMPTY PROGRESSION HAS NO PREVIOUS CHORD. It used to borrow the ding as
+     one, which quietly made the ding's own triad the single chord that could
+     never open a jam — on a D Kurd, Suggest could not start on Dmin. */
+  const lr=lastDef?lastDef.root:null;
   const pos=jam.slots.length+1;                  // where the new chord lands
   const first=jam.slots[0];
   const fd=first&&byName[first.chord];
@@ -6130,8 +6191,8 @@ function jamSuggest(){
      made both merely unlikely, and unlikely still happens. */
   const home0=fd?fd.root:jpc(myPan.ding);
   const openPool=jamDefs().list.filter(c=>!c.miss);
-  let pool=openPool.filter(c=>c.root!==lr&&!(closing&&c.root===home0));
-  if(!pool.length) pool=openPool.filter(c=>c.root!==lr);
+  let pool=openPool.filter(c=>(lr==null||c.root!==lr)&&!(closing&&c.root===home0));
+  if(!pool.length) pool=openPool.filter(c=>lr==null||c.root!==lr);
   if(!pool.length) pool=openPool;
   if(!pool.length){ toast("No chord to suggest on this pan"); return; }
   // how spent each root already is, and which were touched most recently
@@ -6140,7 +6201,15 @@ function jamSuggest(){
     if(d) used[d.root]=(used[d.root]||0)+1; }
   const recent=new Set(jam.slots.slice(-3).map(sl=>byName[sl.chord])
     .filter(Boolean).map(d=>d.root));
-  const share={"Triads":55,"7th chords":30,"9th chords":15};
+  /* COLOUR CHORDS DO NOT COME IN CROWDS (David, 27 Aug: four suggested
+     progressions in a row came back as Amin7 · Dmin9 · Emin7♭5 · Fmaj9 and
+     the like — "none of them sounds particularly nice"). His 55/30/15 stands
+     as the resting mix, but a 7th or a 9th just played makes the next chord
+     want to be plain: 23% of four-chord loops were arriving with three or
+     more extensions in them. */
+  const lastExt=lastDef&&lastDef.group!=="Triads";
+  const share=lastExt?{"Triads":82,"7th chords":13,"9th chords":5}
+                     :{"Triads":55,"7th chords":30,"9th chords":15};
   const fams=Object.keys(share).filter(g=>pool.some(c=>c.group===g));
   let fx=Math.random()*fams.reduce((s,g)=>s+share[g],0), fam=fams[0];
   for(const g of fams){ if(fx<share[g]){ fam=g; break; } fx-=share[g]; }
@@ -6153,15 +6222,58 @@ function jamSuggest(){
      family odds above still choose triad / 7th / 9th first. */
   const home=jamHome();
   const wOf=c=>{
-    let w=Math.max(.05,jamFit(c,lr,closing?fd.root:null,home));
+    let w=Math.max(.05,jamFit(c,lr,closing?fd.root:null,home,lastDef||null));
     // a root already in the progression comes back less readily, and one used
     // in the last three chords is nearly spent
+    // In a loop this short every reused root is audible — "Fmaj Dmin Fmaj
+    // Cmaj" reads as one chord fewer than it has — so a root already in play
+    // is pushed hard, not nudged.
     const u=used[c.root]||0;
-    if(u) w/=1+u;
+    if(u) w/=1+2*u;
     if(recent.has(c.root)) w*=.25;
+    /* Diminished stays in the PICKER, where David wanted it, but it is a
+       chord you pass through, not one you hand somebody to sit on for a bar:
+       30% of suggested loops were arriving with one in them. */
+    if(jamDim(c)) w*=.3;
+    /* OPENING A JAM (David, 27 Aug: "Dmin and Fmaj should have an increased
+       possibility for the first chord on a D Kurd, but not too much"). Read
+       off the pan rather than named: the roots that head a full Ionian or
+       Aeolian are the ones that can carry a key, which on a D Kurd is D and
+       F exactly, and on any other pan is whatever that instrument's are. */
+    if(lr==null){
+      if(jamDim(c)) return .0001;               // no jam opens on a diminished
+      if(c.group==="Triads"&&jamTonicLike(c.root)===2) w*=2.5;
+    }
     return w;
   };
-  let sum=0; const acc=cands.map(c=>(sum+=wOf(c)));
+  /* ROOM FOR THE UNEXPECTED (David, 27 Aug: "we also want to make sure that
+     the suggested chords don't result in the same, boring pop-song
+     progressions all the time" — and, of the algorithm this replaced,
+     "sometimes the results were unexpected and awesome"). Chasing
+     correctness alone walks straight into the best-worn progressions,
+     because that is exactly what the weights are for: the likeliest path IS
+     the pop song. So about one roll in four is taken at a high temperature —
+     the same candidates and the same hard filters, but the odds flattened so
+     an outsider can win. The floor of .05 keeps its distance from a real
+     chord even flattened, so this widens the field without going random:
+     surprise, not nonsense. */
+  /* DECISIVENESS. The scores were being used raw, and raw they are nearly
+     flat: measured on a D Kurd, the best chord after Dmin scored 3.2 and the
+     worst 1.0, so the top three chords held barely a quarter of the total
+     weight and the roll was close to picking at random. That is what David
+     heard — "none of them sounds particularly nice or interesting". The old
+     algorithm was far more opinionated (its table ran 6 down to 0.7) and
+     that is why its results felt musical despite knowing nothing.
+     Squaring the weights restores the opinion; the wild roll below then
+     deliberately throws it away one time in four. */
+  /* …but a question, once asked, gets answered. A dominant seventh just
+     played is the one moment the roll may not wander off (David's C7 → B♭maj
+     came from exactly that), so the wild roll stands down until it is
+     resolved. */
+  const lastDom=lastDef&&jamMaj3(lastDef)&&jamMin7(lastDef);
+  const wild=!lastDom&&Math.random()<.28;
+  const draw=c=>{ const w=wOf(c); return wild?Math.pow(w,.35):Math.pow(w,2.5); };
+  let sum=0; const acc=cands.map(c=>(sum+=draw(c)));
   const x=Math.random()*sum, i=acc.findIndex(v=>x<v);
   let pick=cands[i];
   /* A DOMINANT WANTS ITS SEVENTH (David, 27 Aug: "where appropriate it would
@@ -6174,6 +6286,138 @@ function jamSuggest(){
      in this one case. */
   if(closing&&pick&&pick.group==="Triads"&&jamMaj3(pick)
      &&jamMotion(pick.root,fd.root)==="fourth"&&Math.random()<.67){
+    const sev=jamDefs().byName[PCN[pick.root]+"7"];
+    if(sev&&!sev.miss) pick=sev;
+  }
+  return pick||null;
+}
+/* ---- THE RANDOM GENERATOR (27 Aug, David) --------------------------------
+   Two ways to fill the whole progression at once. "Suggested" runs the very
+   same suggestPick() the Suggest button uses, chord after chord, so a
+   generated loop obeys every rule he tuned. "Truly random" is a flat draw
+   from the chords this pan can play IN FULL — no weighting, no coming home,
+   nothing avoided except the identical chord twice running, which reads as a
+   mistake rather than a choice.
+   LENGTH: as many chords as the progression has BARS today, one per bar
+   (David's call — a 4-chord loop with a 2-bar ending regenerates as 5
+   one-bar chords). With nothing there yet he picks the length himself. */
+function jamBarCount(){ return jam.slots.reduce((n,s)=>n+Math.max(1,s.bars||1),0); }
+function jamGenerate(kind,bars){
+  const n=Math.max(1,Math.min(JAM_MAX,bars||jamBarCount()||4));
+  jamPreviewStop();
+  const before=jam.slots;
+  jam.slots=[];
+  if(kind==="random"){
+    const pool=jamDefs().list.filter(c=>!c.miss);
+    if(!pool.length){ jam.slots=before; toast("This pan has no complete chord to draw from"); return; }
+    let prev=null;
+    for(let i=0;i<n;i++){
+      let pick, guard=0;
+      do{ pick=pool[Math.floor(Math.random()*pool.length)]; }
+      while(pool.length>1&&pick.name===prev&&++guard<20);
+      prev=pick.name;
+      jam.slots.push({chord:pick.name,bars:1});
+    }
+  } else {
+    for(let i=0;i<n;i++){
+      const pick=suggestPick();          // reads the slots built so far
+      if(!pick){ if(!jam.slots.length){ jam.slots=before; return; } break; }
+      jam.slots.push({chord:pick.name,bars:1});
+    }
+  }
+  jamEditSlot=-1;
+  applyJam();
+  toast((kind==="random"?"Random":"Suggested")+" progression — "+jam.slots.length
+        +(jam.slots.length===1?" chord":" chords"));
+}
+function openGenDlg(){
+  const bars=jamBarCount();
+  const sel=$("genLen"), row=$("genLenRow");
+  // with chords already down the length is decided: one chord per bar held
+  row.classList.toggle("hidden",bars>0);
+  $("genHint").textContent=bars>0
+    ? "Replaces the "+bars+(bars===1?" bar":" bars")+" you have with "+bars
+      +(bars===1?" chord":" chords"+", one per bar")+"."
+    : "Nothing to measure yet — choose how long the loop should be.";
+  if(!bars&&!sel.options.length){
+    for(let i=2;i<=JAM_MAX;i++){
+      const o=document.createElement("option"); o.value=String(i);
+      o.textContent=i+" bars"; if(i===4) o.selected=true; sel.appendChild(o);
+    }
+  }
+  openDlg($("genDlg"));
+}
+function jamGenFrom(kind){
+  const bars=jamBarCount()||+$("genLen").value||4;
+  $("genDlg").close();
+  jamGenerate(kind,bars);
+}
+/* SUGGEST: BACK TO THE SIMPLE ROLL (David, 27 Aug). Six rounds of making
+   this cleverer — key awareness, cadence weighting, dominant resolution,
+   extension and diminished damping, a sharpened draw — produced worse music
+   than the plain interval table it replaced, and he said so after listening
+   to both: "the progressions with the earlier, much simpler algorithms were
+   much better." His ear decides this, not the theory, so the roll is the old
+   one again, unchanged: a symmetric root-interval table, his 55/30/15 family
+   odds, and the position 4/8 turn back towards chord 1.
+
+   THREE THINGS ARE KEPT, and only because he asked for each by name:
+     · no two chords in a row on the same root (the Dmin7 → Dmin9 → Dmin he
+       reported); the old code only blocked the identical NAME.
+     · Dmin and Fmaj likelier to open a jam — read off the pan as the roots
+       that head a full Ionian or Aeolian, so it holds on any tuning.
+     · a dominant gets its seventh at the turn.
+   Everything else the clever version did is gone. The picker's suggestion
+   dots are a DIFFERENT feature and keep the harmony engine — he asked for
+   those, reviewed them, and has not complained about them. */
+function jamSuggest(){
+  if(jam.slots.length>=JAM_MAX){ toast("Eight chords is the most for now"); return; }
+  const last=jam.slots[jam.slots.length-1];
+  const lastDef=last&&jamDefs().byName[last.chord];
+  const lr=lastDef?lastDef.root:jpc(myPan.ding);
+  // his one repetition rule: the same ROOT twice running, not just the same
+  // name — Dmin7 into Dmin9 was the complaint and they are different names
+  const pool=jamDefs().list.filter(c=>!c.miss&&!(last&&c.root===lr));
+  if(!pool.length){ toast("No chord to suggest on this pan"); return; }
+  const share={"Triads":55,"7th chords":30,"9th chords":15};
+  const fams=Object.keys(share).filter(g=>pool.some(c=>c.group===g));
+  let fx=Math.random()*fams.reduce((s,g)=>s+share[g],0), fam=fams[0];
+  for(const g of fams){ if(fx<share[g]){ fam=g; break; } fx-=share[g]; }
+  const cands=pool.filter(c=>c.group===fam);
+  /* THE PHRASE HAS TO COME HOME (David, 26 Aug). Everywhere else this stays a
+     pure "what comes next" roll off the previous chord — but a chord landing
+     in position 4 or 8 is the last one before the loop turns over, so there
+     it is weighed on how it leads BACK to chord 1 as well: the same root-
+     motion table read towards the first chord, the V→I pull counted double,
+     and chord 1 repeated at the turn all but ruled out. */
+  const MOT={0:1.5,1:1,2:3,3:4,4:4,5:6,6:.7};
+  const ivOf=(a,b)=>Math.min((b-a+12)%12,(a-b+12)%12);
+  const pos=jam.slots.length+1;                  // where the new chord lands
+  const first=jam.slots[0];
+  const fd=first&&jamDefs().byName[first.chord];
+  const closing=(pos===4||pos===8)&&!!fd;
+  const wOf=c=>{
+    /* OPENING A JAM (David, 27 Aug: "Dmin and Fmaj should have an increased
+       possibility for the first chord on a D Kurd, but not too much"). With
+       nothing to move away from there is no interval to weigh, so the roll is
+       flat here but for his nudge towards the roots that can carry a key. */
+    if(!last) return (c.group==="Triads"&&jamTonicLike(c.root)===2)?3:1;
+    const w=MOT[ivOf(lr,c.root)]||1;
+    if(!closing) return w;
+    if(c.name===first.chord) return w*.15;       // chord 1 twice over is no turn
+    const back=(MOT[ivOf(c.root,fd.root)]||1)*((c.root+5)%12===fd.root?2:1);
+    return w*back;
+  };
+  let sum=0; const acc=cands.map(c=>(sum+=wOf(c)));
+  const x=Math.random()*sum, i=acc.findIndex(v=>x<v);
+  let pick=cands[i];
+  /* A DOMINANT WANTS ITS SEVENTH (David, 27 Aug: "where appropriate it would
+     be good to add the 7th degree — not as a 100% rule, but as a strong
+     possibility — when there is a dominant relationship going on, V major →
+     I"). At the turn, the one position where this roll knows what follows,
+     and only when the triad drawn really is the MAJOR V of that chord. */
+  if(closing&&pick&&pick.group==="Triads"&&jamMaj3(pick)
+     &&(pick.root+5)%12===fd.root&&Math.random()<.67){
     const sev=jamDefs().byName[PCN[pick.root]+"7"];
     if(sev&&!sev.miss) pick=sev;
   }
@@ -6478,6 +6722,9 @@ function renderJamPanel(){
     try{ $("jamDlg").close(); }catch(e){}
     applyJam(); toast("Chords cleared — add or suggest to begin");
   });
+  // between Clear and Open in editor (David, 27 Aug); the desktop's copy
+  // lives in the notation head's right cell instead
+  if(PHONE) mk("🎲 Generate","Fill the whole progression — suggested, or truly random",openGenDlg);
   mk("Open in editor","Edit the arrangement, or the groove itself",
     ()=>openDlg($("openEdDlg")));
   /* on the phone the tools get their OWN line under the strip — inside it they
@@ -6555,10 +6802,11 @@ function renderJamDlg(){
   const rootOf=sl=>{ const d=jamDefs().byName[sl.chord];
     return d?d.root:jpc(myPan.ding); };
   const lr=rootOf(prevSlot), nr=rootOf(nextSlot), home=jamHome();
+  const prevDef=jamDefs().byName[prevSlot.chord];
   const sugOf=c=>{
     // a chord already standing on either neighbour's root only restates it
     if(!jamSugOn||c.miss||c.root===lr||c.root===nr) return "";
-    const s=jamFit(c,lr,nr,home);
+    const s=jamFit(c,lr,nr,home,prevDef);
     return s>=JAM_SUG_STRONG?"strong":(s>=JAM_SUG_SOFT?"soft":"");
   };
   $("jamSugBtn").classList.toggle("on",jamSugOn);
@@ -7806,13 +8054,15 @@ function startGrooveEdit(opts){    // opts: {id?, name, meter, sub, unit?, ref, 
     writtenFor:myPanId, tempo:prevBpm||72, meter:opts.meter, sub:opts.sub,
     barsPerRow:1, sections:{Groove:{bars}}, arrangement:["Groove"] };
   if(opts.unit&&opts.unit!==4) p.unit=opts.unit;
-  grooveEdit={id:opts.id||null, ref:opts.ref, wasJam, prevPiece, prevBpm};
+  grooveEdit={id:opts.id||null, ref:opts.ref, wasJam, prevPiece, prevBpm,
+    origin:opts.origin||"browser", sig0:""};
   document.body.classList.add("gedit");
   placeGrooveTools();
   try{ $("grooveDlg").close(); }catch(e){}
   try{ $("grooveNewDlg").close(); }catch(e){}
   loadPiece(p);
   if(!editing) $("editBtn").click();
+  grooveEdit.sig0=grooveSig();   // the bench as it opened, for the dirty check
   toast("Write it on "+opts.ref+" — "+grooveNotes(def));
 }
 /* runs AFTER the Edit toggle has left editing mode (both platforms route
@@ -7822,6 +8072,8 @@ function startGrooveEdit(opts){    // opts: {id?, name, meter, sub, unit?, ref, 
    pinned to the saved groove, so every further Save overwrites the same one. */
 function grooveSaveNow(quietEmpty){
   if(!grooveEdit) return null;
+  // whatever is on the bench is now the saved state, so leaving asks nothing
+  setTimeout(()=>{ if(grooveEdit) grooveEdit.sig0=grooveSig(); },0);
   const gbars=(piece.sections.Groove&&piece.sections.Groove.bars)||[[]];
   const gbp=piece.meter[0]*piece.sub;
   const bar=gbars.flatMap((b,bi)=>b.map(e=>Object.assign({},e,{t:e.t+bi*gbp})));
@@ -7921,7 +8173,7 @@ function editThisGroove(){
   if(!ref){ toast("This pan has no full chord to write a groove on"); return; }
   // a BUILT-IN opens as a starting point: no id is adopted, so Save makes
   // the student's own copy and the original is never overwritten
-  startGrooveEdit(Object.assign({},g,{ref,id:g.user?g.id:null,
+  startGrooveEdit(Object.assign({},g,{ref,id:g.user?g.id:null,origin:"jam",
     name:g.user?g.name:g.name+" (my version)"}));
 }
 /* The Author row's two faces — see the handlers for why. */
@@ -7960,8 +8212,34 @@ function openGrooveLoadDlg(){
   for(const p of JAMPATS) row(p);
   openDlg($("grooveLoadDlg"));
 }
-function grooveEditFinish(){
-  const savedId=grooveSaveNow(true);
+/* Saving is now a CHOICE (David, 27 Aug): the bench used to save on the way
+   out and drop the student in the groove browser. It asks instead — Save to
+   my groove library / Discard / Cancel — and only when something changed.
+   Then it puts them back where they came from: straight into jam when that is
+   the door they used, and a saved groove is the one jam then plays. */
+/* Has the bench been touched? The groove IS its bar of events plus the time
+   it is written in, so both go into the signature; the live time row can
+   change meter or subdivision without a note moving. */
+function grooveSig(){
+  const gb=(piece.sections.Groove&&piece.sections.Groove.bars)||[];
+  return JSON.stringify([piece.meter,piece.sub,piece.unit||4,gb]);
+}
+function grooveDirty(){ return !!grooveEdit&&grooveSig()!==grooveEdit.sig0; }
+let grooveExitGo=null;      // "save" | "drop" while the dialog drives the exit
+function openGrooveExitDlg(){
+  const d=$("grooveExitDlg"); if(!d) return;
+  $("geTitle").textContent=grooveEdit&&grooveEdit.wasJam
+    ? "Keep this groove before going back to jam?" : "Keep this groove?";
+  openDlg(d);
+}
+function grooveExit(save){
+  $("grooveExitDlg").close();
+  grooveExitGo=save?"save":"drop";
+  $("editBtn").click();     // the guard stands aside and the normal exit runs
+  grooveExitGo=null;
+}
+function grooveEditFinish(save){
+  const savedId=save?grooveSaveNow(true):null;
   const ge=grooveEdit; grooveEdit=null;
   document.body.classList.remove("gedit");
   placeGrooveTools();
@@ -7970,8 +8248,10 @@ function grooveEditFinish(){
   if(ge.wasJam){
     enterJam();
     if(savedId){ jam.patternId=savedId; jamFitSlots(); applyJam(); }
-    openGrooveDlg();               // back to the browser, the new groove in it
-  }
+    // came through "Open in editor": back to jam and nothing in the way
+    if(ge.origin!=="jam") openGrooveDlg();
+  } else if(ge.origin!=="jam") openGrooveDlg();   // the selector he came from
+  toast(save?(savedId?"Groove saved":"Nothing to save"):"Changes discarded");
 }
 /* A JAM IS ITS OWN KIND OF THING — chords plus which groove plays them —
    so it keeps the extension David chose when jam mode was designed: .hpj.
@@ -8396,6 +8676,11 @@ function boot(){
   // webfonts land after first paint and change the measurement
   if(document.fonts&&document.fonts.ready) document.fonts.ready.then(fitTitle);
   $("editBtn").addEventListener("click",()=>{
+    /* Leaving the GROOVE bench asks what to do with the work first (David,
+       27 Aug) — unless nothing changed, or the dialog is the one driving the
+       exit. It has to happen BEFORE `editing` flips, or Cancel would have to
+       climb back into the editor. */
+    if(editing&&grooveEdit&&!grooveExitGo&&grooveDirty()){ openGrooveExitDlg(); return; }
     editing=!editing; $("editBtn").classList.toggle("on",editing);
     document.body.classList.toggle("editing",editing);
     if(editing&&view!=="table"){ setView("table",{skipRender:true}); toast("Editing uses the table view"); }
@@ -8414,9 +8699,11 @@ function boot(){
     placeGrooveTools();
       placePhoneControls(); phoneFit();
     }
-    // leaving the editor with a groove on the bench finishes and saves it —
-    // both platforms leave through this one toggle
-    if(!editing&&grooveEdit) grooveEditFinish();
+    // leaving the editor with a groove on the bench finishes it — both
+    // platforms leave through this one toggle; grooveExitGo carries the
+    // student's answer when the dialog drove the exit, and an untouched
+    // groove needs no asking, so it simply leaves without saving
+    if(!editing&&grooveEdit) grooveEditFinish(grooveExitGo==="save");
   });
   document.addEventListener("keydown",e=>{
     const typing=["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName);
@@ -8709,6 +8996,13 @@ function boot(){
   $("csImp").addEventListener("click",()=>{
     if(ctxShareLoad($("csTxt").value)) $("ctxShareDlg").close();
     else toast("That code could not be read"); });
+  $("geSave").addEventListener("click",()=>grooveExit(true));
+  $("geDrop").addEventListener("click",()=>grooveExit(false));
+  $("geCancel").addEventListener("click",()=>$("grooveExitDlg").close());
+  $("genBtn").addEventListener("click",openGenDlg);
+  $("genClose").addEventListener("click",()=>$("genDlg").close());
+  $("genSug").addEventListener("click",()=>jamGenFrom("sug"));
+  $("genRnd").addEventListener("click",()=>jamGenFrom("random"));
   $("oeClose").addEventListener("click",()=>$("openEdDlg").close());
   $("oeArr").addEventListener("click",()=>{ $("openEdDlg").close(); jamToPiece(); });
   $("oeGroove").addEventListener("click",()=>{ $("openEdDlg").close(); editThisGroove(); });
