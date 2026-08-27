@@ -1160,6 +1160,13 @@ body.phone .gmini i{font-size:10px}
   #edTimeRow{display:none}
   body.gedit #edTimeRow{display:flex; align-items:center; gap:6px; margin-bottom:6px}
   #edTimeRow .ctl{font-size:12.5px; padding:6px 8px}
+  /* SHARE lives in the header on the phone, on every page (David, 27 Aug):
+     an icon, so the title keeps its room beside the ✕ and the ⋮ */
+  body.phone header #shareBtn{width:34px; height:34px; padding:0; border-radius:11px;
+    display:grid; place-items:center; font-size:0}
+  body.phone header #shareBtn svg{width:18px; height:18px; display:block}
+  /* the menu sheet's Load/save row is empty now that the button left it */
+  body.phone #mShareRow{display:none}
   /* Save · Load · Undo take the Chords|Pan place while a groove is written */
   #gwTools{display:none}
   body.phone.gedit #gwTools{display:inline-flex; gap:6px; margin-left:auto}
@@ -1316,6 +1323,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <symbol id="is-met" viewBox="0 0 24 24"><path d="M9.4 3.5h5.2L19 20.5H5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M17 6.5L8.5 15.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
   <symbol id="is-mark" viewBox="0 0 24 24"><rect x="2.5" y="7.5" width="19" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="9" y="7.5" width="6" height="9" fill="currentColor" opacity=".22"/><path d="M9 7.5v9M15 7.5v9" stroke="currentColor" stroke-width="1.5"/></symbol>
   <!-- three LINES, not dots (David, 26 Aug) — the menu reads as a menu -->
+  <symbol id="is-share" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.5V3.8"/><path d="M8 7.6L12 3.6l4 4"/><path d="M6 12.5H4.5v7.9h15v-7.9H18"/></g></symbol>
   <symbol id="is-dots" viewBox="0 0 24 24"><g fill="none" stroke="currentColor"
     stroke-width="2.4" stroke-linecap="round"><path d="M4 6.5h16"/><path d="M4 12h16"/><path d="M4 17.5h16"/></g></symbol>
   <symbol id="is-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
@@ -1568,8 +1576,8 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     </div>
     <div id="edChips">
       <!-- groove workbench only (26 Aug, David: "save and load commands") -->
-      <button class="ctl" id="edGSave">Save</button>
-      <button class="ctl" id="edGLoad">Load…</button>
+      <!-- Save and Load became the header's share button (27 Aug); Undo moves
+           into the view row while a groove is on the bench -->
       <button class="ctl" id="edGUndo" aria-label="Undo">↺</button>
       <button class="ctl" id="edHandA">Alt</button>
       <button class="ctl" id="edGhost"><b>•</b>&nbsp;Ghost</button>
@@ -1642,7 +1650,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <button class="ctl" id="cpLink">Copy link</button>
     <button class="ctl" id="dlFile">Save .hps file</button>
     <button class="ctl" id="impFile">Import file…</button>
-    <input type="file" id="impFileInput" accept=".hps,.hpd,.hpg,.txt" class="hidden">
+    <input type="file" id="impFileInput" accept=".hps,.hpd,.hpg,.hpj,.txt" class="hidden">
   </div>
   <p class="hint">Paste a code, a link, or the contents of a .hpd file to import:</p>
   <textarea id="impTxt" placeholder="HPS1:…"></textarea>
@@ -1732,6 +1740,23 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <span class="spacer"></span><button class="ctl" id="gnClose">Cancel</button></div>
 </dialog>
 
+<!-- SHARE, WHATEVER IS IN FRONT OF YOU (27 Aug, David): the header's share
+     button saves and loads the piece, the jam, or the groove, depending on
+     the room. Pieces keep their own dialog; jams and grooves share this one. -->
+<dialog id="ctxShareDlg">
+  <h3 id="csTitle">Share</h3>
+  <div class="row" style="margin-top:0">
+    <button class="ctl" id="csFile">Save file</button>
+    <button class="ctl" id="csCode">Copy code</button>
+    <button class="ctl" id="csImpFile">Open file…</button>
+    <input type="file" id="csFileInput" accept=".hpj,.hpg,.hps,.txt" class="hidden">
+  </div>
+  <p class="hint" id="csHint">Paste a code to load it:</p>
+  <textarea id="csTxt" placeholder="HPJ1:…"></textarea>
+  <div class="row"><button class="ctl on" id="csImp">Load</button>
+  <span class="spacer"></span><button class="ctl" id="csClose">Close</button></div>
+</dialog>
+
 <!-- OPEN IN EDITOR asks WHICH editor (27 Aug, David) — the jam is two
      things at once: an arrangement of chords and the groove playing them. -->
 <dialog id="openEdDlg">
@@ -1795,7 +1820,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 
   <h4>Pieces</h4>
   <div class="drow"><span>Your library</span><span id="mLib"></span></div>
-  <div class="drow"><span>Load/save</span><span id="mShare"></span></div>
+  <div class="drow" id="mShareRow"><span>Load/save</span><span id="mShare"></span></div>
   <div class="row"><span class="spacer"></span><button class="ctl" id="menuClose">Close</button></div>
 </dialog>
 
@@ -5201,13 +5226,9 @@ function placeGrooveTools(){
   if(!PHONE) return;
   const host=$("gwTools"), chips=$("edChips");
   if(!host||!chips) return;
-  if(grooveEdit){
-    host.append($("edGSave"),$("edGLoad"),$("edGUndo"));
-  } else {
-    chips.insertBefore($("edGSave"),chips.firstChild);
-    chips.insertBefore($("edGLoad"),$("edGSave").nextSibling);
-    host.appendChild($("edGUndo"));      // hidden with the row
-  }
+  // Save and Load moved to the header's share button (David, 27 Aug), so the
+  // row carries the one thing that has nowhere else to be: Undo
+  host.appendChild($("edGUndo"));
 }
 function paintEditLoopBtn(){
   const lb=$("edLoopBar"); if(!lb||!PHONE||!editing||!piece.sections[viewSec]) return;
@@ -5923,9 +5944,14 @@ function buildJamPiece(){
       // a chord this pan can't voice keeps its BARS — the form survives,
       // that chord simply doesn't sound (David, 26 Aug)
       if(!v){ bars.push([]); continue; }
-      // a multi-bar groove lays its bars in turn and repeats from the top if
-      // the chord lasts longer, so bar 1 alone is still a complete groove
-      const gi=b%gb;
+      /* A MULTI-BAR GROOVE ROLLS ON ACROSS THE CHORDS (David, 27 Aug: "when
+         I add a new chord, the new chord is added in the next row instead of
+         the next bar"). The groove is a rhythmic phrase the progression plays
+         over, so its bar follows the PIECE's bar, not the chord's — a two-bar
+         groove with one bar per chord gives chord 1 the groove's first bar and
+         chord 2 its second. Forcing each chord to a whole groove was the
+         earlier reading and it is what he was correcting. */
+      const gi=bars.length%gb;
       const bar=pat.ev.filter(([t])=>Math.floor(t/bp)===gi)
         .map(([t,k,h])=>{ const tt=t-gi*bp;
           return k==="g"?G(tt,h):k==="^"?P(tt,"slap",h):F(tt,v[k],h); });
@@ -6013,17 +6039,12 @@ function leaveJam(){
 // Regenerate from the recipe. Mid-playback the piece is swapped under the
 // running scheduler (loopedPulse folds the counter into the new length), so
 // a chord or groove change lands without stopping the music.
-/* a 2-bar groove needs 2 bars of chord, or its second half would never be
-   heard — slots round UP to a whole number of grooves when one is chosen */
-function jamFitSlots(){
-  const pat=allPats().find(p=>p.id===jam.patternId)||JAMPATS[0];
-  const gb=patBars(pat);
-  if(gb<2) return;
-  for(const s of jam.slots){
-    const n=Math.max(1,s.bars||1);
-    s.bars=Math.ceil(n/gb)*gb;
-  }
-}
+/* Chord lengths are the STUDENT's business: a two-bar groove used to round
+   every chord up to two bars, which put one chord per row and is exactly what
+   David corrected (27 Aug). The groove rolls across the bars instead, so a
+   chord may be one bar, two, or any number. Kept as a no-op so the call sites
+   read the same and nothing has to remember it is gone. */
+function jamFitSlots(){}
 function applyJam(){
   const built=buildJamPiece();
   if(playing){
@@ -7539,7 +7560,25 @@ function grooveSaveNow(quietEmpty){
     .sort((a,b)=>myPan.midiFor(a)-myPan.midiFor(b));
   if(used.length>JV_TOK.length){
     toast("A groove carries at most "+JV_TOK.length+" voices"); return null; }
-  const rankOf=new Map(used.map((f,i)=>[f,JV_TOK[i]]));
+  /* A NOTE'S RANK IS THE VOICE IT IS, not the order it was written in. Writing
+     D3 and F4 on Dmin — the outer pair of the wide D·1·6 — used to save as
+     ranks 1 and 3, the low and MIDDLE voices, so the groove came back as
+     D3 and A3. Ranked against the reference chord's own voicing, the F4 is
+     voice three and returns as voice three on every chord. */
+  const V=Math.max(3,used.length);
+  const refV=jamVoice(grooveEdit.ref,V)||{};
+  const refFields=JV_TOK.slice(0,V).map(k=>refV[k]);
+  const rankOf=new Map(); let taken=-1;
+  for(let n=0;n<used.length;n++){
+    const f=used[n];
+    let i=refFields.indexOf(f);
+    if(i<0) i=refFields.findIndex(rf=>rf!=null&&jpc(myPan.midiFor(rf))===jpc(myPan.midiFor(f)));
+    if(i<0) i=n;
+    // ranks ascend with pitch, whatever the matching found, and never collide
+    i=Math.max(i,taken+1);
+    i=Math.min(i,JV_TOK.length-1-(used.length-1-n));
+    taken=i; rankOf.set(f,JV_TOK[i]);
+  }
   const ev=bar.map(e=>
       e.v==="ghost"?[e.t,"g",e.hand]
       :e.v==="perc"?[e.t,"^",e.hand]
@@ -7633,6 +7672,94 @@ function grooveEditFinish(){
     if(savedId){ jam.patternId=savedId; jamFitSlots(); applyJam(); }
     openGrooveDlg();               // back to the browser, the new groove in it
   }
+}
+/* A JAM IS ITS OWN KIND OF THING — chords plus which groove plays them —
+   so it keeps the extension David chose when jam mode was designed: .hpj.
+   The file EMBEDS the groove it uses when that groove is the student's own,
+   or the receiver would get a progression pointing at a groove they have
+   never seen. Built-ins are named, not embedded: everyone has those. */
+function jamRecipe(){
+  const pat=allPats().find(p=>p.id===jam.patternId);
+  const r={v:1, slots:jam.slots.map(s=>({chord:s.chord,bars:s.bars||1})),
+    patternId:jam.patternId, bpm:bpm};
+  if(pat&&pat.user) r.groove=pat;      // travels with it
+  return r;
+}
+function jamRecipeOk(r){
+  return !!(r&&Array.isArray(r.slots)&&r.slots.length
+    &&r.slots.every(s=>s&&typeof s.chord==="string"));
+}
+function jamFromText(txt){
+  txt=String(txt).trim(); let r=null;
+  const m=txt.match(/HPJ1:([A-Za-z0-9_-]{10,})\s*$/);
+  if(m){ try{ r=dec(m[1]); }catch(e){} }
+  else if(txt.startsWith("{")){ try{ r=JSON.parse(txt); }catch(e){} }
+  return jamRecipeOk(r)?r:null;
+}
+function importJam(r){
+  if(!jamOn) enterJam();
+  if(r.groove&&grooveOk(r.groove)){    // a groove that came with it
+    const l=userGrooves();
+    if(!l.some(x=>x.id===r.groove.id)){ l.push(Object.assign({},r.groove,{user:true})); setUserGrooves(l); }
+  }
+  jam.slots=r.slots.map(s=>({chord:s.chord,bars:Math.max(1,s.bars||1)}));
+  jam.patternId=allPats().some(p=>p.id===r.patternId)?r.patternId:JAMPATS[0].id;
+  if(r.bpm){ bpm=r.bpm; $("bpm").value=bpm; }
+  jamEditSlot=-1; jamFitSlots(); applyJam(); saveJamLS();
+  toast("Jam loaded — "+jam.slots.length+" chords");
+}
+/* ONE SHARE BUTTON, THREE ROOMS (David, 27 Aug). Which thing it saves and
+   loads is decided by where you are: the groove on the bench, the jam you are
+   playing, or the piece you are reading. Pieces keep their own dialog — it
+   also carries the link and the library import — so this sheet serves the two
+   newer objects. Every extension has ONE import door: whatever you open, the
+   app reads its header and sends it where it belongs. */
+function shareContext(){
+  if(grooveEdit) return "groove";
+  if(jamOn) return "jam";
+  return "piece";
+}
+function openShareForContext(){
+  const c=shareContext();
+  if(c==="piece"){ openDlg($("shareDlg")); return; }
+  const groove=c==="groove";
+  const g=groove?null:null;
+  $("csTitle").textContent=groove?"Share this groove":"Share this jam";
+  $("csFile").textContent=groove?"Save .hpg file":"Save .hpj file";
+  $("csTxt").placeholder=groove?"HPG1:…":"HPJ1:…";
+  $("csHint").textContent=groove
+    ?"Paste a groove code to load it — it opens on the bench you are writing on:"
+    :"Paste a jam code to load it — chords, groove and tempo:";
+  $("csTxt").value="";
+  openDlg($("ctxShareDlg"));
+}
+/* what the CURRENT context would save, as text — the same encoding pieces
+   use, with its own header so a file says what it is */
+function ctxShareText(){
+  if(shareContext()==="groove"){
+    const id=grooveSaveNow(true);        // save first: you share what you wrote
+    const g=userGrooves().find(x=>x.id===id);
+    return g?{txt:"HPG1:"+enc(g), name:(g.name||"groove"), ext:"hpg"}:null;
+  }
+  const r=jamRecipe();
+  const first=r.slots[0]&&r.slots[0].chord;
+  return {txt:"HPJ1:"+enc(r), name:("Jam in "+(first||"D")), ext:"hpj"};
+}
+function ctxShareLoad(txt){
+  const g=grooveFromText(txt);
+  if(g){
+    if(grooveEdit) grooveLoadInto(g);    // straight onto the bench
+    else { importGroove(g); if(jamOn){ jam.patternId=g.id; jamFitSlots(); applyJam(); } }
+    return true;
+  }
+  const r=jamFromText(txt);
+  if(r){ importJam(r); return true; }
+  const p=pieceFromText(txt);
+  if(p){                                  // a piece: leave the room it belongs to
+    if(grooveEdit){ toast("That is a piece — finish the groove first"); return true; }
+    loadPiece(p); toast("Imported: "+(p.title||"Untitled")); return true;
+  }
+  return false;
 }
 function grooveFromText(txt){
   txt=String(txt).trim(); let g=null;
@@ -7893,7 +8020,7 @@ function boot(){
       e.preventDefault(); mapUndo(); return; }
     editorKeys(e);
   });
-  $("shareBtn").addEventListener("click",()=>openDlg($("shareDlg")));
+  $("shareBtn").addEventListener("click",openShareForContext);
   $("shareClose").addEventListener("click",()=>$("shareDlg").close());
   $("cpCode").addEventListener("click",()=>copyText("HPS1:"+enc(piece),"Code copied"));
   $("cpLink").addEventListener("click",()=>{
@@ -7912,6 +8039,8 @@ function boot(){
       if(p){ loadPiece(p); $("shareDlg").close(); toast("Imported: "+(p.title||"Untitled")); return; }
       const g=grooveFromText(txt);        // .hpg — a groove for jam mode
       if(g){ importGroove(g); $("shareDlg").close(); return; }
+      const r=jamFromText(txt);           // .hpj — a whole jam
+      if(r){ importJam(r); $("shareDlg").close(); return; }
       toast("That file could not be read");
     });
     e.target.value="";
@@ -7921,6 +8050,8 @@ function boot(){
     if(p){ loadPiece(p); $("shareDlg").close(); toast("Imported: "+(p.title||"Untitled")); return; }
     const g=grooveFromText($("impTxt").value);
     if(g){ importGroove(g); $("shareDlg").close(); return; }
+    const r=jamFromText($("impTxt").value);
+    if(r){ importJam(r); $("shareDlg").close(); return; }
     toast("That code could not be read"); });
   $("followBtn").addEventListener("click",()=>{ follow=!follow;
     if(follow){ if(playing) stop(); ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
@@ -8133,6 +8264,28 @@ function boot(){
   $("grooveNewBtn").addEventListener("click",()=>{ jamPreviewStop(); openGrooveNewDlg(); });
   $("gnClose").addEventListener("click",()=>$("grooveNewDlg").close());
   $("glClose").addEventListener("click",()=>$("grooveLoadDlg").close());
+  $("csClose").addEventListener("click",()=>$("ctxShareDlg").close());
+  $("csFile").addEventListener("click",()=>{
+    const s=ctxShareText(); if(!s) return;
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([s.txt+"\n"],{type:"text/plain"}));
+    a.download=s.name.replace(/[^\w -]+/g,"")+"."+s.ext; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),4000); });
+  $("csCode").addEventListener("click",()=>{
+    const s=ctxShareText(); if(!s) return;
+    copyText(s.txt,"Code copied"); });
+  $("csImpFile").addEventListener("click",()=>$("csFileInput").click());
+  $("csFileInput").addEventListener("change",e=>{
+    const f=e.target.files[0]; if(!f) return;
+    f.text().then(txt=>{
+      if(ctxShareLoad(txt)) $("ctxShareDlg").close();
+      else toast("That file could not be read");
+    });
+    e.target.value="";
+  });
+  $("csImp").addEventListener("click",()=>{
+    if(ctxShareLoad($("csTxt").value)) $("ctxShareDlg").close();
+    else toast("That code could not be read"); });
   $("oeClose").addEventListener("click",()=>$("openEdDlg").close());
   $("oeArr").addEventListener("click",()=>{ $("openEdDlg").close(); jamToPiece(); });
   $("oeGroove").addEventListener("click",()=>{
@@ -8655,8 +8808,6 @@ else{
   const edSetTime=()=>grooveSetTime($("edTS").value,$("edSub").value);
   $("edTS").addEventListener("change",edSetTime);
   $("edSub").addEventListener("change",edSetTime);
-  $("edGSave").addEventListener("click",()=>grooveSaveNow());
-  $("edGLoad").addEventListener("click",openGrooveLoadDlg);
   $("edGUndo").addEventListener("click",()=>undo());
   // loop the bar the lane is showing (David, 27 Aug) — the same loopSec the
   // drag gesture drives, so playback and the frame need nothing new
@@ -8697,7 +8848,9 @@ function placePhoneControls(){
     $("ptools").append($("followBtn"),$("folMute"),$("loopBtn"),$("playBtn"));
     $("halfBtn").className="ib"; $("halfBtn").innerHTML=ico("is-half");
     $("metBtn").className="ib";  $("metBtn").innerHTML=ico("is-met");
-    $("mLib").appendChild($("libBtn")); $("mShare").appendChild($("shareBtn"));
+    $("mLib").appendChild($("libBtn"));
+    // Share rides the header on every page — piece, jam or groove (27 Aug)
+    document.querySelector("header").insertBefore($("shareBtn"),$("leaveBtn"));
     // while editing, play lives on the lane — the cockpit's rows are hidden
     if(editing) $("edPlayHost").appendChild($("playBtn"));
   }
@@ -8707,6 +8860,9 @@ function placePhoneControls(){
   if(panOn) renderPanPanel();
 }
 if(PHONE){
+  $("shareBtn").innerHTML='<svg aria-hidden="true"><use href="#is-share"/></svg>';
+  $("shareBtn").setAttribute("aria-label","Share");
+  $("shareBtn").title="Save or load — this piece, this jam, or this groove";
   placePhoneControls();
   phoneTouchNav();
   renderMiniArr();
