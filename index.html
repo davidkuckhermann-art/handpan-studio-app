@@ -2792,30 +2792,44 @@ function loopedPulse(n){
   return loopSec.from+((n-loopSec.from)%span);
 }
 function sched(){
-  try{
-    // after a stall (hidden tab), resync instead of firing every missed pulse
-    if(nextTime<ctx.currentTime-0.5) nextTime=ctx.currentTime+0.06;
-    while(nextTime<ctx.currentTime+0.4){
+  if(!ctx||!C) return;
+  // after a stall (hidden tab), resync instead of firing every missed pulse
+  if(nextTime<ctx.currentTime-0.5) nextTime=ctx.currentTime+0.06;
+  /* THE GUARD BELONGS INSIDE THE LOOP (27 Aug). It used to wrap the whole
+     while, so a pulse that threw was never advanced past — the next call
+     retried the same pulse, threw again, and the clock stuck there FOREVER
+     while `playing` stayed true: silence with the transport still lit, which
+     is exactly what "it just randomly stopped" looks like. The WGG rule the
+     old comment quoted is only true if the pulse is SKIPPED, so it is now:
+     whatever happens, nextPulse and nextTime move on. */
+  let guard=0;
+  while(nextTime<ctx.currentTime+0.4&&guard++<600){
+    const pi=loopedPulse(nextPulse);
+    try{
       /* a freshly generated progression starts at ITS beginning, once the bar
          being played has finished (David, 27 Aug) */
       if(jamRestartDue!=null&&nextPulse>=jamRestartDue){
         nextPulse=jamRestartAt; jamRestartDue=null; fired=[]; lastPaint=-1;
       }
-      const pi=loopedPulse(nextPulse);
-      const sec=secOfPulse(pi), rel=pi-sec.pulse, m=SM(piece,sec.name);
+      const p2=loopedPulse(nextPulse);
+      const sec=secOfPulse(p2), rel=p2-sec.pulse, m=SM(piece,sec.name);
       let at=nextTime;   // swing: the off subdivision leans toward the triplet
-      if(swing>0&&m.sub%2===0&&(rel%2)===1) at+=swing/100*pulseDurOf(pi)/3;
+      if(swing>0&&m.sub%2===0&&(rel%2)===1) at+=swing/100*pulseDurOf(p2)/3;
       // a running groove PREVIEW owns the ears: the playback clock keeps
       // walking silently and speaks again after the preview stops — plus a
       // short breath (jamMuteUntil) so the handover isn't a hard cut
       const mutedByPreview=(typeof jpv!=="undefined"&&jpv)
         ||(typeof jamMuteUntil!=="undefined"&&ctx.currentTime<jamMuteUntil);
-      if(!mutedByPreview) for(const ev of (C.byPulse.get(pi)||[])) fireEvent(ev,at);
+      if(!mutedByPreview) for(const ev of (C.byPulse.get(p2)||[])) fireEvent(ev,at);
       if(!mutedByPreview&&metOn&&rel%m.sub===0) fire(clickBuf(rel%m.bp===0),nextTime,1);
-      fired.push({pi,at:nextTime}); if(fired.length>200) fired.splice(0,80);
-      nextPulse++; nextTime+=pulseDurOf(pi);
-    }
-  }catch(e){ /* one bad pulse must never stop the clock (WGG rule) */ }
+      fired.push({pi:p2,at:nextTime}); if(fired.length>200) fired.splice(0,80);
+    }catch(e){ /* one bad pulse is skipped, never repeated */ }
+    // …and the clock advances whatever happened above. A duration that can't
+    // be read would otherwise stall it (or spin it), so it has a floor.
+    let dur=0; try{ dur=pulseDurOf(pi); }catch(e){}
+    if(!(dur>0.0005)) dur=0.12;
+    nextPulse++; nextTime+=dur;
+  }
 }
 function markerPulses(g,m){ // pulses covered by one marker unit (the beat is a quarter — x/4 meters)
   const per={"16th":m.sub/4,"8th":m.sub/2,"subdiv":m.sub,"half":m.sub*2,"bar":m.bp}[g]||m.sub;
@@ -2924,9 +2938,14 @@ function paintPulse(pi){
 }
 function tick(){
   if(!playing) return;
-  const now=ctx.currentTime; let pi=-1;
-  for(let i=fired.length-1;i>=0;i--) if(fired[i].at<=now){ pi=fired[i].pi; break; }
-  if(pi>=0&&pi!==lastPaint){ lastPaint=pi; paintPulse(pi); }
+  /* the marker's loop had NO guard: one throw inside paintPulse and the
+     requestAnimationFrame below was never reached, so the playhead froze for
+     the rest of the session while the music played on (27 Aug) */
+  try{
+    const now=ctx.currentTime; let pi=-1;
+    for(let i=fired.length-1;i>=0;i--) if(fired[i].at<=now){ pi=fired[i].pi; break; }
+    if(pi>=0&&pi!==lastPaint){ lastPaint=pi; paintPulse(pi); }
+  }catch(e){}
   raf=requestAnimationFrame(tick);
 }
 async function togglePlay(){
