@@ -1286,6 +1286,32 @@ body.phone .gmini i{font-size:10px}
 }
 #prow2{display:none}
 #editdeck,#editrotate{display:none}
+/* ---- THE SETTINGS DRAWER (27 Aug, ABC'd) — portrait phone only ---- */
+#drawerGrip,#drawerExtra,#drawerShade{display:none}
+@media (orientation:portrait){
+  body.phone #drawerGrip{display:grid; place-items:center; height:22px; margin:-4px 0 2px;
+    cursor:grab; touch-action:none; background:none; border:none}
+  body.phone #drawerGrip i{display:block; width:40px; height:4px; border-radius:2px;
+    background:var(--rule); transition:background .15s}
+  body.phone.drawer-open #drawerGrip i{background:var(--dixie)}
+  /* OPEN, IT COVERS THE NOTATION (David's call): pushing the music up would
+     make phoneFit re-zoom the score every time the drawer moves, and the
+     notation would visibly resize under the finger. */
+  body.phone.drawer-open #transport{position:fixed; left:0; right:0; bottom:0; z-index:60;
+    max-height:86vh; overflow-y:auto; overscroll-behavior:contain;
+    border-radius:16px 16px 0 0; border-top:1px solid var(--rule)}
+  body.phone.drawer-open #drawerExtra{display:block}
+  body.phone.drawer-open #drawerShade{display:block; position:fixed; inset:0; z-index:55;
+    background:rgba(30,27,22,.3)}
+  body.phone #drawerExtra .dsec{font-size:9.5px; font-weight:800; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--ink3); margin:10px 0 3px}
+  body.phone #drawerExtra .drow{display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:0}
+  body.phone #drawerExtra .drow:empty,body.phone #drawerExtra .dsec.hidden{display:none}
+  body.phone #drawerExtra select.ctl{max-width:100%}
+  /* the rows whose controls moved into the drawer leave the menu sheet */
+  body.phone #mPieceHead,body.phone #mPanRow,body.phone #mModeRow,
+  body.phone #mNotaRow{display:none}
+}
 body.phone #scorewrap{overflow-x:hidden}
 body.phone #scorecard{min-width:0; width:540px}
 body.phone.design-tab #scorecard{width:700px}
@@ -1607,7 +1633,25 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
      stays here — it changes with the tempo (David, 26 Aug). -->
 <!-- Desktop: empty (everything moved into the frame's footer). The phone
      fills it at boot — see the PHONE block at the end of the script. -->
+<!-- THE SETTINGS DRAWER (27 Aug, ABC'd — mockups-drawer-phone.html, David
+     chose "one drawer, two heights"). The bar IS the drawer: it rests at
+     whatever the mode needs on screen all the time, and the handle on its own
+     upper edge — centred, a whole bar-height above the screen's bottom, which
+     belongs to iOS — reveals the rest. Only the handle opens it, or the swipe
+     would fight the tempo scrubber that lives in this bar. -->
 <div class="row" id="transport">
+  <div id="drawerGrip" role="button" tabindex="0" aria-expanded="false"
+       aria-label="Settings for what you are doing"><i></i></div>
+  <div id="drawerExtra">
+    <div class="dsec" id="dsMode"></div>
+    <div class="drow" id="dwMode"></div>
+    <div class="dsec">While you play</div>
+    <div class="drow" id="dwNow"></div>
+    <div class="dsec">My pan</div>
+    <div class="drow" id="dwPan"></div>
+    <div class="dsec">Under the notation</div>
+    <div class="drow" id="dwShow"></div>
+  </div>
   <div class="prow" id="prow1">
     <span class="spacer"></span>
     <span class="hint">Space bar: play / pause</span>
@@ -1952,13 +1996,15 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <button class="ctl" id="quizModeBtn">Chord quiz</button>
   </div>
 
-  <h4>This piece</h4>
-  <div class="drow"><span>My pan</span><span id="mPan"></span></div>
-  <div class="drow"><span>Sounds as</span><span id="mMode"></span></div>
+  <h4 id="mPieceHead">This piece</h4>
+  <div class="drow" id="mPanRow"><span>My pan</span><span id="mPan"></span></div>
+  <div class="drow" id="mModeRow"><span>Sounds as</span><span id="mMode"></span></div>
   <!-- the notation toggle sits WITH the display settings, and the pair moved
        up to where the lone "Show" row used to be (David, 26 Aug) -->
-  <h4>Notation &amp; display</h4>
-  <div class="drow"><span>Show notation</span><span id="mNota"></span></div>
+  <!-- global settings only, now that "what I'm doing" moved into the drawer
+       (David, 27 Aug): hand colours, the count line, the tutorial switch -->
+  <h4>Settings</h4>
+  <div class="drow" id="mNotaRow"><span>Show notation</span><span id="mNota"></span></div>
   <div class="drow"><span>All settings</span><span id="mSet"></span></div>
   <!-- the switch lives HERE too (David, 27 Aug: "on mobile I don't see it in
        the settings menu at all" — it was a level deeper, in All settings) -->
@@ -2081,6 +2127,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <span class="spacer"></span><button class="ctl" id="exStay">Keep editing</button></div>
 </dialog>
 
+<div id="drawerShade" class="hidden"></div>
 <div id="dlgShade" class="hidden"></div>
 <div id="toast" role="status"></div>
 <script src="../bank.js?v=2"></script>
@@ -6837,6 +6884,7 @@ function enterJam(){
   updatePracticeBtn(); if(!PHONE) $("jampanel").classList.remove("hidden");
   paintTutorials();          // the jam note obeys the tutorial record now
   applyJam();
+  if(PHONE){ setDrawer(false); placeDrawer(); }
 }
 function leaveJam(){
   if(!jamOn) return;
@@ -6849,6 +6897,7 @@ function leaveJam(){
   try{ $("jamDlg").close(); }catch(e){}
   const prev=jamPrev; jamPrev=null;
   if(prev){ loadPiece(prev.piece); bpm=prev.bpm; $("bpm").value=bpm; }
+  if(PHONE){ setDrawer(false); placeDrawer(); }
 }
 // Regenerate from the recipe. Mid-playback the piece is swapped under the
 // running scheduler (loopedPulse folds the counter into the new length), so
@@ -7091,9 +7140,12 @@ function renderJamPanel(){
        notation window" has to mean flush beneath it). The groove selector,
        the one control that names what you are playing, gets its own line
        under the chords. */
-    const boxT=document.createElement("div"); boxT.className="jtoolbox";
-    boxT.appendChild(tools);
-    $("jampanel").insertBefore(boxT,$("jamtrack"));
+    /* the tools moved INTO THE DRAWER (David, 27 Aug, ABC'd) — the groove
+       selector stays on screen, because it names what is playing */
+    const host=$("dwMode");
+    if(host){ host.innerHTML=""; host.appendChild(tools); }
+    else{ const boxT=document.createElement("div"); boxT.className="jtoolbox";
+      boxT.appendChild(tools); $("jampanel").insertBefore(boxT,$("jamtrack")); }
   } else prog.appendChild(tools);
   // the groove: one button naming the current one, sitting at the score
   // frame's TOP LEFT beside the section name (David, 26 Aug) — the browser
@@ -8239,6 +8291,7 @@ function enterQuiz(){
   $("quizwrap").classList.remove("hidden");
   updatePracticeBtn();
   renderQuizSetup();
+  if(PHONE){ setDrawer(false); placeDrawer(); }
 }
 function leaveQuiz(){
   if(!quizOn) return;
@@ -8252,6 +8305,7 @@ function leaveQuiz(){
   $("title").readOnly=document.documentElement.classList.contains("player");
   fitTitle();
   updatePracticeBtn();
+  if(PHONE){ setDrawer(false); placeDrawer(); }
 }
 // Space is the quiz's one key: reveal while searching. It deliberately does
 // NOT answer for the student — Found it / Missed it must be said on purpose.
@@ -9084,6 +9138,7 @@ function boot(){
         lv.setAttribute("aria-label",lv.title); }
       if(!editing) edPanFor=null;        // redraw the deck pan next time
     placeGrooveTools();
+    setDrawer(false); placeDrawer();     // the drawer follows the room
       placePhoneControls(); phoneFit();
     }
     // leaving the editor with a groove on the bench finishes it — both
@@ -9954,6 +10009,80 @@ else{
   ["libBtn","shareBtn","setBtn"].forEach(id=>
     $(id).addEventListener("click",()=>$("menuDlg").close()));
 }
+/* ---------------- THE SETTINGS DRAWER (27 Aug, ABC'd) ----------------
+   David: "everything that's relevant to what I'm doing now, including the
+   selection of my pan" — while Settings keeps the global things (hand
+   colours, the count line, the tutorial switch). One handle, one gesture, in
+   every mode; the bar rests at what the mode always needs and the swipe
+   reveals the rest. Contents are the SAME elements moved here, the menu
+   sheet's own trick, so no handler is rewritten. */
+function drawerOpen(){ return document.body.classList.contains("drawer-open"); }
+function setDrawer(on){
+  if(!PHONE) return;
+  document.body.classList.toggle("drawer-open",!!on);
+  $("drawerShade").classList.toggle("hidden",!on);
+  $("drawerGrip").setAttribute("aria-expanded",on?"true":"false");
+  if(!on) $("transport").scrollTop=0;
+}
+/* what the drawer holds, per mode. Called at boot and whenever the room
+   changes; it never runs while the drawer is open, so nothing moves under
+   the finger. */
+function placeDrawer(){
+  // LANDSCAPE HAS NO DRAWER, and it keeps the practice controls on its own
+  // bar — without this guard the boot order handed them to a drawer that
+  // landscape never shows, and Half speed / Metronome simply vanished there
+  if(!PHONE||matchMedia("(orientation:landscape)").matches) return;
+  const now=$("dwNow"), pan=$("dwPan"), show=$("dwShow"),
+        mode=$("dwMode"), head=$("dsMode");
+  if(!now) return;
+  // while you play — the practice controls leave the resting bar
+  ["countBtn","halfBtn","metBtn","markBtn"].forEach(id=>{
+    const el=$(id); if(!el) return;
+    el.classList.remove("hidden");        // the marker was hidden on the phone
+    now.appendChild(el);
+  });
+  // my pan, and whether it sounds as written or transposed
+  const ps=$("panSel"); if(ps) pan.appendChild(ps);
+  const mp=document.querySelector('.pills[aria-label="Playback mode"]');
+  if(mp) pan.appendChild(mp);
+  // under the notation
+  const nb=$("notaBtn"); if(nb) show.appendChild(nb);
+  const cp=$("cpHost")&&$("cpHost").querySelector(".pills");
+  if(cp) show.appendChild(cp);
+  // the mode's own section
+  head.textContent=jamOn?"This jam":(editing?(grooveEdit?"This groove":"This piece"):"");
+  head.classList.toggle("hidden",!(jamOn||editing));
+  if(editing){
+    mode.innerHTML="";
+    const mk=(label,fn)=>{ const b=document.createElement("button");
+      b.className="ctl"; b.textContent=label;
+      b.addEventListener("click",()=>{ setDrawer(false); fn(); }); mode.appendChild(b); };
+    if(!grooveEdit) mk("Sections & arrangement…",openPieceDlg);
+    mode.appendChild($("edBarAdd")); mode.appendChild($("edBarDel"));
+  } else if(!jamOn) mode.innerHTML="";
+  // jam fills its own section from renderJamPanel, which rebuilds the tools
+}
+function drawerGesture(){
+  if(!PHONE) return;
+  const g=$("drawerGrip"); let id=null, sy=0, moved=false;
+  g.addEventListener("pointerdown",e=>{ id=e.pointerId; sy=e.clientY; moved=false;
+    try{ g.setPointerCapture(id); }catch(err){} });
+  g.addEventListener("pointermove",e=>{
+    if(id===null||e.pointerId!==id) return;
+    const dy=e.clientY-sy;
+    if(Math.abs(dy)<14) return;
+    moved=true;
+    setDrawer(dy<0);                      // up opens, down closes
+    id=null;
+  });
+  const end=e=>{ if(id===null) return; id=null;
+    if(!moved) setDrawer(!drawerOpen()); };   // a tap toggles
+  g.addEventListener("pointerup",end);
+  g.addEventListener("pointercancel",()=>{ id=null; });
+  g.addEventListener("keydown",e=>{
+    if(e.key==="Enter"||e.key===" "){ e.preventDefault(); setDrawer(!drawerOpen()); } });
+  $("drawerShade").addEventListener("pointerdown",()=>setDrawer(false));
+}
 /* Landscape: the play button rides in the notation frame's corner, as it always
    has. Portrait: it joins follow/sound/loop in the pinned bar, where a thumb can
    reach it. The orientation can change under the user's hands, so this runs
@@ -9963,6 +10092,11 @@ function placePhoneControls(){
   if(matchMedia("(orientation:landscape)").matches){
     $("sctools").append($("followBtn"),$("folMute"),$("loopBtn"));   // hidden there
     $("scorewrap").appendChild($("playBtn"));
+    /* the practice controls come BACK to the bar here: landscape has no
+       drawer, and placeDrawer had moved them into it (27 Aug) */
+    const lrow=$("prow1"), lfirst=lrow.firstChild;
+    ["bpmCtl","countBtn","halfBtn","metBtn"].forEach(id=>lrow.insertBefore($(id),lfirst));
+    $("markBtn").classList.add("hidden");     // no room for it on a wide phone
     $("halfBtn").className="ctl"; $("halfBtn").textContent="Half speed";
     $("metBtn").className="ctl";  $("metBtn").textContent="Metronome";
     // landscape's header keeps Library and Share, exactly as it always had
@@ -9975,16 +10109,19 @@ function placePhoneControls(){
     $("mLib").appendChild($("libBtn"));
     // Share rides the header on every page — piece, jam or groove (27 Aug)
     document.querySelector("header").insertBefore($("shareBtn"),$("leaveBtn"));
+    placeDrawer();          // …and portrait hands them to the drawer again
     // while editing, play lives on the lane — the cockpit's rows are hidden
     if(editing) $("edPlayHost").appendChild($("playBtn"));
   }
   $("halfBtn").classList.toggle("on",halfSpeed);
   $("metBtn").classList.toggle("on",metOn);
+  setDrawer(false);                       // landscape has no drawer
   // the pan's badge layout is orientation-specific too — rebuild it on rotate
   if(panOn) renderPanPanel();
 }
 if(PHONE){
   $("shareBtn").innerHTML='<svg aria-hidden="true"><use href="#is-share"/></svg>';
+  setTimeout(()=>{ placeDrawer(); drawerGesture(); },0);
   $("shareBtn").setAttribute("aria-label","Share");
   $("shareBtn").title="Save or load — this piece, this jam, or this groove";
   placePhoneControls();
