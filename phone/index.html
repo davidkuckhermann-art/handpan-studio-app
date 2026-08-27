@@ -4702,8 +4702,27 @@ function pieceNaturalHeight(W){
    score, which pushes the whole stack down by the same amount and leaves an
    equal margin below. Self-limiting: when the pan or chord card has already
    grown into the leftover there is no gap and this does nothing. */
+/* The bottom of the lowest card that is actually on screen — the notation, or
+   the jam strip / chord / pan card under it. Not #belowrow, which stretches to
+   the bar and would always report "no room left". */
+function stackBottom(){
+  let b=$("scorewrap").getBoundingClientRect().bottom;
+  const br=$("belowrow");
+  if(br) for(const el of br.children){
+    if(!el.offsetParent) continue;
+    const r=el.getBoundingClientRect();
+    if(r.height>2) b=Math.max(b,r.bottom);
+  }
+  return b;
+}
 function centrePortraitStack(wrap){
   const bar=$("transport"), card=$("scorecard"); if(!bar||!card) return;
+  /* JAM IS TOP-ALIGNED (David, 28 Aug, with a screenshot: "the notation is too
+     low on the screen"). Reading a piece, the notation is the whole content
+     and centring it is right; in a jam the strip and the tools under it are
+     the other half of the stack, and pushing the pair down to sit around the
+     screen's middle just buries the notation. */
+  if(typeof jamOn!=="undefined"&&jamOn){ wrap.style.paddingTop=""; return; }
   const padB=parseFloat(getComputedStyle(document.body).paddingBottom)||0;
   const hdr=document.querySelector("header");
   const topRef=hdr&&hdr.offsetParent?hdr.getBoundingClientRect().bottom:0;
@@ -4711,8 +4730,19 @@ function centrePortraitStack(wrap){
   // exactly that much — equalise the totals, never push upward (can't)
   const above=card.getBoundingClientRect().top-topRef;
   const below=innerHeight-bar.getBoundingClientRect().bottom-padB;
-  const pad=(below-above)/2;
-  if(pad>4) wrap.style.paddingTop=pad+"px";
+  /* …AND NEVER MORE THAN THE ROOM THAT ACTUALLY EXISTS (David, 28 Aug: "the
+     notation is too low on the screen … after I did stuff in the drawer").
+     `bar.bottom` is wherever the bar's box happens to be, and while the drawer
+     is open the bar is position:fixed and as tall as the panel — mid-animation
+     it is neither. A measurement taken in one of those states could push the
+     stack down by hundreds of pixels, and nothing ever took it back. The cap
+     is measured from the LOWEST CARD to the bar's RESTING top, so it is a fact
+     about the content rather than about the bar's current shape. */
+  const ex=$("drawerExtra");
+  const barH=bar.offsetHeight-((drawerOpen()&&ex)?ex.offsetHeight:0);
+  const room=(innerHeight-barH-padB)-stackBottom();
+  const pad=Math.min((below-above)/2,Math.max(0,room));
+  wrap.style.paddingTop=pad>4?pad+"px":"";
 }
 function fitPortraitStack(sc,z,designW){
   const wrap=$("scorewrap"), bar=$("transport");
@@ -7652,6 +7682,11 @@ function renderJamPanel(){
      instead of two around the chords. */
   if(PHONE&&jbox) jbox.insertBefore(cur,jbox.firstChild);
   else host.appendChild(cur);
+  /* THE PANEL JUST CHANGED HEIGHT, so the stack has to be measured again —
+     the same rule renderPanPanel follows. Without it a jam re-rendered from
+     the drawer (a voicing, a pan, a groove) left the notation sitting wherever
+     the previous, differently sized panel had put it (David, 28 Aug). */
+  if(PHONE) phoneFit();
 }
 function jamPatLabel(p){
   const mt=p.tag!==undefined?p.tag:p.meter[0]+"/"+p.meter[1];
