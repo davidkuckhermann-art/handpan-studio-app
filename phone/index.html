@@ -1722,7 +1722,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <span class="badge"><b id="jamLen">1 bar</b></span>
     <button class="ctl" id="jamPlus" aria-label="One bar more">＋</button>
     <span class="spacer"></span>
-    <button class="ctl" id="jamSugBtn" title="Mark chords that fit after the previous one">Suggestions</button>
+    <button class="ctl" id="jamSugBtn" title="Mark chords that fit between the chord before and the chord after">Suggestions</button>
     <button class="ctl" id="jamHear" title="Strum this chord once">Hear it</button>
     <button class="ctl" id="jamDlgClose">Close</button>
   </div>
@@ -1838,14 +1838,11 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
      here at boot, so every handler keeps working. -->
 <dialog id="menuDlg">
   <div class="grab"></div>
-  <h4>This piece</h4>
-  <div class="drow"><span>My pan</span><span id="mPan"></span></div>
-  <div class="drow"><span>Sounds as</span><span id="mMode"></span></div>
-  <!-- the notation toggle sits WITH the display settings, and the pair moved
-       up to where the lone "Show" row used to be (David, 26 Aug) -->
-  <h4>Notation &amp; display</h4>
-  <div class="drow"><span>Show notation</span><span id="mNota"></span></div>
-  <div class="drow"><span>All settings</span><span id="mSet"></span></div>
+  <!-- the library leads the sheet and Play & explore sits right under it
+       (David, 27 Aug): the two things a student reaches for most -->
+  <h4>Pieces</h4>
+  <div class="drow"><span>Your library</span><span id="mLib"></span></div>
+  <div class="drow" id="mShareRow"><span>Load/save</span><span id="mShare"></span></div>
 
   <!-- each mode gets its OWN button here (David, 26 Aug): on the phone the
        menu IS the practice menu, so routing through a second sheet just to
@@ -1858,6 +1855,15 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <button class="ctl" id="quizModeBtn">Chord quiz</button>
   </div>
 
+  <h4>This piece</h4>
+  <div class="drow"><span>My pan</span><span id="mPan"></span></div>
+  <div class="drow"><span>Sounds as</span><span id="mMode"></span></div>
+  <!-- the notation toggle sits WITH the display settings, and the pair moved
+       up to where the lone "Show" row used to be (David, 26 Aug) -->
+  <h4>Notation &amp; display</h4>
+  <div class="drow"><span>Show notation</span><span id="mNota"></span></div>
+  <div class="drow"><span>All settings</span><span id="mSet"></span></div>
+
   <!-- the author's door (26 Aug, ABC'd via mockups-edit-phone.html): never
        shown in the lesson embed — html.player hides the pair below -->
   <h4 id="mAuthorHead">Author</h4>
@@ -1866,9 +1872,6 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <button class="ctl" id="mNewBtn">New piece…</button>
   </div>
 
-  <h4>Pieces</h4>
-  <div class="drow"><span>Your library</span><span id="mLib"></span></div>
-  <div class="drow" id="mShareRow"><span>Load/save</span><span id="mShare"></span></div>
   <div class="row"><span class="spacer"></span><button class="ctl" id="menuClose">Close</button></div>
 </dialog>
 
@@ -5764,9 +5767,150 @@ function jamDefs(){
   if(!JAMDEFC||JAMDEFC.panId!==myPanId){
     const list=jamChordDefs(), byName={};
     for(const c of list) byName[c.name]=c;
-    JAMDEFC={panId:myPanId,list,byName};
+    const d=jpc(myPan.ding);
+    // the pan's OWN scale as a ring, low degree first — root motion is counted
+    // in ITS steps, which is what makes one rule fit every tuning (see jamFit)
+    const scale=[...new Set([d,...myPan.fields.map(f=>jpc(f.midi))])]
+      .sort((a,b)=>((a-d+12)%12)-((b-d+12)%12));
+    JAMDEFC={panId:myPanId,list,byName,scale,ding:d};
   }
   return JAMDEFC;
+}
+
+/* ============ JAM HARMONY: ONE BRAIN FOR THE DOTS AND FOR SUGGEST ==========
+   (27 Aug, ABC'd with David, after reading the corpus research. Replaces a
+   rule that measured only the bare semitone gap between two adjacent roots.)
+
+   Three things the research changed:
+
+   1. A CHORD'S JOB IS RELATIVE TO HOME, not to its neighbour alone. Every
+      functional account — Riemann's T/S/D, Lerdahl's pitch space — measures
+      against a tonal centre, and the app knows one for free. Home is chord 1
+      of the loop (David's call), unless the progression plainly ENDS at home
+      instead: the last chord on the ding and the first not.
+
+   2. V→I IS THE WRONG SINGLE RULE FOR THESE INSTRUMENTS. Three of the five
+      built-in pans (Kurd, Amara, Pygmy) have no leading tone and no major V
+      at all, so a dominant cadence cannot be played on them. de Clercq &
+      Temperley's Rolling Stone corpus says the same for popular music
+      generally: IV is the commonest chord before the tonic, ♭VII the fourth
+      commonest root overall, and Temperley counts V→I in 32% of songs
+      against IV→I in 18.5%. So the fourth, the FIFTH (the plagal IV→I) and
+      the scale step (♭VII→i) are all first-class ways home.
+
+   3. MOTION IS COUNTED IN THE PAN'S OWN SCALE STEPS, not in semitones. This
+      is what the prototype taught: on a Hijaz, E♭→D is a semitone and looks
+      exotic to semitone arithmetic, but it is simply the next note down that
+      instrument's scale and is its signature cadence. One step in the scale
+      means the same thing on every tuning — including any pan a student
+      invents. Fourths and fifths are still read as intervals, which is what
+      keeps a pentatonic pan honest (three steps up an F Pygmy is a FIFTH).
+
+   Completeness alone earns a chord nothing (David, 27 Aug: "chords should
+   not get a light recommend just because they are complete, their harmonic
+   function is as important"). A chord standing on the same root as either
+   neighbour earns nothing either — it would only restate one of them. */
+/* Where the two dots begin. Set by looking at what they actually mark on all
+   five built-in pans: filled stays selective, hollow is deliberately generous
+   (David, 27 Aug: "could have some more hollow ones") — but a chord still has
+   to clear the bar, which is the whole point of the rewrite. */
+const JAM_SUG_STRONG=5.6, JAM_SUG_SOFT=3.0;
+const JAM_FROM={same:-3, fourth:2, fifth:1.8, stepUp:1.8, stepDown:1.8,
+                thirdDown:1.5, thirdUp:1.2, far:.6};
+/* `fourth` is the BARE root move — a fifth-to-tonic with nothing in it. What
+   makes it a cadence is the major third (David, 27 Aug: "there is a major
+   difference between Vmin→I and Vmaj→I"), so the third and the ♭7 carry more
+   weight than the move itself. This matters most on the pans that have no
+   major V at all: an Amin→Dmin on a Kurd used to score ABOVE Gmin→Dmin and
+   Cmaj→Dmin, rating the one weak way home over the two that work. */
+const JAM_INTO={same:-3, fourth:2.1, fifth:2.6, stepUp:2.6, stepDown:1.6,
+                thirdDown:1.5, thirdUp:1, far:.6};
+// what each degree of the key is worth in its own right: tonic, the fourth,
+// the fifth and the ♭7 carry the weight; the second and the leading tone lean
+// on what surrounds them
+const JAM_FN={0:1, 1:.4, 2:.6, 3:1, 4:1, 5:1.2, 6:.4, 7:1.2, 8:1, 9:1, 10:1.2, 11:.6};
+function jamMotion(a,b){
+  const sem=(b-a+12)%12;
+  if(sem===0) return "same";
+  if(sem===5) return "fourth";            // up a 4th — the dominant approach
+  if(sem===7) return "fifth";             // up a 5th — the plagal approach
+  const S=jamDefs().scale, i=S.indexOf(a), j=S.indexOf(b);
+  if(i>=0&&j>=0){
+    const st=(j-i+S.length)%S.length;
+    if(st===1) return "stepUp";           // ♭VII→i on a Kurd, ♭VI→V on a Hijaz
+    if(st===S.length-1) return "stepDown";
+  }
+  if(sem===3||sem===4) return "thirdUp";
+  if(sem===8||sem===9) return "thirdDown";
+  return "far";                           // tritone, or a leap off the scale
+}
+function jamMaj3(c){ return (c.pcs||[]).includes((c.root+4)%12); }
+function jamMin7(c){ return (c.pcs||[]).includes((c.root+10)%12); }
+function jamDim(c){ return /dim|♭5/.test(c.name); }
+/* How well chord `c` sits between two neighbours, in a key centred on
+   `home`. `nextRoot` may be null — Suggest away from the turn is only ever
+   asked what comes NEXT, and has no chord after it to answer to. */
+function jamFit(c,prevRoot,nextRoot,home){
+  let s=JAM_FN[(c.root-home+12)%12]||0;
+  if(prevRoot!=null) s+=JAM_FROM[jamMotion(prevRoot,c.root)];
+  if(nextRoot!=null){
+    const m=jamMotion(c.root,nextRoot);
+    let v=JAM_INTO[m];
+    // a REAL dominant: a major third above the root turns the fourth into a
+    // pull, and the ♭7 on top of it is the textbook one
+    if(m==="fourth"&&jamMaj3(c)){ v+=1.4; if(jamMin7(c)) v+=.5; }
+    // the leading-tone cadence, vii°→i: the one job a diminished chord does
+    // better than anything else, and the Hijaz and Harmonic Minor pans have
+    // it. Only into HOME — a semitone rise anywhere else is not a cadence,
+    // which is what wrongly lit Edim before Fmaj on a Kurd while testing.
+    if(jamDim(c)&&nextRoot===home&&(nextRoot-c.root+12)%12===1) v+=1.6;
+    s+=v*1.4;
+  }
+  // rare in every corpus that has been counted, so it starts a step back —
+  // but it stays in the running (David, 27 Aug: "we want to keep them in")
+  if(jamDim(c)) s-=1.2;
+  if(c.group==="9th chords") s-=.4;
+  else if(c.group==="7th chords") s-=.2;
+  return s;
+}
+/* HOW WELL A NOTE CAN CARRY A KEY ON THIS PAN. One set of seven notes gives
+   a different MODE from each root, and the modes are not equally able to be
+   home: on a D Kurd, D is Aeolian and F is Ionian — both real keys, which is
+   David's point — while B♭ is Lydian and C Mixolydian, which lean somewhere
+   else, and E is Locrian, which has no fifth to stand on at all. */
+function jamTonicLike(root){
+  const P=new Set(jamDefs().scale), has=i=>P.has((root+i)%12);
+  if(!has(7)) return 0;                       // no fifth: nothing to stand on
+  if(has(4)) return has(5)&&has(11)?2:1;      // Ionian, against Lydian/Mixolydian
+  if(has(3)) return has(8)&&has(10)?2:1;      // Aeolian, against Dorian
+  return 0;
+}
+/* WHERE THE PROGRESSION CALLS HOME.
+   Chord 1 (David's call) — unless the loop plainly CADENCES onto its last
+   chord instead. THE DING DOES NOT DECIDE THIS (David, 27 Aug, correcting an
+   earlier version of this function): a D Kurd plays in F major as readily as
+   in D minor, so an F on that pan is a tonic, not a ♭III. The question is
+   only which of the two candidates is better APPROACHED — Dmin B♭ C F ends
+   on a real V→I and is in F; Dmin B♭ F C turns back on a step and is in D. */
+function jamHome(){
+  const S=jam.slots, by=jamDefs().byName;
+  if(!S||!S.length) return jpc(myPan.ding);
+  const rootOf=n=>{ const x=by[n]; return x?x.root:null; };
+  const first=rootOf(S[0].chord), last=rootOf(S[S.length-1].chord);
+  if(first==null) return last!=null?last:jpc(myPan.ding);
+  if(last==null||first===last) return first;
+  const approach=(fromName,to)=>{
+    const fr=rootOf(fromName); if(fr==null||fr===to) return 0;
+    const c=by[fromName], m=jamMotion(fr,to);
+    let v=JAM_INTO[m]||0;
+    if(m==="fourth"&&c&&jamMaj3(c)) v+=1.4;  // a real dominant settles it
+    return v;
+  };
+  const intoFirst=approach(S[S.length-1].chord,first);   // the loop turning over
+  const intoLast=approach(S[S.length-2].chord,last);
+  const a=intoFirst+jamTonicLike(first)*.6,
+        b=intoLast +jamTonicLike(last )*.6;
+  return b>a?last:first;                     // a tie goes to chord 1
 }
 /* POSITIONAL VOICING (David, 27 Aug — replaces the function-based solve).
    A pattern's tokens are RANKS, not chord functions: 1/3/5/7/9… name the
@@ -5977,22 +6121,70 @@ function jamTranspose(n){
 function jamSuggest(){
   if(jam.slots.length>=JAM_MAX){ toast("Eight chords is the most for now"); return; }
   const last=jam.slots[jam.slots.length-1];
-  const lastDef=last&&jamDefs().byName[last.chord];
+  const byName=jamDefs().byName;
+  const lastDef=last&&byName[last.chord];
   const lr=lastDef?lastDef.root:jpc(myPan.ding);
-  const pool=jamDefs().list.filter(c=>!c.miss&&!(last&&c.name===last.chord));
+  const pos=jam.slots.length+1;                  // where the new chord lands
+  const first=jam.slots[0];
+  const fd=first&&byName[first.chord];
+  const closing=(pos===4||pos===8)&&!!fd;
+  /* ROOT REPETITION IS THE THING TO WATCH (David, 27 Aug, on a suggested
+     Dmin7 → Dmin9 → Dmin: "chord repetitions — same root note of the chord —
+     shouldn't be too common", and landing on Dmin to lead back to Dmin
+     "doesn't make any musical sense"). Two of these are absolute and are
+     done by FILTERING, not by weighting: never twice in a row on one root,
+     and never arrive home on the home root at the turn. Weighting alone had
+     made both merely unlikely, and unlikely still happens. */
+  const home0=fd?fd.root:jpc(myPan.ding);
+  const openPool=jamDefs().list.filter(c=>!c.miss);
+  let pool=openPool.filter(c=>c.root!==lr&&!(closing&&c.root===home0));
+  if(!pool.length) pool=openPool.filter(c=>c.root!==lr);
+  if(!pool.length) pool=openPool;
   if(!pool.length){ toast("No chord to suggest on this pan"); return; }
+  // how spent each root already is, and which were touched most recently
+  const used={};
+  for(const sl of jam.slots){ const d=byName[sl.chord];
+    if(d) used[d.root]=(used[d.root]||0)+1; }
+  const recent=new Set(jam.slots.slice(-3).map(sl=>byName[sl.chord])
+    .filter(Boolean).map(d=>d.root));
   const share={"Triads":55,"7th chords":30,"9th chords":15};
   const fams=Object.keys(share).filter(g=>pool.some(c=>c.group===g));
   let fx=Math.random()*fams.reduce((s,g)=>s+share[g],0), fam=fams[0];
   for(const g of fams){ if(fx<share[g]){ fam=g; break; } fx-=share[g]; }
   const cands=pool.filter(c=>c.group===fam);
+  /* THE PHRASE HAS TO COME HOME (David, 27 Aug). Everywhere else this asks
+     the harmony engine only what comes NEXT off the previous chord — but a
+     chord landing in position 4 or 8 is the last one before the loop turns
+     over, so there the chord AFTER it is chord 1, and the same engine that
+     draws the picker's dots weighs the way back. Nothing else changes: his
+     family odds above still choose triad / 7th / 9th first. */
+  const home=jamHome();
   const wOf=c=>{
-    const iv=Math.min((c.root-lr+12)%12,(lr-c.root+12)%12);
-    return {0:1.5,1:1,2:3,3:4,4:4,5:6,6:.7}[iv]||1;
+    let w=Math.max(.05,jamFit(c,lr,closing?fd.root:null,home));
+    // a root already in the progression comes back less readily, and one used
+    // in the last three chords is nearly spent
+    const u=used[c.root]||0;
+    if(u) w/=1+u;
+    if(recent.has(c.root)) w*=.25;
+    return w;
   };
   let sum=0; const acc=cands.map(c=>(sum+=wOf(c)));
   const x=Math.random()*sum, i=acc.findIndex(v=>x<v);
-  jam.slots.push({chord:cands[i].name,bars:1});
+  let pick=cands[i];
+  /* A DOMINANT WANTS ITS SEVENTH (David, 27 Aug: "where appropriate it would
+     be good to add the 7th degree — not as a 100% rule, but as a strong
+     possibility — when there is a dominant relationship going on, V major →
+     I"). It fires at the turn, the one position where this roll knows what
+     follows, and only when the triad it drew really is the MAJOR V of that
+     chord: a minor v has no seventh worth adding. Two times in three, so the
+     plain triad still comes up, and it overrides the family odds above only
+     in this one case. */
+  if(closing&&pick&&pick.group==="Triads"&&jamMaj3(pick)
+     &&jamMotion(pick.root,fd.root)==="fourth"&&Math.random()<.67){
+    const sev=jamDefs().byName[PCN[pick.root]+"7"];
+    if(sev&&!sev.miss) pick=sev;
+  }
+  jam.slots.push({chord:pick.name,bars:1});
   applyJam();
 }
 function buildJamPiece(){
@@ -6351,21 +6543,30 @@ function renderJamDlg(){
   const s=jam.slots[jamEditSlot]; if(!s) return;
   $("jamDlgTitle").textContent="Chord "+(jamEditSlot+1)+" of "+jam.slots.length;
   const g=$("jamChordGrid"); g.innerHTML="";
-  // Suggestions (David, 26 Aug — replaced Remove; the cards' ✕ deletes):
-  // relative to the chord BEFORE this slot in the loop. Strong dot = the
-  // obvious simple move: a full maj/min triad whose root steps by a 3rd,
-  // 4th or 5th. Soft dot = feeling adventurous: any other complete chord
-  // (dim, 7ths, 9ths, stepwise or parallel moves). Almost-chords get none.
-  const prevSlot=jam.slots.length>1
-    ?jam.slots[(jamEditSlot-1+jam.slots.length)%jam.slots.length]
+  /* Suggestions (David, 26 Aug — replaced Remove; the cards' ✕ deletes),
+     judged from BOTH SIDES since 27 Aug ("take into account the following
+     chord, not only the previous one"). The loop wraps, so every slot has a
+     chord before it and a chord after it.
+       ● strong — either a full maj/min triad whose root moves by a step,
+         3rd, 4th or 5th BOTH coming out of the previous chord and going into
+         the next one, OR any complete chord standing a fifth above the
+         FOLLOWING chord: the V→I pull is decisive on its own, and it is what
+         lets a 7th chord be an obvious choice too (David, 27 Aug).
+       ○ soft — any other complete chord: feeling adventurous.
+     A chord already sitting on either side gets no dot — it would only
+     repeat a neighbour — and neither do the almosts. */
+  const around=n=>jam.slots.length>1
+    ?jam.slots[(jamEditSlot+n+jam.slots.length)%jam.slots.length]
     :jam.slots[jamEditSlot];
-  const pd=jamDefs().byName[prevSlot.chord];
-  const lr=pd?pd.root:jpc(myPan.ding);
+  const prevSlot=around(-1), nextSlot=around(1);
+  const rootOf=sl=>{ const d=jamDefs().byName[sl.chord];
+    return d?d.root:jpc(myPan.ding); };
+  const lr=rootOf(prevSlot), nr=rootOf(nextSlot), home=jamHome();
   const sugOf=c=>{
-    if(!jamSugOn||c.miss||c.name===prevSlot.chord) return "";
-    const ic=Math.min((c.root-lr+12)%12,(lr-c.root+12)%12);
-    // whole steps count as obvious too (David, 26 Aug — Dm→C is standard)
-    return (c.group==="Triads"&&!c.lt&&ic>=2)?"strong":"soft";
+    // a chord already standing on either neighbour's root only restates it
+    if(!jamSugOn||c.miss||c.root===lr||c.root===nr) return "";
+    const s=jamFit(c,lr,nr,home);
+    return s>=JAM_SUG_STRONG?"strong":(s>=JAM_SUG_SOFT?"soft":"");
   };
   $("jamSugBtn").classList.toggle("on",jamSugOn);
   $("jamSugHint").classList.toggle("hidden",!jamSugOn);
@@ -7718,6 +7919,32 @@ function grooveRefFor(g){
   return ok(g&&g.ref)||ok(jam.slots[0]&&jam.slots[0].chord)
     ||(jamDefs().list.find(c=>!c.miss&&c.group==="Triads")||{}).name||null;
 }
+/* Open the groove the jam is PLAYING in the groove editor. Shared by the
+   "Open in editor" sheet and, on the phone, the menu's Author row. */
+function editThisGroove(){
+  jamPreviewStop();
+  const g=allPats().find(x=>x.id===jam.patternId)||JAMPATS[0];
+  const ref=grooveRefFor(g);
+  if(!ref){ toast("This pan has no full chord to write a groove on"); return; }
+  // a BUILT-IN opens as a starting point: no id is adopted, so Save makes
+  // the student's own copy and the original is never overwritten
+  startGrooveEdit(Object.assign({},g,{ref,id:g.user?g.id:null,
+    name:g.user?g.name:g.name+" (my version)"}));
+}
+/* The Author row's two faces — see the handlers for why. */
+function paintAuthorRow(){
+  const e=$("mEditBtn"), n=$("mNewBtn");
+  if(!e||!n) return;
+  if(typeof jamOn!=="undefined"&&jamOn){
+    e.textContent="Edit groove";
+    e.title="Open the groove you are playing in the groove editor";
+    n.textContent="Edit jam in arrangement editor";
+    n.title="Copy this jam into a piece you can write on";
+  } else {
+    e.textContent="Edit piece"; e.title="Write on this piece";
+    n.textContent="New piece…"; n.title="Start a new piece";
+  }
+}
 function openGrooveLoadDlg(){
   if(!grooveEdit) return;
   const L=$("glList"); L.innerHTML="";
@@ -8491,16 +8718,7 @@ function boot(){
     else toast("That code could not be read"); });
   $("oeClose").addEventListener("click",()=>$("openEdDlg").close());
   $("oeArr").addEventListener("click",()=>{ $("openEdDlg").close(); jamToPiece(); });
-  $("oeGroove").addEventListener("click",()=>{
-    $("openEdDlg").close(); jamPreviewStop();
-    const g=allPats().find(x=>x.id===jam.patternId)||JAMPATS[0];
-    const ref=grooveRefFor(g);
-    if(!ref){ toast("This pan has no full chord to write a groove on"); return; }
-    // a BUILT-IN opens as a starting point: no id is adopted, so Save makes
-    // the student's own copy and the original is never overwritten
-    startGrooveEdit(Object.assign({},g,{ref,id:g.user?g.id:null,
-      name:g.user?g.name:g.name+" (my version)"}));
-  });
+  $("oeGroove").addEventListener("click",()=>{ $("openEdDlg").close(); editThisGroove(); });
   $("gnCreate").addEventListener("click",()=>{
     const mv=$("gnMeter").value.split("/"), beats=+mv[0], den=+mv[1];
     const sub=+$("gnSub").value;
@@ -9000,12 +9218,22 @@ else{
     if(loc&&piece.sections[viewSec].bars.length>1){
       snapshot(); piece.sections[viewSec].bars.splice(loc.bar,1); cursor=0; refresh(); } });
   // the Author doors — the phone's #authortools corner (never in ?player=1)
+  /* The Author row follows the mode (David, 27 Aug). Reading a piece it is
+     "Edit piece" + "New piece…"; in JAM mode the jam is two things at once,
+     so the pair becomes "Edit groove" (the groove itself) and "Edit jam in
+     arrangement editor" (the jam copied into a piece) — the same two actions
+     the "Open in editor" sheet offers, called through the same functions. */
   $("mEditBtn").addEventListener("click",()=>{
     $("menuDlg").close();
-    if(jamOn||quizOn) leavePractice();     // one mode at a time, like the desktop
+    if(jamOn){ editThisGroove(); return; }   // startGrooveEdit leaves jam itself
+    if(quizOn) leavePractice();              // one mode at a time, like the desktop
     if(!editing) $("editBtn").click();
   });
-  $("mNewBtn").addEventListener("click",()=>{ $("menuDlg").close(); openDlg($("newDlg")); });
+  $("mNewBtn").addEventListener("click",()=>{
+    $("menuDlg").close();
+    if(jamOn){ jamToPiece(); return; }        // the jam, opened as a piece to write on
+    openDlg($("newDlg"));
+  });
   $("edLaneLab").addEventListener("click",openPieceDlg);
   // the groove workbench's live time row (paintEditDeck keeps the values true)
   const edSetTime=()=>grooveSetTime($("edTS").value,$("edSub").value);
@@ -9029,7 +9257,7 @@ else{
     }
     paintEditDeck();
   });
-  $("menuBtn").addEventListener("click",()=>openDlg($("menuDlg")));
+  $("menuBtn").addEventListener("click",()=>{ paintAuthorRow(); openDlg($("menuDlg")); });
   sheetSwipe($("menuDlg"),$("menuDlg").querySelector(".grab"));
   $("menuClose").addEventListener("click",()=>$("menuDlg").close());
   // the sheet's own buttons close it, so the change is visible behind it
