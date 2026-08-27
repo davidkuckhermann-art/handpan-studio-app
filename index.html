@@ -7445,6 +7445,9 @@ function boot(){
     refresh();   // the pan card becomes the editor while editing (renderPanPanel)
     updateHandInd();
     if(PHONE){   // the ✕ is the way out, and the play button rides the lane
+      // editing always needs the pan, so the Chords|Pan switch rests
+      // (David, 27 Aug) — same treatment as the Table|Tab pills above
+      ["chordBtn","panBtn"].forEach(id=>{ const b=$(id); if(b) b.disabled=editing; });
       const lv=$("leaveBtn");
       if(lv){ lv.classList.toggle("hidden",!(editing||jamOn||quizOn));
         lv.title=editing?"Done editing":"Leave practice mode";
@@ -7823,9 +7826,17 @@ function phoneTouchNav(){
     id=e.pointerId; sx=e.clientX; sy=e.clientY; mode=null;
     anchor=null; dragged=false; clearIfNoDrag=false;
     const now=performance.now();
-    // editing owns the tap (pointerup) — no loops, and stopPropagation still
-    // runs so the slots' own ~11px listeners stay out of it
-    if(!editing&&now-lastTap<DBL&&Math.abs(e.clientX-lastX)<28&&Math.abs(e.clientY-lastY)<28&&!loopAllowed()){
+    // editing owns the tap (pointerup) — no NEW loops, and stopPropagation
+    // still runs so the slots' own ~11px listeners stay out of it. But a
+    // double tap inside an EXISTING loop clears it in every view, the editor
+    // included (David, 27 Aug: "I have a loop here that I cannot get rid of").
+    if(editing&&now-lastTap<DBL&&Math.abs(e.clientX-lastX)<28&&Math.abs(e.clientY-lastY)<28&&loopSec){
+      const c=cellAtPoint(e.clientX,e.clientY);
+      if(c&&c.from>=loopSec.from&&c.to<=loopSec.to){
+        lastTap=0; loopSec=null; paintLoopFrame(); reanchorLoop(); toast("Loop off");
+      }
+    }
+    else if(!editing&&now-lastTap<DBL&&Math.abs(e.clientX-lastX)<28&&Math.abs(e.clientY-lastY)<28&&!loopAllowed()){
       lastTap=0; toast("No looping while the notation follows the video");
     } else if(!editing&&now-lastTap<DBL&&Math.abs(e.clientX-lastX)<28&&Math.abs(e.clientY-lastY)<28){
       const c=cellAtPoint(e.clientX,e.clientY);
@@ -7869,9 +7880,12 @@ function phoneTouchNav(){
     lastTap=performance.now(); lastX=e.clientX; lastY=e.clientY;
     if(editing){
       // the funnel's first level: the zoomed score picks at BEAT-CELL grain
-      // (~22px) — the slot itself is the lane's job (26 Aug, ABC'd)
+      // (~22px) — the slot itself is the lane's job (26 Aug, ABC'd). The tap
+      // also moves the PLAYHEAD (David, 27 Aug): play starts from here, and
+      // an active loop downstream engages when the music runs into it —
+      // cursor and playhead travel together on the phone.
       const c=cellAtPoint(e.clientX,e.clientY);
-      if(c){ cursor=c.from-viewFromPulse(); refresh(); }
+      if(c){ cursor=c.from-viewFromPulse(); refresh(); seekToPulse(c.from); }
       return;
     }
     const el=document.elementFromPoint(e.clientX,e.clientY);
@@ -7918,7 +7932,10 @@ function mouseLoopNav(){
   },true);
   wrap.addEventListener("pointercancel",()=>{ id=null; },true);
   wrap.addEventListener("dblclick",e=>{
-    if(editing||!loopSec) return;
+    // clearing works in EVERY view, the editor included (David, 27 Aug: "I
+    // have a loop here that I cannot get rid of") — only CREATING loops
+    // stays out of editing (pointerdown above still refuses)
+    if(!loopSec) return;
     // A drag's release pairs with the click before it into a dblclick, which
     // would clear the loop the drag just made (David, 26 Aug: "it deselects
     // immediately"). Only a real click-click, well after any drag, clears.
