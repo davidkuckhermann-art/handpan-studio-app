@@ -1153,14 +1153,23 @@ body.phone .gmini i{font-size:10px}
   #edChips .gap{flex:none; width:1px; background:var(--rule); margin:2px 3px}
   /* writing a GROOVE: no articulation, no taks/knocks, one fixed bar */
   body.gedit #edArtPills,body.gedit #edTak,body.gedit #edTakK,body.gedit #edKnock,
-  body.gedit #edBarAdd,body.gedit #edBarDel,body.gedit #edChips .gap{display:none}
+  body.gedit #edChips .gap{display:none}
+  /* ＋/− Bar STAY in the workbench: a groove may be 1–4 bars now (27 Aug),
+     and the CSS had gone on hiding what the code had started allowing */
   /* …and the live time row above the lane, groove workbench only */
   #edTimeRow{display:none}
   body.gedit #edTimeRow{display:flex; align-items:center; gap:6px; margin-bottom:6px}
   #edTimeRow .ctl{font-size:12.5px; padding:6px 8px}
-  /* Save / Load lead the chip row while a groove is on the bench */
-  #edGSave,#edGLoad{display:none}
-  body.gedit #edGSave,body.gedit #edGLoad{display:inline-flex}
+  /* Save · Load · Undo take the Chords|Pan place while a groove is written */
+  #gwTools{display:none}
+  body.phone.gedit #gwTools{display:inline-flex; gap:6px; margin-left:auto}
+  body.phone.gedit #cpHost{display:none}
+  #gwTools .ctl{font-size:12.5px; padding:6px 10px}
+  /* one undo is enough: the lane's ↺ steps aside while the tools row has it */
+  body.gedit #edUndo{display:none}
+  /* the clear-slot glyph reads small at 16px (David, 27 Aug) — the id alone
+     loses to `#edLaneHead .ib` above, so it has to be said the same way */
+  #edLaneHead #edDel{font-size:21px}
   body.phone #grooveLoadDlg{max-height:74vh; overflow-y:auto; overscroll-behavior:contain}
   body.phone #newDlg,body.phone #editExitDlg,body.phone #grooveNewDlg,body.phone #grooveLoadDlg{
     border:none; border-radius:18px 18px 0 0; padding:14px 16px 26px;
@@ -1375,6 +1384,9 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   </div>
   <!-- phone only: chords or pan, opposite the Table/Tab pills -->
   <span id="cpHost"></span>
+  <!-- the groove workbench has no companion cards to switch between, so the
+       Chords|Pan pills give their place to the groove's own tools (David, 27 Aug) -->
+  <span id="gwTools"></span>
 </div>
 
 <!-- JAM MODE (26 Aug): chords + one of David's chord grooves → a piece the
@@ -1558,6 +1570,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
       <!-- groove workbench only (26 Aug, David: "save and load commands") -->
       <button class="ctl" id="edGSave">Save</button>
       <button class="ctl" id="edGLoad">Load…</button>
+      <button class="ctl" id="edGUndo" aria-label="Undo">↺</button>
       <button class="ctl" id="edHandA">Alt</button>
       <button class="ctl" id="edGhost"><b>•</b>&nbsp;Ghost</button>
       <span class="pills" id="edArtPills" role="group" aria-label="Tone field">
@@ -1717,6 +1730,19 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <p class="hint">You write one bar on this chord's tones (plus ghosts and slaps) — in a jam, the same shape plays on every chord of your progression.</p>
   <div class="row"><button class="ctl on" id="gnCreate">Write it</button>
   <span class="spacer"></span><button class="ctl" id="gnClose">Cancel</button></div>
+</dialog>
+
+<!-- OPEN IN EDITOR asks WHICH editor (27 Aug, David) — the jam is two
+     things at once: an arrangement of chords and the groove playing them. -->
+<dialog id="openEdDlg">
+  <h3>Open in editor</h3>
+  <div class="drow-btns" style="display:flex; gap:9px; padding:4px 0 2px">
+    <button class="ctl" id="oeArr" style="flex:1; justify-content:center; padding:12px; font-size:14px">Arrangement editor</button>
+    <button class="ctl" id="oeGroove" style="flex:1; justify-content:center; padding:12px; font-size:14px">Groove editor</button>
+  </div>
+  <p class="hint">The arrangement editor copies this jam into a new piece you can write on. The groove editor opens the groove itself — one bar (or two), replayed on every chord.</p>
+  <div class="row" style="margin:0"><span class="spacer"></span>
+    <button class="ctl" id="oeClose">Cancel</button></div>
 </dialog>
 
 <!-- LOAD into the groove workbench (26 Aug, David: "save and load commands").
@@ -4224,7 +4250,8 @@ function renderTableView(sc){
      eighths), which is the honest measure here, since this is about how much
      room a bar takes on the page. Display only — the piece's own barsPerRow is
      untouched. */
-  if(editing&&m.bpr===1&&m.bp<=8&&sec.bars.length>1)
+  // …and in JAM, where the piece IS a short groove repeated (David, 27 Aug)
+  if((editing||jamOn)&&m.bpr===1&&m.bp<=8&&sec.bars.length>1)
     m=Object.assign({},m,{bpr:2});
   const sr=document.createElement("div"); sr.className="secrow";
   sr.innerHTML='<span class="secname">'+nm+'</span>';
@@ -5167,6 +5194,21 @@ function paintEditDeck(){
 }
 /* the lane's loop button is lit only while the loop IS the bar it shows, so
    a hand-drawn loop elsewhere turns it off by itself (David, 27 Aug) */
+/* Save · Load · Undo live in the view row while a groove is being written,
+   and go back to the chip row otherwise — the SAME buttons, moved, so every
+   handler keeps working (the phone's own pattern since the menu sheet). */
+function placeGrooveTools(){
+  if(!PHONE) return;
+  const host=$("gwTools"), chips=$("edChips");
+  if(!host||!chips) return;
+  if(grooveEdit){
+    host.append($("edGSave"),$("edGLoad"),$("edGUndo"));
+  } else {
+    chips.insertBefore($("edGSave"),chips.firstChild);
+    chips.insertBefore($("edGLoad"),$("edGSave").nextSibling);
+    host.appendChild($("edGUndo"));      // hidden with the row
+  }
+}
 function paintEditLoopBtn(){
   const lb=$("edLoopBar"); if(!lb||!PHONE||!editing||!piece.sections[viewSec]) return;
   const m=SM(piece,viewSec), bar=Math.floor(cursor/m.bp);
@@ -5237,6 +5279,27 @@ function edPasteAt(rel0){
   refresh();
   toast(wrote?("Pasted "+wrote+(wrote===1?" note":" notes")):"Pasted an empty stretch");
 }
+/* the loop as WHOLE BARS of the section on screen, or null if either end
+   falls between barlines */
+function edLoopBars(){
+  if(!loopSec||!editing) return null;
+  const m=SM(piece,viewSec), sec=piece.sections[viewSec], base=viewFromPulse();
+  const r0=loopSec.from-base, r1=loopSec.to-base;
+  if(r0<0||r1>sec.bars.length*m.bp) return null;
+  if(r0%m.bp||r1%m.bp||r1<=r0) return null;
+  return {first:r0/m.bp, n:(r1-r0)/m.bp};
+}
+function edDeleteBars(b){
+  const sec=piece.sections[viewSec];
+  if(b.n>=sec.bars.length){ toast("A table keeps at least one bar"); return; }
+  snapshot();
+  sec.bars.splice(b.first,b.n);
+  loopSec=null;
+  const m=SM(piece,viewSec);
+  cursor=Math.min(cursor,sec.bars.length*m.bp-1);
+  refresh(); paintLoopFrame();
+  toast(b.n===1?"Bar deleted":b.n+" bars deleted");
+}
 function edCopyLoop(){
   if(!loopSec) return;
   const m=SM(piece,viewSec), sec=piece.sections[viewSec], base=viewFromPulse();
@@ -5268,6 +5331,10 @@ function edPopAt(x,y){
     pop.appendChild(b); };
   if(canCopy) mk("Copy",edCopyLoop);
   if(canPaste) mk("Paste",()=>edPasteAt(c.from-viewFromPulse()));
+  // whole bars can be removed outright (David, 27 Aug) — only when the loop
+  // sits ON the barlines, since half a bar is not a bar to delete
+  const bars=edLoopBars();
+  if(inLoop&&bars) mk("Delete "+(bars.n===1?"bar":bars.n+" bars"),()=>edDeleteBars(bars));
   document.body.appendChild(pop);
   const r=pop.getBoundingClientRect();
   pop.style.left=Math.max(8,Math.min(innerWidth-r.width-8,x-r.width/2))+"px";
@@ -6138,7 +6205,8 @@ function renderJamPanel(){
     try{ $("jamDlg").close(); }catch(e){}
     applyJam(); toast("Chords cleared — add or suggest to begin");
   });
-  mk("Open in editor","Copy this jam into a new piece and open the editor",jamToPiece);
+  mk("Open in editor","Edit the arrangement, or the groove itself",
+    ()=>openDlg($("openEdDlg")));
   /* on the phone the tools get their OWN line under the strip — inside it they
      would scroll away with the chords */
   /* On the phone the tools sit OUTSIDE the chord card entirely (David, 26
@@ -7445,6 +7513,7 @@ function startGrooveEdit(opts){    // opts: {id?, name, meter, sub, unit?, ref, 
   if(opts.unit&&opts.unit!==4) p.unit=opts.unit;
   grooveEdit={id:opts.id||null, ref:opts.ref, wasJam, prevPiece, prevBpm};
   document.body.classList.add("gedit");
+  placeGrooveTools();
   try{ $("grooveDlg").close(); }catch(e){}
   try{ $("grooveNewDlg").close(); }catch(e){}
   loadPiece(p);
@@ -7522,6 +7591,14 @@ function grooveLoadInto(g){
   refresh();
   toast(g.user?("Loaded: "+g.name):("Loaded a copy of "+g.name+" — Save makes it yours"));
 }
+/* Which chord to write a groove on: its own if this pan can voice it, else
+   the chord the jam is on, else the first full triad. Since a groove's tokens
+   are RANKS, any full chord will do — the shape is what is being edited. */
+function grooveRefFor(g){
+  const ok=n=>{ const d=n&&jamDefs().byName[n]; return d&&!d.miss?n:null; };
+  return ok(g&&g.ref)||ok(jam.slots[0]&&jam.slots[0].chord)
+    ||(jamDefs().list.find(c=>!c.miss&&c.group==="Triads")||{}).name||null;
+}
 function openGrooveLoadDlg(){
   if(!grooveEdit) return;
   const L=$("glList"); L.innerHTML="";
@@ -7548,6 +7625,7 @@ function grooveEditFinish(){
   const savedId=grooveSaveNow(true);
   const ge=grooveEdit; grooveEdit=null;
   document.body.classList.remove("gedit");
+  placeGrooveTools();
   loadPiece(ge.prevPiece);
   bpm=ge.prevBpm||bpm; $("bpm").value=bpm;
   if(ge.wasJam){
@@ -7625,8 +7703,7 @@ function renderGrooveDlg(){
       b.className="ctl"; b.textContent=txt; b.title=title;
       b.addEventListener("click",e=>{ e.stopPropagation(); fn(); }); return b; };
     row.appendChild(mk("✎","Edit this groove",()=>{ jamPreviewStop();
-      if(!p.ref){ toast("This groove came without its reference chord — it can play but not be edited"); return; }
-      startGrooveEdit(p); }));
+      startGrooveEdit(Object.assign({},p,{ref:grooveRefFor(p)})); }));
     row.appendChild(mk("⤓","Save as an .hpg file",()=>{
       const a=document.createElement("a");
       a.href=URL.createObjectURL(new Blob(["HPG1:"+enc(p)+"\n"],{type:"text/plain"}));
@@ -7797,6 +7874,7 @@ function boot(){
         lv.title=editing?"Done editing":"Leave practice mode";
         lv.setAttribute("aria-label",lv.title); }
       if(!editing) edPanFor=null;        // redraw the deck pan next time
+    placeGrooveTools();
       placePhoneControls(); phoneFit();
     }
     // leaving the editor with a groove on the bench finishes and saves it —
@@ -8055,6 +8133,18 @@ function boot(){
   $("grooveNewBtn").addEventListener("click",()=>{ jamPreviewStop(); openGrooveNewDlg(); });
   $("gnClose").addEventListener("click",()=>$("grooveNewDlg").close());
   $("glClose").addEventListener("click",()=>$("grooveLoadDlg").close());
+  $("oeClose").addEventListener("click",()=>$("openEdDlg").close());
+  $("oeArr").addEventListener("click",()=>{ $("openEdDlg").close(); jamToPiece(); });
+  $("oeGroove").addEventListener("click",()=>{
+    $("openEdDlg").close(); jamPreviewStop();
+    const g=allPats().find(x=>x.id===jam.patternId)||JAMPATS[0];
+    const ref=grooveRefFor(g);
+    if(!ref){ toast("This pan has no full chord to write a groove on"); return; }
+    // a BUILT-IN opens as a starting point: no id is adopted, so Save makes
+    // the student's own copy and the original is never overwritten
+    startGrooveEdit(Object.assign({},g,{ref,id:g.user?g.id:null,
+      name:g.user?g.name:g.name+" (my version)"}));
+  });
   $("gnCreate").addEventListener("click",()=>{
     const mv=$("gnMeter").value.split("/"), beats=+mv[0], den=+mv[1];
     const sub=+$("gnSub").value;
@@ -8567,6 +8657,7 @@ else{
   $("edSub").addEventListener("change",edSetTime);
   $("edGSave").addEventListener("click",()=>grooveSaveNow());
   $("edGLoad").addEventListener("click",openGrooveLoadDlg);
+  $("edGUndo").addEventListener("click",()=>undo());
   // loop the bar the lane is showing (David, 27 Aug) — the same loopSec the
   // drag gesture drives, so playback and the frame need nothing new
   $("edLoopBar").innerHTML=ico("is-loop");
