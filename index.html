@@ -12754,8 +12754,11 @@ function phoneTouchNav(){
    slots seek on pointerdown — the instant a drag begins. */
 function mouseLoopNav(){
   const wrap=$("scorewrap"), TAP=5;
-  const SLOP=12;   // a hand is not steady; below this it was a click
-  let id=null,sx=0,sy=0,anchor=null,moved=false,dragEnded=0,blocked=false,refused=false,loopWas=null;
+  /* Far enough that no hand does it by accident, short enough that a beat
+     cell (four slots, ~390px on the desktop) can still be looped on purpose. */
+  const DRAG=40;
+  let id=null,sx=0,sy=0,anchor=null,moved=false,dragEnded=0,blocked=false,refused=false,
+      loopWas=null,leftCell=false;
   wrap.addEventListener("pointerdown",e=>{
     if(e.pointerType==="touch"||e.button!==0) return;
     if(e.target.closest&&e.target.closest("#playBtn")) return;
@@ -12765,7 +12768,7 @@ function mouseLoopNav(){
        loop anything. The refusal waits until the pointer has actually moved. */
     if(!loopAllowed()){ blocked=true; refused=false; id=e.pointerId; sx=e.clientX; sy=e.clientY; return; }
     const c=cellAtPoint(e.clientX,e.clientY); if(!c) return;
-    id=e.pointerId; sx=e.clientX; sy=e.clientY; anchor=c; moved=false; loopWas=loopSec;
+    id=e.pointerId; sx=e.clientX; sy=e.clientY; anchor=c; moved=false; loopWas=loopSec; leftCell=false;
     /* While EDITING the click belongs to the slot — it places the cursor at
        slot precision, which a mouse can hit — so the drag is only taken over
        once the pointer actually moves (David, 27 Aug: loops in the editor). */
@@ -12796,6 +12799,7 @@ function mouseLoopNav(){
     moved=true;
     const c=cellAtPoint(e.clientX,e.clientY);
     if(c){
+      if(anchor&&c.from!==anchor.from) leftCell=true;   // a drag, not a hand
       loopSec={from:Math.min(anchor.from,c.from),to:Math.max(anchor.to,c.to)};
       paintLoopFrame();
     }
@@ -12812,15 +12816,21 @@ function mouseLoopNav(){
          an ordinary click with a shaky hand silently moved nothing and left a
          one-cell loop behind instead. Measured on the build before this: six
          pixels of drift gave ZERO seeks and a loop.
-         A drag that never left the cell it began in, and never travelled far
-         enough to mean it, is a click: the loop is put back as it was and the
-         gesture falls through to the seek below. A deliberate one-cell loop
-         still works — it crosses most of the cell, which is well past SLOP. */
+         THE TEST IS THE CELL, NOT THE DISTANCE. A pixel threshold was tried
+         first at twelve, and fourteen pixels of drift still failed — there is
+         no distance that is reliably a hand and never a drag. But a gesture
+         that begins and ends in one cell has nothing to loop over, whatever
+         ground it covered, so it is a click: the loop goes back as it was and
+         the gesture falls through to the seek below — UNLESS it also covered
+         DRAG pixels, which keeps a single beat cell loopable by dragging
+         across it deliberately. Both tests are needed: the cell alone would
+         make a one-cell loop impossible, and the distance alone is what failed
+         at fourteen pixels. */
       const c=cellAtPoint(e.clientX,e.clientY);
-      const still=Math.max(Math.abs(e.clientX-sx),Math.abs(e.clientY-sy))<SLOP;
-      if(still&&anchor&&c&&c.from===anchor.from&&c.to===anchor.to){
-        loopSec=loopWas; paintLoopFrame();
-      } else { dragEnded=performance.now(); reanchorLoop(); toast(loopBarsLabel()); return; }
+      const far=Math.max(Math.abs(e.clientX-sx),Math.abs(e.clientY-sy))>=DRAG;
+      const left=leftCell||far||(anchor&&c&&c.from!==anchor.from);
+      if(!left){ loopSec=loopWas; paintLoopFrame(); }   // stayed put: a click
+      else { dragEnded=performance.now(); reanchorLoop(); toast(loopBarsLabel()); return; }
     }
     if(editing) return;             // the slot already took this click
     const el=document.elementFromPoint(e.clientX,e.clientY);   // a plain click: go there
