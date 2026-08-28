@@ -1090,9 +1090,11 @@ body.phone #pvwrap.sides #pvsvg{width:min(236px,calc(100vw - 150px))}
 @media (prefers-reduced-motion:reduce){
   #quizpan .pvf.qsound .pvbase{animation-duration:.01s}
 }
-.pvchord{font-family:Caveat,cursive; font-size:27px; font-weight:600; color:var(--ink2);
-  line-height:1; min-height:28px}
-.pvchord.inf{color:var(--ink3); font-style:italic}
+/* the app's own face, not the handwritten one (David, 28 Aug) — this is the
+   same label as the chord row's names above it and should read the same way */
+.pvchord{font-family:Figtree,sans-serif; font-size:21px; font-weight:800;
+  letter-spacing:-.01em; color:var(--ink); line-height:1.15; min-height:28px}
+.pvchord.inf{color:var(--ink3); font-style:italic; font-weight:700}
 .pvlamps{display:flex; align-items:center; gap:8px; margin-top:2px}
 .lamp{width:30px; height:30px; border-radius:50%; display:grid; place-items:center;
   font-size:13px; font-weight:800; border:1.5px solid; transition:background .12s,color .12s}
@@ -3635,7 +3637,8 @@ function paintPulse(pi,seek){
     document.querySelectorAll(".cnow").forEach(el=>el.classList.remove("cnow"));
     const ch=document.querySelector('[data-ai="'+cur.ai+'"]')||document.querySelector('[data-ai-'+cur.ai+']');
     if(ch) ch.classList.add("playing");
-    if(panOn&&!seek&&(playing||follow)) paintPan(pi);
+    // a held chord follows the cursor here too — see the note below
+    if(panOn&&(panMode==="chords"||(!seek&&(playing||follow)))) paintPan(pi);
     return;
   }
   if(cur){
@@ -3680,7 +3683,17 @@ function paintPulse(pi,seek){
     /* the pan lights what SOUNDS — so it stays dark on a mere seek, which
        looked like playing without audio (David, 27 Aug: "the playing
        animation goes off, but without sound") */
-    if(panOn&&!seek&&(playing||follow)) paintPan(pi);
+    /* A HELD CHORD FOLLOWS THE CURSOR; A FLASH DOES NOT (David, 28 Aug: after
+       switching pans "the chord view of the pan tab was out of sync with the
+       main chord view"). The chip highlight below runs on every paint,
+       navigation included, while the pan was skipped whenever the paint came
+       from a seek or nothing was playing — so clicking a bar moved the chord
+       row and left the pan showing the chord before it. That guard is right
+       for STROKES, which must not flash for a note nobody played, and wrong
+       for CHORDS, which state what is under the cursor and have no flash at
+       all. The pan switch only made it visible: the rebuild repaints from
+       panCursor(), so the two agreed again until the next navigation. */
+    if(panOn&&(panMode==="chords"||(!seek&&(playing||follow)))) paintPan(pi);
     const chip=document.querySelector('[data-ai="'+cur.ai+'"]')||document.querySelector('[data-ai-'+cur.ai+']');
     if(chip) chip.classList.add("playing");
     document.querySelectorAll(".cchip.playing").forEach(el=>el.classList.remove("playing"));
@@ -6446,6 +6459,17 @@ function renderChordRow(){
     w.appendChild(nm); w.appendChild(c); row.appendChild(w);
   });
   box.appendChild(row);
+  /* AND MARK WHERE WE ARE, from the same source the pan reads. A rebuild —
+     switching pans, transposing, editing — threw the highlight away and left
+     the row blank until the next paint, while the pan card repainted itself
+     from panCursor() straight away. Two views of one chord must not be able to
+     disagree, so they answer to one cursor. */
+  const pi=panCursor(), sc=secOfPulse(pi);
+  if(sc&&sc.name===viewSec){
+    const bi=Math.floor((pi-sc.pulse)/SM(piece,sc.name).bp);
+    const cc=box.querySelector('.cchip[data-cbar="'+bi+'"]');
+    if(cc) cc.classList.add("playing");
+  }
 }
 function baseOf(nm){ const m=String(nm).match(/^(.*?)(\d*)$/); return {base:m[1]||nm,num:m[2]}; }
 function arrEntries(){ let pulse=0;
