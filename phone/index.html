@@ -8774,8 +8774,27 @@ function jvCandidates(name,V,narrow){
       if(c.ms[i]-c.ms[i-1]<=2&&c.ms[i-1]<60) return false;
     return true;
   };
-  const legal=out.filter(c=>c.bassOk&&clean(c));
-  const use=legal.length?legal:(out.filter(c=>c.bassOk).length?out.filter(c=>c.bassOk):out);
+  /* ONLY THE BASS GOES LOW (David, 28 Aug, seeing underside notes 1 and 3
+     under one chord: "they are way too focussed on the low register … the
+     main of the voicings should be in the mid register, the lower bottom
+     notes should be used only for bass notes"). At most ONE note below A3 —
+     the bass itself, and the bass rule above already says that note must be
+     the root.
+     THIS COULD NOT ARISE BEFORE THE UNDERSIDE. A plain pan has nothing under
+     its ding, so "keep the bottom low" could never pull a SECOND voice down
+     there; an extended one can, and 41% of the voicings on the eight
+     underside pans did — B♭2·F3·D4 for a B♭maj, C3·G3·E4 for a Cmaj.
+     Excluded outright rather than priced, in the same shape as the bass and
+     semitone rules, because a price can always be outbid. */
+  const oneLow=c=>{ let n=0; for(const m of c.ms) if(m<BASS_TOP) n++; return n<=1; };
+  /* strictest first, then give up one rule at a time — a semitone low down is
+     the worse sound of the two, so `clean` outranks `oneLow` when the pan
+     cannot honour both */
+  let use=out;
+  for(const f of [c=>c.bassOk&&clean(c)&&oneLow(c), c=>c.bassOk&&clean(c),
+                  c=>c.bassOk&&oneLow(c), c=>c.bassOk]){
+    const s=out.filter(f); if(s.length){ use=s; break; }
+  }
   const low=Math.min.apply(null,use.map(c=>c.ms[0]));
   for(const c of use) c.top=Math.max.apply(null,c.ms);
   const reg=(a,b)=>{ for(let i=0;i<a.ms.length;i++) if(a.ms[i]!==b.ms[i]) return a.ms[i]-b.ms[i]; return 0; };
