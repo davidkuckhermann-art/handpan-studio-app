@@ -56,19 +56,38 @@ body.phone #genBtn{display:none !important}
 /* the name lives in the head, so the copy inside the notation goes away */
 body:not(.phone) #score .secrow{display:none}
 /* the footer is practice LEFT and arrangement RIGHT, with a guaranteed gap */
-#scorefoot{display:flex; align-items:center; justify-content:space-between;
+/* THREE GROUPS NOW, so space-between would float the arrangement into the
+   middle. Practice packs LEFT, and the arrangement's auto margin pushes it and
+   feel to the right as one block. In jam the arrangement is display:none, so
+   feel carries the push itself. */
+#scorefoot{display:flex; align-items:center; justify-content:flex-start;
   column-gap:34px; row-gap:9px; flex-wrap:nowrap;
   margin-top:12px; padding-top:11px; border-top:1px solid var(--rule2);
   font-family:Figtree,sans-serif}
 #footL{display:flex; align-items:center; gap:6px}
-#arrhost{display:flex; align-items:center}
+#arrhost{display:flex; align-items:center; margin-left:auto}
+body.jam #scorefoot #footFeel{margin-left:auto}
+/* the pair keeps the settings sheet's label weight — it reads as one control
+   group, not as two loose widgets dropped on the transport line */
+#footFeel{display:flex; align-items:center; gap:10px; flex:0 0 auto}
+#footFeel #swingRow{display:flex; align-items:center; gap:8px; padding:0}
+#footFeel #feelWrap{display:flex; align-items:center; gap:6px}
+#footFeel #swingRow>span:first-child,#footFeel .vlab{
+  font-size:13.5px; font-weight:600; color:var(--ink2); white-space:nowrap}
 /* Shedding, in David's order: the ARRANGEMENT label, then the table numbers,
    then the Count-in button (which is why it also lives in Settings — it must
-   never become unreachable), and only then does the footer stack. */
+   never become unreachable), and only then does the footer stack.
+   "Groove map:" is shed BEFORE all of them — the newcomer's caption is the
+   least-earned word on the line, and its button keeps its title. */
+#scorefoot.nofeellab #feelLab{display:none}
 #scorefoot.nolabel .lab{display:none}
 #scorefoot.nocount #countBtn{display:none}
 /* last resort: stack the three groups instead of clipping them */
 #scorefoot.tight,body.editing #scorefoot{flex-wrap:wrap; justify-content:center}
+/* stacked, the groups are centred — an auto margin would still shove one of
+   them at the right-hand edge and undo it */
+#scorefoot.tight #arrhost,#scorefoot.tight #footFeel,
+body.editing #scorefoot #arrhost,body.editing #scorefoot #footFeel{margin-left:0}
 body.editing #scorefoot #arrbox,#scorefoot.tight #arrbox{flex-wrap:wrap; justify-content:center}
 #scorefoot.tight #arrChips,#scorefoot.tight #subChips{flex-wrap:wrap; justify-content:center}
 /* Nothing inside the groups may shrink — fitFooter() adds up their natural
@@ -180,6 +199,7 @@ button{font:inherit; cursor:pointer}
    edit section and the rest of the menu"). The settings sheet's .dsep is
    scoped to #setDlg, so a copy of it in the share sheet drew nothing at all. */
 .shsep{height:1px; background:var(--rule); margin:13px -14px 12px}
+#setFeelHead,#setFeelSep,#feelRow{display:none}
 .tabonly{display:none !important}
 body.design-tab .tabonly{display:flex !important}
 /* ---- the video's own caption bar: which file is loaded, whether it has a map,
@@ -1906,6 +1926,12 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <button class="ib" id="markBtn" title="What the playback marker follows"><svg><use href="#is-mark"/></svg></button>
    </span>
    <span id="arrhost"></span>
+   <!-- FEEL HAS A DESKTOP HOME (David, 28 Aug: "score footer, aligned right").
+        Swing and the groove map were drawer residents on the phone and lived
+        two clicks deep in Settings here — which is the opposite of what they
+        are: you feel your way to a swing WHILE the music plays. Moved out of
+        #setDlg at boot, not copied, so both platforms drive one pair. -->
+   <span id="footFeel"></span>
   </div>
  </div>
 </div>
@@ -2400,8 +2426,12 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
         L <input type="color" id="colR" aria-label="Left-hand colour">
         R <input type="color" id="colL" aria-label="Right-hand colour"></label>
       <button class="ctl" id="colReset" title="Hand colours back to black + green">↺</button></span></div>
-  <div class="dsep"></div>
-  <h4>Feel</h4>
+  <div class="dsep" id="setFeelSep"></div>
+  <!-- EMPTIED BY THE MOVE (28 Aug). Swing goes to the footer on the desktop
+       and to the drawer on the phone; #feelWrap leaves #feelRow behind with
+       nothing but its label. Heading, rule and husk are all hidden — the pair
+       has exactly one home per platform now, and neither is here. -->
+  <h4 id="setFeelHead">Feel</h4>
   <div class="drow" id="swingRow"><span>Swing</span>
     <span style="display:flex;gap:9px;align-items:center">
       <input type="range" id="swing" min="0" max="100" step="5" style="width:110px">
@@ -3461,10 +3491,30 @@ function tick(){
   }catch(e){}
   raf=requestAnimationFrame(tick);
 }
+/* THE RUN-IN, WHEREVER THE APP STARTS THE VIDEO (David, 28 Aug: the first beat
+   goes missing "when playback is triggered by the embed and the embed player
+   is not on silent"). Starting the video exactly where it is parked means its
+   clock only begins moving AT the pulse that has to sound, and by the time the
+   app has a running clock that pulse is behind the 60 ms lateness cut-off. So
+   before starting it, send it back a fraction of a second: the app then has a
+   live clock while the downbeat is still ahead of it.
+   Only when the PAN is the one sounding. Muted, the student hears the video
+   and there is nothing to rescue, so the video is not moved at all. */
+function followRunIn(){
+  if(!follow||followMuted) return false;
+  if(!piece.syncMap||piece.syncMap.length<2||videoT==null) return false;
+  const p=mapPulse(videoT);
+  videoSeek(Math.max(0,videoT-FOLLOW_LEAD));
+  // and the marker waits where it is until the music comes back round to it
+  if(p!=null){ seekPaint=Math.max(0,Math.floor(p)); seekPaintAt=performance.now(); }
+  return true;
+}
 async function togglePlay(){
   // in follow mode the play button drives the VIDEO — the notation follows it
   if(follow){
     const v=$("vidEl");
+    const starting=(v&&v.src)?v.paused:!vidPlaying;
+    if(starting) followRunIn();          // hand the app a moment before the beat
     if(v&&v.src){ if(v.paused) v.play().catch(()=>{}); else v.pause(); return; }
     // embedded: ask the lesson page's bridge to toggle its player
     try{ window.parent.postMessage({type:"hps-video-ctl",action:"toggle"},"*"); }catch(e){}
@@ -3709,6 +3759,8 @@ let vPredT=null, vPredWall=0, followRaf=null, lastFollowPaint=null, vtimeStr="";
    clock is standing still, whether it JUMPED, and a seek we asked for and are
    still waiting to see arrive */
 let vLastA=null, vStill=false, vSeek=false, seekWant=null, seekAt=0;
+/* the bar a click asked for: the marker waits there through the run-in */
+let seekPaint=null, seekPaintAt=0;
 /* An <input> holds its default width whatever text is in it, which left the
    "Written for" badge floating in the gap. Measure the text in the field's own
    font and size the field to it, so the badge sits against the piece's name. */
@@ -4217,13 +4269,36 @@ function videoSeek(t){ // move the recording — local element or the embed brid
      cannot mute Follow for good. */
   seekWant=t; seekAt=performance.now();
 }
+const FOLLOW_LEAD=0.35;   // seconds of run-in before a clicked bar
 function seekToPulse(p){ // click in the notation: the playhead goes there
   if(!C) C=compile(piece);
   viewPin=null;          // acting on the table releases the hand-picked view
   if(follow&&piece.syncMap&&piece.syncMap.length>=2){
     const vt=invMap(p);
-    if(vt!=null) videoSeek(vt);
-    paintPulse(p); return;
+    if(vt!=null){
+      /* A HEAD START, BUT ONLY WHEN THE PAN IS THE ONE SOUNDING (David,
+         28 Aug: "playback is missing the first stroke — I think because it's
+         waiting for the video … let's start playback a tiny bit earlier than
+         the start of the bar, so there is time for the player to get up and
+         running in time for the first beat").
+         Landing exactly on the bar means the clock only starts moving AT the
+         pulse that has to sound, and by the time the app has a running clock
+         that pulse is already behind — followTick drops anything more than
+         60 ms late, so the first stroke goes missing. Seeking a third of a
+         second earlier hands the app a live clock while the downbeat is still
+         ahead of it, and the run-in is under half a beat at his tempo. The
+         video plays that run-in too, so the pan sounding it keeps the two
+         together rather than putting them out.
+         When the pan is muted the student is hearing the VIDEO, which has no
+         such problem, so nothing is moved — his call. */
+      const lead=followMuted?0:FOLLOW_LEAD;
+      videoSeek(Math.max(0,vt-lead));
+    }
+    paintPulse(p);
+    /* and the marker STAYS on the clicked bar until the music reaches it */
+    lastFollowPaint=seekPaint=Math.max(0,Math.floor(p));
+    seekPaintAt=performance.now();
+    return;
   }
   if(playing){ jumpTo(p); return; }
   pendingStart=p; paintPulse(p);
@@ -4622,9 +4697,13 @@ function onVideoTime(t,rate){
     }
   }
   if(aNow!=null) vLastA=aNow;
-  /* a seek we asked for has landed once the clock arrives near where we sent
-     it; until then the reports still describe the OLD place */
-  if(seekWant!=null&&(Math.abs(t-seekWant)<0.5||performance.now()-seekAt>2500))
+  /* A SEEK HAS LANDED THE MOMENT THE CLOCK JUMPS — wherever it landed. The
+     proximity test alone was fragile: a player that snaps to a keyframe can
+     arrive a second or more from where it was sent, and then nothing would be
+     scheduled until the 2.5 s timeout — a click answered by silence, which is
+     worse than the fault being fixed. The jump is the arrival; proximity and
+     the timeout stay as the belt and braces. */
+  if(seekWant!=null&&(vSeek||Math.abs(t-seekWant)<0.5||performance.now()-seekAt>2500))
     seekWant=null;
   if(!videoSeen&&!syncSeenOnce) setSyncMode(true);
   { const vs=fmtT(t); if(vs!==vtimeStr){ vtimeStr=vs; $("vtime").textContent=vs; } }
@@ -4666,6 +4745,12 @@ function followPaint(){
   if(!follow){ followRaf=null; return; }
   followRaf=requestAnimationFrame(followPaint);
   if(!C||playing) return;
+  /* A SEEK WE ASKED FOR IS IN FLIGHT, so the clock still describes where the
+     video WAS. Repainting from it drags the marker back to the old place for
+     the moment before the seek lands, which is what David saw as the playhead
+     "briefly changing" after clicking a bar with playback stopped. The click
+     has already painted the target; hold it. */
+  if(seekWant!=null) return;
   const t=predictedVideoT(); if(t==null) return;
   const p=mapPulse(t); if(p==null) return;
   /* FLOOR, not round (David, 26 Aug: "a tiny bit too early" in the Kajabi
@@ -4676,6 +4761,17 @@ function followPaint(){
      scheduled time has already PASSED (`fired[i].at<=now`), so the marker
      lights a stroke only once it has sounded. Follow now matches it. */
   const pr=Math.max(0,Math.floor(p));
+  /* AND IT HOLDS THROUGH THE RUN-IN. The click seeks a third of a second
+     before the bar so the player is moving by the downbeat, which means the
+     video lands BEHIND the clicked pulse and the marker would step backwards
+     to meet it — the same flicker, one place further on. The marker is for the
+     beat, not the run-in: it stays on the bar the student picked until the
+     music actually arrives there. Cleared on arrival, or after three seconds
+     so a seek that never lands cannot freeze it. */
+  if(seekPaint!=null){
+    if(pr<seekPaint&&performance.now()-seekPaintAt<3000) return;
+    seekPaint=null;
+  }
   if(pr===lastFollowPaint) return;         // 60 Hz loop, ~5 Hz of real changes
   lastFollowPaint=pr;
   if(pr>=C.total){ // past the last hit: the marker leaves the page
@@ -4753,9 +4849,18 @@ function followTick(t,p){                  // audio only — the marker is on rA
     const now=ctx?ctx.currentTime:0;
     for(const g of live){ try{ g.gain.setValueAtTime(g.gain.value,now);
       g.gain.linearRampToValueAtTime(0,now+.05);}catch(e){} }
-    live=[]; vCursor=Math.ceil(p);
+    /* FLOOR, NOT CEIL — this is the missing first beat when the VIDEO starts
+       playback rather than the app (David, 28 Aug: "the same issue is present
+       when playback is started by the video player"). A video parked on a bar
+       line reports 48.02 on its first moving frame; ceil made the cursor 49
+       and the downbeat at 48 was never even considered. The rounding was doing
+       a job the scheduling loop already does better: it fires a pulse only
+       while `at > ctx.currentTime - 0.06`, so a pulse genuinely gone by is
+       still skipped, and one we are sitting on — a few milliseconds past —
+       still sounds. Ceil could not tell those apart; the loop can. */
+    live=[]; vCursor=Math.floor(p);
   } else if(p-vCursor>2){
-    vCursor=Math.ceil(p);   // a gap in the reports: skip up, cut nothing
+    vCursor=Math.floor(p);   // a gap in the reports: skip up, cut nothing
   }
   if(!ctx||vOff==null) return;
   /* The seek we asked for has not arrived yet, so these reports still describe
@@ -5532,15 +5637,32 @@ function placeJamPanel(){
   jp.classList.toggle("hidden",!show);
   if(cw) cw.classList.toggle("jamhide",show);
 }
+/* WHICH SIDE A ROOM OPENS ON (David, 26 Aug: pan is the default). An
+   unambiguous stored choice is honoured; anything else — nothing stored yet,
+   both stored on from before they became a switch, or both off — is the pan.
+   Read in TWO places now, boot and the way out of jam, so it is one function. */
+function storedSide(){
+  try{ const c=localStorage.getItem("hps.chords"), pn=localStorage.getItem("hps.pan");
+    if(c==="1"&&pn!=="1") return "chords"; }catch(e){}
+  return "pan";
+}
+function showSide(side){ if(side==="chords") setChords(true); else setPan(true); }
+/* THE SIDE IS THE ROOM'S BUSINESS, NOT THE APP'S (David, 28 Aug). Jam ALWAYS
+   opens on the pan, whatever was chosen last time, and what you tap while you
+   are IN jam stays in jam — so a piece comes back to the side you left it on.
+   Before this, entering jam forced Chords and WROTE it, which permanently
+   flipped the default for every room after a single visit (measured on a
+   wiped phone: fresh boot pan, one jam visit, chords ever after). */
+function sideSticks(){ return !(PHONE&&jamOn); }
 function setChords(v){ chordRowOn=v;
-  try{localStorage.setItem("hps.chords",v?"1":"0")}catch(e){}
+  if(sideSticks()) try{localStorage.setItem("hps.chords",v?"1":"0")}catch(e){}
   $("chordBtn").classList.toggle("on",v);
   $("chordBtn").setAttribute("aria-pressed",v?"true":"false");
   if(v&&PHONE&&panOn) setPan(false);
   if(PHONE) placeJamPanel();
   render(); }
 function setPan(v){ panOn=v;
-  try{localStorage.setItem("hps.pan",v?"1":"0")}catch(e){}
+  if(sideSticks()) try{localStorage.setItem("hps.pan",v?"1":"0")}catch(e){}
   $("panBtn").classList.toggle("on",v);
   $("panBtn").setAttribute("aria-pressed",v?"true":"false");
   document.body.classList.toggle("haspan",v);   // the row aligns right while it shows
@@ -5817,7 +5939,7 @@ function maxTables(){
    flanks are 1fr will not report an honest scrollWidth. */
 function fitFooter(){
   const f=$("scorefoot"); if(!f||PHONE||editing) return;
-  f.classList.remove("nolabel","tcollapsed","nocount","tight");
+  f.classList.remove("nofeellab","nolabel","tcollapsed","nocount","tight");
   labelPills(false);
   /* Two groups now that the transport has gone back up top, so the test is the
      honest one again: both sides plus the gap against the card. (While the
@@ -5825,7 +5947,16 @@ function fitFooter(){
      to be PER FLANK — each side gets only HALF the slack, which is how the
      pills came to hang out of the frame.) */
   const GAP=34;
-  const fits=()=>$("footL").scrollWidth+$("arrhost").scrollWidth+GAP <= f.clientWidth;
+  /* THREE GROUPS, AND ONE OF THEM COMES AND GOES — the arrangement is
+     display:none in jam, so it measures 0 and must not be charged a gap it
+     does not occupy. Count the groups that are actually there. */
+  const fits=()=>{
+    const w=["footL","arrhost","footFeel"].map(id=>{const e=$(id); return e?e.scrollWidth:0})
+              .filter(x=>x>0);
+    return w.reduce((a,b)=>a+b,0)+GAP*Math.max(0,w.length-1) <= f.clientWidth;
+  };
+  if(fits()) return;
+  f.classList.add("nofeellab");                         // 0. "Groove map:"
   if(fits()) return;
   f.classList.add("nolabel");                           // 1. the label
   if(fits()) return;
@@ -6581,6 +6712,7 @@ function loadPiece(p){
     document.body.classList.remove("jam");
     updatePracticeBtn(); if(!PHONE) $("jampanel").classList.add("hidden");
     $("grooveHost").innerHTML="";
+    document.querySelectorAll(".jdeep").forEach(el=>el.remove());
     try{ $("jamDlg").close(); }catch(e){}
   }
   piece=JSON.parse(JSON.stringify(p));
@@ -7662,9 +7794,11 @@ function enterJam(){
   if(!allPats().some(p=>p.id===jam.patternId)) jam.patternId=JAMPATS[0].id;
   if(jam.bpm) bpm=jam.bpm;
   jamOn=true; document.body.classList.add("jam");
-  // the phone opens on the CHORDS side — the progression is what you came
-  // for, and the pan is one tap away (David, 26 Aug)
-  if(PHONE&&!chordRowOn) setChords(true);
+  /* THE PHONE OPENS A JAM ON THE PAN (David, 28 Aug: "Jam mode should always
+     open with pan view, even if the user selected chords last time") — the pan
+     is what you play a jam ON, and the progression is one tap away. Set AFTER
+     jamOn, so sideSticks() keeps it out of the stored preference. */
+  if(PHONE) setPan(true);
   updatePracticeBtn(); if(!PHONE) $("jampanel").classList.remove("hidden");
   paintTutorials();          // the jam note obeys the tutorial record now
   applyJam();
@@ -7680,9 +7814,13 @@ function leaveJam(){
   jamOn=false; jamEditSlot=-1; document.body.classList.remove("jam");
   updatePracticeBtn(); if(!PHONE) $("jampanel").classList.add("hidden");
   $("grooveHost").innerHTML="";
+  // the voicings leave the notation head with the jam that owned them
+  document.querySelectorAll(".jdeep").forEach(el=>el.remove());
   try{ $("jamDlg").close(); }catch(e){}
   const prev=jamPrev; jamPrev=null;
   if(prev){ loadPiece(prev.piece); bpm=prev.bpm; $("bpm").value=bpm; }
+  // the piece comes back to the side you left it on — jam never spent it
+  if(PHONE) showSide(storedSide());
   if(PHONE){ setDrawer(false); placeDrawer(); phoneFit(); }   // …and a row shorter on the way out
 }
 // Regenerate from the recipe. Mid-playback the piece is swapped under the
@@ -7881,7 +8019,7 @@ function renderJamPanel(){
      a progression — ♭ ♯ Clear and Generate — goes back UNDER THE NOTATION; the
      settings behind it (the voicing, Open in editor) live in the drawer. */
   const tools=document.createElement("span"); tools.className="jtools";
-  const deep=document.createElement("span"); deep.className="jtools";
+  const deep=document.createElement("span"); deep.className="jtools jdeep";
   const mk=(txt,title,fn,into)=>{ const t=document.createElement("button");
     t.className="ctl"; t.textContent=txt; t.title=title;
     t.addEventListener("click",fn); (into||tools).appendChild(t); };
@@ -7927,7 +8065,10 @@ function renderJamPanel(){
      either way, and renderJamPanel only clears #jamProg, so the old block has
      to go first or the rows stack up (that was the "several grooves selected
      at once" bug). */
-  $("jampanel").querySelectorAll(".jtoolbox,.jgroovebox").forEach(el=>el.remove());
+  /* .jdeep is searched from the DOCUMENT, not from #jampanel: on the desktop
+     it lives in the notation head, outside this panel, and a render that left
+     the old one standing would stack a Narrow|Wide pair per repaint. */
+  document.querySelectorAll(".jtoolbox,.jgroovebox,.jdeep").forEach(el=>el.remove());
   let jbox=null;
   if(PHONE){
     /* THE TWO KINDS OF CONTROL ARE SEPARATED (David, 27 Aug). The tools —
@@ -7945,7 +8086,15 @@ function renderJamPanel(){
     jbox.appendChild(tools); $("jampanel").insertBefore(jbox,$("jamtrack"));
     const host=$("dwMode");
     if(host){ dwModeReset(); host.appendChild(deep); }
-  } else prog.appendChild(tools);
+  } else {
+    prog.appendChild(tools);
+    /* THE VOICINGS GO TOP RIGHT, beside 🎲 Generate (David, 28 Aug) — the
+       head's jam-only cell, level with the play button. Until now `deep` was
+       built on every desktop render and attached to nothing, so Narrow|Wide
+       was unreachable outside the phone. Inserted BEFORE #genBtn, which is
+       static markup and keeps the corner. */
+    const hr=$("scoreheadR"); if(hr) hr.insertBefore(deep,$("genBtn"));
+  }
   // the groove: one button naming the current one, sitting at the score
   // frame's TOP LEFT beside the section name (David, 26 Aug) — the browser
   // dialog behind it has the whole library
@@ -12133,6 +12282,10 @@ if(PHONE){
    notation — the footer's controls go back to the phone's own transport row,
    the same escape the play button has always used. */
 if(!PHONE) $("arrhost").appendChild($("arrbox"));
+/* MOVED, never copied — the same rule the drawer follows, so `paintFeel`'s
+   greying of #swingRow and every listener still reach a live element. The
+   phone leaves these alone here and placeDrawer collects them instead. */
+if(!PHONE) $("footFeel").append($("swingRow"),$("feelWrap"));
 else{
   /* PHONE: the practice controls go into the bar's first row, the transport
      joins them at its right, and the arrangement flattens into the second row.
@@ -12154,15 +12307,10 @@ else{
   $("chordBtn").textContent="Chords"; $("panBtn").textContent="Pan";
   cp.append($("chordBtn"),$("panBtn"));
   $("cpHost").appendChild(cp);
-  /* PAN is the switch's default side (David, 26 Aug). An unambiguous stored
-     choice is honoured; anything else — nothing stored yet, both stored on
-     from before they became a switch, or both off — lands on the pan. */
-  let side="pan";
-  try{
-    const c=localStorage.getItem("hps.chords"), pn=localStorage.getItem("hps.pan");
-    if(c==="1"&&pn!=="1") side="chords";
-  }catch(e){}
-  if(side==="chords") setChords(true); else setPan(true);
+  /* PAN is the switch's default side (David, 26 Aug) — see storedSide(). This
+     runs AFTER boot(), so a shared jam link that has already opened jam keeps
+     the pan jam gave it rather than being pulled back to the stored side. */
+  if(!jamOn) showSide(storedSide());
   // boot painted the .on class but not the pressed state the pills read
   $("chordBtn").setAttribute("aria-pressed",chordRowOn?"true":"false");
   $("panBtn").setAttribute("aria-pressed",panOn?"true":"false");
