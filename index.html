@@ -1063,6 +1063,23 @@ body.phone #pvwrap.sides #pvsvg{width:min(236px,calc(100vw - 150px))}
    text pill was wider than the gap and sat on the pan (David, 26 Aug). */
 #panmode{position:absolute; top:8px; right:8px; z-index:2; width:28px; height:28px}
 #panmode svg{width:15px; height:15px}
+/* the customiser's own button sits beside the mode switch, in the corner gap
+   the circle already leaves free; its instruction bar rides ABOVE the drawing,
+   where an instruction is read before the thing it is about */
+#pancustom{position:absolute; top:8px; right:42px; z-index:2; width:28px; height:28px}
+#pancustom svg{width:16px; height:16px}
+/* the two corner buttons are absolutely positioned over this row's right end,
+   so the bar reserves their width — without it the phone ran "Reset" straight
+   under them and half the button was unreachable */
+#pcbar{display:flex; align-items:center; gap:10px; justify-content:center; flex-wrap:wrap;
+  margin-top:8px; padding-right:78px; font-size:12.5px; color:var(--ink2)}
+#pcbar .ctl{padding:5px 10px; font-size:12.5px}
+body.phone #pcbar{font-size:11.5px}
+/* customising: the fields are handles, so they say so and stop inviting a tap */
+#panbox.customising .pvf{cursor:grab; touch-action:none}
+#panbox.customising .pvf.dragging{cursor:grabbing}
+#panbox.customising .pvf.dragging .pvbase{stroke:var(--dixie); stroke-width:3}
+#panbox.customising #pvsvg{touch-action:none}
 .pvf.clit .pvbase{fill:var(--dixie-soft); stroke:var(--dixie); stroke-width:2.5}
 /* struck NOW — rides on top of the amber chord marking, so the eye sees the
    whole chord and which of its fields is sounding at this instant */
@@ -1241,6 +1258,15 @@ body.phone{padding:calc(10px + env(safe-area-inset-top)) calc(10px + env(safe-ar
            calc(30px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left))}
 body.phone #syncOpen,body.phone #editBtn,body.phone #authortools,
 body.phone #scorefoot,body.phone #scorehead{display:none !important}
+/* …AND THE BARS THOSE BUTTONS OPEN (David, 28 Aug: "the video sync dialogue is
+   not necessary to have in the phone app"). Hiding #syncOpen was never enough,
+   because the bar opens ITSELF: loadPiece turns sync mode on for any piece
+   carrying a map, so Composition 1's 49 anchors handed the tempo-map editor to
+   every phone. The identical fault player mode had on 28 Aug, and the same fix.
+   FOLLOW IS UNTOUCHED — #followBtn and #folMute live in #sctools, and the
+   engine needs no bar on screen; a student in a Kajabi lesson still follows the
+   video. Authoring a map is a desktop job. */
+body.phone #syncbar,body.phone #mapbar,body.phone #vidwrap{display:none !important}
 /* ============ PHONE PORTRAIT — "the pinned cockpit" (David, 26 Aug) ============
    Landscape is untouched; everything here is portrait-only or overridden by the
    landscape block below. The idea is the landscape he already likes, turned
@@ -2516,6 +2542,11 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <div class="drow tabonly"><span>Tab rows</span>
     <select class="ctl" id="rowsSel" title="Tab notation in one row, or split into left- and right-hand rows">
       <option value="one">One</option><option value="split">L + R</option></select></div>
+  <div class="drow"><span>Pan orientation</span>
+    <span class="pills" id="orientPills" role="group" aria-label="Pan orientation">
+      <button id="orient1" title="The lowest field nearest you, dead centre">1 centred</button>
+      <button id="orient2" title="The two lowest fields straddling the centre line">2 centred</button>
+    </span></div>
   <div class="drow" id="rowTak"><span>Tak glyph</span>
     <button class="ctl" id="takBtn" title="Show tak as T or K">Tak: <b id="takGl">T</b></button></div>
   <div class="drow"><span>Hand colours</span>
@@ -3364,6 +3395,27 @@ try{
 }catch(e){}
 if(countMark==="quarter"||countMark==="half"||countMark==="bar") countMark="subdiv";
 if(!["off","16th","8th","subdiv"].includes(countMark)) countMark="off";
+/* HOW THE PAN IS HELD (David, 28 Aug): "2 centred by default, global toggle
+   for non-customised scales in settings". The drawing already put field 1 at
+   bottom centre — that IS "1 centred" — so the toggle is one extra term in the
+   ring's angle, half a slot. It moves nothing but the picture: numbers, the
+   notation and every stored position are untouched.
+   A pan with a CUSTOM LAYOUT ignores it, because its layout already says where
+   every field is — the customiser is the per-pan override. */
+let panOrient=localStorage.getItem("hps.panorient")==="1"?"1":"2";   // 2 centred by default
+/* deliberately NOT persisted: customising is something you finish, and a
+   student who reopens the app inside a drag mode has lost their tap-to-hear
+   with no idea why */
+let panCustom=false;
+function setPanCustom(v){
+  panCustom=!!v;
+  if(panCustom&&panMode==="chords") setPanMode("strokes");   // chords paints over the drag
+  else renderPanPanel();
+  if(panCustom) toast("Drag the fields to match your instrument — they cannot overlap");
+}
+function panLayouts(){ try{return JSON.parse(localStorage.getItem("hps.panlayout")||"{}")}catch(e){return{}} }
+function setPanLayouts(o){ try{localStorage.setItem("hps.panlayout",JSON.stringify(o))}catch(e){} }
+function layoutFor(id){ const l=panLayouts()[id]; return (l&&(l.f||l.b))?l:null; }
 let panOn=(localStorage.getItem("hps.pan")||"0")==="1";       // the pan companion panel
 // pan view: strokes flash per hit | chords hold the active chord's fields lit
 let panMode=localStorage.getItem("hps.panmode")==="chords"?"chords":"strokes";
@@ -6007,6 +6059,11 @@ function panViewSVG(pan,label,opts){
   const P=pan||myPan, n=P.fields.length, ring=zigzag(n);
   const cx=215, R=207, fr=37, dr=52, pr=148;
   const U=undersideGeom(P,opts&&opts.under), pad=U.pad;
+  /* A CUSTOM LAYOUT WINS OVER BOTH the default ring and the orientation
+     toggle — it already says where every field is. Half a slot is the whole
+     of "2 centred": field 1 sits at π/2 and field 2 one step back, so their
+     midpoint is π/2 − π/n, and adding π/n puts that midpoint at the bottom. */
+  const LAY=layoutFor(P.pan&&P.pan.id), half=(!LAY&&panOrient==="2")?Math.PI/n:0;
   const VB=430+2*pad;
   let h='<svg id="pvsvg" viewBox="0 0 '+VB+' '+VB+'" role="img" aria-label="'+(label||"Your pan from above — tap a field to hear it")+'">'
    +'<defs><radialGradient id="pvg" cx="50%" cy="42%" r="68%">'
@@ -6026,17 +6083,21 @@ function panViewSVG(pan,label,opts){
     +'<text x="'+x+'" y="'+(y+numSize*.32)+'" text-anchor="middle" font-family="Inter" font-size="'+numSize+'" font-weight="700" fill="var(--sc-ink)" pointer-events="none">'+num+'</text>'
     +'<text class="pvnote" x="'+x+'" y="'+(y+noteDy)+'" text-anchor="middle" font-family="Figtree" font-size="11.5" font-weight="600" fill="var(--ink3)" pointer-events="none">'+note+'</text></g>';
   ring.forEach((f,k)=>{
-    const a=Math.PI/2+k*2*Math.PI/n;
+    const a=Math.PI/2+half+k*2*Math.PI/n;
     // mirrored: the zigzag's odd fields sit on the player's RIGHT (David, 26 Aug —
     // "right is black and left is green" meant the drawn pan was flipped)
-    const x=+(cx-pr*Math.cos(a)).toFixed(1), y=+(cx+pr*Math.sin(a)).toFixed(1);
+    const c=LAY&&LAY.f&&LAY.f[f];
+    const x=c?c.x:+(cx-pr*Math.cos(a)).toFixed(1), y=c?c.y:+(cx+pr*Math.sin(a)).toFixed(1);
     h+=field(f,x,y,fr,String(f),P.labelFor(f),21,24);
   });
-  h+=field(0,cx,cx,dr,"D",P.labelFor(0),26,32);
+  const c0=LAY&&LAY.f&&LAY.f[0];
+  h+=field(0,c0?c0.x:cx,c0?c0.y:cx,dr,"D",P.labelFor(0),26,32);
   /* drawn AFTER the ring so a straddling field sits over the rim line, and
      dust-filled + dashed — the same neutral disc David chose for the notation
      mark, so the score and the drawing say "underside" in one voice */
-  (U.place||[]).forEach(pl=>{
+  (U.place||[]).forEach(pl0=>{
+    const c=LAY&&LAY.b&&LAY.b[pl0.i];
+    const pl=c?Object.assign({},pl0,{x:c.x,y:c.y}):pl0;
     const ns=Math.max(13,Math.round(pl.r*.58));
     h+='<g class="pvf pvb" id="pvb'+pl.i+'" data-b="'+pl.i+'" tabindex="0" role="button"'
       +' aria-label="Underside '+(pl.i+1)+' — '+pl.b.label+'">'
@@ -6090,6 +6151,30 @@ function renderPanPanelInner(){
     +'<circle cx="12" cy="5" r="2.6"/><circle cx="12" cy="12" r="2.6"/><circle cx="12" cy="19" r="2.6"/></svg>';
   sw.addEventListener("click",()=>setPanMode(ch?"strokes":"chords"));
   box.appendChild(sw);
+  /* CUSTOMISE IS A MODE, not a gesture (David, 28 Aug: "free drag+drop, just
+     no overlapping tone fields"). It has to be: the fields are tap-to-hear, so
+     dragging and playing cannot share the same finger. */
+  const cz=document.createElement("button");
+  cz.id="pancustom"; cz.className="ib"+(panCustom?" on":"");
+  cz.title=panCustom?"Done — leave the fields where they are"
+                    :"Customise this pan's layout — drag the fields to match your instrument";
+  cz.setAttribute("aria-label",cz.title);
+  cz.setAttribute("aria-pressed",String(panCustom));
+  cz.innerHTML=panCustom?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"'
+      +' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>'
+    :'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"'
+      +' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+      +'<path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="12" cy="12" r="3.2"/></svg>';
+  cz.addEventListener("click",()=>setPanCustom(!panCustom));
+  box.appendChild(cz);
+  if(panCustom){
+    const bar=document.createElement("div"); bar.id="pcbar";
+    // the phone has 78px less to play with, and the toast already said it in full
+    bar.innerHTML='<span>'+(PHONE?"Drag to match your pan":"Drag a field to where it sits on your pan")+'</span>'
+      +'<button class="ctl" id="pcReset">Reset</button>';
+    box.appendChild(bar);
+  }
+  box.classList.toggle("customising",panCustom);
   const wrap=document.createElement("div"); wrap.id="pvwrap";
   const pan=document.createElement("div"); pan.innerHTML=panViewSVG(null,null,{under:true});
   /* The strokes flank the instrument in two columns instead of sitting in a row
@@ -6136,7 +6221,7 @@ function renderPanPanelInner(){
      flash machinery for free, but they carry data-b and would come through
      here as +undefined = NaN */
   box.querySelectorAll(".pvf:not(.pvb)").forEach(g=>{
-    g.addEventListener("pointerdown",()=>tapField(+g.dataset.f));
+    g.addEventListener("pointerdown",()=>{ if(!panCustom) tapField(+g.dataset.f); });
     g.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); tapField(+g.dataset.f); } });
   });
   // the underside sounds exactly as the top shell does, from the same bank
@@ -6147,7 +6232,7 @@ function renderPanPanelInner(){
     pvFlash($("pvb"+i),["hT"]);
   };
   box.querySelectorAll(".pvb").forEach(g=>{
-    g.addEventListener("pointerdown",()=>tapBottom(+g.dataset.b));
+    g.addEventListener("pointerdown",()=>{ if(!panCustom) tapBottom(+g.dataset.b); });
     g.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); tapBottom(+g.dataset.b); } });
   });
   const tapPerc=(s,id)=>{ // the badges sound like the fields do (David, 26 Aug)
@@ -6162,7 +6247,81 @@ function renderPanPanelInner(){
     el.addEventListener("pointerdown",()=>tapPerc(s,id));
     el.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); tapPerc(s,id); } });
   });
-  if(panMode==="chords") paintPanChord(panCursor());
+  if(panCustom) wirePanDrag(box);
+  if(panMode==="chords"&&!panCustom) paintPanChord(panCursor());
+}
+/* FREE DRAG, WITH ONE RULE: fields may not overlap (David, 28 Aug). Positions
+   are LAYOUT — a field keeps its number wherever it lands, so no score can be
+   harmed by anything that happens here. Stored per pan id, absolute in the
+   drawing's own coordinate space, so the viewBox never changes while dragging
+   and the picture cannot jump under the finger. */
+function wirePanDrag(box){
+  const svg=box.querySelector("#pvsvg"); if(!svg) return;
+  const VB=svg.viewBox.baseVal.width, pad=(VB-430)/2, R=207, cx=215;
+  // every draggable field, with the radius the overlap test needs
+  const items=[...svg.querySelectorAll(".pvf")].map(g=>{
+    const c=g.querySelector(".pvbase");
+    return {g,c,circles:[...g.querySelectorAll("circle")],txt:[...g.querySelectorAll("text")],
+            r:+c.getAttribute("r"),x:+c.getAttribute("cx"),y:+c.getAttribute("cy"),
+            key:g.classList.contains("pvb")?"b"+g.dataset.b:"f"+g.dataset.f};
+  });                                  // the dome drags too (David, 28 Aug)
+  const at=e=>{ const r=svg.getBoundingClientRect();
+    return {x:(e.clientX-r.left)/r.width*VB-pad, y:(e.clientY-r.top)/r.height*VB-pad}; };
+  let cur=null, dx=0, dy=0, shifted=false;
+  const legal=(it,x,y)=>{
+    // inside the drawing…
+    const d=Math.hypot(x-cx,y-cx);
+    if(d+it.r>R+pad-1) return false;
+    // …and clear of every other field, the dome included
+    for(const o of items){ if(o===it) continue;
+      if(Math.hypot(x-o.x,y-o.y) < it.r+o.r+2) return false; }
+    return true;
+  };
+  const move=(it,x,y)=>{
+    const ddx=x-it.x, ddy=y-it.y;
+    it.circles.forEach(c=>{ c.setAttribute("cx",+(+c.getAttribute("cx")+ddx).toFixed(1));
+                            c.setAttribute("cy",+(+c.getAttribute("cy")+ddy).toFixed(1)); });
+    it.txt.forEach(t=>{ t.setAttribute("x",+(+t.getAttribute("x")+ddx).toFixed(1));
+                        t.setAttribute("y",+(+t.getAttribute("y")+ddy).toFixed(1)); });
+    it.x=x; it.y=y;
+  };
+  svg.addEventListener("pointerdown",e=>{
+    const g=e.target.closest(".pvf"); if(!g) return;
+    const it=items.find(i=>i.g===g); if(!it) return;
+    const p=at(e); cur=it; dx=it.x-p.x; dy=it.y-p.y; shifted=false;
+    g.classList.add("dragging");
+    try{ svg.setPointerCapture(e.pointerId); }catch(err){}
+    e.preventDefault();
+  });
+  svg.addEventListener("pointermove",e=>{
+    if(!cur) return;
+    const p=at(e), x=+(p.x+dx).toFixed(1), y=+(p.y+dy).toFixed(1);
+    // REJECT rather than nudge: a field that slides out from under the finger
+    // reads as a bug. Illegal simply means it stays where it was.
+    if(legal(cur,x,y)&&(x!==cur.x||y!==cur.y)){ move(cur,x,y); shifted=true; }
+    e.preventDefault();
+  });
+  const drop=()=>{
+    if(!cur) return;
+    cur.g.classList.remove("dragging"); cur=null;
+    /* SAVE ONLY IF SOMETHING ACTUALLY MOVED. Writing a layout on every touch
+       would mark a pan "customised" the moment a student prodded a field —
+       and a customised pan stops following the orientation toggle, which is
+       a setting quietly going dead for a reason nobody could see. */
+    if(!shifted) return;
+    const all=panLayouts(), id=myPan.pan.id, L={f:{},b:{}};
+    items.forEach(it=>{ const t=it.key[0]==="b"?L.b:L.f;
+      t[it.key.slice(1)]={x:it.x,y:it.y}; });
+    all[id]=L; setPanLayouts(all);
+  };
+  svg.addEventListener("pointerup",drop);
+  svg.addEventListener("pointercancel",drop);
+  const rb=$("pcReset");
+  if(rb) rb.addEventListener("click",()=>{
+    const all=panLayouts(); delete all[myPan.pan.id]; setPanLayouts(all);
+    renderPanPanel();
+    toast("Layout reset — back to the standard circle");
+  });
 }
 function setPanMode(m){
   panMode=m==="chords"?"chords":"strokes";
@@ -6340,7 +6499,7 @@ function setChords(v){ chordRowOn=v;
   if(v&&PHONE&&panOn) setPan(false);
   if(PHONE) placeJamPanel();
   render(); }
-function setPan(v){ panOn=v;
+function setPan(v){ if(!v) panCustom=false; panOn=v;
   if(sideSticks()) try{localStorage.setItem("hps.pan",v?"1":"0")}catch(e){}
   $("panBtn").classList.toggle("on",v);
   $("panBtn").setAttribute("aria-pressed",v?"true":"false");
@@ -12122,6 +12281,22 @@ function boot(){
     applyHandColors(); toast("Hand colours back to black + green"); };
   $("colReset").addEventListener("click",colReset);
   $("colCtl").addEventListener("dblclick",colReset);
+  /* the orientation pills. Every drawing of the instrument follows it — the
+     card, the editor's palette and the quiz — because it is how you HOLD the
+     pan, not a property of one view. */
+  const paintOrient=()=>{
+    $("orient1").setAttribute("aria-pressed",String(panOrient==="1"));
+    $("orient2").setAttribute("aria-pressed",String(panOrient==="2"));
+  };
+  const setOrient=v=>{
+    if(panOrient===v) return;
+    panOrient=v;
+    try{localStorage.setItem("hps.panorient",v)}catch(e){}
+    paintOrient(); renderPanPanel(); if(editing) refresh();
+  };
+  $("orient1").addEventListener("click",()=>setOrient("1"));
+  $("orient2").addEventListener("click",()=>setOrient("2"));
+  paintOrient();
   $("handsBtn").classList.toggle("on",handsOn);
   $("handsBtn").addEventListener("click",()=>{ handsOn=!handsOn;
     try{localStorage.setItem("hps.hands",handsOn?"on":"off")}catch(e){}
