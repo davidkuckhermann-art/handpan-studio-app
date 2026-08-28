@@ -1189,6 +1189,9 @@ html.player #spGoWrap, html.player #csGoWrap,
    it cost 102px of a window that was already overflowing. `?author=1` cancels
    player mode, so David's own authoring URL still has both. */
 html.player #syncbar, html.player #mapbar{ display:none !important }
+/* 60px of air at the foot is right for a page you scroll and wasted in a
+   window sized to fit (28 Aug) */
+html.player body{ padding-bottom:14px }
 /* the title is an <input>: in player mode a student could type into the
    lesson's own piece name. Same metrics, so fitTitle() still measures it. */
 html.player #title{ border-color:transparent; background:transparent; cursor:default }
@@ -2738,6 +2741,20 @@ const BUILTIN_PANS=[
     scale most students own after Kurd. */
  {id:"c-aegean-9", name:"C Aegean 9",         ding:"C3", fields:["G3","A3","B3","C4","D4","E4","F4","G4","A4"]},
  {id:"d-celtic-9", name:"D Celtic Minor 9",   ding:"D3", fields:["A3","C4","D4","E4","F4","G4","A4","C5","D5"]},
+ /* THE FIRST TWO PANS WITH AN UNDERSIDE (28 Aug). Layouts straight from
+    SCALES.md; `bottom` is its own series, so `fields` — and therefore every
+    stored position — is untouched by their presence. The 17 is the one that
+    shows the desktop's bass sizing: B♭2 and C3 sit BELOW the ding and draw
+    large, F5 above the ring draws small.
+    NOTE for whoever owns the pan library: these are here so the underside is
+    reachable at all before the scale picker lands. Replace or absorb freely —
+    only the `bottom` key matters. */
+ {id:"d-kurd-14", name:"D Kurd 14", ding:"D3",
+  fields:["A3","B♭3","C4","D4","E4","F4","G4","A4","C5","D5","E5"],
+  bottom:["F3","G3"]},
+ {id:"d-kurd-17", name:"D Kurd 17", ding:"D3",
+  fields:["A3","B♭3","C4","D4","E4","F4","G4","A4","C5","D5","E5"],
+  bottom:["B♭2","C3","F3","G3","F5"]},
 ];
 function userPans(){ try{return JSON.parse(localStorage.getItem("hps.pans")||"[]")}catch(e){return[]} }
 function allPans(){ return BUILTIN_PANS.concat(userPans()); }
@@ -2754,16 +2771,26 @@ function zigzag(n){
 function derive(pan){
   const ding=midiOf(pan.ding);
   const fields=pan.fields.map((s,i)=>({n:i+1,midi:midiOf(s),label:s}));
+  /* THE UNDERSIDE IS A SEPARATE SERIES, NOT MORE FIELDS (28 Aug). `fields` is
+     the top shell and its length drives zigzag() and every stored position —
+     appending bottom notes to it would renumber the top of any pan that gained
+     one, and silently repoint every score written on it. Numbered 1..m by
+     pitch, the top shell's rule applied to the other surface. */
+  const bottom=(pan.bottom||[]).map((s,i)=>({n:i+1,midi:midiOf(s),label:s}));
   const iv=f=>f===0?0:(fields[f-1]?fields[f-1].midi-ding:null); // semitones above ding
   const ring=zigzag(fields.length);
   const adj=new Set();
   const pair=(a,b)=>{adj.add(a+"|"+b);adj.add(b+"|"+a)};
   for(let k=0;k<ring.length;k++) pair(ring[k],ring[(k+1)%ring.length]);
   pair(0,1); pair(0,2);             // one hand can span the ding and a bottom field
-  return {pan,ding,fields,iv,ring,adj,
+  return {pan,ding,fields,bottom,iv,ring,adj,
     adjacent:(a,b)=>a===b||adj.has(a+"|"+b),
     midiFor:(f)=>f===0?ding:(fields[f-1]?fields[f-1].midi:null),
-    labelFor:(f)=>f===0?pan.ding:(fields[f-1]?fields[f-1].label:"—")};
+    labelFor:(f)=>f===0?pan.ding:(fields[f-1]?fields[f-1].label:"—"),
+    /* the underside is reached by INDEX, through its own pair of accessors —
+       so no caller can confuse an underside note with top field number i */
+    botMidiFor:(i)=>bottom[i]?bottom[i].midi:null,
+    botLabelFor:(i)=>bottom[i]?bottom[i].label:"—"};
 }
 
 /* ---------------- synth voice (placeholder until David records) ----------------
@@ -2848,6 +2875,11 @@ function preloadBank(){ // returns a promise: everything the current pan needs
   const ps=[];
   for(const f of [0,...myPan.fields.map(x=>x.n)]){
     const m=myPan.midiFor(f); ps.push(bankDecode("o"+m),bankDecode("m"+m)); }
+  /* the underside decodes too. bank.js is chromatic F2–C6, so the samples are
+     already there — but a key that is never DECODED returns nothing and the
+     tap falls through to synthBuf, which is exactly how a real note comes out
+     sounding digital. */
+  for(const b of myPan.bottom||[]) ps.push(bankDecode("o"+b.midi),bankDecode("m"+b.midi));
   for(const p of ["takR","takL","slapR","slapL","knockR","knockL"]) ps.push(bankDecode("p_"+p));
   return Promise.allSettled(ps);
 }
@@ -5202,8 +5234,60 @@ function render(){
   renderChordRow();
   renderArr();
   phoneFit();
+  embedFit();
   paintLoopFrame();     // the loop survives every repaint
 }
+/* ── THE WINDOW GROWS; THE MUSIC DOES NOT SHRINK ────────────────────────────
+   David, 28 Aug: "I don't want to change player size, I'd like to extend the
+   available window to full player size and then lock vertical scrolling."
+   Under a lesson the app sits in an iframe of a fixed height and overflowed it
+   — measured at 949px inside 820 — so the student scrolled inside the embed
+   and the notation could sit half out of view. An earlier attempt shrank the
+   notation to fit, which is backwards: the notation is what they came for.
+   The app measures what it needs and ASKS the lesson page for that height;
+   the bridge sets it (build 2026-08-28e and later).
+   TWO THINGS THIS HAS TO GET RIGHT, both learned the hard way:
+   - The height is the bottom of the lowest laid-out block. `scrollHeight`
+     never falls below the viewport, so it cannot say whether anything fits;
+     and `position:fixed` floats over the page and takes no room.
+   - THE LOCK GOES ON THE DOCUMENT ELEMENT. `html` carries its own overflow
+     rule here, so a value set on `body` never propagates to the viewport —
+     David's screenshot showed the scrollbar still there, and it was html's.
+   And it locks only once the content really fits, so a lesson still carrying
+   an older block scrolls exactly as it did rather than having its lower half
+   put out of reach by a request nobody answered. */
+let embedAsked=0, embedT=null;
+function embedFit(){
+  const de=document.documentElement;
+  if(PHONE||!de.classList.contains("player")) return;
+  /* MEASURED FROM THE CONTENT, NEVER FROM THE VIEWPORT. The lowest laid-out
+     block, plus the page's breathing room at the foot, plus a few pixels for
+     what the frame loses to its own box — asking for exactly the body's height
+     came back three pixels short every time, so the lock never applied. And it
+     must not be the BODY's height: if that ever tracked the window, asking for
+     more would make it taller, which would ask for more again. Content cannot
+     do that. */
+  let cb=0;
+  for(const el of document.body.children){
+    const cs=getComputedStyle(el);
+    if(cs.position==="fixed"||cs.display==="none"||cs.visibility==="hidden") continue;
+    const r=el.getBoundingClientRect();
+    if(r.height>0) cb=Math.max(cb,r.bottom+scrollY);
+  }
+  if(cb<=0) return;
+  const foot=parseFloat(getComputedStyle(document.body).paddingBottom)||0;
+  const b=Math.ceil(cb+foot+6);
+  if(EMBEDDED&&Math.abs(b-embedAsked)>4){
+    embedAsked=b;
+    try{ parent.postMessage({type:"hps-size",h:b},"*"); }catch(e){}
+    /* and look again once the lesson page has had a moment to apply it: the
+       frame growing does not always reach us as a resize, and the lock below
+       can only be judged against the window we actually end up with */
+    clearTimeout(embedT); embedT=setTimeout(embedFit,200);
+  }
+  de.style.overflowY=(cb+foot>innerHeight+1)?"":"hidden";
+}
+addEventListener("resize",()=>{ if(!PHONE) embedFit(); });
 /* Phone shrink-to-fit: the score keeps its fixed design width (540 table /
    700 tab) and the card is zoomed so that width IS the screen — same layout
    as the desktop, smaller ink. The chord card gets the same treatment only
@@ -5612,15 +5696,51 @@ function effField(f){ // the field that actually sounds right now (mode-aware)
   if(mode==="trans"&&MAP){ const g=MAP[f]; return g===null||g===undefined?null:g; }
   return f;
 }
-function panViewSVG(pan,label){
+/* THE UNDERSIDE (David, 28 Aug — mockups-pan-underside.html, S1 phone + S3
+   desktop). OPT-IN via opts.under, because only the pan CARD wants it: the
+   editor palette and the chord quiz draw this same function and there is
+   nothing to place or find on the underside yet.
+   Desktop hangs the fields OUTSIDE the rim; the phone STRADDLES the rim line,
+   which measured −12% on a top field against −22% for the outer ring, and the
+   phone's drawing is only 225px wide to begin with.
+   Angles are a DEFAULT, not a fact: spread evenly across an arc centred on the
+   player's side, widening with the count until six ring the instrument. They
+   are layout, so the customiser will move them. */
+function undersideGeom(P,under){
+  const bots=(under&&P.bottom)||[];
+  if(!bots.length) return {bots:[],pad:0,place:null};
+  const R=207, m=bots.length;
+  const cr=PHONE?R:R+30;                     // straddle the rim, or hang outside it
+  const span=Math.min(360,m*60)*Math.PI/180, step=span/m;
+  const rad=b=>{
+    if(PHONE) return 24;                     // uniform: there is no room to say more
+    /* "on desktop you can make bass bottom notes bigger" (David) — and it is
+       true of the instrument: a lower field is a physically bigger dimple.
+       Ramped from the ding, so it reads on any pan rather than relative to
+       whatever bottom notes this one happens to have. */
+    const t=Math.max(0,Math.min(1,(b.midi-P.ding+4)/16));
+    return +(34-9*t).toFixed(1);
+  };
+  let pad=0;
+  const place=bots.map((b,i)=>{
+    const a=Math.PI/2-span/2+step/2+i*step, r=rad(b);
+    pad=Math.max(pad,cr+r-R);
+    return {b,i,r,x:+(215-cr*Math.cos(a)).toFixed(1),y:+(215+cr*Math.sin(a)).toFixed(1)};
+  });
+  return {bots,pad:Math.max(0,Math.ceil(pad)+2),place};
+}
+function panViewSVG(pan,label,opts){
   const P=pan||myPan, n=P.fields.length, ring=zigzag(n);
   const cx=215, R=207, fr=37, dr=52, pr=148;
-  let h='<svg id="pvsvg" viewBox="0 0 430 430" role="img" aria-label="'+(label||"Your pan from above — tap a field to hear it")+'">'
+  const U=undersideGeom(P,opts&&opts.under), pad=U.pad;
+  const VB=430+2*pad;
+  let h='<svg id="pvsvg" viewBox="0 0 '+VB+' '+VB+'" role="img" aria-label="'+(label||"Your pan from above — tap a field to hear it")+'">'
    +'<defs><radialGradient id="pvg" cx="50%" cy="42%" r="68%">'
    +'<stop offset="0%" stop-color="#F4EFE7"/><stop offset="72%" stop-color="#E9E2D5"/>'
    +'<stop offset="100%" stop-color="#D9CFBE"/></radialGradient>'
    +'<radialGradient id="pvgd" cx="50%" cy="40%" r="75%">'
    +'<stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#EFE9DE"/></radialGradient></defs>'
+   +(pad?'<g transform="translate('+pad+','+pad+')">':'')
    +'<circle cx="'+cx+'" cy="'+cx+'" r="'+R+'" fill="url(#pvg)" stroke="var(--sc-edge)" stroke-width="2"/>'
    +'<circle cx="'+cx+'" cy="'+cx+'" r="'+(R-10)+'" fill="none" stroke="rgba(107,74,56,.14)" stroke-width="1"/>';
   const field=(f,x,y,r,num,note,numSize,noteDy)=>
@@ -5639,7 +5759,23 @@ function panViewSVG(pan,label){
     h+=field(f,x,y,fr,String(f),P.labelFor(f),21,24);
   });
   h+=field(0,cx,cx,dr,"D",P.labelFor(0),26,32);
-  return h+'</svg>';
+  /* drawn AFTER the ring so a straddling field sits over the rim line, and
+     dust-filled + dashed — the same neutral disc David chose for the notation
+     mark, so the score and the drawing say "underside" in one voice */
+  (U.place||[]).forEach(pl=>{
+    const ns=Math.max(13,Math.round(pl.r*.58));
+    h+='<g class="pvf pvb" id="pvb'+pl.i+'" data-b="'+pl.i+'" tabindex="0" role="button"'
+      +' aria-label="Underside '+(pl.i+1)+' — '+pl.b.label+'">'
+      +'<circle class="pvbase" cx="'+pl.x+'" cy="'+pl.y+'" r="'+pl.r+'" fill="var(--dust)"'
+      +' stroke="#B8AE9F" stroke-width="1.5" stroke-dasharray="5 3.5"/>'
+      +'<circle class="pvtint" cx="'+pl.x+'" cy="'+pl.y+'" r="'+pl.r+'"/>'
+      +'<circle class="pvring" cx="'+pl.x+'" cy="'+pl.y+'" r="'+pl.r+'" fill="none" stroke-width="3.5"/>'
+      +'<text x="'+pl.x+'" y="'+(pl.y+ns*.32)+'" text-anchor="middle" font-family="Inter" font-size="'+ns+'"'
+      +' font-weight="700" fill="var(--sc-ink)" pointer-events="none">'+(pl.i+1)+'</text>'
+      +'<text class="pvnote" x="'+pl.x+'" y="'+(pl.y+pl.r*.62+7)+'" text-anchor="middle" font-family="Figtree"'
+      +' font-size="9.5" font-weight="600" fill="var(--ink3)" pointer-events="none">'+pl.b.label+'</text></g>';
+  });
+  return h+(pad?'</g>':'')+'</svg>';
 }
 /* The card has to be MEASURED AFTER IT IS DRAWN. render() fits the portrait
    stack, but refresh() draws the pan afterwards (`render(); renderPanPanel()`)
@@ -5673,7 +5809,7 @@ function renderPanPanelInner(){
   sw.addEventListener("click",()=>setPanMode(ch?"strokes":"chords"));
   box.appendChild(sw);
   const wrap=document.createElement("div"); wrap.id="pvwrap";
-  const pan=document.createElement("div"); pan.innerHTML=panViewSVG();
+  const pan=document.createElement("div"); pan.innerHTML=panViewSVG(null,null,{under:true});
   /* The strokes flank the instrument in two columns instead of sitting in a row
      beneath it (David, 26 Aug): that row cost ~50px of height, and height is
      what limits the pan on a phone — so moving them sideways is what lets the
@@ -5708,9 +5844,23 @@ function renderPanPanelInner(){
     fire(bankBuf("o"+midi)||synthBuf(midi,"open"),ctx.currentTime+0.01,1);
     pvFlash($("pvf"+f),["hT"]);
   };
-  box.querySelectorAll(".pvf").forEach(g=>{
+  /* :not(.pvb) — the underside groups share .pvf so they inherit the whole
+     flash machinery for free, but they carry data-b and would come through
+     here as +undefined = NaN */
+  box.querySelectorAll(".pvf:not(.pvb)").forEach(g=>{
     g.addEventListener("pointerdown",()=>tapField(+g.dataset.f));
     g.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); tapField(+g.dataset.f); } });
+  });
+  // the underside sounds exactly as the top shell does, from the same bank
+  const tapBottom=i=>{
+    ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
+    const midi=myPan.botMidiFor(i); if(midi==null) return;
+    fire(bankBuf("o"+midi)||synthBuf(midi,"open"),ctx.currentTime+0.01,1);
+    pvFlash($("pvb"+i),["hT"]);
+  };
+  box.querySelectorAll(".pvb").forEach(g=>{
+    g.addEventListener("pointerdown",()=>tapBottom(+g.dataset.b));
+    g.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); tapBottom(+g.dataset.b); } });
   });
   const tapPerc=(s,id)=>{ // the badges sound like the fields do (David, 26 Aug)
     ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
