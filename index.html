@@ -288,8 +288,15 @@ select.ctl{appearance:auto; padding:6px 8px}
    wide as the name it shows and nothing else — the measured-width and
    two-faced-option tricks the old <select> needed are gone with it. */
 #panSel::after{content:"▾"; color:var(--ink3); font-size:10px; margin-left:2px}
-#panPickDlg{width:min(420px,94vw); padding:0; max-height:min(78vh,640px);
-  display:flex; flex-direction:column; overflow:hidden}
+/* THE FLEX MUST BE ON [open], NEVER ON THE DIALOG ITSELF. A closed <dialog>
+   is hidden by the browser's own `display:none`, and any display value set
+   unconditionally overrides it — so the sheet stayed on screen after Close,
+   and having left the top layer it was painted THROUGH by the notation and
+   the pan card's buttons (David, 28 Aug: "fragments of it sit over the screen
+   so I can't operate the screen"). Every other dialog here inherits the plain
+   `dialog` rule and is display:none when shut; this one has to opt back in. */
+#panPickDlg{width:min(420px,94vw); padding:0; max-height:min(78vh,640px); overflow:hidden}
+#panPickDlg[open]{display:flex; flex-direction:column}
 #panPickDlg .pptop{display:flex; align-items:center; justify-content:space-between;
   gap:8px; padding:14px 14px 8px}
 #panPickDlg .pptop h3{margin:0}
@@ -2692,6 +2699,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <div class="pills" role="group" aria-label="How common">
       <button id="ppCommon" aria-pressed="true">Common</button>
       <button id="ppRare" aria-pressed="false">Rare</button>
+      <button id="ppAll" aria-pressed="false">All</button>
     </div>
   </div>
   <div id="ppList" class="pplist"></div>
@@ -7108,8 +7116,14 @@ function chordPCs(name){
 // palette is computed from the pan, exactly as SPEC §1 promised
 function chordFields(name){
   const pcs=chordPCs(name); if(!pcs) return [];
-  // the student's own places, the underside among them; highest renders on top
-  return panPositions().filter(p=>pcs.includes(jpc(myPan.posMidi(p))));
+  /* the student's own places, the underside among them — SORTED BY PITCH,
+     because the chip stacks them and its rule is "highest renders on top"
+     (David, 28 Aug: "the notes should be ordered by pitch, lowest on the
+     bottom"). Field numbers used to BE pitch order, every one of them above
+     the dome; the underside broke that — a D Kurd 17's C3 and F3 sit below
+     its A3, and its F5 above everything. */
+  return panPositions().filter(p=>pcs.includes(jpc(myPan.posMidi(p))))
+    .sort((a,b)=>myPan.posMidi(a)-myPan.posMidi(b));
 }
 const fmtChord=n=>String(n).replace(/♭/g,'<span class="fl">b</span>')
   .replace(/♯/g,'<span class="fl">#</span>');
@@ -12770,7 +12784,7 @@ const FAM_LABELS={aeolian:["Kurd family","full natural minor"],
   mixo:["Mixolydian","Jibuk"], penta:["Pentatonic","Pygmy · Akebono · Yu Shang Diao"],
   hijaz:["Hijaz & harmonic minor",""], major:["Major family",""], other:["Other modes",""]};
 const FAM_ORDER=["aeolian","celtic","integral","penta","hijaz","lydian","major","mixo","other"];
-let ppView="lib", ppTier=1;
+let ppView="lib", ppTier="common";   // common | rare | all
 const ppPick={};                       // scale key -> the build id its row shows
 const panNoteLine=p=>{
   const pc=n=>String(n).replace(/-?\d+$/,"");
@@ -12783,13 +12797,24 @@ function ppBuildsOf(scale){
   return BUILTIN_PANS.filter(p=>p.scale===scale).sort((a,b)=>panSize(a)-panSize(b));
 }
 /* the whole scale of a set of notes, played low to high, from the bank */
+let panPreviewGen=0;
 function panPreview(p){
   ensureCtx(); ensureSink(); ctx.resume().catch(()=>{});
   const ms=[midiOf(p.ding),...p.fields.map(midiOf),...(p.bottom||[]).map(midiOf)]
     .filter(m=>m!=null).sort((a,b)=>a-b);
-  ms.forEach(m=>bankDecode("o"+m));
-  const t0=ctx.currentTime+0.08;
-  ms.forEach((m,i)=>fire(bankBuf("o"+m)||synthBuf(m,"open"),t0+i*0.16,0.9));
+  /* WAIT FOR THE SAMPLES BEFORE PLAYING. `bankDecode` is asynchronous and
+     `bankBuf` answers null until it lands, so firing in the same tick played
+     the SYNTH for every note not already decoded — and preloadBank only warms
+     the pan you are HOLDING, which is exactly not the one you are previewing.
+     Measured before the fix: 7 of a C♯ Ysha Savita's 10 notes came out synth
+     from a D Kurd, and only a second press sounded right. The decodes are
+     from data URLs already in memory, so the wait is milliseconds. */
+  const gen=++panPreviewGen;
+  Promise.all(ms.map(m=>bankDecode("o"+m))).then(()=>{
+    if(gen!==panPreviewGen) return;    // a newer preview has been asked for
+    const t0=ctx.currentTime+0.08;
+    ms.forEach((m,i)=>fire(bankBuf("o"+m)||synthBuf(m,"open"),t0+i*0.16,0.9));
+  });
 }
 function ppRow(p,scaleKey){
   const row=document.createElement("button");
@@ -12836,8 +12861,9 @@ function renderPanPick(){
   $("ppLib").setAttribute("aria-pressed",ppView==="lib");
   $("ppMine").setAttribute("aria-pressed",ppView==="mine");
   $("ppFilters").classList.toggle("hidden",ppView!=="lib");
-  $("ppCommon").setAttribute("aria-pressed",ppTier===1);
-  $("ppRare").setAttribute("aria-pressed",ppTier!==1);
+  $("ppCommon").setAttribute("aria-pressed",ppTier==="common");
+  $("ppRare").setAttribute("aria-pressed",ppTier==="rare");
+  $("ppAll").setAttribute("aria-pressed",ppTier==="all");
   if(ppView==="mine"){
     for(const p of userPans()){
       const row=ppRow(p,null);
@@ -12863,7 +12889,11 @@ function renderPanPick(){
      by default) — so a scale never repeats down the list at four sizes */
   const seen=new Set(), byFam={};
   for(const p of BUILTIN_PANS){
-    if((p.tier===1)!==(ppTier===1)) continue;
+    /* "All" is one list, not a third category — the same family headings, with
+       the common scales simply not filtered out (David, 28 Aug: the row had
+       the width for it once the builds moved onto the chips). */
+    if(ppTier==="common"&&p.tier!==1) continue;
+    if(ppTier==="rare"&&p.tier===1) continue;
     if(seen.has(p.scale)) continue;
     seen.add(p.scale);
     const builds=ppBuildsOf(p.scale);
@@ -12887,7 +12917,7 @@ function openPanPick(){
      build you own, not the smallest one */
   const cur=panById(myPanId);
   if(cur&&cur.scale) ppPick[cur.scale]=cur.id;
-  if(cur&&cur.tier) ppTier=cur.tier===1?1:2;
+  if(cur&&cur.tier&&ppTier!=="all") ppTier=cur.tier===1?"common":"rare";
   ppView=userPans().some(p=>p.id===myPanId)?"mine":"lib";
   renderPanPick(); openDlg($("panPickDlg"));
 }
@@ -12943,8 +12973,9 @@ function boot(){
   sel.addEventListener("click",openPanPick);
   $("ppLib").addEventListener("click",()=>{ ppView="lib"; renderPanPick(); });
   $("ppMine").addEventListener("click",()=>{ ppView="mine"; renderPanPick(); });
-  $("ppCommon").addEventListener("click",()=>{ ppTier=1; renderPanPick(); });
-  $("ppRare").addEventListener("click",()=>{ ppTier=2; renderPanPick(); });
+  $("ppCommon").addEventListener("click",()=>{ ppTier="common"; renderPanPick(); });
+  $("ppRare").addEventListener("click",()=>{ ppTier="rare"; renderPanPick(); });
+  $("ppAll").addEventListener("click",()=>{ ppTier="all"; renderPanPick(); });
   $("ppClose").addEventListener("click",()=>$("panPickDlg").close());
   $("modePos").addEventListener("click",()=>setMode("pos"));
   $("modeTrans").addEventListener("click",()=>setMode("trans"));
