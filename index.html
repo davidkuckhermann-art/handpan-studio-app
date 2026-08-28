@@ -3902,7 +3902,7 @@ let armFollow=new URLSearchParams(location.search).get("follow")==="1";
 /* The play button reflects whatever is sounding: the app's own playback, or
    — in follow mode — the video. Video "playing" = its timecode is moving;
    700 ms without movement reads as paused (covers Wistia's constant-t idle). */
-let vidPlaying=false, vidLastT=null, vidStillT=null;
+let vidPlaying=false, vidLastT=null, vidStillT=null, vidState=null;
 /* THE VIDEO'S CLOCK IS NOT THE AUDIO CLOCK (David, 26 Aug — the Kajabi embed,
    Follow video, video slowed below 1x). At 1x the two run together and a bare
    offset was enough; at 0.5x the video advances half as fast, so the offset
@@ -4904,6 +4904,9 @@ window.addEventListener("message",e=>{
     // …and whether the player's OWN sound is on. Absent from older blocks,
     // which is why it is read as a tri-state: null means "not told".
     if(typeof d.m==="boolean") vidMuted=d.m;
+    // …and whether the video is PLAYING (bridge 28f). Tri-state again: an
+    // older block never says, and the app falls back to inferring it.
+    vidState=(typeof d.p==="boolean")?d.p:vidState;
   }
   if(d&&d.type==="hps-bridge"){
     if(!videoSeen&&!syncSeenOnce) setSyncMode(true);
@@ -4918,10 +4921,25 @@ window.addEventListener("message",e=>{
 });
 function onVideoTime(t,rate){
   const prevT=vidLastT, prevA=vLastA;   // the report before this one
-  if(vidLastT!=null&&Math.abs(t-vidLastT)>0.004){
+  /* IS THE VIDEO PLAYING. Bridge 28f states it with every report and the
+     statement is law. Older blocks leave it to this watchdog: the clock moved,
+     so it is playing, and if it does not move again soon it is not. "Soon"
+     CANNOT BE A CONSTANT (David, 28 Aug, third report of the same stop): a
+     muted video scrolled out of view is throttled by the browser and its
+     clock can step more coarsely than any fixed wait, so the watchdog fired
+     mid-playback, the play button flipped, and every gate on `vidPlaying`
+     stopped the music — no hush needed. The wait now stretches with the
+     coarsest step this player has actually shown us (vGran, as for vStopped
+     below). */
+  if(vidState!=null){
+    if(vidPlaying!==vidState){ vidPlaying=vidState; updatePlayBtn(); }
+    clearTimeout(vidStillT); vidStillT=null;
+  }
+  else if(vidLastT!=null&&Math.abs(t-vidLastT)>0.004){
     if(!vidPlaying){ vidPlaying=true; updatePlayBtn(); }
     clearTimeout(vidStillT);
-    vidStillT=setTimeout(()=>{ vidPlaying=false; updatePlayBtn(); },700);
+    vidStillT=setTimeout(()=>{ vidPlaying=false; updatePlayBtn(); },
+      Math.max(700,vGran*2500));
   }
   /* The rate, settled before anything is scheduled against it. A rate the
      source states is law; otherwise measure it — against a REFERENCE SAMPLE
@@ -5033,6 +5051,12 @@ function onVideoTime(t,rate){
     else { vGran=Math.max(stillSpan,vGran*0.85); stillSpan=0; }
     vStopped=(stillSpan>=Math.max(STILL_SPAN,vGran*1.6));
   }
+  /* When the bridge SAYS whether the video is playing (28f), the saying wins
+     over everything inferred above — in both directions. A stated pause is
+     acted on at the next report, which answers David's "pausing now has a
+     delay": the inference needed ~0.3 s of proof, the statement needs none.
+     A stated play means no amount of clock stillness may stop the music. */
+  if(vidState!=null) vStopped=!vidState;
   /* plain forward motion: moved, but not by a jump's worth */
   if(awaitMotion&&movedBy!=null&&shouldMove!=null&&!vStill
      &&movedBy>0&&movedBy<Math.max(0.35,shouldMove*4)) awaitMotion=false;
@@ -5059,7 +5083,7 @@ function onVideoTime(t,rate){
      what makes a genuine pause visible here at all. So the second report is
      the one that decides, and it costs about 17 ms. */
   if(vStopped) stopN++; else stopN=0;
-  if(stopN===2) followHush();
+  if(stopN===(vidState!=null?1:2)) followHush();
   vStillWas=vStill; vStoppedWas=vStopped;
   if(ctx&&!vStill){
     const b=t-vRate*ctx.currentTime;
