@@ -469,6 +469,11 @@ input[type=text]{width:auto}
 .rqverdict.ok{background:var(--green-soft); color:var(--green)}
 .rqverdict.no{background:#F8E7E4; color:var(--clay)}
 .rqsaid{font-size:13px; color:var(--ink2); margin-top:10px}
+/* the remember-my-choice line on a dialog: quieter than the buttons it sits
+   above, and the whole label is the hit area */
+.dlgask{display:flex; align-items:center; gap:7px; margin:12px 0 2px;
+  font-size:12.5px; color:var(--ink2); cursor:pointer; user-select:none}
+.dlgask input{margin:0; accent-color:var(--dixie)}
 .rqsaid b{color:var(--sc-ink)}
 #rqsetup{max-width:720px; margin:0 auto}
 .chordlab{position:absolute; top:-2px; left:0; right:0; text-align:center; font-size:10.5px;
@@ -1751,6 +1756,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 </script>
 
 <svg style="display:none" aria-hidden="true">
+  <symbol id="is-bell" viewBox="0 0 24 24"><path d="M12 3.2a5.6 5.6 0 0 0-5.6 5.6c0 4.2-1.4 5.6-2 6.3-.3.3-.1.9.4.9h14.4c.5 0 .7-.6.4-.9-.6-.7-2-2.1-2-6.3A5.6 5.6 0 0 0 12 3.2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 18.4a2 2 0 0 0 4 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
   <symbol id="is-film" viewBox="0 0 24 24"><rect x="2.5" y="4.5" width="19" height="15" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="currentColor" d="M10 8.6l6 3.4-6 3.4z"/></symbol>
   <symbol id="is-snd" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13L7.5 14.5H4z" fill="currentColor"/><path d="M16 9.2a4 4 0 010 5.6M18.8 6.6a8 8 0 010 10.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
   <symbol id="is-sndoff" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13L7.5 14.5H4z" fill="currentColor"/><path d="M16.2 9.4l5 5.2M21.2 9.4l-5 5.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
@@ -1834,6 +1840,9 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <span class="spacer"></span>
   <span class="lab">My pan</span>
   <select class="ctl" id="panSel" aria-label="My pan"></select>
+  <!-- the way back to the video-sound messages, shown only once one of them
+       has been silenced (David, 28 Aug) -->
+  <button class="ib hidden" id="panPrefBtn"></button>
   <div class="pills" role="group" aria-label="Playback mode">
     <button id="modePos" aria-pressed="true">By position</button>
     <button id="modeTrans" aria-pressed="false">Transpose</button>
@@ -1930,12 +1939,15 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
    </span>
    <div id="sctools">
     <div id="handInd" class="hidden" title="Current hand — press , to switch" aria-live="polite"></div>
+    <!-- PLAY IN THE MIDDLE OF THE PAIR (David, 28 Aug): Follow video · play ·
+         sound. The two things that decide WHAT you hear stand either side of
+         the thing that starts it. -->
     <button class="ib hidden" id="followBtn"></button>
-    <button class="ib hidden" id="folMute"></button>
-    <button class="ib hidden" id="loopBtn"></button>
     <button class="play" id="playBtn" aria-label="Play">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.6l13 7.4-13 7.4z"/></svg>
     </button>
+    <button class="ib hidden" id="folMute"></button>
+    <button class="ib hidden" id="loopBtn"></button>
    </div>
    <!-- the head's right cell: on the desktop the generator sits here, top
         right INSIDE the notation window, level with the play button
@@ -2538,6 +2550,16 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 
 <!-- Leaving the phone editor offers the library (26 Aug, David's call) — the
      changes stay in the open piece either way, exactly like the desktop. -->
+<!-- A LOOP CANNOT RUN WHILE THE VIDEO IS THE CLOCK (David, 28 Aug). It was a
+     toast on two of the three ways in and SILENCE on the third — a desktop
+     drag simply did nothing, which reads as broken rather than refused. -->
+<dialog id="loopNoDlg">
+  <h3>Loop not available</h3>
+  <p class="hint">Looping is off while the notation is synced to the video &mdash; the recording is the clock. Turn Follow video off to loop a bar.</p>
+  <label class="dlgask"><input type="checkbox" id="lnNever"> Don&rsquo;t warn me again</label>
+  <div class="row"><button class="ctl on" id="lnOk">Got it</button></div>
+</dialog>
+
 <!-- WHEN THE VIDEO'S OWN SOUND GOES QUIET (David, 28 Aug). Muting the lesson
      usually means you want to hear the pan instead — but it does not have to,
      so this asks rather than deciding. The other direction does not ask: when
@@ -2550,12 +2572,14 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 <dialog id="panMutedDlg">
   <h3>Video sound is on</h3>
   <p class="hint">The pan has been muted, so the two don&rsquo;t play over each other.</p>
+  <label class="dlgask"><input type="checkbox" id="pmNever"> Don&rsquo;t warn me again</label>
   <div class="row"><button class="ctl on" id="pmOk">Got it</button></div>
 </dialog>
 
 <dialog id="panSoundDlg">
   <h3>Video sound is off</h3>
   <p class="hint">Would you like to hear the pan instead?</p>
+  <label class="dlgask"><input type="checkbox" id="psNever"> Don&rsquo;t ask again and remember my choice</label>
   <div class="row"><button class="ctl on" id="psYes">Turn the pan on</button>
     <span class="spacer"></span><button class="ctl" id="psNo">No, stay quiet</button></div>
 </dialog>
@@ -4305,6 +4329,45 @@ function mapShowSpan(from,to){ // ride the timeline onto a pulse span (arrangeme
   mapWin.off=Math.max(0,t0-pad); mapWin.dur=(t1-t0)+2*pad;
   drawMap();
 }
+/* ── REMEMBERING THE ANSWER (28 Aug, David) ─────────────────────────────────
+   Each popup carries "don't ask/warn me again", and it does exactly that: the
+   question remembers WHICH way it was answered and takes that action silently
+   from then on; the notice simply stops appearing. Both are undone by one
+   button, which only exists once there is something to undo — see panPrefBtn.
+   Kept as two keys rather than one, because they are two different promises:
+   "stop asking me" and "stop telling me". */
+const PK_ASK="hps.panask", PK_WARN="hps.panwarn", PK_LOOP="hps.loopwarn";
+/* Refusing the loop, said once and in the same shape as the other notices.
+   Silenceable like them, and brought back by the same bell. */
+let loopNoT=null;
+function loopRefused(){
+  if(panPref(PK_LOOP)==="off") return;
+  const d=$("loopNoDlg"); if(!d) return;
+  try{ if(!d.open) openDlg(d); }catch(e){ return; }
+  clearTimeout(loopNoT);
+  loopNoT=setTimeout(()=>{ try{ d.close(); }catch(e){} },5000);
+}
+const panPref=k=>{ try{ return localStorage.getItem(k); }catch(e){ return null; } };
+function panPrefSet(k,v){
+  try{ v==null?localStorage.removeItem(k):localStorage.setItem(k,v); }catch(e){}
+  paintPanPrefBtn();
+}
+/* The way back. It appears beside My pan only when a preference is stored,
+   because a control that undoes nothing is clutter — and disappears again the
+   moment it has done its work. */
+function paintPanPrefBtn(){
+  const b=$("panPrefBtn"); if(!b) return;
+  const any=panPref(PK_ASK)!=null||panPref(PK_WARN)!=null||panPref(PK_LOOP)!=null;
+  b.classList.toggle("hidden",!any);
+  if(any&&!b.innerHTML) b.innerHTML=ico("is-bell");
+  b.title="Show the messages I switched off again";
+}
+/* turning the pan on, from the question or from a remembered yes */
+function panSoundOn(){
+  followMuted=false; ensureCtx(); ensureSink();
+  if(ctx) ctx.resume().catch(()=>{});
+  preloadBank(); updateScoreTools(); toast("Pan sound on");
+}
 /* The pan-muted notice: same place and same shape as the question, but it
    closes itself, because nothing is being asked and the lesson is running. */
 let panMutedT=null;
@@ -4329,6 +4392,30 @@ function videoSeek(t){ // move the recording — local element or the embed brid
 }
 function seekToPulse(p){ // click in the notation: the playhead goes there
   if(!C) C=compile(piece);
+  /* THE PLAYHEAD LANDS ON THE START OF THE SUBDIVISION, never mid-cell
+     (David, 28 Aug: "position is tracked by step, but it should only be
+     tracked by subdivision … I had clicked inside the subdivision box, but not
+     aimed at the first beat"). He is right, and it explains a share of the
+     missing first beats: a click resolved to the SLOT it landed on, so tapping
+     the third slot of a beat put the playhead past that beat's downbeat, which
+     then never sounded — it had already gone by. The phone editor and the loop
+     drag have picked at beat-cell grain from the start; this brings the
+     playhead into line with them.
+     IT IS THE RULE EVERYWHERE THE NOTATION IS NAVIGATED, and only there
+     (David, 28 Aug: "a general rule across the various iterations of the
+     player: when not in any editing mode, the playhead should always snap to
+     the first beat of the subdivision"). Every skin — Table, Tab, phone,
+     desktop — reaches the playhead through this one function, so the rule is
+     written once. EDITING IS EXEMPT: there a tap is placing something, and the
+     slot it lands on is the point. Two other callers move the playhead and are
+     deliberately left alone — the tempo-map timeline, where an author is
+     picking an exact moment in the video, and reanchorLoop, which is not
+     navigation at all. */
+  if(!editing){
+    const sSec=secOfPulse(p);
+    if(sSec){ const sm=SM(piece,sSec.name), rel=p-sSec.pulse;
+      if(sm&&sm.sub>0) p=sSec.pulse+Math.floor(rel/sm.sub)*sm.sub; }
+  }
   viewPin=null;          // acting on the table releases the hand-picked view
   if(follow&&piece.syncMap&&piece.syncMap.length>=2){
     const vt=invMap(p);
@@ -4776,10 +4863,14 @@ function onVideoTime(t,rate){
   if(vidMuted!=null&&vidMutedWas!=null&&vidMuted!==vidMutedWas&&follow){
     if(!vidMuted){
       // the video's sound came on: the pan steps aside, and says so
-      if(!followMuted){ followMuted=true; updateScoreTools(); panMutedSays(); }
+      if(!followMuted){ followMuted=true; updateScoreTools();
+        if(panPref(PK_WARN)!=="off") panMutedSays(); }
     } else if(followMuted){
-      // it went quiet: ask, rather than deciding for them
-      try{ openDlg($("panSoundDlg")); }catch(e){}
+      /* it went quiet: ask — unless they have already told us the answer, in
+         which case do that thing and say nothing */
+      const rem=panPref(PK_ASK);
+      if(rem==="yes") panSoundOn();
+      else if(rem!=="no"){ try{ openDlg($("panSoundDlg")); }catch(e){} }
     }
   }
   if(vidMuted!=null) vidMutedWas=vidMuted;
@@ -12005,12 +12096,27 @@ function boot(){
      decision, and the question only ever fires on that change. */
   $("psYes").addEventListener("click",()=>{
     $("panSoundDlg").close();
-    followMuted=false; ensureCtx(); ensureSink();
-    if(ctx) ctx.resume().catch(()=>{});
-    preloadBank(); updateScoreTools(); toast("Pan sound on");
+    if($("psNever").checked) panPrefSet(PK_ASK,"yes");
+    panSoundOn();
   });
-  $("psNo").addEventListener("click",()=>{ $("panSoundDlg").close(); });
-  $("pmOk").addEventListener("click",()=>{ $("panMutedDlg").close(); });
+  $("psNo").addEventListener("click",()=>{
+    $("panSoundDlg").close();
+    if($("psNever").checked) panPrefSet(PK_ASK,"no");
+  });
+  $("pmOk").addEventListener("click",()=>{
+    $("panMutedDlg").close();
+    if($("pmNever").checked) panPrefSet(PK_WARN,"off");
+  });
+  $("lnOk").addEventListener("click",()=>{
+    $("loopNoDlg").close();
+    if($("lnNever").checked) panPrefSet(PK_LOOP,"off");
+  });
+  $("panPrefBtn").addEventListener("click",()=>{
+    panPrefSet(PK_ASK,null); panPrefSet(PK_WARN,null); panPrefSet(PK_LOOP,null);
+    $("psNever").checked=false; $("pmNever").checked=false; $("lnNever").checked=false;
+    toast("Those messages will show again");
+  });
+  paintPanPrefBtn();
   $("exStay").addEventListener("click",()=>{ afterEdit=null; $("editExitDlg").close(); });
   $("exNoSave").addEventListener("click",()=>{
     $("editExitDlg").close(); if(editing) $("editBtn").click(); runAfterEdit(); });
@@ -12078,7 +12184,7 @@ function phoneTouchNav(){
        tap inside it clears it. Editing keeps its single-tap for the cursor. */
     const dbl=now-lastTap<DBL&&Math.abs(e.clientX-lastX)<28&&Math.abs(e.clientY-lastY)<28;
     if(dbl&&!loopAllowed()){
-      lastTap=0; toast("No looping while the notation follows the video");
+      lastTap=0; loopRefused();
     } else if(dbl){
       const c=cellAtPoint(e.clientX,e.clientY);
       if(c){                              // second tap: this cell starts the loop
@@ -12150,11 +12256,15 @@ function phoneTouchNav(){
    slots seek on pointerdown — the instant a drag begins. */
 function mouseLoopNav(){
   const wrap=$("scorewrap"), TAP=5;
-  let id=null,sx=0,sy=0,anchor=null,moved=false,dragEnded=0;
+  let id=null,sx=0,sy=0,anchor=null,moved=false,dragEnded=0,blocked=false;
   wrap.addEventListener("pointerdown",e=>{
     if(e.pointerType==="touch"||e.button!==0) return;
     if(e.target.closest&&e.target.closest("#playBtn")) return;
-    if(!loopAllowed()) return;      // follow mode owns the clock — no loops there
+    blocked=false;
+    /* Follow mode owns the clock, so there is no loop to drag — but saying so
+       on POINTERDOWN would answer a plain click, which is not an attempt to
+       loop anything. The refusal waits until the pointer has actually moved. */
+    if(!loopAllowed()){ blocked=true; id=e.pointerId; sx=e.clientX; sy=e.clientY; return; }
     const c=cellAtPoint(e.clientX,e.clientY); if(!c) return;
     id=e.pointerId; sx=e.clientX; sy=e.clientY; anchor=c; moved=false;
     /* While EDITING the click belongs to the slot — it places the cursor at
@@ -12167,6 +12277,12 @@ function mouseLoopNav(){
   },true);
   wrap.addEventListener("pointermove",e=>{
     if(id===null||e.pointerId!==id) return;
+    if(blocked){
+      if(Math.max(Math.abs(e.clientX-sx),Math.abs(e.clientY-sy))>=TAP){
+        blocked=false; id=null; loopRefused();     // a drag was meant, and refused
+      }
+      return;
+    }
     if(!moved&&Math.max(Math.abs(e.clientX-sx),Math.abs(e.clientY-sy))<TAP) return;
     moved=true;
     const c=cellAtPoint(e.clientX,e.clientY);
@@ -12177,9 +12293,10 @@ function mouseLoopNav(){
     e.preventDefault();
   },true);
   wrap.addEventListener("pointerup",e=>{
-    if(id===null||e.pointerId!==id){ id=null; return; }
+    if(id===null||e.pointerId!==id){ id=null; blocked=false; return; }
     id=null;
-    if(moved){ dragEnded=performance.now(); reanchorLoop(); toast(loopBarsLabel()); return; }
+    if(blocked){ blocked=false; }      // a plain click in follow mode: just seek
+    else if(moved){ dragEnded=performance.now(); reanchorLoop(); toast(loopBarsLabel()); return; }
     if(editing) return;             // the slot already took this click
     const el=document.elementFromPoint(e.clientX,e.clientY);   // a plain click: go there
     const sl=el&&el.closest&&el.closest("[data-rel]");
@@ -12464,7 +12581,7 @@ else{
   // drag gesture drives, so playback and the frame need nothing new
   $("edLoopBar").innerHTML=ico("is-loop");
   $("edLoopBar").addEventListener("click",()=>{
-    if(!loopAllowed()){ toast("No looping while the notation follows the video"); return; }
+    if(!loopAllowed()){ loopRefused(); return; }
     // lit means "a loop is running", whichever bars it covers: the press
     // clears it, and the next press loops the bar in the lane (David, 27 Aug)
     if(loopSec){
@@ -12766,7 +12883,8 @@ function drawerGesture(){
 function placePhoneControls(){
   if(!PHONE) return;
   if(matchMedia("(orientation:landscape)").matches){
-    $("sctools").append($("followBtn"),$("folMute"),$("loopBtn"));   // hidden there
+    // desktop order: Follow video · play · sound · loop (David, 28 Aug)
+    $("sctools").append($("followBtn"),$("playBtn"),$("folMute"),$("loopBtn"));
     $("scorewrap").appendChild($("playBtn"));
     /* the practice controls come BACK to the bar here: landscape has no
        drawer, and placeDrawer had moved them into it (27 Aug) */
