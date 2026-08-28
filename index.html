@@ -988,10 +988,15 @@ table.map select{font-size:12.5px; border:1px solid var(--rule); border-radius:6
    layout, one answer. The chord card holds its natural width and the pan is
    the one that gives way, because the chords are read as words and the pan
    only has to stay legible. */
-body.haspan:not(.phone) #belowrow{display:flex; align-items:flex-start;
+/* NOT WHILE EDITING. The editor has its own #belowrow grid above, written
+   first and at the same specificity, so this rule silently took it over and
+   shoved the pan to the left edge where the editor centres it. Scoped out
+   rather than reordered, because the editor's layout is a separate decision
+   from the reader's and should keep saying so. */
+body.haspan:not(.phone):not(.editing) #belowrow{display:flex; align-items:flex-start;
   justify-content:space-between; flex-wrap:nowrap}
-body.haspan:not(.phone) #chordwrap{flex:0 0 auto}
-body.haspan:not(.phone) #panwrap{flex:0 1 auto; min-width:0}
+body.haspan:not(.phone):not(.editing) #chordwrap{flex:0 0 auto}
+body.haspan:not(.phone):not(.editing) #panwrap{flex:0 1 auto; min-width:0}
 #arrbox{flex:0 1 auto; padding:14px 18px 16px}
 .arrline{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:5px 0}
 #arrbox .chip{font-size:15.5px; padding:7px 17px}      /* the arrangement reads at a glance (David, 26 Aug) */
@@ -3009,14 +3014,19 @@ let live=[];
       beyond any scheduling jitter and far short of a musical value at any
       tempo the app plays, so past that the moment has simply gone and the
       note is dropped rather than stacked onto the present.
-   2. NOTHING PLAYS AS A CROWD. A handpan has two hands. Six voices inside
-      25 ms is already more than the instrument can make, so anything beyond
-      that in one instant is a fault by definition and is dropped. This is
-      the belt to the first one's braces: it catches a bad offset that lands
-      the heap slightly in the FUTURE, where lateness cannot see it.
+   2. NOTHING PLAYS AS A CROWD. The belt to the first one's braces: it catches
+      a bad offset that lands the heap slightly in the FUTURE, where lateness
+      cannot see it. The ceiling is NOT set by what two hands can strike —
+      that reasoning was wrong and cost a note. `qzHearChord` sounds a chord
+      BLOCK, and a seventh chord covers seven fields on a D Kurd, so six would
+      have silently swallowed the seventh in the ear quiz. Twelve clears every
+      written chord while staying far below the twenty-odd of a stale heap.
+      Loudness is not this rule's job either: qzHearChord already scales a
+      block by the square root of its note count, and everything meets the
+      soft clipper on the way out.
    Both are silent on purpose. A dropped note is a note missing from music
    that was already wrong; a burst is the app shouting at a student. */
-const LATE_DROP=0.25, BURST_WIN=0.025, BURST_MAX=6;
+const LATE_DROP=0.25, BURST_WIN=0.025, BURST_MAX=12;
 let burstAt=-1, burstN=0;
 function fire(buf,at,gain){
   if(!buf) return;
@@ -3689,8 +3699,37 @@ async function togglePlay(){
   if(follow){
     const v=$("vidEl");
     if(v&&v.src){ if(v.paused) v.play().catch(()=>{}); else v.pause(); return; }
-    // embedded: ask the lesson page's bridge to toggle its player
+    /* Embedded: ask the lesson page's bridge to toggle its player — and, if
+       that toggle is a PAUSE, stop the pan now instead of waiting to be told
+       about a pause we ourselves just asked for (David, 28 Aug: "the stop
+       function got laggier again, both when triggered by the player or the
+       video"). Waiting cost a round trip plus however long the app took to
+       believe the clock: with an un-repasted block that is the inference, and
+       the inference is deliberately slow to be sure. We do not have to be
+       sure about our own decision. */
+    const pausing=vidPlaying;
+    /* STARTING IS NOT THE MIRROR OF STOPPING, and it should not pretend to be
+       (David, 28 Aug: "does it make sense to apply the wait for start, but not
+       for stop?"). Stopping needs no knowledge — silence is silence, and we
+       asked for it, so it happens now. Starting needs to know WHERE the video
+       will be and WHEN, and only the video can say: it may buffer, autoplay
+       may be refused, it may resume somewhere else. Guessing that is how a
+       stroke lands twice or against nothing.
+       But everything that does NOT depend on the video can be done right here,
+       inside the click, and used to be left until the first report arrived —
+       which is a real fault, not just latency. A context still suspended when
+       the reports start has a FROZEN clock, and an offset measured against a
+       frozen clock is the "chord nobody played" all over again; the bank not
+       yet loaded means the opening strokes are the synth stand-in rather than
+       the recorded pan, which the ordinary transport takes care to avoid two
+       lines below. So: arm now, sound when told. */
+    if(!pausing){
+      try{ ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank(); }catch(e){}
+    }
     try{ window.parent.postMessage({type:"hps-video-ctl",action:"toggle"},"*"); }catch(e){}
+    if(pausing){
+      selfPaused=true; vidPlaying=false; followHush(true); updatePlayBtn();
+    } else selfPaused=false;
     return;
   }
   if(playing){ stop(); return; }
@@ -3903,6 +3942,7 @@ let armFollow=new URLSearchParams(location.search).get("follow")==="1";
    — in follow mode — the video. Video "playing" = its timecode is moving;
    700 ms without movement reads as paused (covers Wistia's constant-t idle). */
 let vidPlaying=false, vidLastT=null, vidStillT=null, vidState=null;
+let selfPaused=false;   // WE asked the video to pause — see togglePlay
 /* THE VIDEO'S CLOCK IS NOT THE AUDIO CLOCK (David, 26 Aug — the Kajabi embed,
    Follow video, video slowed below 1x). At 1x the two run together and a bare
    offset was enough; at 0.5x the video advances half as fast, so the offset
@@ -4523,10 +4563,26 @@ function paintPanPrefBtn(){
 /* Cancel what has not sounded yet, and leave what has to ring. A voice that
    has not started can be taken out with its gain alone — the source is already
    scheduled, and stopping it would risk touching one that has just begun. */
-function followHush(){
+/* `fade` — CUT THE TAIL TOO, not just the future. David, 28 Aug: "can you
+   fade out the rest sound of the player when it's stopped? In our local app we
+   have that function." Locally the transport calls stop(), which ramps every
+   voice down over 40 ms; follow mode never calls stop() — it pauses the video
+   — so the strokes already struck rang on at full length and the embed felt
+   different from the app he knows. Now it matches.
+   Only when the stop is CERTAIN, though: stated by the bridge, or asked for by
+   the app's own button. A stop merely INFERRED from a clock that stopped
+   moving keeps the old, gentler behaviour — cancel what has not sounded and
+   leave the rest — because a wrong guess that chops a ringing note is far more
+   audible than one that trims a note nobody has heard yet. */
+function followHush(fade){
   if(!ctx) return;
   const now=ctx.currentTime, keep=[];
   for(const g of live){
+    if(fade&&g.__at!=null&&g.__at<=now+0.005){
+      try{ g.gain.setValueAtTime(g.gain.value,now);
+           g.gain.linearRampToValueAtTime(0,now+.04); }catch(e){}
+      continue;                      // rung, and now fading — drop it from live
+    }
     if(g.__at!=null&&g.__at>now+0.005){
       try{ g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(0,now); }catch(e){}
     } else keep.push(g);
@@ -4932,10 +4988,12 @@ function onVideoTime(t,rate){
      coarsest step this player has actually shown us (vGran, as for vStopped
      below). */
   if(vidState!=null){
+    if(vidState) selfPaused=false;      // it is running: our pause is history
     if(vidPlaying!==vidState){ vidPlaying=vidState; updatePlayBtn(); }
     clearTimeout(vidStillT); vidStillT=null;
   }
   else if(vidLastT!=null&&Math.abs(t-vidLastT)>0.004){
+    selfPaused=false;                   // the clock is moving again
     if(!vidPlaying){ vidPlaying=true; updatePlayBtn(); }
     clearTimeout(vidStillT);
     vidStillT=setTimeout(()=>{ vidPlaying=false; updatePlayBtn(); },
@@ -5083,7 +5141,7 @@ function onVideoTime(t,rate){
      what makes a genuine pause visible here at all. So the second report is
      the one that decides, and it costs about 17 ms. */
   if(vStopped) stopN++; else stopN=0;
-  if(stopN===(vidState!=null?1:2)) followHush();
+  if(stopN===(vidState!=null?1:2)) followHush(vidState!=null||selfPaused);
   vStillWas=vStill; vStoppedWas=vStopped;
   if(ctx&&!vStill){
     const b=t-vRate*ctx.currentTime;
