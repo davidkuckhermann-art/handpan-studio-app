@@ -7136,8 +7136,7 @@ function effMidi(f){
 // Chords a pan can actually form (all three pitch classes present)
 function panTriads(p){
   const pcs=new Set([((p.ding%12)+12)%12,
-    ...p.fields.map(f=>((f.midi%12)+12)%12),
-    ...(p.bottom||[]).map(b=>((b.midi%12)+12)%12)]);
+    ...p.fields.map(f=>((f.midi%12)+12)%12)]);   // the scale, not the underside
   const out=[];
   for(const r of pcs){
     for(const [q,third] of [["maj",4],["min",3]]){
@@ -8258,7 +8257,7 @@ const jpc=m=>((m%12)+12)%12;
 // a 7th chord the high voice plays the SEVENTH, on a 9th the NINTH — the
 // colour tone speaks, the neutral fifth yields.
 function jamChordDefs(){
-  const pcs=new Set(panMidis().map(jpc));
+  const pcs=panScalePcs();
   const d=jpc(myPan.ding), out=[];
   const has=(...t)=>t.every(x=>pcs.has(x));
   for(const r of pcs){
@@ -8610,8 +8609,8 @@ function panHomes(pan){
   // works on a pan in either shape: cooked (midi numbers / {midi}) or raw off
   // BUILTIN_PANS (note names), so a pan can be measured without being loaded
   const pcOf=v=>jpc(typeof v==="number"?v:(v&&v.midi!=null?v.midi:(midiOf(v)||0)));
-  const pcs=new Set([pcOf(pan.ding),...pan.fields.map(pcOf),
-                     ...((pan.bottom||[]).map(pcOf))]);
+  // the SCALE only — see panPcSet: the underside does not change the key
+  const pcs=new Set([pcOf(pan.ding),...pan.fields.map(pcOf)]);
   const full=(r,third)=>pcs.has((r+third)%12)&&pcs.has((r+7)%12);
   const ding=pcOf(pan.ding);
   const pick=third=>{
@@ -8681,7 +8680,22 @@ function panPositions(P){ const p=P||myPan;
   return [0].concat(p.fields.map(f=>f.n), (p.bottom||[]).map(b=>botPos(b.n))); }
 function panMidis(P){ const p=P||myPan;
   return [p.ding].concat(p.fields.map(f=>f.midi), (p.bottom||[]).map(b=>b.midi)); }
-function panPcSet(){ return new Set(panMidis().map(jpc)); }
+/* TWO DIFFERENT QUESTIONS, AND CONFLATING THEM BROKE JAM (David, 28 Aug:
+   "the harmonies that get created in Jam mode are all out of whack, and
+   sometimes it's not the scale playing that is actually displayed").
+     • What can this pan SOUND? — the whole instrument, underside included.
+       This is what a voicing may reach into, which is the freedom he asked
+       for: a real low root under a chord.
+     • What chords does this pan HAVE? — its SCALE, which is the dome and the
+       top shell, exactly as before. The underside fills gaps under an
+       instrument; it does not redefine what key it is in.
+   Feeding the underside into the second question invented chords rooted on
+   notes that exist only underneath — 8 of them on an A2 Dorian 15, whose D
+   is underside-only — and those roots are not in the scale ring jamMotion
+   counts steps in, so every one of them scored as a leap off the scale. */
+function panPcSet(){ return new Set(panMidis().map(jpc)); }        // can sound
+function panScalePcs(P){ const p=P||myPan;
+  return new Set([jpc(p.ding),...p.fields.map(f=>jpc(f.midi))]); } // is in
 function chordFitOn(name){
   const t=chordPCs(name);
   if(!t||!t.length) return {have:0,total:0};
