@@ -2925,7 +2925,13 @@ function fire(buf,at,gain){
   const src=ctx.createBufferSource(); src.buffer=buf;
   const g=ctx.createGain(); g.gain.value=gain;
   src.connect(g); g.connect(dry); g.connect(send);
-  src.start(Math.max(at,ctx.currentTime));
+  const st=Math.max(at,ctx.currentTime);
+  /* WHEN THIS VOICE STARTS. The scheduler commits up to 0.45 s ahead, so
+     `live` always holds some notes that have not sounded yet — and telling
+     those apart from the ones already ringing is what lets a stop cancel the
+     future without cutting the present (followHush). */
+  g.__at=st;
+  src.start(st);
   live.push(g); if(live.length>120) live.splice(0,40);
   src.onended=()=>{ const i=live.indexOf(g); if(i>=0) live.splice(i,1); };
 }
@@ -4347,8 +4353,20 @@ function loopRefused(){
   clearTimeout(loopNoT);
   loopNoT=setTimeout(()=>{ try{ d.close(); }catch(e){} },5000);
 }
-const panPref=k=>{ try{ return localStorage.getItem(k); }catch(e){ return null; } };
+/* HELD IN MEMORY AS WELL AS IN STORAGE. The app runs as a CROSS-ORIGIN IFRAME
+   inside a Kajabi lesson, and a browser may refuse or partition localStorage
+   there — Safari does. Reading it back would then return null however faithful
+   the write, so the choice would be forgotten the instant it was made and the
+   bell, which exists only while something is stored, would never appear. The
+   session's own copy is the authority; storage is what carries it to the next
+   visit when the browser allows one. */
+const panMem=Object.create(null);
+const panPref=k=>{
+  if(k in panMem) return panMem[k];
+  try{ return localStorage.getItem(k); }catch(e){ return null; }
+};
 function panPrefSet(k,v){
+  if(v==null) delete panMem[k]; else panMem[k]=v;
   try{ v==null?localStorage.removeItem(k):localStorage.setItem(k,v); }catch(e){}
   paintPanPrefBtn();
 }
@@ -4362,6 +4380,19 @@ function paintPanPrefBtn(){
   if(any&&!b.innerHTML) b.innerHTML=ico("is-bell");
   b.title="Show the messages I switched off again";
 }
+/* Cancel what has not sounded yet, and leave what has to ring. A voice that
+   has not started can be taken out with its gain alone — the source is already
+   scheduled, and stopping it would risk touching one that has just begun. */
+function followHush(){
+  if(!ctx) return;
+  const now=ctx.currentTime, keep=[];
+  for(const g of live){
+    if(g.__at!=null&&g.__at>now+0.005){
+      try{ g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(0,now); }catch(e){}
+    } else keep.push(g);
+  }
+  live=keep;
+}
 /* turning the pan on, from the question or from a remembered yes */
 function panSoundOn(){
   followMuted=false; ensureCtx(); ensureSink();
@@ -4373,8 +4404,8 @@ function panSoundOn(){
 let panMutedT=null;
 function panMutedSays(){
   const d=$("panMutedDlg"); if(!d) return;
-  try{ if(!d.open) openDlg(d); }catch(e){ return; }
-  clearTimeout(panMutedT);
+  clearTimeout(panMutedT);            // before opening: a stale timer from the
+  try{ if(!d.open) openDlg(d); }catch(e){ return; }   // last one would cut this
   panMutedT=setTimeout(()=>{ try{ d.close(); }catch(e){} },4200);
 }
 function videoSeek(t){ // move the recording — local element or the embed bridge
@@ -4828,6 +4859,14 @@ function onVideoTime(t,rate){
      the downbeat is one of them. The clock going still and moving again is
      itself the seek. */
   if(vStillWas&&!vStill) vSeek=true;
+  /* AND WHEN IT STOPS, THE PAN STOPS WITH IT (David, 28 Aug: "stopping
+     playback lags several notes behind"). In follow mode the transport does
+     not call stop() — it pauses the VIDEO — so nothing ever cancelled the
+     notes already committed to the look-ahead, and the pan ran on for up to
+     0.45 s after the picture froze. Only the notes that have not sounded yet
+     are taken: a stroke already struck rings out, which is what the instrument
+     does and what stopping a video leaves you with. */
+  if(vStill&&!vStillWas) followHush();
   vStillWas=vStill;
   if(ctx&&!vStill){
     const b=t-vRate*ctx.currentTime;
@@ -4870,7 +4909,10 @@ function onVideoTime(t,rate){
          which case do that thing and say nothing */
       const rem=panPref(PK_ASK);
       if(rem==="yes") panSoundOn();
-      else if(rem!=="no"){ try{ openDlg($("panSoundDlg")); }catch(e){} }
+      /* the `open` guard matters: openDlg on an already-open dialog throws,
+         and a question left standing would then swallow every one after it */
+      else if(rem!=="no"){ const d=$("panSoundDlg");
+        try{ if(d&&!d.open) openDlg(d); }catch(e){} }
     }
   }
   if(vidMuted!=null) vidMutedWas=vidMuted;
@@ -12520,6 +12562,9 @@ else{
   $("markBtn").classList.add("hidden");
   $("prow2").appendChild($("arrbox"));
   $("mPan").appendChild($("panSel"));
+  // the bell travels with the selector it sits beside, or the phone leaves it
+  // orphaned in a row that is no longer shown — and there is then no way back
+  { const pb=$("panPrefBtn"); if(pb) $("mPan").appendChild(pb); }
   $("mMode").appendChild(document.querySelector('.pills[aria-label="Playback mode"]'));
   $("mNota").appendChild($("notaBtn"));
   /* Chords or pan is a SWITCH on the phone, so it reads as pills — opposite
@@ -12808,6 +12853,7 @@ function placeDrawer(){
   const pn=$("panNow"); if(pn&&!pan.contains(pn)&&!$("prow2").contains(pn)) pan.appendChild(pn);
   const host=pn||pan;
   const ps=$("panSel"); if(ps) host.appendChild(ps);
+  const pb=$("panPrefBtn"); if(pb) host.appendChild(pb);   // it travels too
   const mp=document.querySelector('.pills[aria-label="Playback mode"]');
   if(mp) host.appendChild(mp);
   fitPanRow();
