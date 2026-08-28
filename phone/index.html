@@ -3699,6 +3699,8 @@ let vidPlaying=false, vidLastT=null, vidStillT=null;
    speed. Samples are NOT pitched — one-shots simply spread out, which is what
    slow practice should sound like. */
 let vRate=1, vRefT=null, vRefA=null;
+/* the rate the app MEASURES, kept beside whatever the bridge states */
+let vRateM=null, vRateBadSince=null;
 /* The marker's own clock. It used to repaint only when a timecode arrived —
    5 a second, so it moved in 200 ms steps and sat ~100 ms behind the video
    (David, 26 Aug: "dragging a bit at times"). It now paints on rAF from a
@@ -3710,6 +3712,10 @@ let vRate=1, vRefT=null, vRefA=null;
    performance.now(), NOT ctx.currentTime: the pan is muted by default in the
    embed, so the audio clock may be suspended and frozen while the video runs. */
 let vPredT=null, vPredWall=0, followRaf=null, lastFollowPaint=null, vtimeStr="";
+/* the follow clock's own state: when a report last landed, whether the video
+   clock is standing still, whether it JUMPED, and a seek we asked for and are
+   still waiting to see arrive */
+let vLastA=null, vStill=false, vSeek=false, seekWant=null, seekAt=0;
 /* An <input> holds its default width whatever text is in it, which left the
    "Written for" badge floating in the gap. Measure the text in the field's own
    font and size the field to it, so the badge sits against the piece's name. */
@@ -4210,6 +4216,13 @@ function videoSeek(t){ // move the recording — local element or the embed brid
   if(v&&v.src) v.currentTime=t;
   else try{ window.parent.postMessage({type:"hps-video-ctl",action:"seek",t:t},"*"); }catch(e){}
   vCursor=null;
+  /* REMEMBER WHERE WE SENT IT. A seek through the bridge takes a round trip
+     and then a buffer — 100-300 ms in which the player is still reporting the
+     OLD position. Without this the app resyncs to where the video WAS and
+     plays that bar until the seek lands. Cleared in onVideoTime when a report
+     arrives near the target, or after 2.5 s so a seek that never happens
+     cannot mute Follow for good. */
+  seekWant=t; seekAt=performance.now();
 }
 function seekToPulse(p){ // click in the notation: the playhead goes there
   if(!C) C=compile(piece);
@@ -4519,6 +4532,7 @@ window.addEventListener("message",e=>{
   onVideoTime(t,r);
 });
 function onVideoTime(t,rate){
+  const prevT=vidLastT, prevA=vLastA;   // the report before this one
   if(vidLastT!=null&&Math.abs(t-vidLastT)>0.004){
     if(!vidPlaying){ vidPlaying=true; updatePlayBtn(); }
     clearTimeout(vidStillT);
@@ -4533,19 +4547,36 @@ function onVideoTime(t,rate){
      is a pause with the bridge silent — measuring across one would collapse
      the estimate on resume. */
   const aNow=ctx?ctx.currentTime:null;
-  if(rate!=null&&isFinite(rate)&&rate>0.05&&rate<8) vRate=rate;
-  else if(aNow!=null){
+  /* THE MEASUREMENT ALWAYS RUNS NOW. It used to be the `else` of a stated
+     rate, so a block that posts `r` silenced it — and a STATED rate can be
+     wrong in a way a measured one cannot: Wistia's was a remembered value
+     starting at 1, corrected only by an event that may never fire. A wrong
+     rate is the 26 Aug bug ("at 0.5x the pan ran three quarters of a second
+     early") returning through a bad value rather than a missing one.
+     So: measure into vRateM regardless, take the stated rate normally, and let
+     a measurement that DISAGREES FOR LONG ENOUGH win. The estimator settles
+     within 0.002 of the truth, so it is fit to arbitrate. */
+  const stated=(rate!=null&&isFinite(rate)&&rate>0.05&&rate<8)?rate:null;
+  if(aNow!=null){
     if(vRefA==null||aNow-vRefA>1){ vRefT=t; vRefA=aNow; }      // (re)anchor
     else if(aNow-vRefA>=0.2){
       const dt=t-vRefT, da=aNow-vRefA;
       if(dt>0.004&&dt<da*8){
         const m=dt/da;                     // snap on a real speed change,
         if(m>0.05&&m<8)                    // smooth the reporting jitter
-          vRate=(Math.abs(m-vRate)>0.25)?m:vRate+0.15*(m-vRate);
+          vRateM=(vRateM==null||Math.abs(m-vRateM)>0.25)?m:vRateM+0.15*(m-vRateM);
       }
       vRefT=t; vRefA=aNow;                 // slide the base line forward
     }
   }
+  if(stated!=null){
+    const off=(vRateM!=null&&Math.abs(vRateM-stated)>0.08);
+    if(off){ if(vRateBadSince==null) vRateBadSince=performance.now(); }
+    else vRateBadSince=null;
+    // 1.5 s of steady disagreement and the measurement is believed instead
+    vRate=(vRateBadSince!=null&&performance.now()-vRateBadSince>1500&&vRateM!=null)
+      ?vRateM:stated;
+  } else if(vRateM!=null){ vRate=vRateM; vRateBadSince=null; }
   vidLastT=t;
   vPredT=t; vPredWall=performance.now();   // what the marker predicts from
   const firstT=(videoT==null);
@@ -4559,8 +4590,49 @@ function onVideoTime(t,rate){
     }
     updateScoreTools();
   }
-  if(ctx){ const b=t-vRate*ctx.currentTime;
-    vOff=(vOff==null||Math.abs(b-vOff)>0.3)?b:vOff+0.12*(b-vOff); }
+  /* DID THE VIDEO CLOCK ACTUALLY MOVE? (28 Aug, David: "when I click into the
+     notation to navigate, the first bar plays back slower than it should".)
+     The offset is derived from `t - vRate*audioNow`, which assumes the video
+     is RUNNING. After a seek Wistia reports the target time while it is still
+     buffering, so `t` stands still while the audio clock walks on: `b` falls
+     a little with every report, never far enough to trip the 0.3 s snap, and
+     the EMA follows it down. A falling offset is a TEMPO CHANGE — strokes are
+     placed at (vt-vOff)/vRate, so each one lands later than the last and the
+     bar stretches. Hence: compare how far the clock moved against how far it
+     should have, and when it is standing still, HOLD the offset instead of
+     walking it. Nothing has happened, so nothing should move. */
+  const movedBy=(prevT==null)?null:(t-prevT);
+  const shouldMove=(prevA==null||aNow==null)?null:vRate*(aNow-prevA);
+  /* "Still" is measured against what this report SHOULD have moved, with a 2 ms
+     floor for noise — not against a fixed span. A fixed 30 ms gate was the
+     first attempt and never fired at all: the bridge reports every animation
+     frame, so consecutive reports are ~17 ms apart and `shouldMove` is 0.017.
+     Measured with the gate broken, the offset walked 0.675 s across a 0.8 s
+     stall — the whole stall, straight into the tempo. */
+  vStill=(movedBy!=null&&shouldMove!=null&&shouldMove>0
+          &&movedBy<Math.max(0.002,shouldMove*0.25));
+  if(ctx&&!vStill){
+    const b=t-vRate*ctx.currentTime;
+    /* A REAL SEEK IS A JUMP IN THE VIDEO CLOCK — which is exactly what this
+       snap already detects. followTick used to infer one from how far its
+       cursor led, which is a different thing entirely (see the note there). */
+    const jumped=(vOff!=null&&Math.abs(b-vOff)>0.3);
+    vOff=(vOff==null||jumped)?b:vOff+0.12*(b-vOff);
+    if(jumped){
+      vSeek=true;
+      /* AND THE RATE MEASUREMENT STARTS AGAIN. Its baseline is a pair of
+         samples either side of a span; a seek puts a discontinuity inside that
+         span, so the next division is meaningless — measured, it produced a
+         bogus rate that then OVERRULED the correct stated one and cut 24
+         voices in a six-second run at 1.5x. A jump invalidates the ruler. */
+      vRefT=null; vRefA=null; vRateM=null; vRateBadSince=null;
+    }
+  }
+  if(aNow!=null) vLastA=aNow;
+  /* a seek we asked for has landed once the clock arrives near where we sent
+     it; until then the reports still describe the OLD place */
+  if(seekWant!=null&&(Math.abs(t-seekWant)<0.5||performance.now()-seekAt>2500))
+    seekWant=null;
   if(!videoSeen&&!syncSeenOnce) setSyncMode(true);
   { const vs=fmtT(t); if(vs!==vtimeStr){ vtimeStr=vs; $("vtime").textContent=vs; } }
   if(follow&&!playing){
@@ -4621,16 +4693,87 @@ function followPaint(){
 function startFollowPaint(){
   lastFollowPaint=null;                    // always paint once on engaging
   if(followRaf==null) followRaf=requestAnimationFrame(followPaint);
+  startFollowCarry();
+}
+/* ── CARRYING THE MUSIC WHEN THE REPORTS GO MISSING (28 Aug, David) ──────────
+   Two different things look alike from inside the app and want opposite
+   answers. The video STOPPED (buffering, seeking, paused) means the music has
+   not happened: followTick waits. The reports stopped while the video kept
+   RUNNING — a background window, throttled timers, frames suspended — means
+   the music IS happening and nobody is telling us: then the right answer is to
+   carry on, and the sync map already knows at what speed. Between two anchors
+   the map is linear, so extrapolating the video clock and reading it back
+   through mapPulse plays the passage at ITS OWN tempo, scaled by the rate.
+   It runs on a ScriptProcessorNode because that is the one clock a hidden tab
+   does not throttle — the same reason the follow measurements have to be
+   driven from one. Deliberately bounded: it carries at most CARRY_MAX, so if
+   the video was actually paused the pan overruns by that and stops rather than
+   playing on into a piece nobody is watching. */
+const CARRY_QUIET=0.25, CARRY_MAX=1.2;     // seconds
+let carryNode=null, carrySink=null;
+function startFollowCarry(){
+  if(carryNode||!ctx) return;
+  try{
+    carryNode=ctx.createScriptProcessor(4096,1,1);
+    carrySink=ctx.createGain(); carrySink.gain.value=0;
+    carryNode.connect(carrySink); carrySink.connect(ctx.destination);
+    carryNode.onaudioprocess=followCarry;
+  }catch(e){ carryNode=null; }
+}
+function stopFollowCarry(){
+  if(!carryNode) return;
+  try{ carryNode.onaudioprocess=null; carryNode.disconnect(); carrySink.disconnect(); }catch(e){}
+  carryNode=null; carrySink=null;
+}
+function followCarry(){
+  if(!follow||playing||!ctx){ stopFollowCarry(); return; }
+  if(vPredT==null||vOff==null||seekWant!=null||vStill||!vidPlaying) return;
+  const quiet=(performance.now()-vPredWall)/1000;
+  if(quiet<CARRY_QUIET||quiet>CARRY_MAX) return;   // reports still flowing, or long gone
+  const t=vPredT+vRate*quiet;
+  const p=mapPulse(t);
+  if(p==null) return;
+  if(!C) C=compile(piece);
+  try{ followTick(t,p); }catch(e){}
 }
 function followTick(t,p){                  // audio only — the marker is on rAF
   const a=piece.syncMap; if(!a||a.length<2) return;
-  if(vCursor==null||Math.abs(p-vCursor)>4){       // start or seek: resync
+  /* A SEEK IS A JUMP IN THE VIDEO CLOCK, NOT A LEAD IN THE CURSOR (28 Aug,
+     David: "sometimes the sound of a tone field is cut off right after it
+     triggers", and, with the lesson in a background window, "a sample
+     triggering again and again").
+     The old test was `Math.abs(p-vCursor)>4`, comparing a PULSE COUNT against
+     a lead that the fixed 0.45 s look-ahead creates. On his lesson's map —
+     0.158 s a pulse — the ordinary lead is 2.85 pulses, so there were 1.15 of
+     margin, and it tripped whenever the lesson ran faster than about 1.4x, or
+     through any passage played ~40% quicker than the video's average, or
+     whenever the report stream starved (measured at 2 reports/sec: 22 resyncs
+     in 25 ticks). Each trip did two damaging things: it ramped EVERY sounding
+     voice to silence in 50 ms — including a tone field struck a moment before,
+     which is the cut-off he heard — and it rewound the cursor, so pulses
+     already scheduled were scheduled again, which is the repeating sample.
+     Now the jump is detected where a jump actually shows: in the clock
+     (`vSeek`, set where the offset snaps). Falling behind is a different
+     thing and gets a different answer — catch the cursor up, in silence. */
+  if(vCursor==null||vSeek){
+    vSeek=false;
     const now=ctx?ctx.currentTime:0;
     for(const g of live){ try{ g.gain.setValueAtTime(g.gain.value,now);
       g.gain.linearRampToValueAtTime(0,now+.05);}catch(e){} }
     live=[]; vCursor=Math.ceil(p);
+  } else if(p-vCursor>2){
+    vCursor=Math.ceil(p);   // a gap in the reports: skip up, cut nothing
   }
   if(!ctx||vOff==null) return;
+  /* The seek we asked for has not arrived yet, so these reports still describe
+     where the video WAS — playing them would sound the old bar and then cut it
+     off when the seek lands. */
+  if(seekWant!=null) return;
+  /* And a clock that is standing still has nothing to say: the music has not
+     happened. Waiting is right here; carrying it on the map's own tempo is
+     right only when the video is RUNNING and the reports are missing, which is
+     a different case and handled in followCarry. */
+  if(vStill) return;
   const lastP=a[a.length-1].p;
   // each pulse is scheduled at ITS OWN spot on the map (piecewise inverse),
   // through the smoothed video->audio clock: segments fill their spans
