@@ -6739,10 +6739,25 @@ const JV_SPAN=1;       // per semitone of span, so close voicings win ties
    hand for that pan, arrived at from the instrument's range instead. On the
    F Low Pygmy (F2–G4) it sits at 49.7, far lower, as it must. */
 const JV_FLOOR=4;      // per semitone a voicing sits below that line
+/* THE ROOT TAKES A BASS NOTE WHEN THE PAN HAS ONE (David, 28 Aug: "we should
+   always use bass notes for 1st degree chord notes if we have them"). Big
+   enough to outrank the register and top-height terms, so it decides — and it
+   is the ROOT that is invited down there, never anything else: the bassOk
+   rule above still throws out a low third or seventh. Both modes: a bass root
+   grounds a narrow voicing just as much as a wide one. */
+const JV_BASS=40;
 function panMudLine(){
-  const lo=myPan.midiFor(0);
-  let hi=lo;
-  for(const f of myPan.fields) hi=Math.max(hi,myPan.midiFor(f.n));
+  /* THE RANGE RUNS FROM THE PAN'S LOWEST NOTE, WHICH IS NOT ALWAYS THE DING
+     (David, 28 Aug — an extended Kurd, where "everything was played in the
+     midrange, no bass notes"). A pan with bottom notes has them BELOW the
+     ding, so measuring the lower third from the ding put the floor a long way
+     up the instrument and narrow mode fled the whole bass end. */
+  let lo=myPan.midiFor(0), hi=lo;
+  for(const f of myPan.fields){
+    const m=myPan.midiFor(f.n);
+    if(m<lo) lo=m;
+    if(m>hi) hi=m;
+  }
   return lo+(hi-lo)/3;
 }
 /* A SEMITONE LOW DOWN IS MUD — it is what made B♭maj7 sound wrong as A3·B♭3·D4
@@ -6916,10 +6931,15 @@ function jvCandidates(name,V,narrow){
   };
   const mud=narrow?panMudLine():0;
   for(const c of use){
+    // a bass note that IS the root: the one thing allowed down there, and now
+    // the thing preferred down there (David, 28 Aug)
+    const bassRoot=c.rootBottom&&c.ms[0]<BASS_TOP;
     c.pen=(narrow
         ? JV_TOP*(c.top-lowTop)+JV_SPAN*(c.top-c.ms[0])          // keep the top low and tight
-          +JV_FLOOR*Math.max(0,mud-c.ms[0])                      // …without sinking into the bass
+          // …without sinking into the bass — unless it is the root that sinks
+          +(bassRoot?0:JV_FLOOR*Math.max(0,mud-c.ms[0]))
         : JV_REG*(c.ms[0]-low)-(c.wide?JV_WIDE:0))               // keep the bottom low; open is a bonus
+      -(bassRoot?JV_BASS:0)                                      // the root, in the bass, whenever it exists
       -(c.rootBottom&&c.ms[0]-low<=ROOT_CLOSE?JV_ROOT:0)         // the close root, either way
       +rub(c);
   }
