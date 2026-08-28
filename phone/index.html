@@ -6778,7 +6778,13 @@ function panCeilLine(){
   let lo=myPan.midiFor(0), hi=lo;
   for(const f of myPan.fields){ const m=myPan.midiFor(f.n);
     if(m<lo) lo=m; if(m>hi) hi=m; }
-  return lo+(hi-lo)*0.75;
+  /* 0.6, not 0.75 (David, 28 Aug: "now there is no difference any more
+     between narrow and wide even on the extended D kurd"). At three quarters
+     the line sat above almost every voicing either mode wanted, so it never
+     spoke. At three fifths it covers the pan's real top voice — on his
+     extended Kurd that is everything above E4 — while the plain Kurd's
+     approved set, whose chords have nowhere lower to go, is untouched. */
+  return lo+(hi-lo)*0.6;
 }
 /* …BUT NOT DOWN INTO THE BASS (David, 27 Aug: "if you have instruments with
    base notes on the bottom and you play the chords very narrow, it's not
@@ -6818,6 +6824,12 @@ const JV_RUB=24;
    low top: on the extended Kurd, D3·F3·A3 (top A3, no cost of its own) has to
    lose to D3·A3·F4 (a top eight semitones higher). */
 const JV_MUD3=34;
+/* …and "low" here is LOWER than the bass line. His example was D3 with F3; a
+   third at F3–A3 is the ordinary sound of a handpan's middle and pricing it
+   pushed every voicing on an extended pan up into the high notes, which is
+   what erased the difference between the two modes (David, 28 Aug). The line
+   sits at F3: a third is mud when its lower voice is below that. */
+const JV_MUD3_TOP=53;   // midi F3
 const JV_WIDE=24;      // what a wide/open voicing is worth
 const JV_REG=2;        // per semitone a voicing sits above the lowest legal one
 const JV_ROOT=8;       // the close root at the bottom
@@ -6970,8 +6982,18 @@ function jvCandidates(name,V,narrow){
   if(!out.length) return null;
   // a bass below A3 that is not the root is out entirely — while anything
   // legal exists (his hard rule); with nothing legal, every option stands
-  const legal=out.filter(c=>c.bassOk);
-  const use=legal.length?legal:out;
+  /* A SEMITONE (OR TONE) LOW DOWN IS NOT A PRICE, IT IS A NO — the sound David
+     rejected by name (B♭maj7 as A3·B♭3·D4, 27 Aug). It used to be priced, and
+     a price can always be outbid: raising the cost of the pan's high notes for
+     narrow mode promptly bought that very voicing back. Excluded outright now,
+     in the same shape as the bass rule — unless nothing else is left. */
+  const clean=c=>{
+    for(let i=1;i<c.ms.length;i++)
+      if(c.ms[i]-c.ms[i-1]<=2&&c.ms[i-1]<60) return false;
+    return true;
+  };
+  const legal=out.filter(c=>c.bassOk&&clean(c));
+  const use=legal.length?legal:(out.filter(c=>c.bassOk).length?out.filter(c=>c.bassOk):out);
   const low=Math.min.apply(null,use.map(c=>c.ms[0]));
   for(const c of use) c.top=Math.max.apply(null,c.ms);
   const reg=(a,b)=>{ for(let i=0;i<a.ms.length;i++) if(a.ms[i]!==b.ms[i]) return a.ms[i]-b.ms[i]; return 0; };
@@ -6986,8 +7008,8 @@ function jvCandidates(name,V,narrow){
     let close=0, third=0;
     for(let i=1;i<c.ms.length;i++){
       const gap=c.ms[i]-c.ms[i-1], low=c.ms[i-1];
-      if(gap<=2&&low<60) close++;
-      else if(gap<=4&&low<BASS_TOP) third++;
+      if(gap<=2&&low<60) close++;          // only reachable when nothing is clean
+      else if(gap<=4&&low<JV_MUD3_TOP) third++;
     }
     return close*JV_RUB+third*JV_MUD3;
   };
@@ -9225,7 +9247,7 @@ function rqPattern(grid,dens,withChord){
 /* ---- settings -------------------------------------------------------------
    Totals are the metres in the round; note is what one slot is worth, so 7 in
    eighths is 7/8 and 15 in sixteenths is 15/16. */
-let rqcfg={range:"normal",note:8,voice:"dingtak",dens:2,ppm:200,
+let rqcfg={range:"normal",note:8,voice:"dingtak",dens:2,bpm:84,
            plays:4,pulse:"in",mode:"choose",opts:4,len:10};
 /* NORMAL AND CHALLENGE, not a chip per metre (David, 28 Aug). Normal stops at
    eight pulses — 2/4, 3/4, 4/4, 5/8, 7/8 and their kin; Challenge runs to
@@ -9250,7 +9272,7 @@ function rqBounds(note){
 /* David, 28 Aug: four times by default, and an endless option. "inf" keeps
    the bar going round until the student answers, so in that one mode the
    answer opens straight away — there is no end of playback to wait for. */
-const RQPLAYS=[2,4,8,16,"inf"], RQPPM=[140,170,200,240,300];
+const RQPLAYS=[2,4,8,16,"inf"], RQBPM=[60,72,84,100,120];
 const RQLOOPCHUNK=4;      // turns of an endless bar scheduled at a time
 const RQREVEALREPS=4;     // "all the listening functions on the reveal screen
                           //  should play the pattern 4x, not just 1x" (David)
@@ -9260,7 +9282,7 @@ function rqLoadCfg(){
   if(!RQRANGES.some(r=>r.id===rqcfg.range)) rqcfg.range="normal";
   if(RQFEELS.every(f=>f.id!==rqcfg.note)) rqcfg.note=8;
   if(RQPLAYS.indexOf(rqcfg.plays)<0) rqcfg.plays=4;
-  if(!RQPPM.includes(rqcfg.ppm)) rqcfg.ppm=200;
+  if(!RQBPM.includes(rqcfg.bpm)) rqcfg.bpm=84;
   if(rqcfg.mode!=="choose"&&rqcfg.mode!=="free") rqcfg.mode="choose";
   if(["dingtak","groove","mix"].indexOf(rqcfg.voice)<0) rqcfg.voice="dingtak";
   if(![3,4,5,6].includes(rqcfg.opts)) rqcfg.opts=4;
@@ -9524,7 +9546,15 @@ function rqPlay(pat,voice,o){
      current one has run out — stopping first would cut off the audio it is
      trying to continue. Everything else still clears the decks. */
   if(!o.keep) rqStop();
-  const g=pat.grid, step=60/(o.ppm||rqcfg.ppm), barSec=g.n*step;
+  /* THE COUNT-IN COUNTS BEATS, NOT PULSES — David, 28 Aug, correcting me: the
+     denominator "becomes clear in relation to the count-in, so it must be
+     clear what is counted there". Four quarter-note beats, and the pattern's
+     own pulses are then heard AGAINST them: at twice the click they are
+     eighths, at four times they are sixteenths. An earlier build ticked the
+     count-in at the pattern's own pulse rate, which stated the speed but left
+     the note value unknowable — and the note value is half of a signature. */
+  const g=pat.grid, bpm=o.bpm||rqcfg.bpm, beat=60/bpm;
+  const step=beat*4/g.note, barSec=g.n*step;
   const reps=o.reps==null?rqcfg.plays:o.reps;
   const evs=rqEvents(pat,voice);
   return Promise.resolve(preloadBank()).then(()=>{
@@ -9533,14 +9563,19 @@ function rqPlay(pat,voice,o){
     const t0=(o.at!=null&&o.at>ctx.currentTime)?o.at:ctx.currentTime+.2;
     let t=t0;
     if(o.countIn!==false){
-      for(let k=0;k<RQCOUNTIN;k++) fire(clickBuf(k===0),t0+k*step,1);
-      t=t0+RQCOUNTIN*step;
+      for(let k=0;k<RQCOUNTIN;k++) fire(clickBuf(k===0),t0+k*beat,1);
+      t=t0+RQCOUNTIN*beat;
     }
     rqPlaying=true;
     for(let r=0;r<reps;r++){
       const base=t+r*barSec;
+      /* …and if it runs on, it runs on at the SAME rate. Switching to the
+         pattern's own pulse mid-question would put a second reference under
+         the student's feet, and the count-in's beat is the one they were
+         given. In an odd metre it therefore drifts against the bar, which is
+         exactly what a metronome does when you play 7/8 to it. */
       if(rqcfg.pulse==="through")
-        for(let k=0;k<g.n;k++) fire(clickBuf(k===0),base+k*step,.6);
+        for(let k=0;k*beat<barSec-1e-6;k++) fire(clickBuf(false),base+k*beat,.55);
       const byP=new Map();
       for(const e of evs){ if(!byP.has(e.p)) byP.set(e.p,0); byP.set(e.p,byP.get(e.p)+1); }
       for(const e of evs){
@@ -9575,7 +9610,7 @@ function rqPlay(pat,voice,o){
 }
 
 /* ---- the round ---------------------------------------------------------- */
-let rqOn=false, RQ=null, rqI=0, rqLog=[], rqFreeN=null;
+let rqOn=false, RQ=null, rqI=0, rqLog=[];
 const RQGUESSES=3;
 /* One pull of the dice: how long the bar is, how it is written, how it is cut.
    "Mixed" feel decides the note value per RHYTHM, and it changes how the bar
@@ -9599,10 +9634,18 @@ const rqEq=(a,b)=>a.n===b.n&&a.groups.join()===b.groups.join();
    the top), so distinct answers are distinct sounds. */
 function rqOptions(ans,n,readings){
   const out=[ans], seen=new Set([rqName(ans)]);
-  // every OTHER reading of this same bar is also right, so none of them may
-  // be offered as a wrong answer (rule 7)
-  for(const r of (readings||[])) seen.add(rqSig(ans)+" · "+r.join("-"));
+  /* Every other READING of this bar is right, and so is every other NOTATION
+     of it — 4/4 in eighths and 4/4 in sixteenths are one sound. Both are kept
+     out of the wrong answers, by duration rather than by name. */
+  const bad=new Set((readings||[ans.groups]).map(r=>rqDurKey(rqDurOf(r,ans.note))));
   const add=g=>{ if(seen.has(rqName(g))) return false;
+    const k=rqDurKey(rqDurOf(g.groups,g.note));
+    if(bad.has(k)) return false;
+    /* …and no two WRONG answers may sound alike either. Under Mixed feel a
+       4/4 in eighths and a 4/4 in sixteenths are one sound wearing two names,
+       and offering both would ask the student to pick between identical
+       things. Each option seals its own sound as it is accepted. */
+    bad.add(k);
     seen.add(rqName(g)); out.push(g); return true; };
   const sameMetre=rqCompositions(ans.n).filter(gr=>gr.join()!==ans.groups.join());
   for(let i=0;i<40&&out.length<2&&sameMetre.length;i++)
@@ -9610,19 +9653,36 @@ function rqOptions(ans,n,readings){
   if(out.length<2&&sameMetre.length)
     add({n:ans.n,note:ans.note,groups:sameMetre[0].slice()});
   for(let i=0;i<300&&out.length<n;i++){
-    const B=rqBounds(ans.note);
+    /* The denominator is only fair game when the student chose Mixed — that is
+       the one setting where it is genuinely in question. Otherwise every
+       option carries the answer's own, so it can never be the giveaway. */
+    const nt=rqcfg.note==="mix"?(Math.random()<0.5?8:16):ans.note;
+    const B=rqBounds(nt);
     const tn=B.lo+Math.floor(Math.random()*(B.hi-B.lo+1));
-    add({n:tn,note:ans.note,groups:rqPickGrouping(tn)});
+    add({n:tn,note:nt,groups:rqPickGrouping(tn)});
   }
   for(let i=out.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [out[i],out[j]]=[out[j],out[i]]; }
   return out;
 }
+/* WHAT MAKES TWO ANSWERS THE SAME BAR is the list of GROUP DURATIONS IN
+   QUARTER NOTES, not the pulse count and not the denominator. Sixteen
+   sixteenths in fours and eight eighths in twos are the same sound — four
+   quarter-length groups — and both are 4/4; a student naming it either way is
+   right. Seven eighths as 3-2-2 is 1.5, 1, 1 quarters and seven SIXTEENTHS as
+   3-2-2 is 0.75, 0.5, 0.5, a different sound and a different answer, which is
+   what makes the Mixed feel a real question rather than a guess.
+   So everything — marking, and keeping wrong answers genuinely wrong —
+   compares durations. */
+const rqDurOf=(groups,note)=>groups.map(g=>g*4/note);
+const rqDurKey=d=>d.map(x=>x.toFixed(4)).join(",");
+function rqReadingKeys(pat){
+  return new Set((pat.readings||[pat.grid.groups])
+    .map(r=>rqDurKey(rqDurOf(r,pat.grid.note))));
+}
 /* Rule 7 again: a given answer is right when it is ANY legitimate reading of
-   the bar, not only the one the generator happened to lay out. */
+   the bar, and now also when it is any legitimate NOTATION of one. */
 function rqRight(given,pat){
-  if(given.n!==pat.grid.n) return false;
-  const k=given.groups.join("-");
-  return (pat.readings||[pat.grid.groups]).some(r=>r.join("-")===k);
+  return rqReadingKeys(pat).has(rqDurKey(rqDurOf(given.groups,given.note)));
 }
 function rqNext(){
   const grid=rqGrid();
@@ -9636,10 +9696,9 @@ function rqNext(){
      anything. It carries over from the last answer instead — a student
      working through a round of 7/8 should not restep to 7 every time — and
      starts at the smallest metre in the pool. */
-  if(rqFreeN==null) rqFreeN=rqBounds(grid.note).lo;
   RQ={pat,grid,voice,phase:"listen",wrong:0,dead:[],played:0,
       opts:rqcfg.mode==="choose"?rqOptions(grid,rqcfg.opts,pat.readings):null,
-      free:{n:rqFreeN,groups:[]}};
+      free:{den:8,n:RQDEFN[8],groups:[]}};
   renderRQ();
   rqListen();
 }
@@ -9742,7 +9801,8 @@ function renderRQSetup(){
     {id:"in",label:"Count-in only",why:"The count-in states the pulse and the downbeat; after that you hold it"},
     {id:"through",label:"All the way through",why:"A click on every pulse under the pattern"}],
     rqcfg.pulse,v=>set("pulse",v));
-  qzChipRow(box,"Speed",RQPPM.map(p=>({id:p,label:p+" / min"})),rqcfg.ppm,v=>set("ppm",v));
+  qzChipRow(box,"Speed",RQBPM.map(b=>({id:b,label:b+" bpm",
+      why:"Beats per minute — what the count-in ticks"})),rqcfg.bpm,v=>set("bpm",v));
   qzChipRow(box,"Length",[{id:10,label:"10 questions"},{id:20,label:"20 questions"},
     {id:"endless",label:"Endless"}],rqcfg.len,v=>set("len",v));
 
@@ -9799,9 +9859,9 @@ function renderRQ(){
 
   if(RQ.phase==="listen"){
     const p=document.createElement("div"); p.className="rqsaid";
-    p.textContent="Four pulses to count you in, then the rhythm "+rqcfg.plays+" times. The "
-      +"count-in gives you the speed and nothing else — how long the bar is, and how it is cut "
-      +"up, are both for you to hear.";
+    p.textContent="Four beats to count you in, then the rhythm "+rqcfg.plays+" times. Everything "
+      +"is measured against those beats: pulses running at twice the click are eighths, at four "
+      +"times they are sixteenths. How long the bar is and how it is cut up are yours to hear.";
     card.appendChild(p);
     const r=document.createElement("div"); r.className="row";
     const skip=document.createElement("button"); skip.className="ctl";
@@ -9849,69 +9909,108 @@ function rqChooseUI(){
    BUILT out of 2s, 3s and 4s rather than typed — the parts are the only three
    there are, they carry their konnakol names as they are laid down, and the
    answer cannot be submitted until they add up to the bar. */
+/* THE FREE ANSWER (David, 28 Aug): "first they enter 7/8, then they enter the
+   subdivision, for example 3-2-2" — and, once the count-in made the note value
+   hearable, "when mode is mixed, for the answer I have to be able to choose
+   between 8th, 16th and 4th (for 2/4 and 4/4)".
+
+   THE DENOMINATOR IS THE STUDENT'S TO PICK. An earlier build printed it for
+   them — "eighth pulses" sat under the stepper — which handed over half the
+   signature before they had committed to anything. It is a chip row now.
+
+   Choosing QUARTERS is choosing a plain duple bar: 2/4 and 4/4 have no
+   grouping to build, so the builder steps aside and the numerator is the whole
+   answer. Choosing eighths or sixteenths means counting in those, and the
+   grouping is built in the same unit. */
+const RQDENS=[{id:4,label:"4th",why:"A plain duple bar — 2/4 or 4/4"},
+              {id:8,label:"8th",why:"Count the bar in eighths"},
+              {id:16,label:"16th",why:"Count the bar in sixteenths"}];
+const RQDEFN={4:4,8:7,16:9};
+function rqFreeGrid(F){
+  return F.den===4 ? {n:F.n,note:4,groups:new Array(F.n).fill(1)}
+                   : {n:F.n,note:F.den,groups:F.groups.slice()};
+}
 function rqFreeUI(){
   const wrap=document.createElement("div"); wrap.className="rqfree";
   const F=RQ.free;
+  if(!RQDENS.some(d=>d.id===F.den)) F.den=8;
+
+  const r0=document.createElement("div"); r0.className="rqfrow";
+  r0.innerHTML='<span class="qlab">Counted in</span>';
+  for(const d of RQDENS){
+    const b=document.createElement("button");
+    b.className="qchip"+(F.den===d.id?" sel":""); b.textContent=d.label; b.title=d.why;
+    b.addEventListener("click",()=>{ if(F.den===d.id) return;
+      F.den=d.id; F.n=RQDEFN[d.id]; F.groups=[]; renderRQ(); });
+    r0.appendChild(b);
+  }
+  wrap.appendChild(r0);
+
   const r1=document.createElement("div"); r1.className="rqfrow";
-  r1.innerHTML='<span class="qlab">Pulses in the bar</span>';
+  r1.innerHTML='<span class="qlab">'+(F.den===4?"Beats in the bar":"Pulses in the bar")+'</span>';
   const dec=document.createElement("button"); dec.className="ctl"; dec.textContent="−";
   const num=document.createElement("span"); num.className="rqnum"; num.textContent=F.n;
   const inc=document.createElement("button"); inc.className="ctl"; inc.textContent="+";
-  const over=document.createElement("span"); over.className="rqtally";
-  over.textContent=(RQ.grid.note===16?"sixteenth":"eighth")+" pulses";
-  dec.addEventListener("click",()=>{ F.n=rqFreeN=Math.max(2,F.n-1); F.groups=[]; renderRQ(); });
-  inc.addEventListener("click",()=>{ F.n=rqFreeN=Math.min(24,F.n+1); F.groups=[]; renderRQ(); });
-  r1.append(dec,num,inc,over); wrap.appendChild(r1);
+  const lo=F.den===4?2:4, hi=F.den===4?8:24;
+  dec.addEventListener("click",()=>{ F.n=Math.max(lo,F.n-1); F.groups=[]; renderRQ(); });
+  inc.addEventListener("click",()=>{ F.n=Math.min(hi,F.n+1); F.groups=[]; renderRQ(); });
+  r1.append(dec,num,inc);
+  const nm=document.createElement("span"); nm.className="rqtally";
+  if(F.den===4) nm.textContent="→  "+F.n+"/4";
+  r1.appendChild(nm);
+  wrap.appendChild(r1);
 
-  const r2=document.createElement("div"); r2.className="rqfrow";
-  r2.innerHTML='<span class="qlab">Grouping</span>';
   const sum=F.groups.reduce((a,b)=>a+b,0);
-  const build=document.createElement("div");
-  build.className="rqbuild"+(sum===F.n?" full":sum>F.n?" over":"");
-  if(!F.groups.length){
-    const hint=document.createElement("span"); hint.className="rqtally";
-    hint.textContent="add 2s, 3s and 4s until they fill the bar";
-    build.appendChild(hint);
-  }
-  F.groups.forEach((k,i)=>{
-    const c=document.createElement("button"); c.className="rqchunk";
-    c.innerHTML=k+"<small>"+RQKON[k]+"</small>";
-    c.title="Remove"; c.addEventListener("click",()=>{ F.groups.splice(i,1); renderRQ(); });
-    build.appendChild(c);
-  });
-  r2.appendChild(build); wrap.appendChild(r2);
+  if(F.den!==4){
+    const r2=document.createElement("div"); r2.className="rqfrow";
+    r2.innerHTML='<span class="qlab">Grouping</span>';
+    const build=document.createElement("div");
+    build.className="rqbuild"+(sum===F.n?" full":sum>F.n?" over":"");
+    if(!F.groups.length){
+      const hint=document.createElement("span"); hint.className="rqtally";
+      hint.textContent="add 2s, 3s and 4s until they fill the bar";
+      build.appendChild(hint);
+    }
+    F.groups.forEach((k,i)=>{
+      const c=document.createElement("button"); c.className="rqchunk";
+      c.innerHTML=k+"<small>"+RQKON[k]+"</small>";
+      c.title="Remove"; c.addEventListener("click",()=>{ F.groups.splice(i,1); renderRQ(); });
+      build.appendChild(c);
+    });
+    r2.appendChild(build); wrap.appendChild(r2);
 
-  const r3=document.createElement("div"); r3.className="rqfrow";
-  r3.innerHTML='<span class="qlab"></span>';
-  for(const k of RQSIZES){
-    const b=document.createElement("button"); b.className="ctl";
-    b.textContent="+ "+k+" · "+RQKON[k];
-    b.disabled=sum+k>F.n;
-    b.addEventListener("click",()=>{ F.groups.push(k); renderRQ(); });
-    r3.appendChild(b);
+    const r3=document.createElement("div"); r3.className="rqfrow";
+    r3.innerHTML='<span class="qlab"></span>';
+    for(const k of RQSIZES){
+      const b=document.createElement("button"); b.className="ctl";
+      b.textContent="+ "+k+" · "+RQKON[k];
+      b.disabled=sum+k>F.n;
+      b.addEventListener("click",()=>{ F.groups.push(k); renderRQ(); });
+      r3.appendChild(b);
+    }
+    const clr=document.createElement("button"); clr.className="ctl"; clr.textContent="Clear";
+    clr.disabled=!F.groups.length;
+    clr.addEventListener("click",()=>{ F.groups=[]; renderRQ(); });
+    r3.appendChild(clr);
+    const tal=document.createElement("span");
+    tal.className="rqtally"+(sum===F.n?" ok":sum>F.n?" over":"");
+    /* The signature falls out of what the STUDENT has said, never out of the
+       answer — 2+2+2+2 = 8 → 4/4 is the lesson, and it is their own arithmetic. */
+    tal.textContent=F.groups.length
+      ?(F.groups.join(" + ")+" = "+sum+" of "+F.n
+        +(sum===F.n?("   →  "+rqSig(rqFreeGrid(F))):""))
+      :"";
+    r3.appendChild(tal);
+    wrap.appendChild(r3);
   }
-  const clr=document.createElement("button"); clr.className="ctl"; clr.textContent="Clear";
-  clr.disabled=!F.groups.length;
-  clr.addEventListener("click",()=>{ F.groups=[]; renderRQ(); });
-  r3.appendChild(clr);
-  const tal=document.createElement("span");
-  tal.className="rqtally"+(sum===F.n?" ok":sum>F.n?" over":"");
-  /* The signature falls out of the grouping, so it is shown as it is built —
-     2+2+2+2 = 8 → 4/4 is the lesson in one line. */
-  tal.textContent=F.groups.length
-    ?(F.groups.join(" + ")+" = "+sum+" of "+F.n
-      +(sum===F.n?("   →  "+rqSig({n:F.n,note:RQ.grid.note,groups:F.groups})):""))
-    :"";
-  r3.appendChild(tal);
-  wrap.appendChild(r3);
 
   const r4=document.createElement("div"); r4.className="rqfrow";
   r4.innerHTML='<span class="qlab"></span>';
   const go=document.createElement("button"); go.className="ctl";
   go.style.cssText="background:var(--dixie);border-color:var(--dixie);color:#231703;font-weight:700";
   go.textContent="That is my answer";
-  go.disabled=sum!==F.n;
-  go.addEventListener("click",()=>rqAnswer({n:F.n,note:rqcfg.note,groups:F.groups.slice()}));
+  go.disabled=(F.den!==4&&sum!==F.n);
+  go.addEventListener("click",()=>rqAnswer(rqFreeGrid(F)));
   r4.appendChild(go);
   if(RQ.dead.length){
     const said=document.createElement("span"); said.className="rqtally over";
@@ -9950,7 +10049,7 @@ function rqRevealUI(card){
   row.appendChild(a);
   const slow=document.createElement("button"); slow.className="ctl"; slow.textContent="▶ Slowly";
   slow.addEventListener("click",()=>rqPlay(RQ.pat,RQ.voice,
-    {reps:RQREVEALREPS,countIn:true,ppm:Math.round(rqcfg.ppm*.62),markIn:sc}));
+    {reps:RQREVEALREPS,countIn:true,bpm:Math.round(rqcfg.bpm*.62),markIn:sc}));
   row.appendChild(slow);
   const oth=document.createElement("button"); oth.className="ctl";
   oth.textContent=RQ.voice==="dingtak"?"▶ As a chord groove":"▶ On doum & tak";
@@ -10013,7 +10112,7 @@ function enterRhythmQuiz(){
   $("title").value="Rhythm Quiz";
   $("title").readOnly=true;      // the quiz borrows the slot; the piece keeps its name
   fitTitle();
-  rqOn=true; RQ=null; rqI=0; rqLog=[]; rqFreeN=null;
+  rqOn=true; RQ=null; rqI=0; rqLog=[];
   document.body.classList.add("rquiz");
   $("rqwrap").classList.remove("hidden");
   updatePracticeBtn();
