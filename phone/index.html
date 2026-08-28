@@ -51,6 +51,16 @@ html,body{overflow-x:hidden; overscroll-behavior-x:none}  /* Magic-Mouse swipes 
 #score{min-width:0; position:relative}   /* the loop frame is placed against it */
 #sctools{justify-self:center; display:flex; align-items:center; gap:6px}
 #scoreheadR{justify-self:end; display:flex; align-items:center; gap:6px}
+/* the head is a SINGLE LINE beside the play button. Measured at 820px the
+   voicing caption and "🎲 Generate" both wrapped and made the head two rows
+   tall — nothing may break inside this cell. */
+#scoreheadR .vlab,#scoreheadR #genBtn{white-space:nowrap}
+#scoreheadR>*{flex:0 0 auto}
+/* …and below that the caption goes, the way the footer sheds its own words.
+   Measured head height with the caption: 55px at 1040 / 1000 / 900, and 71px
+   at 820 — where the LEFT cell starts wrapping instead. Dropping the caption
+   puts 820 back to 55. The pills say Narrow | Wide and keep their titles. */
+@media (max-width:880px){ #scoreheadR .vlab{display:none} }
 #genBtn{display:none}
 body.jam #genBtn{display:inline-flex}
 body.phone #genBtn{display:none !important}
@@ -159,6 +169,17 @@ body.nonota #scorefoot{margin-top:0; border-top:none}
   background:var(--card); color:var(--ink2); display:grid; place-items:center; flex:none;
   box-shadow:0 1px 2px rgba(70,52,28,.06); padding:0}
 .ib svg{width:17px; height:17px; display:block}
+/* AN ICON BUTTON MAY CARRY A WORD (David, 28 Aug: "give the follow video
+   button text next to the symbol … otherwise users will not understand what it
+   does"). The square grows into a pill and lays icon + label on one row; the
+   icon keeps its size, so a labelled button still reads as the same control.
+   The word is dropped on the phone, where these sit in the transport beside
+   the play button and there is no spare width — the title stays for both. */
+.ib.wlab{width:auto; padding:0 9px; display:inline-flex; align-items:center; gap:6px}
+.ib .iblab{font-family:Inter,sans-serif; font-size:12px; font-weight:700;
+  letter-spacing:.01em; white-space:nowrap; line-height:1}
+body.phone .ib.wlab{width:31px; padding:0; display:grid}
+body.phone .ib .iblab{display:none}
 /* NO amber here (David, 26 Aug): these ride ON the notation, and a lit orange
    box beside the music competes with the playback marker, which is the one
    thing that is allowed to be orange. State reads as ink vs grey instead —
@@ -206,7 +227,11 @@ button{font:inherit; cursor:pointer}
    edit section and the rest of the menu"). The settings sheet's .dsep is
    scoped to #setDlg, so a copy of it in the share sheet drew nothing at all. */
 .shsep{height:1px; background:var(--rule); margin:13px -14px 12px}
-#setFeelHead,#setFeelSep,#feelRow{display:none}
+/* The husk #feelWrap leaves behind. !important because BOTH `#setDlg .drow`
+   and `#menuDlg .drow` set display:flex with an id and a class, and the row
+   has lived in each of them — a scoped rule only hides it in one place. */
+#setFeelHead,#setFeelSep{display:none}
+#feelRow{display:none !important}
 .tabonly{display:none !important}
 body.design-tab .tabonly{display:flex !important}
 /* ---- the video's own caption bar: which file is loaded, whether it has a map,
@@ -1139,9 +1164,19 @@ dialog textarea{width:100%; min-height:70px; font-family:ui-monospace,monospace;
    whole thing off — EMBED.md step 3 has David authoring the tempo map from
    inside the lesson page as admin, and Video sync is the button that opens
    it, so one URL keeps the full app and the students' iframe is stripped. */
+/* SWING AND THE GROOVE MAP GO TOO (David, 28 Aug — the embed player). They
+   arrived in the footer on 28 Aug and would have been the first thing player
+   mode ever gained rather than lost: a lesson plays on the teacher's feel, not
+   on one a student has nudged. BOTH homes, because the pair lives in the
+   score footer on the desktop and in the drawer's Feel section on the phone —
+   hiding one would have left the other standing in the very build that has no
+   Settings button to undo it with. #dsFeel is the heading above it.
+   fitFooter counts only the groups it can see, so the footer measures as two
+   here and sheds nothing on the strength of a hidden control. */
 html.player #practiceGroup, html.player #libBtn, html.player #shareBtn,
 html.player #authortools, html.player #setBtn,
 html.player #mLib, html.player #mShare, html.player #mSet,
+html.player #footFeel, html.player #dsFeel, html.player #dwFeel,
 html.player #spGoWrap, html.player #csGoWrap{ display:none !important }
 /* the title is an <input>: in player mode a student could type into the
    lesson's own piece name. Same metrics, so fitTitle() still measures it. */
@@ -2510,6 +2545,17 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 
 <!-- Leaving the phone editor offers the library (26 Aug, David's call) — the
      changes stay in the open piece either way, exactly like the desktop. -->
+<!-- WHEN THE VIDEO'S OWN SOUND GOES QUIET (David, 28 Aug). Muting the lesson
+     usually means you want to hear the pan instead — but it does not have to,
+     so this asks rather than deciding. The other direction does not ask: when
+     the video's sound comes back ON the pan simply steps aside, with a toast. -->
+<dialog id="panSoundDlg">
+  <h3>Video sound is off</h3>
+  <p class="hint">Would you like to hear the pan instead?</p>
+  <div class="row"><button class="ctl on" id="psYes">Turn the pan on</button>
+    <span class="spacer"></span><button class="ctl" id="psNo">No, stay quiet</button></div>
+</dialog>
+
 <dialog id="editExitDlg">
   <h3>Done editing?</h3>
   <p class="hint">Save the piece to your library so it survives closing the app. Either way, your changes stay in the open piece.</p>
@@ -3498,30 +3544,10 @@ function tick(){
   }catch(e){}
   raf=requestAnimationFrame(tick);
 }
-/* THE RUN-IN, WHEREVER THE APP STARTS THE VIDEO (David, 28 Aug: the first beat
-   goes missing "when playback is triggered by the embed and the embed player
-   is not on silent"). Starting the video exactly where it is parked means its
-   clock only begins moving AT the pulse that has to sound, and by the time the
-   app has a running clock that pulse is behind the 60 ms lateness cut-off. So
-   before starting it, send it back a fraction of a second: the app then has a
-   live clock while the downbeat is still ahead of it.
-   Only when the PAN is the one sounding. Muted, the student hears the video
-   and there is nothing to rescue, so the video is not moved at all. */
-function followRunIn(){
-  if(!follow||followMuted) return false;
-  if(!piece.syncMap||piece.syncMap.length<2||videoT==null) return false;
-  const p=mapPulse(videoT);
-  videoSeek(Math.max(0,videoT-FOLLOW_LEAD));
-  // and the marker waits where it is until the music comes back round to it
-  if(p!=null){ seekPaint=Math.max(0,Math.floor(p)); seekPaintAt=performance.now(); }
-  return true;
-}
 async function togglePlay(){
   // in follow mode the play button drives the VIDEO — the notation follows it
   if(follow){
     const v=$("vidEl");
-    const starting=(v&&v.src)?v.paused:!vidPlaying;
-    if(starting) followRunIn();          // hand the app a moment before the beat
     if(v&&v.src){ if(v.paused) v.play().catch(()=>{}); else v.pause(); return; }
     // embedded: ask the lesson page's bridge to toggle its player
     try{ window.parent.postMessage({type:"hps-video-ctl",action:"toggle"},"*"); }catch(e){}
@@ -3720,6 +3746,9 @@ function updateVidBar(){
    noise. Not persisted — the context decides, so no stored "off" can strand
    a student in silence. */
 let followMuted=EMBEDDED, vCursor=null, vOff=null;
+/* what the bridge says about the VIDEO's own sound, and what it said last —
+   null means an older block that does not report it at all */
+let vidMuted=null, vidMutedWas=null;
 /* Two flags for a lesson embed that should open ready to use (David,
    26 Aug). `?piece=<demo id>` pins a built-in piece — it beats the stored
    last piece, so a student who wandered off to another one still gets the
@@ -3840,7 +3869,8 @@ function updateScoreTools(){
   fm.classList.toggle("hidden",!v);
   if(v){
     fb.classList.toggle("on",follow);
-    fb.innerHTML=ico("is-film");
+    fb.innerHTML=ico("is-film")+'<span class="iblab">Follow video</span>';
+    fb.classList.add("wlab");
     fb.classList.toggle("off",!follow);
     fb.title=follow?"Following the video — click to stop":"Follow the video";
     fb.setAttribute("aria-pressed",follow?"true":"false");
@@ -4276,31 +4306,21 @@ function videoSeek(t){ // move the recording — local element or the embed brid
      cannot mute Follow for good. */
   seekWant=t; seekAt=performance.now();
 }
-const FOLLOW_LEAD=0.35;   // seconds of run-in before a clicked bar
 function seekToPulse(p){ // click in the notation: the playhead goes there
   if(!C) C=compile(piece);
   viewPin=null;          // acting on the table releases the hand-picked view
   if(follow&&piece.syncMap&&piece.syncMap.length>=2){
     const vt=invMap(p);
-    if(vt!=null){
-      /* A HEAD START, BUT ONLY WHEN THE PAN IS THE ONE SOUNDING (David,
-         28 Aug: "playback is missing the first stroke — I think because it's
-         waiting for the video … let's start playback a tiny bit earlier than
-         the start of the bar, so there is time for the player to get up and
-         running in time for the first beat").
-         Landing exactly on the bar means the clock only starts moving AT the
-         pulse that has to sound, and by the time the app has a running clock
-         that pulse is already behind — followTick drops anything more than
-         60 ms late, so the first stroke goes missing. Seeking a third of a
-         second earlier hands the app a live clock while the downbeat is still
-         ahead of it, and the run-in is under half a beat at his tempo. The
-         video plays that run-in too, so the pan sounding it keeps the two
-         together rather than putting them out.
-         When the pan is muted the student is hearing the VIDEO, which has no
-         such problem, so nothing is moved — his call. */
-      const lead=followMuted?0:FOLLOW_LEAD;
-      videoSeek(Math.max(0,vt-lead));
-    }
+    /* THE SEEK LANDS ON THE BAR ITSELF (David, 28 Aug: "you also hear the notes
+       played at the end of the bar before … and start the animation on the
+       selected bar, not the bar before").
+       A run-in used to be seeked in first, because the downbeat was going
+       missing — but that turned out to be `Math.ceil` throwing the pulse away
+       on the resync, and once that was floored the run-in was only paying for
+       a bug that no longer existed. It cost the tail of the previous bar out
+       of BOTH the pan and the video, and put the music a bar behind the
+       marker. Gone: the seek goes where the student clicked. */
+    if(vt!=null) videoSeek(vt);
     paintPulse(p);
     /* and the marker STAYS on the clicked bar until the music reaches it */
     lastFollowPaint=seekPaint=Math.max(0,Math.floor(p));
@@ -4594,6 +4614,9 @@ window.addEventListener("message",e=>{
     // the re-pasted bridge posts the player's own playbackRate; older blocks
     // don't, and onVideoTime measures it instead
     if(typeof d.r==="number") r=d.r;
+    // …and whether the player's OWN sound is on. Absent from older blocks,
+    // which is why it is read as a tri-state: null means "not told".
+    if(typeof d.m==="boolean") vidMuted=d.m;
   }
   if(d&&d.type==="hps-bridge"){
     if(!videoSeen&&!syncSeenOnce) setSyncMode(true);
@@ -4713,6 +4736,21 @@ function onVideoTime(t,rate){
   if(seekWant!=null&&(vSeek||Math.abs(t-seekWant)<0.5||performance.now()-seekAt>2500))
     seekWant=null;
   if(!videoSeen&&!syncSeenOnce) setSyncMode(true);
+  /* THE TWO PLAYERS TAKE TURNS (David, 28 Aug). Acting on the CHANGE, never on
+     the state: muting the pan whenever the video happens to be audible would
+     fight a student who has just chosen to turn it on. The first report only
+     records where things stand — there is no transition yet to read. */
+  if(vidMuted!=null&&vidMutedWas!=null&&vidMuted!==vidMutedWas&&follow){
+    if(!vidMuted){
+      // the video's sound came on: the pan steps aside, and says so
+      if(!followMuted){ followMuted=true; updateScoreTools();
+        toast("Video sound on — pan muted"); }
+    } else if(followMuted){
+      // it went quiet: ask, rather than deciding for them
+      try{ openDlg($("panSoundDlg")); }catch(e){}
+    }
+  }
+  if(vidMuted!=null) vidMutedWas=vidMuted;
   { const vs=fmtT(t); if(vs!==vtimeStr){ vtimeStr=vs; $("vtime").textContent=vs; } }
   if(follow&&!playing){
     const p=mapPulse(t);
@@ -11911,6 +11949,17 @@ function boot(){
   });
   /* leaving the phone editor: the ✕ offers the library (David, 26 Aug) —
      the changes stay in the open piece either way, like the desktop */
+  /* the pan-sound question. Yes turns the pan on and readies its audio the
+     same way the sound button does; No simply leaves things quiet — it is not
+     remembered, because the next time the video's sound goes off is a fresh
+     decision, and the question only ever fires on that change. */
+  $("psYes").addEventListener("click",()=>{
+    $("panSoundDlg").close();
+    followMuted=false; ensureCtx(); ensureSink();
+    if(ctx) ctx.resume().catch(()=>{});
+    preloadBank(); updateScoreTools(); toast("Pan sound on");
+  });
+  $("psNo").addEventListener("click",()=>{ $("panSoundDlg").close(); });
   $("exStay").addEventListener("click",()=>{ afterEdit=null; $("editExitDlg").close(); });
   $("exNoSave").addEventListener("click",()=>{
     $("editExitDlg").close(); if(editing) $("editBtn").click(); runAfterEdit(); });
@@ -12689,7 +12738,11 @@ function placePhoneControls(){
     [...$("setDlg").querySelectorAll(".drow")].forEach(r=>{
       if(r.querySelector("#setCountBtn")) return;      // count-in lives in the drawer
       if(r.querySelector("#swing")) return;            // swing lives in the drawer
-      if(r.querySelector("#feelBtn")) return;          // …and so does the groove map
+      /* BY ID, not by what is inside it: #feelBtn moves into the drawer on the
+         first pass, so a querySelector for it stops matching and the SECOND
+         rotation swept the emptied row into this sheet as an orphan "Groove
+         map" label. Verified before the fix by rotating three times. */
+      if(r.id==="feelRow") return;                    // …and so does the groove map
       if(r.querySelector("#setTutBtn")) return;        // the sheet has its own tutorial row
       host.appendChild(r);
     });
