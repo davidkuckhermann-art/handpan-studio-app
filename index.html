@@ -2542,6 +2542,17 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
      usually means you want to hear the pan instead — but it does not have to,
      so this asks rather than deciding. The other direction does not ask: when
      the video's sound comes back ON the pan simply steps aside, with a toast. -->
+<!-- …and the other direction says so in the same place, in the same shape
+     (David, 28 Aug: "have the muting message come up at the same spot with the
+     same obvious design as the popup question"). It is a statement, not a
+     question, so it carries one button and takes itself away after a few
+     seconds — a lesson is playing behind it. -->
+<dialog id="panMutedDlg">
+  <h3>Video sound is on</h3>
+  <p class="hint">The pan has been muted, so the two don&rsquo;t play over each other.</p>
+  <div class="row"><button class="ctl on" id="pmOk">Got it</button></div>
+</dialog>
+
 <dialog id="panSoundDlg">
   <h3>Video sound is off</h3>
   <p class="hint">Would you like to hear the pan instead?</p>
@@ -3448,7 +3459,12 @@ function clearMarks(){
   clearSlotMarks();
   document.querySelectorAll(".cnow").forEach(el=>el.classList.remove("cnow"));
 }
-function paintPulse(pi){
+/* `seek` = the student moved the playhead by hand. The pan shows what SOUNDS,
+   so a mere navigation must leave it dark (David, 28 Aug: "pan animation fires
+   when I navigate the notation … neither of that should be there"). The
+   `playing||follow` test was not enough: in follow mode `follow` is true even
+   with the video parked, so every click lit the pan. */
+function paintPulse(pi,seek){
   const cur=secOfPulse(pi);
   if(cur){
     /* The view follows the music — UNLESS the student has picked a table by
@@ -3471,7 +3487,7 @@ function paintPulse(pi){
     document.querySelectorAll(".cnow").forEach(el=>el.classList.remove("cnow"));
     const ch=document.querySelector('[data-ai="'+cur.ai+'"]')||document.querySelector('[data-ai-'+cur.ai+']');
     if(ch) ch.classList.add("playing");
-    if(panOn&&(playing||follow)) paintPan(pi);
+    if(panOn&&!seek&&(playing||follow)) paintPan(pi);
     return;
   }
   if(cur){
@@ -3516,7 +3532,7 @@ function paintPulse(pi){
     /* the pan lights what SOUNDS — so it stays dark on a mere seek, which
        looked like playing without audio (David, 27 Aug: "the playing
        animation goes off, but without sound") */
-    if(panOn&&(playing||follow)) paintPan(pi);
+    if(panOn&&!seek&&(playing||follow)) paintPan(pi);
     const chip=document.querySelector('[data-ai="'+cur.ai+'"]')||document.querySelector('[data-ai-'+cur.ai+']');
     if(chip) chip.classList.add("playing");
     document.querySelectorAll(".cchip.playing").forEach(el=>el.classList.remove("playing"));
@@ -3790,6 +3806,9 @@ let vPredT=null, vPredWall=0, followRaf=null, lastFollowPaint=null, vtimeStr="";
 let vLastA=null, vStill=false, vSeek=false, seekWant=null, seekAt=0;
 /* the bar a click asked for: the marker waits there through the run-in */
 let seekPaint=null, seekPaintAt=0;
+/* set when the clock jumps, cleared by the first report showing ordinary
+   motion — so a seek into a PAUSED video never schedules anything */
+let awaitMotion=false, justResynced=false, vStillWas=false;
 /* An <input> holds its default width whatever text is in it, which left the
    "Written for" badge floating in the gap. Measure the text in the field's own
    font and size the field to it, so the badge sits against the piece's name. */
@@ -4286,6 +4305,15 @@ function mapShowSpan(from,to){ // ride the timeline onto a pulse span (arrangeme
   mapWin.off=Math.max(0,t0-pad); mapWin.dur=(t1-t0)+2*pad;
   drawMap();
 }
+/* The pan-muted notice: same place and same shape as the question, but it
+   closes itself, because nothing is being asked and the lesson is running. */
+let panMutedT=null;
+function panMutedSays(){
+  const d=$("panMutedDlg"); if(!d) return;
+  try{ if(!d.open) openDlg(d); }catch(e){ return; }
+  clearTimeout(panMutedT);
+  panMutedT=setTimeout(()=>{ try{ d.close(); }catch(e){} },4200);
+}
 function videoSeek(t){ // move the recording — local element or the embed bridge
   const v=$("vidEl");
   if(v&&v.src) v.currentTime=t;
@@ -4314,7 +4342,7 @@ function seekToPulse(p){ // click in the notation: the playhead goes there
        of BOTH the pan and the video, and put the music a bar behind the
        marker. Gone: the seek goes where the student clicked. */
     if(vt!=null) videoSeek(vt);
-    paintPulse(p);
+    paintPulse(p,true);   // a click: the marker moves, the pan does not light
     /* and the marker STAYS on the clicked bar until the music reaches it */
     lastFollowPaint=seekPaint=Math.max(0,Math.floor(p));
     seekPaintAt=performance.now();
@@ -4702,6 +4730,18 @@ function onVideoTime(t,rate){
      stall — the whole stall, straight into the tempo. */
   vStill=(movedBy!=null&&shouldMove!=null&&shouldMove>0
           &&movedBy<Math.max(0.002,shouldMove*0.25));
+  /* plain forward motion: moved, but not by a jump's worth */
+  if(awaitMotion&&movedBy!=null&&shouldMove!=null&&!vStill
+     &&movedBy>0&&movedBy<Math.max(0.35,shouldMove*4)) awaitMotion=false;
+  /* STOPPING AND STARTING AGAIN IS A DISCONTINUITY, even when the clock does
+     not jump (David: "1st beat sometimes doesn't trigger"). A pause shorter
+     than the 0.3 s snap leaves the offset close enough that no seek is seen —
+     but the cursor is still parked a look-ahead PAST the video, where it was
+     when the clock stopped, so the pulses in between are never scheduled and
+     the downbeat is one of them. The clock going still and moving again is
+     itself the seek. */
+  if(vStillWas&&!vStill) vSeek=true;
+  vStillWas=vStill;
   if(ctx&&!vStill){
     const b=t-vRate*ctx.currentTime;
     /* A REAL SEEK IS A JUMP IN THE VIDEO CLOCK — which is exactly what this
@@ -4710,7 +4750,7 @@ function onVideoTime(t,rate){
     const jumped=(vOff!=null&&Math.abs(b-vOff)>0.3);
     vOff=(vOff==null||jumped)?b:vOff+0.12*(b-vOff);
     if(jumped){
-      vSeek=true;
+      vSeek=true; awaitMotion=true;
       /* AND THE RATE MEASUREMENT STARTS AGAIN. Its baseline is a pair of
          samples either side of a span; a seek puts a discontinuity inside that
          span, so the next division is meaningless — measured, it produced a
@@ -4736,8 +4776,7 @@ function onVideoTime(t,rate){
   if(vidMuted!=null&&vidMutedWas!=null&&vidMuted!==vidMutedWas&&follow){
     if(!vidMuted){
       // the video's sound came on: the pan steps aside, and says so
-      if(!followMuted){ followMuted=true; updateScoreTools();
-        toast("Video sound on — pan muted"); }
+      if(!followMuted){ followMuted=true; updateScoreTools(); panMutedSays(); }
     } else if(followMuted){
       // it went quiet: ask, rather than deciding for them
       try{ openDlg($("panSoundDlg")); }catch(e){}
@@ -4896,7 +4935,7 @@ function followTick(t,p){                  // audio only — the marker is on rA
        while `at > ctx.currentTime - 0.06`, so a pulse genuinely gone by is
        still skipped, and one we are sitting on — a few milliseconds past —
        still sounds. Ceil could not tell those apart; the loop can. */
-    live=[]; vCursor=Math.floor(p);
+    live=[]; vCursor=Math.floor(p); justResynced=true;
   } else if(p-vCursor>2){
     vCursor=Math.floor(p);   // a gap in the reports: skip up, cut nothing
   }
@@ -4910,6 +4949,15 @@ function followTick(t,p){                  // audio only — the marker is on rA
      right only when the video is RUNNING and the reports are missing, which is
      a different case and handled in followCarry. */
   if(vStill) return;
+  /* AND A JUMP IS NOT MOTION (David, 28 Aug: "sometimes notes trigger … when I
+     navigate the notation"). Clicking a bar while the video is PAUSED lands a
+     seek: that report moves the clock a long way, so it is neither still nor
+     ordinary — and the old test let it through, scheduling most of a second of
+     music from a video that was not playing. `vStill` only catches it on the
+     NEXT report, by which time the notes are away. So after a jump we wait for
+     one report that shows plain forward motion before scheduling anything;
+     paused, that report never comes. */
+  if(awaitMotion) return;
   const lastP=a[a.length-1].p;
   // each pulse is scheduled at ITS OWN spot on the map (piecewise inverse),
   // through the smoothed video->audio clock: segments fill their spans
@@ -4919,7 +4967,16 @@ function followTick(t,p){                  // audio only — the marker is on rA
     const at=(vt-vOff)/vRate;   // video(audio)=vOff+vRate*audio, inverted
     if(at>ctx.currentTime+0.45) break;            // beyond the look-ahead
     const pr=Math.round(vCursor);
-    if(pr<C.total&&at>ctx.currentTime-0.06){ // End is silent: nothing notated there
+    /* THE PULSE WE LAND ON GETS MORE ROPE (David: "1st beat sometimes doesn't
+       trigger"). Ordinarily a pulse more than 60 ms gone is skipped, which is
+       right — it has been heard. But the FIRST pulse after a resync is the one
+       the video has just arrived on, and whether it falls inside 60 ms is a
+       race with how quickly the first report lands. A downbeat 100 ms late is
+       music; a downbeat missing is a hole. So the pulse we land on may be up
+       to 180 ms old, and only that one. */
+    const grace=justResynced?0.18:0.06;
+    justResynced=false;
+    if(pr<C.total&&at>ctx.currentTime-grace){ // End is silent: nothing notated there
       const pi=((pr%C.total)+C.total)%C.total;
       if(!followMuted)
         for(const ev of (C.byPulse.get(pi)||[])) fireEvent(ev,Math.max(at,ctx.currentTime));
@@ -11953,6 +12010,7 @@ function boot(){
     preloadBank(); updateScoreTools(); toast("Pan sound on");
   });
   $("psNo").addEventListener("click",()=>{ $("panSoundDlg").close(); });
+  $("pmOk").addEventListener("click",()=>{ $("panMutedDlg").close(); });
   $("exStay").addEventListener("click",()=>{ afterEdit=null; $("editExitDlg").close(); });
   $("exNoSave").addEventListener("click",()=>{
     $("editExitDlg").close(); if(editing) $("editBtn").click(); runAfterEdit(); });
