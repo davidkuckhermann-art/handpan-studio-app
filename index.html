@@ -12754,7 +12754,8 @@ function phoneTouchNav(){
    slots seek on pointerdown — the instant a drag begins. */
 function mouseLoopNav(){
   const wrap=$("scorewrap"), TAP=5;
-  let id=null,sx=0,sy=0,anchor=null,moved=false,dragEnded=0,blocked=false;
+  const SLOP=12;   // a hand is not steady; below this it was a click
+  let id=null,sx=0,sy=0,anchor=null,moved=false,dragEnded=0,blocked=false,refused=false,loopWas=null;
   wrap.addEventListener("pointerdown",e=>{
     if(e.pointerType==="touch"||e.button!==0) return;
     if(e.target.closest&&e.target.closest("#playBtn")) return;
@@ -12762,9 +12763,9 @@ function mouseLoopNav(){
     /* Follow mode owns the clock, so there is no loop to drag — but saying so
        on POINTERDOWN would answer a plain click, which is not an attempt to
        loop anything. The refusal waits until the pointer has actually moved. */
-    if(!loopAllowed()){ blocked=true; id=e.pointerId; sx=e.clientX; sy=e.clientY; return; }
+    if(!loopAllowed()){ blocked=true; refused=false; id=e.pointerId; sx=e.clientX; sy=e.clientY; return; }
     const c=cellAtPoint(e.clientX,e.clientY); if(!c) return;
-    id=e.pointerId; sx=e.clientX; sy=e.clientY; anchor=c; moved=false;
+    id=e.pointerId; sx=e.clientX; sy=e.clientY; anchor=c; moved=false; loopWas=loopSec;
     /* While EDITING the click belongs to the slot — it places the cursor at
        slot precision, which a mouse can hit — so the drag is only taken over
        once the pointer actually moves (David, 27 Aug: loops in the editor). */
@@ -12776,8 +12777,18 @@ function mouseLoopNav(){
   wrap.addEventListener("pointermove",e=>{
     if(id===null||e.pointerId!==id) return;
     if(blocked){
-      if(Math.max(Math.abs(e.clientX-sx),Math.abs(e.clientY-sy))>=TAP){
-        blocked=false; id=null; loopRefused();     // a drag was meant, and refused
+      /* SAY NO TO THE LOOP, NOT TO THE CLICK (David, 28 Aug: "sometimes not
+         responding to my clicks when I want to navigate"). This used to drop
+         `id`, which made the pointerup below return before its seek — so in
+         follow mode any click whose pointer wandered five pixels between
+         press and release navigated nowhere. Five pixels is an ordinary hand,
+         not an intention. And because he had ticked "don't warn me again" on
+         the loop message, the refusal that replaced his click was silent, so
+         the interface simply looked dead. The refusal is a MESSAGE, not an
+         action — there is no loop in follow mode to cancel anything for — so
+         it is said once and the gesture carries on to its seek. */
+      if(!refused&&Math.max(Math.abs(e.clientX-sx),Math.abs(e.clientY-sy))>=TAP){
+        refused=true; loopRefused();
       }
       return;
     }
@@ -12793,14 +12804,30 @@ function mouseLoopNav(){
   wrap.addEventListener("pointerup",e=>{
     if(id===null||e.pointerId!==id){ id=null; blocked=false; return; }
     id=null;
-    if(blocked){ blocked=false; }      // a plain click in follow mode: just seek
-    else if(moved){ dragEnded=performance.now(); reanchorLoop(); toast(loopBarsLabel()); return; }
+    if(blocked){ blocked=false; refused=false; }   // follow mode: always just seek
+    else if(moved){
+      /* A WOBBLE IS NOT A DRAG (David, 28 Aug: "sometimes not responding to my
+         clicks when I want to navigate in the notation"). Five pixels made
+         `moved` true, and a moved gesture ended here — loop set, no seek — so
+         an ordinary click with a shaky hand silently moved nothing and left a
+         one-cell loop behind instead. Measured on the build before this: six
+         pixels of drift gave ZERO seeks and a loop.
+         A drag that never left the cell it began in, and never travelled far
+         enough to mean it, is a click: the loop is put back as it was and the
+         gesture falls through to the seek below. A deliberate one-cell loop
+         still works — it crosses most of the cell, which is well past SLOP. */
+      const c=cellAtPoint(e.clientX,e.clientY);
+      const still=Math.max(Math.abs(e.clientX-sx),Math.abs(e.clientY-sy))<SLOP;
+      if(still&&anchor&&c&&c.from===anchor.from&&c.to===anchor.to){
+        loopSec=loopWas; paintLoopFrame();
+      } else { dragEnded=performance.now(); reanchorLoop(); toast(loopBarsLabel()); return; }
+    }
     if(editing) return;             // the slot already took this click
     const el=document.elementFromPoint(e.clientX,e.clientY);   // a plain click: go there
     const sl=el&&el.closest&&el.closest("[data-rel]");
     if(sl) seekToPulse(viewFromPulse()+(+sl.dataset.rel));
   },true);
-  wrap.addEventListener("pointercancel",()=>{ id=null; },true);
+  wrap.addEventListener("pointercancel",()=>{ id=null; blocked=false; refused=false; },true);
   // right-click in the editor is the mouse's long press: copy and paste
   wrap.addEventListener("contextmenu",e=>{
     if(!editing) return;
