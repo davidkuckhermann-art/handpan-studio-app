@@ -1021,6 +1021,22 @@ body.jam #srcBadge{display:none !important}
 .jslot.thin small{color:var(--ink3)}
 .jtools{display:inline-flex; gap:6px; align-items:center; margin-left:10px;
   padding-left:12px; border-left:1px solid var(--rule)}
+/* …but not on the settings half. The rule divides the tools from the chord
+   slots they sit beside under the notation; when the tools split in two (27
+   Aug) the voicing group took the same class for its spacing and inherited
+   the divider with it — and it is FIRST in its own row, so it was drawing a
+   line between itself and nothing (David, 29 Aug: "why is it there?").
+   The padding stays, so the row's spacing does not shift. */
+.jtools.jdeep{border-left:none}
+#jamColourWrap{display:inline-flex; align-items:center; gap:6px}
+.jcem{font-size:14px; line-height:1; flex:none}
+#jamColourWrap input[type=range]{width:96px}
+#jamColourBarVal{font-size:12.5px; font-variant-numeric:tabular-nums; color:var(--ink2); min-width:34px}
+#jamSetDlg{width:min(420px,94vw)}
+#jamSetDlg .drow{display:flex; align-items:center; justify-content:space-between; gap:10px; margin:8px 0}
+#jamSetDlg #jamColourWrap input[type=range]{width:130px}
+body.phone #drawerExtra #jamColourWrap input[type=range]{flex:1 1 auto; width:auto; min-width:80px}
+body.phone #drawerExtra #jamColourWrap{width:100%}
 
 /* ---- transposition report ---- */
 #report{position:relative; background:var(--card2); border:1px solid var(--rule);
@@ -2140,6 +2156,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
         right INSIDE the notation window, level with the play button
         (David, 27 Aug). The phone keeps its own copy in the jam tools. -->
    <span id="scoreheadR">
+     <button class="ctl hidden" id="jamSetBtn" title="Chord voicings and how adventurous the suggestions are">Chords ▾</button>
      <button class="ctl" id="genBtn" title="Fill the whole progression with a fresh chord sequence">🎲 Generate</button>
    </span>
   </div>
@@ -2670,6 +2687,17 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
        and to the drawer on the phone; #feelWrap leaves #feelRow behind with
        nothing but its label. Heading, rule and husk are all hidden — the pair
        has exactly one home per platform now, and neither is here. -->
+  <div class="dsep" id="setJamSep"></div>
+  <h4 id="setJamHead">Jam</h4>
+  <div class="drow" id="colourRow"><span>Chord suggestions</span>
+    <span style="display:flex;gap:9px;align-items:center">
+      <span class="jcem" aria-hidden="true">🍚</span>
+      <input type="range" id="jamColour" min="0" max="100" step="5"
+        aria-label="Chord suggestions, simple to adventurous" style="width:110px">
+      <span class="jcem" aria-hidden="true">🌶️</span>
+      <b id="jamColourVal" style="font-size:13px;font-variant-numeric:tabular-nums">75%</b></span></div>
+  <p class="hint" id="colourHint" style="margin:2px 0 0">Simple keeps to plain triads; adventurous
+    lets sevenths, ninths and diminished chords in.</p>
   <h4 id="setFeelHead">Feel</h4>
   <div class="drow" id="swingRow"><span>Swing</span>
     <span style="display:flex;gap:9px;align-items:center">
@@ -2694,6 +2722,19 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
      A row is one SCALE, not one instrument: its chips switch which build the
      row is showing, so the name, the note line and ▸ always describe the lit
      chip, and tapping the row takes exactly what it shows. -->
+<!-- David, 29 Aug: when the head has no room for the voicing pills AND the
+     colour slider, they fold into one button that opens this. Same controls,
+     moved rather than duplicated, so neither can disagree with the other. -->
+<dialog id="jamSetDlg">
+  <h3>Chord settings</h3>
+  <div class="drow"><span>Chord voicings</span><span id="jsVoicingHost"></span></div>
+  <div class="drow"><span>Chord suggestions</span><span id="jsColourHost"></span></div>
+  <p class="hint">Narrow keeps the pan's high notes free for your melody.
+    Simple suggestions keep to plain triads; adventurous lets sevenths,
+    ninths and diminished chords in.</p>
+  <div class="row"><span class="spacer"></span><button class="ctl" id="jsClose">Close</button></div>
+</dialog>
+
 <dialog id="panPickDlg">
   <div class="pptop">
     <h3>Choose a pan</h3>
@@ -3014,6 +3055,28 @@ const BUILTIN_PANS=[
  {id:"g-akebono-9", name:"G Akebono 9", ding:"G3", fields:["C4","D4","E♭4","G4","A♭4","C5","D5","E♭5"], tier:3, fam:"penta", scale:"g-akebono"},
  {id:"g-jibuk-9", name:"G Jibuk 9", ding:"G3", fields:["C4","D4","E4","F4","G4","A4","B♭4","C5"], tier:3, fam:"mixo", scale:"g-jibuk"},
  {id:"g2-minor-15", name:"G2 Minor 15", ding:"G2", fields:["G3","A3","B♭3","C4","D4","D♯4","F4","G4"], bottom:["B♭2","D3","D♯3","A4","C5","D5"], tier:3, fam:"aeolian", scale:"g2-minor"},
+ /* DAVID'S OWN SHEET (29 Aug), transcribed from his screenshots. Two things
+    worth knowing about the layouts:
+    · A pan may carry EXTRA LOW DINGS — he writes them "(C3 D3 E♭3 F3 -
+      dings)". They are top-shell notes, not underside ones, so they join
+      `fields` and number themselves by pitch like every other field; the
+      layout customiser is what places them near the centre where they
+      belong. The model has one `ding`, and that stays the shell's own dome.
+    · Notes in plain brackets after the slash are the underside, exactly as
+      SCALES.md writes them.
+    Every pitch here sits inside the recorded bank's F2–C6. */
+ {id:"a2-minor-9", name:"A2 Minor 9", ding:"A2", fields:["A3","B3","C4","D4","E4","F4","G4","A4"], tier:2, fam:"aeolian", scale:"a2-minor"},
+ {id:"g2-minor-9", name:"G2 Minor 9", ding:"G2", fields:["G3","A3","B♭3","C4","D4","E♭4","F4","G4"], tier:3, fam:"aeolian", scale:"g2-minor"},
+ {id:"g2-minor-17", name:"G2 Minor 17", ding:"G2", fields:["G3","A3","B♭3","C4","D4","E♭4","F4","G4"], bottom:["D3","E♭3","A4","C5","D5","E♭5","F5","G5"], tier:3, fam:"aeolian", scale:"g2-minor"},
+ {id:"g2-hijaz-9", name:"G2 Hijaz 9", ding:"G2", fields:["G3","A♭3","B3","C4","D4","E♭4","F4","G4"], tier:2, fam:"hijaz", scale:"g2-hijaz"},
+ {id:"g2-hijaz-18", name:"G2 Hijaz 18", ding:"G2", fields:["G3","A♭3","B3","C4","D4","E♭4","F4","G4"], bottom:["D3","F3","A♭4","B4","C5","D5","E♭5","F5","G5"], tier:2, fam:"hijaz", scale:"g2-hijaz"},
+ {id:"g-hijaz-13", name:"C Harmonic Minor / G Hijaz 13", ding:"G3", fields:["C4","D4","E♭4","F4","G4","A♭4","B4","C5","D5","E♭5","F5","G5"], tier:2, fam:"hijaz", scale:"g-hijaz"},
+ {id:"g-hijaz-16", name:"C Harmonic Minor / G Hijaz 16", ding:"G3", fields:["C4","D4","E♭4","F4","G4","A♭4","B4","C5","D5","E♭5","F5","G5","A♭5","B5","C6"], tier:2, fam:"hijaz", scale:"g-hijaz"},
+ {id:"g-hijaz-19", name:"C Harmonic Minor / G Hijaz 19", ding:"G3", fields:["C3","D3","E♭3","F3","C4","D4","E♭4","F4","G4","A♭4","B4","C5","D5","E♭5","F5","G5"], bottom:["A♭3","B3"], tier:2, fam:"hijaz", scale:"g-hijaz"},
+ {id:"g-hijaz-22", name:"C Harmonic Minor / G Hijaz 22", ding:"G3", fields:["C3","D3","E♭3","F3","C4","D4","E♭4","F4","G4","A♭4","B4","C5","D5","E♭5","F5","G5","A♭5","B5","C6"], bottom:["A♭3","B3"], tier:2, fam:"hijaz", scale:"g-hijaz"},
+ {id:"g-oxalis-11", name:"G Oxalis 11", ding:"G3", fields:["B3","C4","D4","E4","G4","B4","C5","D5","E5","G5"], tier:2, fam:"penta", scale:"g-oxalis"},
+ {id:"fs-romanian-hijaz-13", name:"F♯ Romanian Hijaz 13", ding:"F♯3", fields:["B3","C♯4","D4","F4","F♯4","G♯4","A4","B4","C♯5","D5","F5","F♯5"], tier:2, fam:"hijaz", scale:"fs-romanian-hijaz"},
+ {id:"fs-romanian-hijaz-20", name:"F♯ Romanian Hijaz 20", ding:"F♯3", fields:["B2","C♯3","B3","C♯4","D4","F4","F♯4","G♯4","A4","B4","C♯5","D5","F5","F♯5"], bottom:["G♯3","A3","G♯5","A5","B5"], tier:2, fam:"hijaz", scale:"fs-romanian-hijaz"},
 ];
 function userPans(){ try{return JSON.parse(localStorage.getItem("hps.pans")||"[]")}catch(e){return[]} }
 function allPans(){ return BUILTIN_PANS.concat(userPans()); }
@@ -8224,9 +8287,14 @@ const JAMPATS=[
  {id:"cg2",name:"Fast arpeggio 1",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"1","L"],[4,"3","L"],[5,"5","R"],[6,"1","L"],[7,"3","L"],
    [8,"5","R"],[9,"1","L"],[10,"3","L"],[11,"5","R"],[12,"1","L"],[14,"g","L"],[15,"g","R"]]},
- {id:"cg3",name:"Fast arpeggio 2",meter:[4,4],sub:4,bpr:1,ev:[
-   [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"1","L"],[4,"3","L"],[5,"5","R"],[6,"1","L"],[7,"5","R"],
-   [8,"1","L"],[9,"3","L"],[10,"5","R"],[11,"1","L"],[12,"3","L"],[13,"5","R"],[14,"1","L"],[15,"5","R"]]},
+ /* WRITTEN AS WHAT IT IS (David, 29 Aug). This was "Fast arpeggio 2" in 4/4,
+    and its second half repeated its first note for note — eight sixteenths
+    said twice. It is one 2/4 bar, and the root falls on slots 0, 3 and 6,
+    which is a 3-3-2 and now says so. The id is unchanged, so a saved jam
+    still finds its groove. Same rule he set for the rhythm quiz on 28 Aug:
+    eight sixteenths is two quarters however they are cut. */
+ {id:"cg3",name:"3-3-2 arpeggio",meter:[2,4],sub:4,bpr:1,ev:[
+   [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"1","L"],[4,"3","L"],[5,"5","R"],[6,"1","L"],[7,"5","R"]]},
  {id:"cg4",name:"Backbeat arpeggio",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"1","L"],[4,"^","L"],[5,"1","L"],[6,"3","L"],[7,"5","R"],
    [8,"1","L"],[9,"3","L"],[10,"5","R"],[11,"1","L"],[12,"^","L"],[13,"1","L"],[14,"3","L"],[15,"5","R"]]},
@@ -8263,6 +8331,45 @@ const jpc=m=>((m%12)+12)%12;
 // `degs` are the pitch classes the groove degrees play: on a triad 1/3/5, on
 // a 7th chord the high voice plays the SEVENTH, on a 9th the NINTH — the
 // colour tone speaks, the neutral fifth yields.
+/* ============ HOW ADVENTUROUS THE SUGGESTIONS ARE (David, 29 Aug) ========
+   One slider, 0 = simple, 100 = adventurous, and TODAY'S BEHAVIOUR SITS AT 75
+   by his instruction — so the default changes nothing for anyone who never
+   touches it. At 0 the suggestions are triads only and never diminished; the
+   colours arrive as it moves right.
+   The ladders are anchored at the five points he described and interpolated
+   between; the 75 row is exactly the mix that was hard-coded before. */
+const JAM_COLOUR_DEF=75;
+function jamColour(){
+  const v=+localStorage.getItem("hps.jamColour");
+  return isNaN(v)||v===null||localStorage.getItem("hps.jamColour")===null?JAM_COLOUR_DEF:Math.max(0,Math.min(100,v));
+}
+function jcLerp(rows,v){
+  let a=rows[0], b=rows[rows.length-1];
+  for(let i=0;i<rows.length-1;i++) if(v>=rows[i][0]&&v<=rows[i+1][0]){ a=rows[i]; b=rows[i+1]; break; }
+  const t=b[0]===a[0]?0:(v-a[0])/(b[0]-a[0]);
+  return a.slice(1).map((x,i)=>x+(b[i+1]-x)*t);
+}
+/* the family mix. CONT is what follows a chord, OPEN what starts a series —
+   they differ slightly at 75 because they always did (55/30/15 against
+   60/25/15), and each ladder is anchored to its own old value. */
+const JC_CONT=[[0,100,0,0],[25,92,8,0],[50,75,22,3],[75,55,30,15],[100,35,33,32]];
+const JC_OPEN=[[0,100,0,0],[25,93,7,0],[50,78,19,3],[75,60,25,15],[100,38,30,32]];
+function jcShare(rows,v){ const m=jcLerp(rows,v);
+  return {"Triads":m[0],"7th chords":m[1],"9th chords":m[2]}; }
+/* DIMINISHED. Gone entirely at the simple end (his words), then rarer than it
+   is today until 75, where it lands on the −1.2 the corpus argued for, and
+   nearly unpriced at the top. */
+function jcDimAllowed(v){ return v>=30; }
+function jcDimPenalty(v){ return jcLerp([[30,3.4],[75,1.2],[100,.3]],Math.max(30,v))[0]; }
+/* COLOURS MAY CLUSTER AT THE TOP. A chord with colour is normally followed by
+   a plain one (88/9/3); above 75 that restraint eases away to nothing. */
+function jcCluster(v){ return Math.max(0,Math.min(1,(v-75)/25)); }
+/* HOW OFTEN GENERATE LAYS DOWN A WHOLE KNOWN PROGRESSION rather than rolling
+   chord by chord (David, 29 Aug: "in some shape or form at times"). The
+   simple end likes a recognisable shape; the adventurous end prefers the
+   free roll. */
+function jcTemplateChance(v){ return jcLerp([[0,.22],[50,.16],[100,.10]],v)[0]; }
+
 function jamChordDefs(){
   const pcs=panScalePcs();
   const d=jpc(myPan.ding), out=[];
@@ -8620,11 +8727,29 @@ function panHomes(pan){
   const pcs=new Set([pcOf(pan.ding),...pan.fields.map(pcOf)]);
   const full=(r,third)=>pcs.has((r+third)%12)&&pcs.has((r+7)%12);
   const ding=pcOf(pan.ding);
+  /* THE FALLBACK USED TO READ A SET IN INSERTION ORDER, which is the order the
+     notes happen to be written in — so a C harmonic minor pan whose fields
+     start G A♭ B C came home to A♭ MINOR, because A♭ can also carry a minor
+     triad and simply got asked first. Every candidate is ranked now: how well
+     it can be a home first, then how near the dome it sits in the scale, so
+     the answer is a property of the instrument rather than of the typing.
+     (Noticed while the progression templates found nothing to offer those
+     pans; it also steers defaultJam and the move between pans.) */
   const pick=third=>{
     if(full(ding,third)) return ding;              // the scale's own note first
-    for(const r of pcs) if(full(r,third)&&jamTonicLikeOn(pcs,r)===2) return r;
-    for(const r of pcs) if(full(r,third)) return r;
-    return null;
+    const cands=[...pcs].filter(r=>full(r,third));
+    if(!cands.length) return null;
+    /* A ROOT WITHOUT A FOURTH IS NOT A HOME, which is the same argument the
+       fifth already makes one line up in jamTonicLikeOn ("nothing to stand
+       on"). It is what separates the two candidates a harmonic-minor pan
+       offers: on a C harmonic minor both C and A♭ can carry a minor triad and
+       both score 1, but A♭ has no D♭ to be its fourth, and C has its F. */
+    const fourth=r=>pcs.has((r+5)%12)?1:0;
+    cands.sort((a,b)=>
+      (jamTonicLikeOn(pcs,b)-jamTonicLikeOn(pcs,a))
+      || (fourth(b)-fourth(a))
+      || (((a-ding+12)%12)-((b-ding+12)%12)));
+    return cands[0];
   };
   return {minor:pick(3),major:pick(4),ding};
 }
@@ -8951,8 +9076,20 @@ function suggestPick(){
   const last=jam.slots[jam.slots.length-1];
   const lastDef=last&&jamDefs().byName[last.chord];
   const lr=lastDef?lastDef.root:jpc(myPan.ding);
-  const pool=jamDefs().list.filter(c=>!c.miss);
+  /* A SEVENTH WITHOUT ITS FIFTH IS NOT A DEFECT (David, 29 Aug: they "should
+     not be avoided at all, they should just have slightly lighter weight than
+     complete 7th chords. scale degree is almost more important"). It is the
+     textbook shell voicing — the fifth is the one tone a seventh chord can
+     spare — and excluding it kept a dom7 out of exactly the cadences it is
+     for. Only the FIFTH may be absent; a chord missing its third has lost the
+     thing that names it. The ninths follow the same rule because their voicing
+     already drops the fifth to let the ninth speak. */
+  const v=jamColour();
+  const pool=jamDefs().list.filter(c=>
+    (!c.miss||(c.miss==="5th"&&c.group!=="Triads"))
+    && (jcDimAllowed(v)||!jamDim(c)));
   if(!pool.length) return null;
+  const shellW=c=>c.miss==="5th"?.8:1;      // lighter, not excluded
   const ding=jpc(myPan.ding);
   // the roots that can carry a key on this pan — D and F on a Kurd, the
   // ding's own first. Read off the instrument, so it holds on any tuning.
@@ -8967,8 +9104,8 @@ function suggestPick(){
      rest of the pool, so an extension is a little rarer everywhere and shut
      out nowhere. */
   if(!last){
-    const TARGET=[.35,.20], FAM={"Triads":.6,"7th chords":.25,"9th chords":.15};
-    const fw=c=>FAM[c.group]||.2;
+    const TARGET=[.35,.20], FAM=jcShare(JC_OPEN,v);
+    const fw=c=>(FAM[c.group]||.2)*shellW(c);
     const tRoots=[]; for(const c of tonics)
       if(tRoots.indexOf(c.root)<0) tRoots.push(c.root);
     const wt=new Map();
@@ -8990,8 +9127,17 @@ function suggestPick(){
      55/30/15 is the resting mix; an extension just played leans the next
      chord plain. */
   const lastExt=lastDef&&lastDef.group!=="Triads";
-  const share=lastExt?{"Triads":88,"7th chords":9,"9th chords":3}
-                     :{"Triads":55,"7th chords":30,"9th chords":15};
+  const plain=jcShare(JC_CONT,v);
+  /* the damped mix after a colour chord keeps its SHAPE — mostly triads — but
+     is itself steered by the slider, and above 75 it melts back toward the
+     ordinary mix so colours may sit side by side */
+  const damped={"Triads":88,"7th chords":9,"9th chords":3};
+  const k=jcCluster(v);
+  const share=lastExt
+    ? {"Triads":damped.Triads+(plain.Triads-damped.Triads)*k,
+       "7th chords":damped["7th chords"]+(plain["7th chords"]-damped["7th chords"])*k,
+       "9th chords":damped["9th chords"]+(plain["9th chords"]-damped["9th chords"])*k}
+    : plain;
   const fams=Object.keys(share).filter(g=>pool.some(c=>c.group===g));
   let fx=Math.random()*fams.reduce((s,g)=>s+share[g],0), fam=fams[0];
   for(const g of fams){ if(fx<share[g]){ fam=g; break; } fx-=share[g]; }
@@ -9022,13 +9168,26 @@ function suggestPick(){
     if(d&&seen[d.root]===undefined) seen[d.root]=n;
   }
   const NEAR={1:.08,2:.18,3:.4,4:.7};
+  /* THE THREE CADENCES HE NAMED (David, 29 Aug, "all three matter"), measured
+     against the pan's own home so they travel between tunings:
+       · the dominant resolving UP A FOURTH — the strongest pull there is, and
+         on a Kurd the only dom7 available sits on the ♭VII, so this is C7→F;
+       · the fifth degree rising to the sixth — the interrupted cadence,
+         Amin→B♭maj on a D Kurd;
+       · the fourth degree falling home — the plagal, Gmin→Dmin.
+     Bonuses, never rules: they lean the roll, they do not decide it. */
+  const H=(function(){ const h=panHomes(myPan); return h.minor!=null?h.minor:(h.major!=null?h.major:jpc(myPan.ding)); })();
+  const deg=r=>(r-H+12)%12;
   const wOf=c=>{
-    let w=MOT[ivOf(lr,c.root)]||1;
+    let w=(MOT[ivOf(lr,c.root)]||1)*shellW(c);
     const back=seen[c.root];
     if(back&&NEAR[back]) w*=NEAR[back];
     // a dominant seventh just played wants its resolution, and gets a better
     // chance of it (David, 27 Aug) — the old roll gave it none at all
     if(lastDom&&(lr+5)%12===c.root) w*=4;
+    if(deg(lr)===7&&deg(c.root)===8) w*=2.6;      // 5th → 6th, interrupted
+    if(deg(lr)===5&&deg(c.root)===0) w*=2.2;      // 4th → 1st, plagal
+    if(lastDef&&jamMaj3(lastDef)&&jamMin7(lastDef)&&(lr+5)%12===c.root) w*=1.8;
     if(!closing) return w;
     if(c.name===first.chord) w*=.15;             // chord 1 twice over is no turn
     if(!firstIsTonic&&tonics.some(t=>t.root===c.root)) w*=6;
@@ -9063,11 +9222,107 @@ function jamBarCount(){ return jam.slots.reduce((n,s)=>n+Math.max(1,s.bars||1),0
    nothing to measure. And it RESTARTS the loop: a new progression heard from
    the middle of itself is not the progression, so playback finishes the bar
    it is in and begins again at chord one. */
+/* ============ THE PROGRESSIONS EVERYBODY KNOWS (David, 29 Aug) ============
+   "Please do some research on commonly used chord progressions and have these
+   kinds of progressions come up in some shape or form at times" — and, after
+   seeing the first pass, "they shouldn't come up too often, but from time to
+   time it can be nice." So Generate lays a whole known shape down roughly one
+   time in six, and rolls chord by chord the rest of the time.
+   WRITTEN IN SCALE DEGREES, not chord names, so one table serves every tuning:
+   each step is [semitones above the home, quality]. `q` is what the degree
+   wants to be — "min", "maj", "dom7" — and a template is only offered when
+   the pan can actually build every one of its chords.
+   `col` is how much colour the shape carries, so the slider decides which
+   ones are on the table at all: the plain minor loops are always available,
+   the Andalusian and the seventh-bearing turns arrive further right.
+   Sources: the Andalusian cadence and the Folia/Passamezzo/Romanesca family
+   are the standing minor-key progressions; I–V–vi–IV, I–vi–IV–V and ii–V–I
+   are the standing major ones. NOTE for handpans: a true Andalusian needs a
+   MAJOR V, which a natural-minor pan like a Kurd has not got — the fit test
+   below is what keeps it off those instruments instead of a special case. */
+const JAM_PROGS=[
+  // minor — the shapes a handpan plays most
+  {n:"i ♭VII ♭VI ♭VII", col:0,  min:1, deg:[[0,"min"],[10,"maj"],[8,"maj"],[10,"maj"]]},
+  {n:"i ♭VI ♭III ♭VII", col:0,  min:1, deg:[[0,"min"],[8,"maj"],[3,"maj"],[10,"maj"]]},
+  {n:"i ♭VII ♭III ♭VI", col:0,  min:1, deg:[[0,"min"],[10,"maj"],[3,"maj"],[8,"maj"]]},
+  {n:"♭VI ♭VII i",      col:0,  min:1, deg:[[8,"maj"],[10,"maj"],[0,"min"]]},
+  {n:"i iv ♭VII i",     col:10, min:1, deg:[[0,"min"],[5,"min"],[10,"maj"],[0,"min"]]},
+  {n:"i iv v i",        col:15, min:1, deg:[[0,"min"],[5,"min"],[7,"min"],[0,"min"]]},
+  {n:"i ♭VII ♭VI V (Andalusian)", col:35, min:1, deg:[[0,"min"],[10,"maj"],[8,"maj"],[7,"maj"]]},
+  {n:"i v ♭VI ♭VII",    col:25, min:1, deg:[[0,"min"],[7,"min"],[8,"maj"],[10,"maj"]]},
+  {n:"i ♭III ♭VII iv",  col:20, min:1, deg:[[0,"min"],[3,"maj"],[10,"maj"],[5,"min"]]},
+  {n:"iv ♭VII i (plagal turn)", col:20, min:1, deg:[[5,"min"],[10,"maj"],[0,"min"]]},
+  {n:"i ♭VII7 ♭III",    col:55, min:1, deg:[[0,"min"],[10,"dom7"],[3,"maj"]]},
+  {n:"i iv ♭VII7 ♭III", col:60, min:1, deg:[[0,"min"],[5,"min"],[10,"dom7"],[3,"maj"]]},
+  {n:"i ♭VI v i",       col:30, min:1, deg:[[0,"min"],[8,"maj"],[7,"min"],[0,"min"]]},
+  /* HARMONIC MINOR HAS ITS OWN FAMILY, and it needed saying: those pans have
+     a MAJOR V, which is the whole point of the raised seventh — but no ♭VII
+     at all, so every shape above passes them by and they were being offered
+     nothing. (It also means a true Andalusian, which wants ♭VII AND a major
+     V in the same breath, fits almost no handpan — the fit test is what says
+     so, rather than any rule of mine.) */
+  {n:"i iv V i",        col:15, min:1, deg:[[0,"min"],[5,"min"],[7,"maj"],[0,"min"]]},
+  {n:"i ♭VI V i",       col:20, min:1, deg:[[0,"min"],[8,"maj"],[7,"maj"],[0,"min"]]},
+  {n:"♭VI V i (Phrygian cadence)", col:20, min:1, deg:[[8,"maj"],[7,"maj"],[0,"min"]]},
+  {n:"i iv ♭VI V",      col:25, min:1, deg:[[0,"min"],[5,"min"],[8,"maj"],[7,"maj"]]},
+  {n:"i V i iv",        col:25, min:1, deg:[[0,"min"],[7,"maj"],[0,"min"],[5,"min"]]},
+  {n:"i iv V7 i",       col:55, min:1, deg:[[0,"min"],[5,"min"],[7,"dom7"],[0,"min"]]},
+  // major
+  {n:"I V vi IV",       col:0,  min:0, deg:[[0,"maj"],[7,"maj"],[9,"min"],[5,"maj"]]},
+  {n:"I vi IV V",       col:0,  min:0, deg:[[0,"maj"],[9,"min"],[5,"maj"],[7,"maj"]]},
+  {n:"vi IV I V",       col:0,  min:0, deg:[[9,"min"],[5,"maj"],[0,"maj"],[7,"maj"]]},
+  {n:"I IV ♭VII IV",    col:20, min:0, deg:[[0,"maj"],[5,"maj"],[10,"maj"],[5,"maj"]]},
+  {n:"ii V I",          col:30, min:0, deg:[[2,"min"],[7,"maj"],[0,"maj"]]},
+  {n:"vi ii V I",       col:40, min:0, deg:[[9,"min"],[2,"min"],[7,"maj"],[0,"maj"]]},
+  {n:"ii V7 I",         col:60, min:0, deg:[[2,"min"],[7,"dom7"],[0,"maj"]]}
+];
+/* the chord a degree wants, if this pan has it. A dom7 may lack its fifth —
+   that is the shell voicing David asked for, and it is often the only way a
+   pan can build one at all. */
+function jamProgChord(root,q){
+  const D=jamDefs().byName, nm=PCN[root];
+  const want=q==="dom7"?[nm+"7",nm+"maj"]:q==="maj"?[nm+"maj"]:[nm+"min"];
+  for(const w of want){ const d=D[w];
+    if(d&&(!d.miss||(d.miss==="5th"&&d.group!=="Triads"))) return d.name; }
+  return null;
+}
+/* a whole known progression, fitted to this pan — or null if none fits */
+function jamProgTemplate(n){
+  const v=jamColour(), H=panHomes(myPan);
+  const cands=[];
+  for(const [home,flavour] of [[H.minor,1],[H.major,0]]){
+    if(home==null) continue;
+    for(const P of JAM_PROGS){
+      if(P.min!==flavour) continue;
+      if(P.col>v+12) continue;                 // beyond what the slider allows
+      const names=P.deg.map(([d,q])=>jamProgChord((home+d)%12,q));
+      if(names.some(x=>x===null)) continue;    // this pan cannot build it
+      cands.push({P,names});
+    }
+  }
+  if(!cands.length) return null;
+  const pick=cands[Math.floor(Math.random()*cands.length)];
+  /* the progression is the shape, not a fixed length: repeat it to fill the
+     bars asked for, and cut it if there are fewer */
+  const out=[];
+  while(out.length<n) out.push(...pick.names);
+  return {names:out.slice(0,n), label:pick.P.n};
+}
 function jamGenerate(bars){
   const n=Math.max(1,Math.min(JAM_MAX,bars||jamBarCount()||4));
   jamPreviewStop();
   const before=jam.slots;
   jam.slots=[];
+  /* now and then, a shape everybody knows */
+  if(n>=3&&Math.random()<jcTemplateChance(jamColour())){
+    const t=jamProgTemplate(n);
+    if(t){
+      jam.slots=t.names.map(c=>({chord:c,bars:1}));
+      jamEditSlot=-1; applyJam(); jamRestartNextBar();
+      toast(t.label);
+      return;
+    }
+  }
   for(let i=0;i<n;i++){
     const pick=suggestPick();            // reads the slots built so far
     if(!pick){ if(!jam.slots.length){ jam.slots=before; return; } break; }
@@ -9288,11 +9543,17 @@ function enterJam(){
   if(!allPats().some(p=>p.id===jam.patternId)) jam.patternId=JAMPATS[0].id;
   if(jam.bpm) bpm=jam.bpm;
   jamOn=true; document.body.classList.add("jam");
-  /* THE PHONE OPENS A JAM ON THE PAN (David, 28 Aug: "Jam mode should always
-     open with pan view, even if the user selected chords last time") — the pan
-     is what you play a jam ON, and the progression is one tap away. Set AFTER
-     jamOn, so sideSticks() keeps it out of the stored preference. */
-  if(PHONE) setPan(true);
+  /* A JAM OPENS ON THE CHORDS (David, 29 Aug: "jam mode should always open
+     with the chords view, even when I closed the app with pan view").
+     THIS REVERSES HIS OWN CALL OF 28 AUG, which opened a jam on the pan for
+     exactly the same reason turned the other way round — recorded as a
+     reversal rather than quietly rewritten, because the old comment read as
+     settled and the next person would restore it.
+     Set AFTER jamOn, so sideSticks() keeps it out of the stored preference:
+     the view you left the app in is remembered for every other room, and jam
+     simply does not consult it. On the phone the two are exclusive, so this
+     puts the pan away by itself. */
+  setChords(true);
   updatePracticeBtn(); if(!PHONE) $("jampanel").classList.remove("hidden");
   paintTutorials();          // the jam note obeys the tutorial record now
   applyJam();
@@ -9521,6 +9782,22 @@ function renderJamPanel(){
      "chord voicings: narrow/wide") */
   const vlab=document.createElement("span"); vlab.className="lab vlab";
   vlab.textContent="Chord voicings:"; deep.appendChild(vlab);
+  /* the colour slider travels with the voicing pills — one element, moved
+     between the head, the drawer and the fold-out, so no two copies can
+     disagree. Built here beside them for the same reason. */
+  const cwrap=document.createElement("span");
+  cwrap.id="jamColourWrap";
+  /* NO CAPTION, TWO EMOJI (David, 29 Aug: "doesn't need a separate text …
+     instead simply use 2 emoticons on the left something bland tasting and
+     on the right a chilli pepper"). They say which way the slider runs
+     without spending a word on it, which is what let it share the head with
+     the voicing pills at all. The words live on the aria-label, so a screen
+     reader still hears "simple to adventurous". */
+  cwrap.innerHTML='<span class="jcem" aria-hidden="true">🍚</span>'
+    +'<input type="range" id="jamColourBar" min="0" max="100" step="5" '
+    +'aria-label="Chord suggestions, simple to adventurous">'
+    +'<span class="jcem" aria-hidden="true">🌶️</span>'
+    +'<b id="jamColourBarVal">75%</b>';
   const vpills=document.createElement("span");
   vpills.className="pills"; vpills.id="jamVoicing";
   vpills.setAttribute("role","group"); vpills.setAttribute("aria-label","Chord voicings");
@@ -9538,6 +9815,7 @@ function renderJamPanel(){
     vpills.appendChild(b);
   });
   deep.appendChild(vpills);
+  deep.appendChild(cwrap);
   mk("♭","Transpose the whole progression down a semitone",()=>jamTranspose(-1));
   mk("♯","Transpose the whole progression up a semitone",()=>jamTranspose(1));
   mk("Clear","Remove all chords and start fresh",()=>{
@@ -9579,7 +9857,10 @@ function renderJamPanel(){
     jbox=document.createElement("div"); jbox.className="jtoolbox";
     jbox.appendChild(tools); $("jampanel").insertBefore(jbox,$("jamtrack"));
     const host=$("dwMode");
-    if(host){ dwModeReset(); host.appendChild(deep); }
+    /* the phone puts it in the drawer's "This jam" section, which already sits
+       ABOVE Feel (David, 29 Aug) — the order is transport, arrangement, this
+       jam, my pan, feel */
+    if(host){ dwModeReset(); host.appendChild(deep); paintColour(); }
   } else {
     prog.appendChild(tools);
     /* THE VOICINGS GO TOP RIGHT, beside 🎲 Generate (David, 28 Aug) — the
@@ -9587,7 +9868,12 @@ function renderJamPanel(){
        built on every desktop render and attached to nothing, so Narrow|Wide
        was unreachable outside the phone. Inserted BEFORE #genBtn, which is
        static markup and keeps the corner. */
-    const hr=$("scoreheadR"); if(hr) hr.insertBefore(deep,$("genBtn"));
+    const hr=$("scoreheadR");
+    if(hr){ hr.insertBefore(deep,$("jamSetBtn"));
+      /* the pair may not fit beside 🎲 Generate and the play button; measure
+         after it is in the document, never before (the rule this file has
+         paid for repeatedly) */
+      paintColour(); requestAnimationFrame(fitJamHead); }
   }
   // the groove: one button naming the current one, sitting at the score
   // frame's TOP LEFT beside the section name (David, 26 Aug) — the browser
@@ -12809,6 +13095,57 @@ function renderGrooveDlg(){
   }
 }
 
+/* ---------------- how adventurous the suggestions are ----------------
+   Three places can show this setting — Settings, the jam head (or its
+   fold-out) and the phone's drawer — and they are the SAME two elements
+   moved about, plus the Settings slider which is its own. `paintColour`
+   is what keeps those two in step. */
+function setJamColour(v){
+  v=Math.max(0,Math.min(100,Math.round(v/5)*5));
+  try{ localStorage.setItem("hps.jamColour",String(v)); }catch(e){}
+  paintColour();
+}
+function paintColour(){
+  const v=jamColour();
+  for(const [s,b] of [["jamColour","jamColourVal"],["jamColourBar","jamColourBarVal"]]){
+    const el=$(s); if(el&&+el.value!==v) el.value=v;
+    const out=$(b); if(out) out.textContent=v+"%";
+  }
+}
+/* THE HEAD FOLDS WHEN IT RUNS OUT OF ROOM (David, 29 Aug: "when there is not
+   enough horizontal space before things get too crowded with the play button,
+   let's turn chord voicings into a button with a popup"). The same measure-
+   then-drop idea as fitPanRow and fitFeelRow, one step further: instead of
+   dropping a caption, the whole pair moves into a sheet behind one button. */
+function fitJamHead(){
+  const deep=document.querySelector(".jdeep"), btn=$("jamSetBtn");
+  const hr=$("scoreheadR");
+  if(!deep||!hr||!btn||PHONE) return;
+  // measure with the caption on and the pair in place
+  btn.classList.add("hidden"); deep.classList.remove("hidden");
+  const vl=document.querySelector(".jdeep .vlab"); if(vl) vl.classList.remove("hidden");
+  const room=hr.clientWidth;
+  const need=()=>[...hr.children].reduce((w,el)=>w+(el.classList.contains("hidden")?0:el.offsetWidth+8),0);
+  if(need()<=room) return;
+  // the voicing caption first, as everywhere else in the app; the colour
+  // slider has none to drop — its two emoji are the whole label
+  if(vl) vl.classList.add("hidden");
+  if(need()<=room) return;
+  // still short: fold both controls into the button
+  deep.classList.add("hidden"); btn.classList.remove("hidden");
+}
+function openJamSet(){
+  const deep=document.querySelector(".jdeep"); if(!deep) return;
+  $("jsVoicingHost").appendChild($("jamVoicing"));
+  $("jsColourHost").appendChild($("jamColourWrap"));
+  paintColour(); openDlg($("jamSetDlg"));
+}
+function closeJamSet(){
+  const deep=document.querySelector(".jdeep");
+  if(deep){ deep.appendChild($("jamVoicing")); deep.appendChild($("jamColourWrap")); }
+  $("jamSetDlg").close();
+}
+
 /* ---------------- the pan picker ----------------
    `renderPanPick` is top level, not a boot() closure, because the own-pan
    dialog and the delete button both have to redraw the list.
@@ -13017,6 +13354,21 @@ function boot(){
   $("ppRare").addEventListener("click",()=>{ ppTier="rare"; renderPanPick(); });
   $("ppAll").addEventListener("click",()=>{ ppTier="all"; renderPanPick(); });
   $("ppClose").addEventListener("click",()=>$("panPickDlg").close());
+  /* the setting has three faces and one value; each face writes it and
+     paintColour() brings the others into step */
+  paintColour();
+  const onColour=e=>{ setJamColour(+e.target.value); };
+  const cs=$("jamColour"); if(cs) cs.addEventListener("input",onColour);
+  document.addEventListener("input",e=>{ if(e.target&&e.target.id==="jamColourBar") onColour(e); });
+  $("jamSetBtn").addEventListener("click",openJamSet);
+  $("jsClose").addEventListener("click",closeJamSet);
+  $("jamSetDlg").addEventListener("close",()=>{
+    // the controls must come home even when the sheet is dismissed by Esc
+    const deep=document.querySelector(".jdeep");
+    if(deep&&!deep.contains($("jamVoicing"))){
+      deep.appendChild($("jamVoicing")); deep.appendChild($("jamColourWrap"));
+      fitJamHead(); }
+  });
   $("modePos").addEventListener("click",()=>setMode("pos"));
   $("modeTrans").addEventListener("click",()=>setMode("trans"));
   setView(view,{skipRender:true});   // body class + pill state before the first render
@@ -14479,6 +14831,7 @@ function placePhoneControls(){
   setDrawer(false);                       // landscape has no drawer
   // the pan's badge layout is orientation-specific too — rebuild it on rotate
   if(panOn) renderPanPanel();
+  if(jamOn&&!PHONE) fitJamHead();
 }
 if(PHONE){
   $("shareBtn").innerHTML='<svg aria-hidden="true"><use href="#is-share"/></svg>';
