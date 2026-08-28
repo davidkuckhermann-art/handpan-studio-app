@@ -4435,6 +4435,14 @@ function followHush(){
 function panSoundOn(){
   followMuted=false; ensureCtx(); ensureSink();
   if(ctx) ctx.resume().catch(()=>{});
+  /* AND THE FOLLOW CLOCK STARTS AGAIN FROM HERE (David, 28 Aug: turning the
+     pan on from the popup sounded "a few notes at once that didn't belong
+     there - it was quite loud"). While the pan is muted nothing sounds, so the
+     audio context can be suspended and its clock frozen — and an offset
+     derived against a frozen clock puts every pulse in the past the moment it
+     resumes, where they are all clamped to now and fire together. Throwing the
+     offset away costs one report and the next one re-anchors it honestly. */
+  vOff=null; vCursor=null; vRefT=null; vRefA=null; vLastA=null; vRateM=null;
   preloadBank(); updateScoreTools(); toast("Pan sound on");
 }
 /* The pan-muted notice: same place and same shape as the question, but it
@@ -4884,8 +4892,17 @@ function onVideoTime(t,rate){
      frame, so consecutive reports are ~17 ms apart and `shouldMove` is 0.017.
      Measured with the gate broken, the offset walked 0.675 s across a 0.8 s
      stall — the whole stall, straight into the tempo. */
-  vStill=(movedBy!=null&&shouldMove!=null&&shouldMove>0
-          &&movedBy<Math.max(0.002,shouldMove*0.25));
+  /* JUDGED ONLY ON A BASE LINE LONG ENOUGH TO MEAN SOMETHING (David, 28 Aug:
+     "when I scroll down and the video is not in view, the player stops").
+     Two reports arriving in the same instant give a `shouldMove` of a fraction
+     of a millisecond and a `movedBy` of nothing, which the old test read as
+     THE VIDEO HAS STOPPED — and a stop cancels every note already committed.
+     The bridge posts on animation frames AND on a heartbeat, so bunched
+     reports are ordinary, and they bunch worst when the frames go irregular:
+     exactly what scrolling the embed out of view does. Below six milliseconds
+     of expected movement there is nothing to read, so the last answer stands. */
+  if(movedBy!=null&&shouldMove!=null&&shouldMove>0.006)
+    vStill=(movedBy<Math.max(0.002,shouldMove*0.25));
   /* plain forward motion: moved, but not by a jump's worth */
   if(awaitMotion&&movedBy!=null&&shouldMove!=null&&!vStill
      &&movedBy>0&&movedBy<Math.max(0.35,shouldMove*4)) awaitMotion=false;
