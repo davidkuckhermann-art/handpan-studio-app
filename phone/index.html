@@ -1182,7 +1182,13 @@ html.player #practiceGroup, html.player #libBtn, html.player #shareBtn,
 html.player #authortools, html.player #setBtn,
 html.player #mLib, html.player #mShare, html.player #mSet,
 html.player #footFeel, html.player #dsFeel, html.player #dwFeel,
-html.player #spGoWrap, html.player #csGoWrap{ display:none !important }
+html.player #spGoWrap, html.player #csGoWrap,
+/* THE AUTHORING BARS TOO (28 Aug). Player mode hid the Video sync BUTTON but
+   not the bar it opens, and the bar shows itself the moment a timecode
+   arrives — so every student in a lesson was given the tempo-map editor, and
+   it cost 102px of a window that was already overflowing. `?author=1` cancels
+   player mode, so David's own authoring URL still has both. */
+html.player #syncbar, html.player #mapbar{ display:none !important }
 /* the title is an <input>: in player mode a student could type into the
    lesson's own piece name. Same metrics, so fitTitle() still measures it. */
 html.player #title{ border-color:transparent; background:transparent; cursor:default }
@@ -5196,8 +5202,79 @@ function render(){
   renderChordRow();
   renderArr();
   phoneFit();
+  embedFit();
   paintLoopFrame();     // the loop survives every repaint
 }
+/* ── THE EMBED IS A WINDOW, NOT A PAGE (28 Aug, David: "can we have the player
+   get enough vertical space to be fully visible and de-activate vertical
+   scrolling inside that window?") ───────────────────────────────────────────
+   Under a lesson the app lives in a fixed 820px iframe, and it was overflowing
+   it — measured at 1051px, so the student scrolled inside the embed and the
+   notation could sit half out of view. All the height-fitting the app owns is
+   phoneFit's, which returns early off the phone, so a desktop-sized embed had
+   none at all.
+   This shrinks the score until the page fits, then hides the scrollbar — and
+   ONLY then. If it cannot fit even at the floor, scrolling stays: a window
+   that cannot show everything must still let you reach it, and locking it
+   would trade a visible fault for an unreachable one. */
+const EMBED_MINZOOM=0.5;
+function embedFit(){
+  const de=document.documentElement;
+  if(PHONE||!de.classList.contains("player")) return;
+  const sc=$("scorecard"), wrap=$("scorewrap");
+  if(!sc||!wrap||!wrap.clientWidth) return;
+  /* MEASURE THE CONTENT, NOT scrollHeight. scrollHeight never falls below the
+     viewport, so "does it fit with six pixels to spare?" could never be
+     answered yes and the search drove the notation to its floor — 0.5 where
+     0.71 fitted. The bottom of the lowest laid-out block is the real answer;
+     fixed things (the toast) float over and take no room. The cushion is for
+     the rounding: the search settles on a fraction and the zoom is written
+     rounded, which can put the page back over by a pixel or two, and hiding
+     the scrollbar on a page that overflows is the trap this must avoid. */
+  const bottom=()=>{
+    let b=0;
+    for(const el of document.body.children){
+      const cs=getComputedStyle(el);
+      if(cs.position==="fixed"||cs.display==="none"||cs.visibility==="hidden") continue;
+      const r=el.getBoundingClientRect();
+      if(r.height>0) b=Math.max(b,r.bottom);
+    }
+    return b;
+  };
+  const overFit=()=>bottom()-(innerHeight-6);
+  sc.style.zoom=""; document.body.style.overflowY="";
+  if(overFit()>0){
+    /* THE LARGEST ZOOM THAT FITS, not the first one — stepping down by a fixed
+       percentage overshoots and leaves the notation smaller than the window
+       can hold (measured: 0.69 where more was available). Halving the interval
+       lands on the biggest size that fits in a handful of passes, and the
+       notation is the thing the student came for. */
+    let lo=EMBED_MINZOOM, hi=1;
+    for(let i=0;i<9;i++){
+      const mid=(lo+hi)/2;
+      sc.style.zoom=+mid.toFixed(4);
+      if(overFit()>0) hi=mid; else lo=mid;
+    }
+    sc.style.zoom=+lo.toFixed(4);
+    /* and nudge, rather than falling back to the floor. Writing the rounded
+       value can leave a pixel or two over, and answering that by slamming to
+       the smallest allowed size threw away a good fit — measured 0.5 where
+       0.71 was available. */
+    let g=0;
+    while(overFit()>0&&g++<8){
+      const z=parseFloat(getComputedStyle(sc).zoom)||1;
+      const nz=Math.max(EMBED_MINZOOM,+(z-0.01).toFixed(4));
+      if(nz>=z) break;
+      sc.style.zoom=nz;
+    }
+  }
+  /* The scrollbar goes when the CONTENT fits, judged the same way the fit was:
+     scrollHeight can report room below the last block that holds nothing, and
+     leaving a scrollbar for empty space is the thing being removed. If the
+     content really is taller, scrolling stays. */
+  document.body.style.overflowY=bottom()>innerHeight?"":"hidden";
+}
+addEventListener("resize",()=>{ if(!PHONE) embedFit(); });
 /* Phone shrink-to-fit: the score keeps its fixed design width (540 table /
    700 tab) and the card is zoomed so that width IS the screen — same layout
    as the desktop, smaller ink. The chord card gets the same treatment only
