@@ -64,6 +64,12 @@ body.phone #suggestpane p{font-size:12.5px}
 #score{min-width:0; position:relative}   /* the loop frame is placed against it */
 #sctools{justify-self:center; display:flex; align-items:center; gap:6px}
 #scoreheadR{justify-self:end; display:flex; align-items:center; gap:6px}
+/* THE GROOVE CELL MAY NOT SPILL. It is a `1fr` column, so when the right-hand
+   cell asks for more than the row has, this is what gives — and its button was
+   overflowing into the play button's column and sitting under it. Clipped
+   here as a floor; the fold above is what should stop it arising at all. */
+#scorehead>div:first-child{min-width:0; overflow:hidden}
+#grooveHost .ctl{max-width:100%}
 /* the head is a SINGLE LINE beside the play button. Measured at 820px the
    voicing caption and "🎲 Generate" both wrapped and made the head two rows
    tall — nothing may break inside this cell. */
@@ -8362,6 +8368,18 @@ function jcShare(rows,v){ const m=jcLerp(rows,v);
    nearly unpriced at the top. */
 function jcDimAllowed(v){ return v>=30; }
 function jcDimPenalty(v){ return jcLerp([[30,3.4],[75,1.2],[100,.3]],Math.max(30,v))[0]; }
+/* AND THE DRAW ITSELF HAS TO KNOW. jamFit's −1.2 ranks the chord picker's
+   lights; suggestPick never consulted it, so inside the Triads family a
+   diminished chord was drawn as readily as a major or a minor, weighted only
+   by root motion. On a Kurd that is one chord in seven and passes unnoticed —
+   but a harmonic minor or Hijaz scale really does hold FOUR diminished triads
+   of nine, and an A2 Hijaz four of six, so 37–60% of its suggestions came out
+   diminished. That is what gave David a Ddim · Fdim · C♯7 · Bdim (29 Aug:
+   "these are jam generated sequences, they are way too focussed on…"). A
+   multiplier the slider steers, so they stay rare where the corpus says rare
+   and arrive properly at the adventurous end. Half-diminished sevenths count
+   — jamDim() matches ♭5 — which is right: they are the same colour. */
+function jcDimWeight(v){ return jcLerp([[30,.04],[50,.09],[75,.15],[100,.5]],Math.max(30,v))[0]; }
 /* COLOURS MAY CLUSTER AT THE TOP. A chord with colour is normally followed by
    a plain one (88/9/3); above 75 that restraint eases away to nothing. */
 function jcCluster(v){ return Math.max(0,Math.min(1,(v-75)/25)); }
@@ -9106,7 +9124,7 @@ function suggestPick(){
      out nowhere. */
   if(!last){
     const TARGET=[.35,.20], FAM=jcShare(JC_OPEN,v);
-    const fw=c=>(FAM[c.group]||.2)*shellW(c);
+    const fw=c=>(FAM[c.group]||.2)*shellW(c)*(jamDim(c)?jcDimWeight(v):1);
     const tRoots=[]; for(const c of tonics)
       if(tRoots.indexOf(c.root)<0) tRoots.push(c.root);
     const wt=new Map();
@@ -9179,8 +9197,10 @@ function suggestPick(){
      Bonuses, never rules: they lean the roll, they do not decide it. */
   const H=(function(){ const h=panHomes(myPan); return h.minor!=null?h.minor:(h.major!=null?h.major:jpc(myPan.ding)); })();
   const deg=r=>(r-H+12)%12;
+  const dimW=jcDimWeight(v);
   const wOf=c=>{
     let w=(MOT[ivOf(lr,c.root)]||1)*shellW(c);
+    if(jamDim(c)) w*=dimW;
     const back=seen[c.root];
     if(back&&NEAR[back]) w*=NEAR[back];
     // a dominant seventh just played wants its resolution, and gets a better
@@ -13123,19 +13143,33 @@ function paintColour(){
    dropping a caption, the whole pair moves into a sheet behind one button. */
 function fitJamHead(){
   const deep=document.querySelector(".jdeep"), btn=$("jamSetBtn");
-  const hr=$("scoreheadR");
-  if(!deep||!hr||!btn||PHONE) return;
-  // measure with the caption on and the pair in place
+  const hd=$("scorehead"), hr=$("scoreheadR");
+  if(!deep||!btn||!hd||!hr||PHONE) return;
+  /* MEASURE THE SYMPTOM, NOT A PREDICTION OF IT.
+     Two earlier readings were wrong. Asking whether #scoreheadR's contents fit
+     #scoreheadR is meaningless — it is a `1fr` grid column whose flex children
+     SHRINK, so they always "fit" and the fold never fired (David, 29 Aug: "the
+     chord settings currently don't collapse as they should"). Asking the head
+     what it wants at `width:max-content` is defeated by any max-width in play
+     and by how a grid resolves 1fr under intrinsic sizing.
+     What IS reliable is the damage itself: when the row runs short the groove
+     browser's column is what gives, and it clips — scrollWidth passes
+     clientWidth at exactly the widths where David saw its button slide under
+     the play button, and nowhere else. So the test is "has anything been
+     squeezed", asked with everything on show. */
+  const tight=()=>{ void hd.offsetWidth;
+    return hd.children[0].scrollWidth>hd.children[0].clientWidth+1
+        || hr.scrollWidth>hr.clientWidth+1; };
+  const vl=deep.querySelector(".vlab");
+  // everything shown, then let it be squeezed and see
   btn.classList.add("hidden"); deep.classList.remove("hidden");
-  const vl=document.querySelector(".jdeep .vlab"); if(vl) vl.classList.remove("hidden");
-  const room=hr.clientWidth;
-  const need=()=>[...hr.children].reduce((w,el)=>w+(el.classList.contains("hidden")?0:el.offsetWidth+8),0);
-  if(need()<=room) return;
+  if(vl) vl.classList.remove("hidden");
+  if(!tight()) return;
   // the voicing caption first, as everywhere else in the app; the colour
   // slider has none to drop — its two emoji are the whole label
   if(vl) vl.classList.add("hidden");
-  if(need()<=room) return;
-  // still short: fold both controls into the button
+  if(!tight()) return;
+  // still squeezed: fold both controls into the button
   deep.classList.add("hidden"); btn.classList.remove("hidden");
 }
 function openJamSet(){
