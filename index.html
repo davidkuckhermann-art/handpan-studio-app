@@ -9880,6 +9880,14 @@ function renderJamPanel(){
                :"Grounded voicings that use the whole pan";
     b.addEventListener("click",()=>{
       if(!!jam.narrow===nar) return;
+      /* MOVE THE PRESSED STATE HERE, not by waiting for a re-render. These
+         pills used to be rebuilt by applyJam() with the new state baked in,
+         which was enough while they lived in the head. Now they can be on
+         loan to the settings sheet, where the rebuilt copy is not the one you
+         are looking at — so the button you pressed never lit (David, 29 Aug:
+         "the narrow/wide button still doesn't animate"). */
+      vpills.querySelectorAll("button").forEach(x=>
+        x.setAttribute("aria-pressed",String(x===b)));
       jam.narrow=nar; applyJam(); saveJamLS();
       if(typeof paintVoicingDesc==="function") paintVoicingDesc();
       toast(nar?"Narrow chords — the top of the pan is yours":"Wide chords");
@@ -9932,7 +9940,8 @@ function renderJamPanel(){
     /* the phone puts it in the drawer's "This jam" section, which already sits
        ABOVE Feel (David, 29 Aug) — the order is transport, arrangement, this
        jam, my pan, feel */
-    if(host){ dwModeReset(); host.appendChild(deep); paintColour(); }
+    if(host){ dwModeReset(); host.appendChild(deep);
+      if(!jamSetRehome(vpills,cwrap)) paintColour(); }
   } else {
     prog.appendChild(tools);
     /* THE VOICINGS GO TOP RIGHT, beside 🎲 Generate (David, 28 Aug) — the
@@ -9942,6 +9951,7 @@ function renderJamPanel(){
        static markup and keeps the corner. */
     const hr=$("scoreheadR");
     if(hr){ hr.insertBefore(deep,$("jamSetBtn"));
+      if(jamSetRehome(vpills,cwrap)) return;
       /* SYNCHRONOUSLY, then again on the next frame. It hung on rAF alone,
          and rAF does not run while the page is not being composited — the
          very trap this file has hit twice before (the Kajabi bridge, the jam
@@ -13226,6 +13236,17 @@ function fitJamHead(){
 /* the description under the voicing pair describes the one that is CHOSEN,
    which is more use than naming both (David, 29 Aug: "give each option its
    own description below") */
+/* A RENDER WHILE THE SHEET IS OPEN hands it the NEW controls and throws the
+   stale ones away — otherwise applyJam() quietly builds a second pair in the
+   head and the sheet goes on showing the old one. Returns true when it took
+   them, so the caller knows not to fit a head that has nothing in it. */
+function jamSetRehome(vp,cw){
+  const d=$("jamSetDlg"); if(!d||!d.open) return false;
+  $("jsVoicingHost").innerHTML=""; $("jsColourHost").innerHTML="";
+  $("jsVoicingHost").appendChild(vp); $("jsColourHost").appendChild(cw);
+  paintColour(); paintVoicingDesc();
+  return true;
+}
 function paintVoicingDesc(){
   const el=$("jsVoicingDesc"); if(!el) return;
   el.textContent=jam&&jam.narrow
