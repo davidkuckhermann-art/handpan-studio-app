@@ -1561,6 +1561,19 @@ body.phone .gmini i{font-size:10px}
   /* the slider's 110px is an inline width, so only !important reaches it */
   body.phone #dwFeel #swingRow input[type=range]{flex:1 1 auto; width:auto !important; min-width:44px}
   body.phone #feelWrap{display:flex; align-items:center; gap:6px; margin-left:auto; flex:none}
+  /* MY PAN, ON ITS OWN LINE UNDER THE TRANSPORT (David, 28 Aug) — in jam mode
+     it sits there whether the drawer is open or closed, so it never moves as
+     the drawer travels: line 1 is the transport, line 2 is the pan, in the
+     bar and in the panel alike. One scrolling group, like #dwNow, so a narrow
+     phone loses nothing. */
+  body.phone #panNow{display:flex; align-items:center; gap:6px; flex:1 1 auto;
+    min-width:0; overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch}
+  body.phone #panNow::-webkit-scrollbar{display:none}
+  body.phone #panNow>*{flex:none}
+  /* the label is the BAR's — three ids, because the bar hides every .lab and
+     the drawer shows every .lab, and each of those rules carries two */
+  body.phone #transport #prow2 #panNowLab{display:inline-block}
+  body.phone #transport #drawerExtra #panNowLab{display:none}
   body.phone #drawerExtra .drow:empty,body.phone #drawerExtra .dsec.hidden{display:none}
   body.phone #drawerExtra select.ctl{max-width:100%}
   /* the rows whose controls moved into the drawer leave the menu sheet */
@@ -1956,7 +1969,12 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <div class="dsec" id="dsMode"></div>
     <div class="drow" id="dwMode"></div>
     <div class="dsec" id="dsPan">My pan</div>
-    <div class="drow" id="dwPan"></div>
+    <!-- IN JAM THE PAN TRAVELS (David, 28 Aug). #panNow is to the pan what
+         #dwNow is to the transport: one span holding the chooser and
+         By position | Transpose, MOVED between the drawer and the resting
+         bar's second line so the two can never disagree. Its own label is
+         for the bar — inside the drawer the MY PAN heading already says it. -->
+    <div class="drow" id="dwPan"><span id="panNow"><span class="lab" id="panNowLab">My pan</span></span></div>
     <div class="dsec" id="dsFeel">Feel</div>
     <div class="drow" id="dwFeel"></div>
   </div>
@@ -7507,7 +7525,9 @@ function enterJam(){
   updatePracticeBtn(); if(!PHONE) $("jampanel").classList.remove("hidden");
   paintTutorials();          // the jam note obeys the tutorial record now
   applyJam();
-  if(PHONE){ setDrawer(false); placeDrawer(); }
+  /* the pan line makes the resting bar a row taller in jam, and the notation
+     is sized against what the bar leaves — refit AFTER the row has arrived */
+  if(PHONE){ setDrawer(false); placeDrawer(); phoneFit(); }
 }
 function leaveJam(){
   if(!jamOn) return;
@@ -7520,7 +7540,7 @@ function leaveJam(){
   try{ $("jamDlg").close(); }catch(e){}
   const prev=jamPrev; jamPrev=null;
   if(prev){ loadPiece(prev.piece); bpm=prev.bpm; $("bpm").value=bpm; }
-  if(PHONE){ setDrawer(false); placeDrawer(); }
+  if(PHONE){ setDrawer(false); placeDrawer(); phoneFit(); }   // …and a row shorter on the way out
 }
 // Regenerate from the recipe. Mid-playback the piece is swapped under the
 // running scheduler (loopedPulse folds the counter into the new length), so
@@ -12125,7 +12145,7 @@ function setDrawer(on){
     /* the label has to be settled BEFORE the natural height is read — and it
        can only be measured once the panel is displayed, which the class above
        has just done */
-    fitDrawerTopRow(); fitFeelRow();
+    fitDrawerTopRow(); fitFeelRow(); fitPanRow();
     ex.style.height="auto";                     // measure the natural height…
     const h=ex.offsetHeight;
     if(wasEditing){ dk.style.height="0px"; dk.style.opacity="0"; }  // fold as it grows
@@ -12176,9 +12196,14 @@ function drawerTakeBar(up){
      of the landscape frame's corner and back into a portrait row that is not
      even on screen. */
   if(matchMedia("(orientation:landscape)").matches) return;
-  const now=$("dwNow"), play=$("playBtn"), arr=$("arrbox");
+  const now=$("dwNow"), play=$("playBtn"), arr=$("arrbox"), pan=$("panNow");
   if(!now) return;
   const hasNav=!jamOn&&!grooveEdit;
+  /* IN JAM THE PAN STAYS ON SCREEN (David, 28 Aug: "it should also be visible
+     when the drawer is closed"). It rides #prow2 — the line the arrangement
+     owns in the other rooms, and which jam leaves empty. Everywhere else the
+     pan keeps its drawer section, so nothing changes for a piece. */
+  const panInBar=jamOn;
   /* THE WHOLE TRANSPORT LINE TRAVELS AS ONE (David, 28 Aug: count-in, half
      speed and the rest "stay visible between bpm counter and play button when
      the drawer is closed"). #dwNow IS that line — tempo, count-in, half,
@@ -12188,13 +12213,16 @@ function drawerTakeBar(up){
     $("dwTop").insertBefore(now,$("dwTop").firstChild);
     if(play) $("drawerPlayHost").appendChild(play);
     if(arr&&hasNav) $("drawerNavHost").appendChild(arr);
+    if(pan) $("dwPan").appendChild(pan);
   }else{
     const p1=$("prow1");
     if(p1) p1.insertBefore(now,p1.firstChild);
     if(play) (editing?$("edPlayHost"):$("ptools")).appendChild(play);
     if(arr) $("prow2").appendChild(arr);
+    // after the arrangement, so the two never trade places when jam is left
+    if(pan) (panInBar?$("prow2"):$("dwPan")).appendChild(pan);
   }
-  fitDrawerTopRow();
+  fitDrawerTopRow(); fitPanRow();
 }
 /* "Count-in" is the widest thing on that line. If the line would overflow it
    becomes "Count" (David, 28 Aug), which saves 16pt — enough for every phone
@@ -12205,6 +12233,17 @@ function fitDrawerTopRow(){
   if(!c||!now||!PHONE||matchMedia("(orientation:landscape)").matches) return;
   c.textContent="Count-in";
   if(now.scrollWidth>now.clientWidth+1) c.textContent="Count";
+}
+/* The pan line drops its "My pan" caption when the chooser and the two
+   playback pills would not fit beside it — the same rule the transport line
+   and the feel line already follow. In the drawer the caption is hidden by
+   CSS anyway (the MY PAN heading is right above it), so this only ever
+   decides the bar. */
+function fitPanRow(){
+  const row=$("panNow"), lab=$("panNowLab");
+  if(!row||!lab||!PHONE||matchMedia("(orientation:landscape)").matches) return;
+  lab.style.display="";
+  if(row.scrollWidth>row.clientWidth+1) lab.style.display="none";
 }
 /* The groove map sits at the right end of the swing line, labelled while the
    words fit and bare when they do not (David, 28 Aug). */
@@ -12249,10 +12288,14 @@ function placeDrawer(){
     now.appendChild(el);
   });
   fitDrawerTopRow();
-  // my pan, and whether it sounds as written or transposed
-  const ps=$("panSel"); if(ps) pan.appendChild(ps);
+  // my pan, and whether it sounds as written or transposed — both inside
+  // #panNow, the group that travels between the drawer and the bar
+  const pn=$("panNow"); if(pn&&!pan.contains(pn)&&!$("prow2").contains(pn)) pan.appendChild(pn);
+  const host=pn||pan;
+  const ps=$("panSel"); if(ps) host.appendChild(ps);
   const mp=document.querySelector('.pills[aria-label="Playback mode"]');
-  if(mp) pan.appendChild(mp);
+  if(mp) host.appendChild(mp);
+  fitPanRow();
   // swing is something you feel your way to while playing, not a global (27
   // Aug) — and David's own timing sits beside it (28 Aug)
   const sw=$("swingRow"); if(sw) feel.appendChild(sw);
@@ -12264,6 +12307,13 @@ function placeDrawer(){
   const hasNav=!jamOn&&!grooveEdit;
   $("dsNav").classList.toggle("hidden",!hasNav);
   $("dwNav").classList.toggle("hidden",!hasNav);
+  /* JAM PUTS THE PAN SECOND (David, 28 Aug: "right below the top line of bpm,
+     count-in, …, play button") — which is also where it stands in the resting
+     bar, so opening the drawer does not shuffle it. The section is MOVED, not
+     rebuilt: the chooser and the pills stay the same elements. Every other
+     room keeps the old order, pan between the mode's settings and Feel. */
+  const ex=$("drawerExtra"), before=jamOn?$("dsNav"):$("dsFeel");
+  ex.insertBefore($("dsPan"),before); ex.insertBefore($("dwPan"),before);
   /* The Chords|Pan switch went back to the top right, where it was (David,
      27 Aug), and the Notation toggle retired with it — the notation is always
      on now, so a switch for it was a control with one useful position. */
@@ -12371,6 +12421,7 @@ if(PHONE){ // refit on rotation / viewport changes (debounced — zoom relayouts
   let pfT; const pf=()=>{ clearTimeout(pfT); pfT=setTimeout(()=>{
     placePhoneControls(); phoneFit();
     fitDrawerTopRow();      // "Count-in" ↔ "Count" follows the width, not just the open
+    fitPanRow();            // …and so does "My pan" on the jam bar
   },80); };
   window.addEventListener("resize",pf);
   // iOS reports the OLD dimensions during orientationchange, so fit again after
