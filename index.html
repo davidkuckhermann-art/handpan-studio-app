@@ -3373,6 +3373,13 @@ if(!["one","split"].includes(tabRows)) tabRows="one";
 // tab hand letters on/off (older keys carried three states / a boolean)
 const _hv=localStorage.getItem("hps.hands");
 let handsOn=_hv?(_hv!=="off"):(localStorage.getItem("hps.tabhands")==="1"); // off by default (David)
+/* …and NEVER in the lesson player (David, 28 Aug: "please manually disable the
+   hands R/L row in the tab notation. I can't disable it because we took away
+   those options from the player"). The player has no Settings to reach the
+   switch, so a stored "on" from anywhere else — his own browser, an earlier
+   visit — would be a row the student is stuck with. The setting still works
+   in the full app, where there is a control to change it back. */
+if(document.documentElement.classList.contains("player")) handsOn=false;
 // hand colours — the students' choice; black + green is the notation's default
 const HAND_DEFAULTS={l:"#17150f",r:"#469957"};
 try{ // stored copies of superseded defaults follow the new default
@@ -12744,6 +12751,7 @@ function phoneTouchNav(){
     const el=document.elementFromPoint(e.clientX,e.clientY);
     const sl=el&&el.closest&&el.closest("[data-rel]");
     if(sl) seekToPulse(viewFromPulse()+(+sl.dataset.rel));
+    else { const c=cellAtPoint(e.clientX,e.clientY); if(c) seekToPulse(c.from); }  // gaps count too
   },true);
   wrap.addEventListener("pointercancel",()=>{ id=null; mode=null; clearTimeout(holdT); },true);
 }
@@ -12833,9 +12841,21 @@ function mouseLoopNav(){
       else { dragEnded=performance.now(); reanchorLoop(); toast(loopBarsLabel()); return; }
     }
     if(editing) return;             // the slot already took this click
+    /* THE GAPS BETWEEN THE SLOTS ARE PART OF THE NOTATION (David, 28 Aug:
+       "it only happens in table notation, not in tab notation"). Slots do not
+       tile their beat — there is padding between them, and a click landing on
+       it found no `[data-rel]`, so this returned having done nothing. The
+       pointerdown above has already suppressed the slot's own seek by then,
+       so there was no second chance. Measured across the whole score: 20.7%
+       of the TABLE's area is inside a beat cell but outside every slot,
+       against 11.0% of the tab's — which is why he saw it in one view and not
+       the other, and why it was about two clicks in fifteen.
+       So: the slot if there is one, and otherwise the beat cell the point
+       falls in, which is geometry and cannot miss. */
     const el=document.elementFromPoint(e.clientX,e.clientY);   // a plain click: go there
     const sl=el&&el.closest&&el.closest("[data-rel]");
     if(sl) seekToPulse(viewFromPulse()+(+sl.dataset.rel));
+    else { const c=cellAtPoint(e.clientX,e.clientY); if(c) seekToPulse(c.from); }
   },true);
   wrap.addEventListener("pointercancel",()=>{ id=null; blocked=false; refused=false; },true);
   // right-click in the editor is the mouse's long press: copy and paste
