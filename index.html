@@ -2993,12 +2993,40 @@ function ensureCtx(){
     if(playing&&iosSink&&iosSink!=="failed"&&iosSink.paused) iosSink.play().catch(()=>{}); };
 }
 let live=[];
+/* ── TWO THINGS THE PAN MAY NOT DO, WHATEVER ASKS IT TO ─────────────────────
+   David has now been hit twice by a chord nobody played — once when turning
+   the pan's sound on from the popup, once when re-enabling the popups
+   themselves. Both had the same shape: a clock that had stopped while the
+   app was silent, an offset measured against it, and a heap of pulses that
+   all came out pointing at the same instant. The offset was fixed where it
+   was computed, and the second fault still happened, so the guard belongs
+   HERE — in the one function every single voice passes through — where it
+   holds no matter which clock went wrong next time.
+
+   1. NOTHING PLAYS LATE. `st` below clamps a past time up to now, which is
+      right for a note that missed by a hair and catastrophic for a hundred
+      that missed by seconds: they all land together. A quarter second is far
+      beyond any scheduling jitter and far short of a musical value at any
+      tempo the app plays, so past that the moment has simply gone and the
+      note is dropped rather than stacked onto the present.
+   2. NOTHING PLAYS AS A CROWD. A handpan has two hands. Six voices inside
+      25 ms is already more than the instrument can make, so anything beyond
+      that in one instant is a fault by definition and is dropped. This is
+      the belt to the first one's braces: it catches a bad offset that lands
+      the heap slightly in the FUTURE, where lateness cannot see it.
+   Both are silent on purpose. A dropped note is a note missing from music
+   that was already wrong; a burst is the app shouting at a student. */
+const LATE_DROP=0.25, BURST_WIN=0.025, BURST_MAX=6;
+let burstAt=-1, burstN=0;
 function fire(buf,at,gain){
   if(!buf) return;
+  if(at<ctx.currentTime-LATE_DROP) return;
   const src=ctx.createBufferSource(); src.buffer=buf;
   const g=ctx.createGain(); g.gain.value=gain;
   src.connect(g); g.connect(dry); g.connect(send);
   const st=Math.max(at,ctx.currentTime);
+  if(st<=burstAt+BURST_WIN){ if(++burstN>BURST_MAX) return; }
+  else { burstAt=st; burstN=1; }
   /* WHEN THIS VOICE STARTS. The scheduler commits up to 0.45 s ahead, so
      `live` always holds some notes that have not sounded yet — and telling
      those apart from the ones already ringing is what lets a stop cancel the
@@ -3912,6 +3940,16 @@ let seekPaint=null, seekPaintAt=0;
 /* set when the clock jumps, cleared by the first report showing ordinary
    motion — so a seek into a PAUSED video never schedules anything */
 let awaitMotion=false, justResynced=false, vStillWas=false;
+/* the floor under a stop, and the clock's own measured step — see onVideoTime */
+/* THE FLOOR IS SET BY THE COARSEST CLOCK WORTH BELIEVING, not by how fast a
+   stop could be caught. Until this player has proved how big its steps are
+   there is nothing to tell a throttled clock from a stopped one, and the
+   choice is between the pan ringing on a moment after a pause and the music
+   dropping out while it plays. 300 ms covers the quarter-second granularity a
+   throttled video reports at; the pan then stops within a third of a second of
+   the picture, which is inside the look-ahead it has to beat. */
+const STILL_SPAN=0.3;
+let stillSpan=0, vGran=0, vStopped=false, vStoppedWas=false, stopN=0;
 /* An <input> holds its default width whatever text is in it, which left the
    "Written for" badge floating in the gap. Measure the text in the field's own
    font and size the field to it, so the badge sits against the piece's name. */
@@ -4965,8 +5003,36 @@ function onVideoTime(t,rate){
      reports are ordinary, and they bunch worst when the frames go irregular:
      exactly what scrolling the embed out of view does. Below six milliseconds
      of expected movement there is nothing to read, so the last answer stands. */
-  if(movedBy!=null&&shouldMove!=null&&shouldMove>0.006)
+  /* TWO DIFFERENT QUESTIONS, WHICH USED TO SHARE ONE ANSWER (David, 28 Aug,
+     the same complaint a second time: "it always happens when I scroll the
+     video page out of view").
+       - IS THE CLOCK MOVING RIGHT NOW? Cheap to get wrong: the worst that
+         follows is that the offset is held for a report. Answer at once.
+       - HAS THE VIDEO STOPPED? Expensive to get wrong: a stop cancels every
+         note already committed, which is the music going quiet. Answer only
+         when sure.
+     They were the same flag, so a single unmoving reading cancelled the
+     music — and a player whose picture is off screen has nothing to draw and
+     updates its clock in coarse steps, so unmoving readings are exactly what
+     scrolling produces. Note the bridge sends NOTHING while the video is
+     paused, so a real pause is the reports CEASING, which `vidStillT` already
+     watches with its 700 ms. This inference is only for the other case: a
+     clock frozen while reports keep coming, which is a seek buffering.
+
+     The measure is how much AUDIO time passed with the video showing nothing
+     for it — not how many reports said so. A coarse clock never accumulates
+     much before it moves again, and the bar it must clear is set by how
+     coarse this player has actually proved to be, so a step size nobody could
+     have guessed in advance is learned instead. `vGran` is a DECAYING MAX of
+     the steps seen, so the margin over it only has to cover jitter, not the
+     spread — and every bit of margin is time the pan rings on after a real
+     pause, so it is kept tight. */
+  if(movedBy!=null&&shouldMove!=null&&shouldMove>0.006){
     vStill=(movedBy<Math.max(0.002,shouldMove*0.25));
+    if(vStill) stillSpan+=shouldMove;
+    else { vGran=Math.max(stillSpan,vGran*0.85); stillSpan=0; }
+    vStopped=(stillSpan>=Math.max(STILL_SPAN,vGran*1.6));
+  }
   /* plain forward motion: moved, but not by a jump's worth */
   if(awaitMotion&&movedBy!=null&&shouldMove!=null&&!vStill
      &&movedBy>0&&movedBy<Math.max(0.35,shouldMove*4)) awaitMotion=false;
@@ -4977,7 +5043,7 @@ function onVideoTime(t,rate){
      when the clock stopped, so the pulses in between are never scheduled and
      the downbeat is one of them. The clock going still and moving again is
      itself the seek. */
-  if(vStillWas&&!vStill) vSeek=true;
+  if(vStoppedWas&&!vStopped) vSeek=true;
   /* AND WHEN IT STOPS, THE PAN STOPS WITH IT (David, 28 Aug: "stopping
      playback lags several notes behind"). In follow mode the transport does
      not call stop() — it pauses the VIDEO — so nothing ever cancelled the
@@ -4985,8 +5051,16 @@ function onVideoTime(t,rate){
      0.45 s after the picture froze. Only the notes that have not sounded yet
      are taken: a stroke already struck rings out, which is what the instrument
      does and what stopping a video leaves you with. */
-  if(vStill&&!vStillWas) followHush();
-  vStillWas=vStill;
+  /* ON TWO REPORTS, NOT ONE. The first time the clock goes coarse there is no
+     measured step size yet, so that first long gap clears the bar and would
+     cancel the look-ahead once — a real gap in the music, right at the moment
+     he scrolls. But a coarse clock MOVES on the very next report, while a
+     stopped one does not: Wistia's pump keeps sending while paused, which is
+     what makes a genuine pause visible here at all. So the second report is
+     the one that decides, and it costs about 17 ms. */
+  if(vStopped) stopN++; else stopN=0;
+  if(stopN===2) followHush();
+  vStillWas=vStill; vStoppedWas=vStopped;
   if(ctx&&!vStill){
     const b=t-vRate*ctx.currentTime;
     /* A REAL SEEK IS A JUMP IN THE VIDEO CLOCK — which is exactly what this
