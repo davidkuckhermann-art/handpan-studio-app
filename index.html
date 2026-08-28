@@ -3285,6 +3285,29 @@ function clearSlotMarks(){
 // One even rectangle over the pulse window [s,e), drawn as full-height
 // overlays on the beat cells it touches (per-cell segments join seamlessly
 // when a window crosses a beat line, e.g. a triplet 8th).
+/* Where to cut between two neighbouring slots, as a percentage of the cell:
+   halfway between the last glyph of one and the first glyph of the next. Falls
+   back to the arithmetic boundary when either side is empty or the two overlap
+   (nothing sensible to split). */
+function mkEdgePct(be,relA,relB,fallback){
+  const box=be.getBoundingClientRect();
+  if(!box.width) return fallback;
+  const edge=(rel,side)=>{
+    const sl=be.querySelector('[data-rel="'+rel+'"]');
+    if(!sl) return null;
+    const gl=sl.querySelectorAll(".sym");
+    if(!gl.length) return null;
+    let v=null;
+    for(const g of gl){ const r=g.getBoundingClientRect();
+      if(!r.width) continue;
+      const x=side<0?r.right:r.left;
+      v=v==null?x:(side<0?Math.max(v,x):Math.min(v,x)); }
+    return v;
+  };
+  const a=edge(relA,-1), b=edge(relB,1);
+  if(a==null||b==null||b<a) return fallback;
+  return Math.max(0,Math.min(100,((a+b)/2-box.left)/box.width*100));
+}
 function drawMarkBox(m,barI,s,e){
   const barBase=barI*m.bp;
   for(let bt=Math.floor((s-barBase)/m.sub);bt<=Math.floor((e-1-barBase)/m.sub);bt++){
@@ -3295,9 +3318,14 @@ function drawMarkBox(m,barI,s,e){
     const d=document.createElement("div");
     be.classList.add("mkcell");        // lift it above its neighbours' borders
     d.className="mkbox"+(segS===s?" mkbL":"")+(segE===e?" mkbR":"");
-    // edges that coincide with the cell border sit ON the border (-1px)
-    d.style.left=segS===cellS?"-1px":(((segS-cellS)/m.sub*100)+"%");
-    d.style.right=segE===cellE?"-1px":(((cellE-segE)/m.sub*100)+"%");
+    /* edges that coincide with the cell border sit ON the border (-1px);
+       an edge INSIDE the cell is placed in the gap between the glyphs it
+       separates, not on the slot's arithmetic boundary (David, 28 Aug: "the
+       marker goes through the slap sign"). A slot is a fixed share of the
+       cell, but a pair like ^12 is wider than its share and spills into the
+       neighbour — so the arithmetic edge can land in the middle of a glyph. */
+    d.style.left=segS===cellS?"-1px":(mkEdgePct(be,segS-1,segS,(segS-cellS)/m.sub*100)+"%");
+    d.style.right=segE===cellE?"-1px":((100-mkEdgePct(be,segE-1,segE,(segE-cellS)/m.sub*100))+"%");
     be.appendChild(d);
   }
 }
