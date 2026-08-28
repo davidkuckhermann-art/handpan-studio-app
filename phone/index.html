@@ -169,6 +169,9 @@ body.nonota #scorefoot{margin-top:0; border-top:none}
   background:var(--card); color:var(--ink2); display:grid; place-items:center; flex:none;
   box-shadow:0 1px 2px rgba(70,52,28,.06); padding:0}
 .ib svg{width:17px; height:17px; display:block}
+/* the bell alone is red — the button stays a plain icon button like its
+   neighbours, so only the thing that undoes a silenced message stands out */
+#panPrefBtn svg{color:#c9342b}
 /* AN ICON BUTTON MAY CARRY A WORD (David, 28 Aug: "give the follow video
    button text next to the symbol … otherwise users will not understand what it
    does"). The square grows into a pill and lays icon + label on one row; the
@@ -988,9 +991,18 @@ body.haspan:not(.phone) #belowrow{display:grid; align-items:start;
 body.haspan:not(.phone) #chordwrap{grid-column:2; justify-self:center}
 body.haspan:not(.phone) #panwrap{grid-column:3; justify-self:end}
 /* Below this the pan no longer fits in its third of the row and would reach
-   across the chords, so the pair goes back to simply sitting together. */
+   across the chords, so the pair goes back to simply sitting together — the
+   chord card to the LEFT, the pan to the RIGHT, David's own suggestion
+   (28 Aug) once the bigger pan made the two wrap onto separate lines in a
+   lesson frame. Pooling the slack in the middle bought nothing; giving it to
+   the pan keeps both on one line and keeps the frame short. The chord card
+   holds its natural width and the pan is the one that gives way, because the
+   chords are read as words and the pan only has to stay legible. */
 @media (max-width:1040px){
-  body.haspan:not(.phone) #belowrow{display:flex; justify-content:center}
+  body.haspan:not(.phone) #belowrow{display:flex; justify-content:space-between;
+    flex-wrap:nowrap}
+  body.haspan:not(.phone) #chordwrap{flex:0 0 auto}
+  body.haspan:not(.phone) #panwrap{flex:0 1 auto; min-width:0}
 }
 #arrbox{flex:0 1 auto; padding:14px 18px 16px}
 .arrline{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:5px 0}
@@ -998,6 +1010,12 @@ body.haspan:not(.phone) #panwrap{grid-column:3; justify-self:end}
 #arrbox .lab{font-size:12.5px}
 #chordwrap{flex:0 1 auto; overflow-x:auto; text-align:center; padding-bottom:4px}
 #panwrap{flex:0 0 auto; text-align:center}
+/* The pan card shrink-to-fits, and without this it sizes itself to the pan it
+   would LIKE to draw and then hangs out over the edge of its own column —
+   measured at 557px inside 490 in a 900px lesson frame, which is what pushed
+   the page into horizontal overflow once the pan grew. Capped here, the card
+   takes the width it is given and the drawing inside shrinks to suit. */
+#panwrap .chordframe{max-width:100%}
 #pvwrap{display:flex; flex-direction:column; align-items:center; gap:8px}
 /* strokes mode: the badges flank the instrument, so the drawing owns the height */
 #pvwrap.sides{flex-direction:row; align-items:center; justify-content:center; gap:10px}
@@ -1006,9 +1024,19 @@ body.haspan:not(.phone) #panwrap{grid-column:3; justify-self:end}
    zero under width:auto in a flex row — David's "the pan tab still doesn't
    show the pan" (26 Aug). Not a percentage either: the card shrink-to-fits
    its content, so % goes circular. Pixels, vw-clamped on the phone. */
-#pvwrap.sides #pvsvg{flex:0 1 auto; min-width:0; width:236px; max-width:none}
+/* a bit bigger, at David's word (28 Aug) — 236 to 430, in three goes.
+   The plain cap below moves with it, or the pan without the stroke columns
+   beside it would stay small. The phone keeps its own
+   ceiling below: there the pan is already as wide as the strokes flanking it
+   allow, and the lesson window now grows to whatever the card needs anyway. */
+#pvwrap.sides #pvsvg{flex:0 1 auto; min-width:0; width:430px; max-width:none}
 body.phone #pvwrap.sides #pvsvg{width:min(236px,calc(100vw - 150px))}
-#pvsvg{width:min(100%,340px); height:auto; display:block}
+/* an explicit width, not min(100%,…): the pan card shrinks to fit its
+   contents, so a percentage there resolves against a box the pan itself is
+   sizing and the drawing fell back to its intrinsic 300px — which is why it
+   looked unchanged in the lesson embed (David, 28 Aug). max-width keeps it
+   inside a narrow window. */
+#pvsvg{width:430px; max-width:100%; height:auto; display:block}
 .pvf{cursor:pointer}
 .pvf .pvtint,.pvf .pvring{opacity:0; pointer-events:none}
 .pvf .pvring{transform-box:fill-box; transform-origin:center}
@@ -3945,6 +3973,35 @@ function closePop(){
   return false;
 }
 const ico=id=>'<svg viewBox="0 0 24 24"><use href="#'+id+'"/></svg>';
+/* ── WHAT EACH BUTTON IS FOR, ON HOVER (David, 28 Aug) ──────────────────────
+   Most of the icon buttons that change state already write their own title as
+   they repaint — Follow video, the sound button, the loop, the bell — and this
+   never touches those: it fills in the ones that had none, and only if they
+   still have none, so a painter's own words always win. Kept as one table
+   rather than scattered through the markup, because these are the words a
+   student reads to learn what the app does and they should be edited together. */
+const TIPS={
+  viewTable:"Read the music as a table of beat cells",
+  viewTab:"Read the music as a tab, one lane per hand",
+  notaBtn:"Show the notation",
+  chordBtn:"Show the chord of each bar",
+  panBtn:"Show the pan, and light the fields as they sound",
+  modePos:"Play the piece as written for the pan it was written for",
+  modeTrans:"Transpose the piece onto your own pan",
+  panSel:"The pan you are playing on",
+  playBtn:"Play or pause — space bar does the same",
+  countBtn:"Count a bar in before playing",
+  libBtn:"Your saved pieces",
+  shareBtn:"Make a link to this piece",
+  editBtn:"Write and change the notation",
+  menuBtn:"Everything else",
+  bpmCtl:"Speed, in beats per minute",
+  arrbox:"The order the tables are played in — click a chip to jump there"
+};
+function paintTips(){
+  for(const id in TIPS){ const el=$(id);
+    if(el&&!el.title) el.title=TIPS[id]; }
+}
 /* The score frame's toolbar. Follow and Sound only EXIST once there is a video
    (in a piece with none they mean nothing); Loop only while a loop is set, and
    clicking it clears the loop — on desktop the loop itself is a drag across the
@@ -4423,7 +4480,7 @@ function paintPanPrefBtn(){
   const any=panPref(PK_ASK)!=null||panPref(PK_WARN)!=null||panPref(PK_LOOP)!=null;
   b.classList.toggle("hidden",!any);
   if(any&&!b.innerHTML) b.innerHTML=ico("is-bell");
-  b.title="Show the messages I switched off again";
+  b.title="Re-enable popups";
 }
 /* Cancel what has not sounded yet, and leave what has to ring. A voice that
    has not started can be taken out with its gain alone — the source is already
@@ -5252,6 +5309,7 @@ function render(){
   renderArr();
   phoneFit();
   embedFit();
+  embedWatch();
   paintLoopFrame();     // the loop survives every repaint
 }
 /* ── THE WINDOW GROWS; THE MUSIC DOES NOT SHRINK ────────────────────────────
@@ -5305,6 +5363,29 @@ function embedFit(){
   de.style.overflowY=(cb+foot>innerHeight+1)?"":"hidden";
 }
 addEventListener("resize",()=>{ if(!PHONE) embedFit(); });
+/* AND WHENEVER THE CONTENT ITSELF CHANGES HEIGHT. embedFit used to run only
+   from render() and on resize, so anything that repaints one card without a
+   full render left the frame at its old height — David, 28 Aug: switching the
+   pan card to chords, which is the taller of the two, cut the card off at the
+   frame's lower edge. Watching the body covers every such case at once
+   instead of hunting the controls one by one. It cannot chase its own tail:
+   the height asked for is measured from the CHILDREN, so a body that grew
+   with the window would still report the same number and post nothing. */
+let embedRO=null, embedRT=null;
+function embedWatch(){
+  if(PHONE||typeof ResizeObserver!=="function") return;
+  try{
+    if(!embedRO) embedRO=new ResizeObserver(()=>{
+      clearTimeout(embedRT); embedRT=setTimeout(embedFit,60); });
+    /* the BODY is not enough on its own: the pan card is taken out of the
+       normal flow, so it can grow 36px — strokes to chords — without the body
+       measuring a pixel taller. Every child is watched instead. Observing one
+       twice is a no-op, so this may be called after any repaint. */
+    embedRO.observe(document.body);
+    for(const el of document.body.children) embedRO.observe(el);
+  }catch(e){}
+}
+embedWatch();
 /* Phone shrink-to-fit: the score keeps its fixed design width (540 table /
    700 tab) and the card is zoomed so that width IS the screen — same layout
    as the desktop, smaller ink. The chord card gets the same treatment only
@@ -5802,6 +5883,14 @@ function panViewSVG(pan,label,opts){
 function renderPanPanel(){
   const r=renderPanPanelInner();
   if(PHONE) phoneFit();
+  /* The pan card is repainted on its own, without a full render — and the
+     chord view is the taller of the two, so switching to it under a lesson
+     used to push the card past the frame's lower edge and leave it cut off
+     (David, 28 Aug). Every pan repaint goes through here, so this is the one
+     place that has to ask for the new height. The ResizeObserver below is a
+     net for anything else; it cannot be the whole answer, because a frame
+     that is not being composited delivers no observations at all. */
+  else embedFit();
   return r;
 }
 function renderPanPanelInner(){
@@ -12333,6 +12422,7 @@ function boot(){
     $("loopNoDlg").close();
     if($("lnNever").checked) panPrefSet(PK_LOOP,"off");
   });
+  paintTips();
   $("panPrefBtn").addEventListener("click",()=>{
     panPrefSet(PK_ASK,null); panPrefSet(PK_WARN,null); panPrefSet(PK_LOOP,null);
     $("psNever").checked=false; $("pmNever").checked=false; $("lnNever").checked=false;
