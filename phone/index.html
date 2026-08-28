@@ -986,24 +986,19 @@ table.map select{font-size:12.5px; border:1px solid var(--rule); border-radius:6
    and keeps the middle honestly centred. */
 #belowrow{display:flex; align-items:flex-start; justify-content:center; gap:14px;
   margin-top:10px; flex-wrap:wrap}
-body.haspan:not(.phone) #belowrow{display:grid; align-items:start;
-  grid-template-columns:1fr auto 1fr}
-body.haspan:not(.phone) #chordwrap{grid-column:2; justify-self:center}
-body.haspan:not(.phone) #panwrap{grid-column:3; justify-self:end}
-/* Below this the pan no longer fits in its third of the row and would reach
-   across the chords, so the pair goes back to simply sitting together — the
-   chord card to the LEFT, the pan to the RIGHT, David's own suggestion
-   (28 Aug) once the bigger pan made the two wrap onto separate lines in a
-   lesson frame. Pooling the slack in the middle bought nothing; giving it to
-   the pan keeps both on one line and keeps the frame short. The chord card
-   holds its natural width and the pan is the one that gives way, because the
-   chords are read as words and the pan only has to stay legible. */
-@media (max-width:1040px){
-  body.haspan:not(.phone) #belowrow{display:flex; justify-content:space-between;
-    flex-wrap:nowrap}
-  body.haspan:not(.phone) #chordwrap{flex:0 0 auto}
-  body.haspan:not(.phone) #panwrap{flex:0 1 auto; min-width:0}
-}
+/* THE CHORD CARD LEFT, THE PAN RIGHT — David's own suggestion (28 Aug), and
+   now the only layout rather than one of two. It used to be a three-column
+   grid above 1040px and this flex row below it, which meant the pan resolved
+   its width one way in a wide window and another way in a lesson frame: in
+   the grid the card sized itself to a 1fr track it then overflowed, and the
+   two pan views disagreed with each other by 170px at 1200px wide. One
+   layout, one answer. The chord card holds its natural width and the pan is
+   the one that gives way, because the chords are read as words and the pan
+   only has to stay legible. */
+body.haspan:not(.phone) #belowrow{display:flex; align-items:flex-start;
+  justify-content:space-between; flex-wrap:nowrap}
+body.haspan:not(.phone) #chordwrap{flex:0 0 auto}
+body.haspan:not(.phone) #panwrap{flex:0 1 auto; min-width:0}
 #arrbox{flex:0 1 auto; padding:14px 18px 16px}
 .arrline{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:5px 0}
 #arrbox .chip{font-size:15.5px; padding:7px 17px}      /* the arrangement reads at a glance (David, 26 Aug) */
@@ -1017,8 +1012,20 @@ body.haspan:not(.phone) #panwrap{grid-column:3; justify-self:end}
    takes the width it is given and the drawing inside shrinks to suit. */
 #panwrap .chordframe{max-width:100%}
 #pvwrap{display:flex; flex-direction:column; align-items:center; gap:8px}
+
 /* strokes mode: the badges flank the instrument, so the drawing owns the height */
 #pvwrap.sides{flex-direction:row; align-items:center; justify-content:center; gap:10px}
+/* ONE SIZE FOR BOTH VIEWS (David, 28 Aug). The chord view has no hands, so it
+   used to drop the flanking badges and lay the drawing out on its own — and
+   then the two views were different sizes, and switching between them jumped.
+   Approximating the flanks with padding was not enough: the card sits in a
+   grid track whose size depends on its contents, so the two views still
+   resolved differently at different window widths. They now share the SAME
+   structure — the flanks are always there, merely invisible in the chord view
+   — so whatever the row can spare, both views get the identical number. */
+.pvmid{display:flex; flex-direction:column; align-items:center; gap:8px;
+  min-width:0; flex:0 1 auto}
+#pvwrap.sides .pvmid #pvsvg{max-width:100%}
 .pvside{display:flex; flex-direction:column; align-items:center; gap:9px; flex:none}
 /* a DEFINITE width, not flex-auto: WebKit collapses a viewBox-only svg to
    zero under width:auto in a flex row — David's "the pan tab still doesn't
@@ -5932,9 +5939,15 @@ function renderPanPanelInner(){
     +'<span class="pvperc" id="pvp-tak" title="Tak">T</span>'
     +'<span class="pvperc" id="pvp-knock" title="Knock">°</span>');
   if(panMode==="chords"){          // a chord has no hand: the name takes the lamps' place
-    wrap.appendChild(pan.firstChild);
+    /* the flanks stay, hidden, so this view is exactly as wide as the other —
+       see "ONE SIZE FOR BOTH VIEWS" in the stylesheet */
+    for(const f of [left,right]){ f.style.visibility="hidden"; f.setAttribute("aria-hidden","true"); }
+    const mid=document.createElement("div"); mid.className="pvmid";
+    mid.appendChild(pan.firstChild);
     const nm=document.createElement("div"); nm.className="pvchord"; nm.id="pvchord";
-    wrap.appendChild(nm);
+    mid.appendChild(nm);
+    wrap.classList.add("sides");
+    wrap.append(left,mid,right);
   } else {
     /* The badges FLANK the pan everywhere (David, 26 Aug — he asked for them
        back at the sides: the row underneath cost ~50px of height and he wants
