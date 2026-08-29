@@ -12761,8 +12761,24 @@ function rqVoiceGroove(pat,def){
   const lad=rqLadder(def); if(lad.length<3) return null;
   const all=rqFieldsLowHigh(), top=lad.length-1, half=Math.max(1,Math.ceil(lad.length/2));
   const shape=RQSHAPES[Math.floor(Math.random()*RQSHAPES.length)];
+  /* THE MID RANGE IS HOME AND THE TOP IS A GUEST (David, 29 Aug: "high notes
+     can be used, but the mid range notes are more suitable for these kinds of
+     chord grooves"). The ladder's top rung is the highest note on the
+     instrument, and it was being taken as freely as any other — a high accent
+     went straight to it six times in ten, and an arpeggio touched it on every
+     pass, so the notes came out spread flat across the whole compass (measured
+     across three pans: an even fifth of them in the top fifth of the range).
+     Each BAR now draws a ceiling instead: usually a rung or two below the top,
+     the whole ladder only now and then. It is drawn once per bar rather than
+     per stroke, so a groove keeps one register rather than wandering — and a
+     short ladder, four rungs or fewer, is all middle already and keeps its top.
+     The FLOOR is untouched: the chord's lowest note is the anchor his 28 Aug
+     rules start from ("often start on the lowest note of the chord"). */
+  const hiR = lad.length<=4 ? top
+            : Math.random()<0.25 ? top
+            : Math.max(1, top-(Math.random()<0.6?1:2));
   const low =()=>Math.random()<0.6?0:Math.floor(Math.random()*half);
-  const high=()=>Math.random()<0.6?top:top-Math.floor(Math.random()*half);
+  const high=()=>Math.random()<0.6?hiR:Math.max(0,hiR-Math.floor(Math.random()*half));
   const on=[];
   pat.slots.forEach((c,p)=>{ if(c!=="-") on.push({p,acc:c==="D"||c==="T",c}); });
   if(!on.length) return null;
@@ -12781,11 +12797,11 @@ function rqVoiceGroove(pat,def){
          that one step: `0 2 4 7 | 0 2 4 7` drops a twelfth in a single beat.
          Folding turns the leap into the next step of the same walk, which is
          what an arpeggio does when it runs out of instrument. */
-      if(k===0){ i=shape==="down"?top:0; dir=shape==="down"?-1:1; }
+      if(k===0){ i=shape==="down"?hiR:0; dir=shape==="down"?-1:1; }
       else{
         i+=dir;
-        if(i>top){ dir=-1; i=Math.max(0,top-1); }
-        else if(i<0){ dir=1; i=Math.min(top,1); }
+        if(i>hiR){ dir=-1; i=Math.max(0,hiR-1); }
+        else if(i<0){ dir=1; i=Math.min(hiR,1); }
       }
       f=lad[i];
     }else if(e.acc){
@@ -12793,7 +12809,7 @@ function rqVoiceGroove(pat,def){
       i=(k===0&&Math.random()<0.75)?0:(e.c==="D"?low():high());
       f=lad[i];
     }else{
-      i=Math.max(0,Math.min(top,i+(Math.random()<0.72?1:-1)));
+      i=Math.max(0,Math.min(hiR,i+(Math.random()<0.72?1:-1)));
       f=lad[i];
       // a step that is not a chord tone, on a non-accented slot only
       if(Math.random()<0.16){
@@ -12846,14 +12862,14 @@ function rqVoiceGroove(pat,def){
                    && near(f)<=Math.floor(top/2);
     const dingOk = ()=> e.acc || f!==0 || (nxt&&nxt.acc&&nxt.c==="D");
     for(let guard=0; guard<5 && lad.length>1; guard++){
-      if(!dingOk()){ i=Math.min(top,lad.indexOf(0)+1); f=lad[i]; continue; }
-      if(f===prev&&!leadIn){ const j=near(f); i=j<top?j+1:j-1; f=lad[i]; continue; }
+      if(!dingOk()){ i=Math.min(hiR,lad.indexOf(0)+1); f=lad[i]; continue; }
+      if(f===prev&&!leadIn){ const j=near(f); i=j<hiR?j+1:Math.max(0,j-1); f=lad[i]; continue; }
       break;
     }
     prev=f;
     out[e.p]=[f];
     if(e.acc&&lad.length>=3&&Math.random()<0.10){        // his X: an accent as a stack
-      const j=lad.indexOf(f), o=lad[j<top?j+1:j-1];
+      const j=lad.indexOf(f), o=lad[j<hiR?j+1:Math.max(0,j-1)];
       if(o!=null&&o!==f){ out[e.p]=[f,o]; prev=o; }
     }
   });
