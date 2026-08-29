@@ -10210,54 +10210,63 @@ function jamMelodyBar(n,curTop,nextTop,breathe,rnd,last){
   if(ci<0) return out;
   const ni=all.indexOf(nextTop);
   const lim=i=>Math.max(0,Math.min(all.length-1,i));
-  /* THE PHRASE ENDS BY ARRIVING. One bar in four holds its note — that
-     silence of movement is what tells the ear a sentence has finished, and it
-     is what makes the other three sound like a line rather than a scale. */
+  const step=(i,d)=>{ const j=lim(i+d); return j===i?lim(i-d):j; };
+  /* THE PHRASE ENDS BY ARRIVING, and the form's last bar comes to a full stop
+     (David, 29 Aug: "there can be resting points, especially in the end").
+     Where a resting bar does move, it moves on its LAST note — see below. */
   if(breathe){
-    /* A RESTING POINT, AND THE LAST ONE IS A FULL STOP (David, 29 Aug: "there
-       can be resting points, especially in the end"). A phrase ends by settling
-       on its note — that is what makes the three bars before it read as a
-       sentence — so it mostly holds, with an occasional single step out and
-       back to keep it from sounding switched off. The FORM's last bar takes no
-       step at all: it is where the line comes home before the loop turns. */
-    if(!last&&n>=3&&rnd()<0.35) out[n-2]=all[lim(ci+(rnd()<0.5?1:-1))];
+    if(!last&&n>=3&&rnd()<0.45) out[n-1]=all[step(ci,rnd()<0.5?1:-1)];
     return out;
   }
-  /* AND THE OTHER THREE WALK (David, 29 Aug: "there can be more movement…
-     try to find nice phrases and longer clear melody lines"). The bar no
-     longer holds its note and steps at the last moment; it walks from where
-     it is to beside where it is going, one field at a time, and the bar line
-     completes the step onto the next chord's note.
-     WHAT MAKES IT A MELODY RATHER THAN A RUN is the slack. When the distance
-     is shorter than the strokes available, the spare ones are spent on a step
-     the other way or on holding — so the line breathes inside the bar too,
-     and the same two targets give a different figure each time. When the
-     distance is longer than the strokes, every stroke steps and the bar reads
-     as one clear ascent or descent. Where the target does not move at all,
-     the walk has nowhere to be and turns around its own note, which is
-     David's "step a tone or two away and come back". */
-  const aim=ni>=0?(ni>ci?ni-1:ni<ci?ni+1:ci):ci;
-  let pos=ci, away=rnd()<0.5?1:-1, run=1;
+  /* WHERE THE BAR IS GOING (David: "often the middle melody node is another
+     one… 8, then 9, then 8 again. I'd rather have the movement go towards the
+     next chord change, so there is more of a sense of direction").
+     The bar aims to arrive BESIDE the next chord's note, so the bar line
+     completes the step. Two cases have no such target: when the next note is
+     the one already sounding, and — the one that quietly emptied half the
+     bars — when it is the very next field, because then "beside it" IS the
+     note we are on. Measured: seeds whose arc rose a field at a time came out
+     eight and nine bars flat in sixteen, at 23% movement.
+     Those bars are given somewhere to come back FROM instead: they depart a
+     field or two AWAY from the change and return, so the last strokes are
+     still walking into it. */
+  const gap=ni>=0?Math.abs(ni-ci):0;
+  let way;
+  if(ni>=0&&gap>=2) way=[ci,ni>ci?ni-1:ni+1];
+  else{
+    const to=ni>ci?1:(ni<ci?-1:0);
+    const away=to?-to:(rnd()<0.5?1:-1);
+    const depth=Math.min(n>=5?2:1,Math.floor((n-1)/2));
+    way=depth?[ci,lim(ci+away*depth),ci]:[ci];
+  }
+  /* …and the walking leans hard towards the next waypoint. It used to step
+     towards it half the time and AWAY three times in ten, which is exactly
+     the wobble he heard; there are no mid-bar detours at all now. */
+  let pos=ci, run=1, seg=1;
   for(let k=1;k<n;k++){
-    const left=n-k, dist=Math.abs(aim-pos), toward=Math.sign(aim-pos);
-    const was=pos;
-    if(dist>=left) pos+=toward;                 // no room left to wander
-    else{
-      const r=rnd();
-      /* RARELY A THIRD TIME ON THE SAME NOTE (David, 29 Aug: "the chord stay
-         3x on the same melody note should not happen so much" — then, when it
-         had been banned outright, "it's ok sometimes if a chord stays on the
-         same note multiple times"). Two in a row is a held note and reads as
-         one; three is the line resting, which is fine now and then and dull as
-         a habit. So a third is allowed one time in seven and a fourth never. */
+    const left=n-k, was=pos;
+    let need=0, p=pos;
+    for(let q=seg;q<way.length;q++){ need+=Math.abs(way[q]-p); p=way[q]; }
+    const toward=seg<way.length?Math.sign(way[seg]-pos):0;
+    if(need>=left) pos+=toward||0;              // no room left to linger
+    else if(toward){
       const mayHold=run<2||(run===2&&rnd()<0.15);
-      if(r<0.5&&toward) pos+=toward;            // on towards it
-      else if(r<0.8||!mayHold){ pos+=toward?-toward:away; away=-away; }
-      // else: hold, and let the next stroke carry it
+      if(rnd()<0.8||!mayHold) pos+=toward;
     }
     pos=lim(pos);
+    if(seg<way.length&&pos===way[seg]&&seg<way.length-1) seg++;
     run=(pos===was)?run+1:1;
     out[k]=all[pos];
+  }
+  /* AND THE DETOUR SITS ON THE LAST MELODY NOTE (David: "the detour then
+     should happen on the last note of the bar… last melody note"). A step to
+     the side there is a turn INTO the chord change — the bar line completes
+     it — where the same step in the middle of a bar is just a wobble. The
+     out-and-back he first described is still allowed, "just not as much":
+     that is what a departing bar is, and it is now the rarer figure. */
+  if(n>=2&&rnd()<(way.length>1?0.18:0.5)){
+    const j=step(pos,rnd()<0.5?1:-1);
+    if(j!==pos) out[n-1]=all[j];
   }
   return out;
 }
@@ -10915,10 +10924,12 @@ function buildJamPiece(){
     const mrnd=jamRnd(((jam.mseed||1)^0x9E3779B9)>>>0);
     const phrase=Math.max(1,Math.round(form.length/4));
     /* A LINE RESTS WHERE IT LIKES, not only where the phrase ends (David, 29
-       Aug: "there can also be resting points in the middle of a phrase"). So
-       about one bar in five settles on its note wherever it stands — never two
-       running, or the line stops rather than breathes. */
-    let rested=false;
+       Aug: "there can also be resting points in the middle of a phrase") — but
+       AT MOST ONCE PER PHRASE. Left only with a "never twice running" rule it
+       could rest seven bars in sixteen when the arc ran flat, and a line that
+       rests half the time is not breathing, it is asleep. One rest inside a
+       phrase, plus the rest that ends it, is the punctuation he asked for. */
+    let restInPhrase=false;
     form.forEach((f,i)=>{
       const v=vm[i];
       if(!v){ bars.push([]); return; }        // a chord this pan cannot voice keeps its bar
@@ -10927,8 +10938,8 @@ function buildJamPiece(){
       let tops=0; for(const e of evs) if(e[1]===topTok) tops++;
       const nv=vm[(i+1)%form.length];         // the loop closes onto its own first bar
       const ends=(i+1)%phrase===0;
-      const rest=ends||(!rested&&mrnd()<0.22);
-      rested=rest&&!ends;
+      const rest=ends||(!restInPhrase&&mrnd()<0.2);
+      if(ends) restInPhrase=false; else if(rest) restInPhrase=true;
       const line=jamMelodyBar(tops,v[topTok],
         (nv&&nv[topTok]!=null)?nv[topTok]:v[topTok],
         rest,mrnd,i===form.length-1);
