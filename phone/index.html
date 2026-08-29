@@ -960,7 +960,13 @@ body.jam #syncOpen{display:none !important}
 /* a jam is ONE section — its arrangement pill in the frame's footer and the
    arrangement card are pure noise ("what does the jam button next to
    arrangement do?" — David, 26 Aug) */
-body.jam #arrhost,body.jam #arrbox{display:none !important}
+/* A JAM OF ONE TABLE HAS NOTHING TO NAVIGATE, and its arrangement pill and
+   card were pure noise (David, 26 Aug). A Motion jam written as several
+   passes has something to say there, so the row comes back for it —
+   `jamparts` is set by applyJam whenever the built piece has more than one
+   section (David, 30 Aug). */
+body.jam:not(.jamparts) #arrhost,
+body.jam:not(.jamparts) #arrbox{display:none !important}
 /* the video leaves the screen while jamming (David, 26 Aug) — it stays
    loaded, Follow is switched off on entry, and the frame's follow/sound
    icons hide so it cannot re-engage against an invisible video; leaving
@@ -8623,7 +8629,7 @@ function refresh(){
     // the progression SURVIVES a pan switch — chords the new pan can't
     // voice show dashed and play as silent bars (David, 26 Aug)
     piece=buildJamPiece(); C=compile(piece);
-    viewSec="Jam"; selAi=0; viewPin=null;
+    viewSec=piece.arrangement[0]; selAi=0; viewPin=null;
     srcPan=derive(panById(piece.writtenFor));
     renderJamPanel(); saveJamLS();
   }
@@ -11036,7 +11042,8 @@ function buildJamPiece(){
      chords the same way; here each bar is its own moment on the line, and the
      form runs 1, 2 or 4 times through so the line has room to travel. */
   if(jam.motion){
-    const form=jamFormBars(jamPasses());
+    const passes=jamPasses();
+    const form=jamFormBars(passes);
     const mv=jamMotionVoices(form,VV), vm=mv.vm, mcands=mv.cands;
     const bars=[], gb=patBars(pat), bp=pat.meter[0]*pat.sub;
     /* the melody is the groove's HIGHEST voice; the ones under it keep the
@@ -11145,6 +11152,31 @@ function buildJamPiece(){
       if(f.first&&bar.length) bar[0]=Object.assign({},bar[0],{chord:f.chord});
       bars.push(bar);
     });
+    /* ONE TABLE PER PASS (David, 30 Aug: "instead of showing all those cycle
+       repetitions in one humongous table, let's separate the new table, as we
+       already do it with some sections in the arranger… numbered black pills
+       that the user can also click to navigate between them"). Four passes of
+       four chords was a sixteen-bar table nobody could read; it is four tables
+       now, and the arrangement navigator already knows how to walk them —
+       first click shows a part while the music plays on, second click plays
+       from there, and a hand-picked view is released as the music arrives.
+       The parts are named "1", "2"… because the navigator groups sections by
+       their BASE, and A1…A4 would collapse into one pill showing the number.
+       A single pass keeps the old single section, so nothing appears for a
+       jam that has only one table. */
+    const per=Math.max(1,jamBarCount());
+    if(passes>1){
+      const sections={}, order=[];
+      for(let k=0;k<passes;k++){
+        const nm=String(k+1);
+        sections[nm]={bars:bars.slice(k*per,(k+1)*per)};
+        order.push(nm);
+      }
+      return { format:"hpd-1", id:"jam", title:"Jam mode", author:"",
+        writtenFor:myPanId, tempo:bpm||72, meter:pat.meter, sub:pat.sub,
+        unit:pat.unit||4,
+        barsPerRow:pat.bpr||1, sections, arrangement:order };
+    }
     return { format:"hpd-1", id:"jam", title:"Jam mode", author:"",
       writtenFor:myPanId, tempo:bpm||72, meter:pat.meter, sub:pat.sub,
       unit:pat.unit||4,
@@ -11198,8 +11230,14 @@ function jamToPiece(){
   p.id="piece-"+Date.now().toString(36);
   p.title=first?("Jam in "+first):"My jam";
   p.author="";
-  p.sections={A1:p.sections.Jam};
-  p.arrangement=["A1"];
+  /* THE PARTS SURVIVE THE COPY (David, 30 Aug). A Motion jam written as four
+     passes arrives as four sections the editor can reorder and repeat — in
+     the app's own naming, where A1…A4 is one part in four tables. A jam of a
+     single table is still a single A1. */
+  { const src=p.sections, order=p.arrangement.slice(); const sec={}, arr=[];
+    order.forEach((nm,i)=>{ const to="A"+(i+1); sec[to]=src[nm]; arr.push(to); });
+    p.sections=sec; p.arrangement=arr; }
+
   jamPrev=null;                 // nothing to go back to — this IS the piece
   leaveJam();
   loadPiece(p);
@@ -11327,12 +11365,15 @@ function applyJam(){
        to a different place"). Rebase: read the folded position under the
        OLD piece, swap, and plant the counter back on that musical spot. */
     const pi=loopedPulse(nextPulse);
-    piece=built; viewSec="Jam"; selAi=0; viewPin=null; refresh();
+    piece=built; viewSec=built.arrangement[0]; selAi=0; viewPin=null; refresh();
     if(loopSec&&loopSec.to>C.total){ loopSec=null; paintLoopFrame(); }
     nextPulse=pi%C.total;
     fired=[]; lastPaint=-1;
   }
   else loadPiece(built);
+  /* the arrangement row is the navigator between Motion's passes, and it is
+     hidden for a jam of one table — set on BOTH paths, playing or not */
+  document.body.classList.toggle("jamparts",built.arrangement.length>1);
   // the progression's length may just have changed under the break
   jam.brk=jamBrkNorm(jam.brk,brkCycleBars());
   renderJamPanel(); saveJamLS();
