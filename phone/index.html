@@ -1254,6 +1254,25 @@ body.jam #srcBadge{display:none !important}
 .jsdesc{margin:7px 0 0; font-size:12.5px; line-height:1.5; color:var(--ink2)}
 #jamSetDlg #jamColourWrap input[type=range]{width:132px}
 #jamSetDlg .jcem{font-size:15px}
+/* ---- BREAKS (timing training) ----
+   The break is a MUTE-MASK over continuous playback: the bars are still there,
+   still walked by the marker, they simply do not sound. So the notation greys
+   its STROKES and keeps the count row at full strength — counting through the
+   silence is the exercise (David, 29 Aug, mockups-breaks.html B4). The first
+   stroke of the break still sounds, so it keeps its ink. */
+#score .bar.brkdim .sym,#score .bar.brkdim .chordlab{opacity:.3; transition:opacity .18s}
+#score .bar.brkfirst .beat:first-child .slot:first-child .sym{opacity:1}
+/* the sounding chord's card during a break: dimmed, never amber — amber says
+   "sounding now" everywhere else in the app and nothing is sounding */
+.jslot.playing.brk{border-color:var(--rule); background:none; opacity:.55}
+#brkBtn{display:inline-flex; align-items:center; gap:6px}
+#brkBtn .dn{color:var(--ink3); font-size:10px}
+#brkDlg{width:min(430px,94vw)}
+.brkstep{display:inline-flex; align-items:center; gap:5px}
+.brkstep .ctl{padding:6px 10px; font-size:14px; line-height:1}
+.brkstep .badge{min-width:96px; justify-content:center}
+#brkWrap{display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap}
+#brkWrap.off .brkon,#brkDlg.off .brkon{display:none}
 /* IT READS WITH THE SWING SLIDER BELOW IT, so it is the same length (David,
    29 Aug). Taking the whole row made it half again as long as swing (258px
    against 139px at 390px) — swing's own row spends width on its caption, its
@@ -2405,6 +2424,8 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
         (David, 27 Aug). The phone keeps its own copy in the jam tools. -->
    <span id="scoreheadR">
      <button class="ctl hidden" id="jamSetBtn" title="Chord voicings and how adventurous the suggestions are"></button>
+     <!-- BREAKS sits between the voicings and the generator (David, 29 Aug) -->
+     <button class="ctl hidden" id="brkBtn" title="Scheduled silences — timing training"></button>
      <button class="ctl" id="genBtn" title="Fill the whole progression with a fresh chord sequence">🎲 Generate</button>
    </span>
   </div>
@@ -2999,6 +3020,28 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
       and diminished chords in.</p>
   </div>
   <div class="row"><span class="spacer"></span><button class="ctl" id="jsClose">Close</button></div>
+</dialog>
+
+<!-- BREAKS — timing training. The settings live here on the desktop and in the
+     drawer's "This jam" section on the phone; #brkWrap itself is ONE element on
+     loan to whichever surface is showing, so no two copies can disagree. -->
+<dialog id="brkDlg">
+  <h3>Breaks</h3>
+  <div class="jsopt">
+    <div class="jshead"><span class="jsname">Breaks</span><span id="bkSwitchHost"></span></div>
+    <p class="jsdesc">The jam keeps running underneath the silence. Hold your groove
+      and come back in with it — the first beat of the break still sounds.</p>
+  </div>
+  <div class="jsopt brkon">
+    <div class="jshead"><span class="jsname">How long, how often</span><span id="bkStepHost"></span></div>
+    <p class="jsdesc" id="bkStepDesc"></p>
+  </div>
+  <div class="jsopt brkon">
+    <div class="jshead"><span class="jsname">During the break</span><span id="bkOptHost"></span></div>
+    <p class="jsdesc">The click can keep the time for you, or leave you to it. The
+      marker either walks the silent bars or waits on the last beat you heard.</p>
+  </div>
+  <div class="row"><span class="spacer"></span><button class="ctl" id="bkClose">Close</button></div>
 </dialog>
 
 <dialog id="panPickDlg">
@@ -4249,9 +4292,18 @@ function sched(){
       // short breath (jamMuteUntil) so the handover isn't a hard cut
       const mutedByPreview=(typeof jpv!=="undefined"&&jpv)
         ||(typeof jamMuteUntil!=="undefined"&&ctx.currentTime<jamMuteUntil);
-      if(!mutedByPreview) for(const ev of (C.byPulse.get(p2)||[])) fireEvent(ev,at);
-      if(!mutedByPreview&&metOn&&rel%m.sub===0) fire(clickBuf(rel%m.bp===0),nextTime,1);
-      fired.push({pi:p2,at:nextTime}); if(fired.length>200) fired.splice(0,80);
+      /* A BREAK MUTES, IT DOES NOT PAUSE — and its first pulse is exempt, so
+         the stroke that opens it still sounds. Read off the ABSOLUTE counter,
+         after the jamRestartDue rebase above, so Generate restarts the cycle
+         count with the progression. The click has its own switch: it can hold
+         the time through the silence or leave the student to it. */
+      const bk=jamOn?jamBreakInfo(nextPulse):null;
+      const brkMute=!!(bk&&bk.inBreak&&!bk.first);
+      if(!mutedByPreview&&!brkMute) for(const ev of (C.byPulse.get(p2)||[])) fireEvent(ev,at);
+      if(!mutedByPreview&&metOn&&rel%m.sub===0&&!(brkMute&&!jam.brk.click))
+        fire(clickBuf(rel%m.bp===0),nextTime,1);
+      // `ab` — the absolute pulse, so the paint can ask the same question
+      fired.push({pi:p2,at:nextTime,ab:nextPulse}); if(fired.length>200) fired.splice(0,80);
     }catch(e){ /* one bad pulse is skipped, never repeated */ }
     // …and the clock advances whatever happened above. A duration that can't
     // be read would otherwise stall it (or spin it), so it has a floor.
@@ -4318,6 +4370,7 @@ function drawMarkBox(m,barI,s,e){
 function clearMarks(){
   clearSlotMarks();
   document.querySelectorAll(".cnow").forEach(el=>el.classList.remove("cnow"));
+  if(typeof clearBrkDim==="function") clearBrkDim();   // the break's grey goes with them
 }
 /* `seek` = the student moved the playhead by hand. The pan shows what SOUNDS,
    so a mere navigation must leave it dark (David, 28 Aug: "pan animation fires
@@ -4418,9 +4471,21 @@ function tick(){
      requestAnimationFrame below was never reached, so the playhead froze for
      the rest of the session while the music played on (27 Aug) */
   try{
-    const now=ctx.currentTime; let pi=-1;
-    for(let i=fired.length-1;i>=0;i--) if(fired[i].at<=now){ pi=fired[i].pi; break; }
-    if(pi>=0&&pi!==lastPaint){ lastPaint=pi; paintPulse(pi); }
+    const now=ctx.currentTime; let pi=-1,ab=null;
+    for(let i=fired.length-1;i>=0;i--) if(fired[i].at<=now){ pi=fired[i].pi; ab=fired[i].ab; break; }
+    if(pi>=0&&pi!==lastPaint){
+      lastPaint=pi;
+      const bk=brkPaint=(jamOn?jamBreakInfo(ab):null);
+      paintBrkDim(bk);            // the greying runs whether or not we paint
+      const silent=!!(bk&&bk.inBreak&&!bk.first);
+      /* MARKER DURING BREAK, off: the mark PARKS on the last beat that
+         sounded and waits for the music (David, 29 Aug). Nothing else may
+         paint either, or the chord card would walk on without it.
+         On: the marker walks the silent bars — but the pan stays dark, since
+         the pan lights what SOUNDS. `seek` is exactly that guard already. */
+      if(silent&&!jam.brk.marker){ raf=requestAnimationFrame(tick); return; }
+      paintPulse(pi,silent);
+    }
   }catch(e){}
   raf=requestAnimationFrame(tick);
 }
@@ -9982,6 +10047,73 @@ function jamGenerate(bars){
 /* Let the bar you are in finish, then drop the playhead on chord one. The
    scheduler counts absolute pulses, so "the next bar" is the next multiple of
    the groove's bar length at or after where the counter has reached. */
+/* ---------------- BREAKS: timing training (29 Aug, ABC'd; the study is
+   `mockups-breaks.html`) ----------------
+   A break is a MUTE-MASK over CONTINUOUS playback, never a pause: the clock,
+   the form and the marker keep walking, the pan simply stops sounding. That is
+   what lets the student hold their own groove through it and come back in with
+   the music instead of after it — and it is why the score never grows a bar.
+
+   THE UNIT IS THE CYCLE, not a free-running bar count (David, 29 Aug,
+   revising his own "every X bars"): a break of L bars falls at the END of
+   every Xth cycle and ends on the first beat of the following cycle. So the
+   silence always lands on the same bars — the last ones — and the student
+   learns the form's shape rather than a drifting window.
+
+   THE BREAK'S FIRST STROKE STILL SOUNDS (his first sentence on the feature):
+   everything on that one pulse fires, then silence. No fade: the one-shots
+   ring out by themselves, which is what a real hand does.
+
+   With a loop set the LOOP is the cycle; the run-in before it never breaks. */
+function brkCycle(){
+  const bp=Math.max(1,SM(piece,piece.arrangement[0]||"Jam").bp);
+  const from=loopSec?loopSec.from:0;
+  const span=Math.max(bp,loopSec?(loopSec.to-loopSec.from):C.total);
+  return {bp,from,span,bars:Math.max(1,Math.round(span/bp))};
+}
+function brkCycleBars(){ try{ return brkCycle().bars; }catch(e){ return 4; } }
+/* Everything the audio and the paint need to know about one ABSOLUTE pulse.
+   Absolute, not folded: the cycle count is the whole point, and loopedPulse
+   throws it away. */
+function jamBreakInfo(ab){
+  if(!jamOn||!jam||!jam.brk||!jam.brk.on||ab==null||!C) return null;
+  const c=brkCycle();
+  if(ab<c.from) return null;                        // a loop's run-in
+  const k=Math.floor((ab-c.from)/c.span);           // 0-based cycle index
+  const cyc=((k+1)%Math.max(1,jam.brk.every))===0;  // the Xth, 2Xth… cycle
+  const pos=(ab-c.from)-k*c.span;                   // where we are inside it
+  const L=Math.max(1,Math.min(c.bars,jam.brk.len));
+  const start=c.span-L*c.bp;                        // the break's first pulse
+  return {c,L,cyc,pos,
+    inBreak:cyc&&pos>=start,
+    first:cyc&&pos===start,
+    fromBar:Math.round(c.from/c.bp)+c.bars-L};      // first greyed bar
+}
+/* THE BARS GREY AS THE BREAK-CARRYING CYCLE BEGINS (David, 29 Aug), not as the
+   silence starts: seeing it coming is half the exercise. On the cycles in
+   between they read normally. */
+/* what the PAINT is looking at — the scheduler runs up to 0.4 s ahead of the
+   ear, so the card and the marker must not ask its counter */
+let brkPaint=null, brkDimKey="";
+function paintBrkDim(bk){
+  const key=(bk&&bk.cyc&&playing)?(bk.fromBar+"+"+bk.L):"";
+  const els=document.querySelectorAll("#score .bar");
+  // …and re-applied after a render() wiped the score out from under us
+  const stale=!!key&&!!els[bk.fromBar]&&!els[bk.fromBar].classList.contains("brkdim");
+  if(key===brkDimKey&&!stale) return;               // the common path costs nothing
+  brkDimKey=key;
+  document.querySelectorAll("#score .bar.brkdim,#score .bar.brkfirst")
+    .forEach(el=>el.classList.remove("brkdim","brkfirst"));
+  if(!key) return;
+  for(let i=0;i<bk.L;i++){ const el=els[bk.fromBar+i]; if(el) el.classList.add("brkdim"); }
+  const f=els[bk.fromBar]; if(f) f.classList.add("brkfirst");   // it still sounds
+}
+function clearBrkDim(){
+  brkDimKey=""; brkPaint=null;
+  document.querySelectorAll("#score .bar.brkdim,#score .bar.brkfirst")
+    .forEach(el=>el.classList.remove("brkdim","brkfirst"));
+  document.querySelectorAll("#jamProg .jslot.brk").forEach(el=>el.classList.remove("brk"));
+}
 function jamRestartNextBar(){
   if(!playing||!C) return;
   const pat=allPats().find(p=>p.id===jam.patternId)||JAMPATS[0];
@@ -10141,7 +10273,8 @@ function jamToPiece(){
   toast("Copied into a new piece — save it from the Library");
 }
 function saveJamLS(){ try{localStorage.setItem("hps.jam",JSON.stringify(
-  {slots:jam.slots,patternId:jam.patternId,bpm:bpm,narrow:!!jam.narrow}))}catch(e){} }
+  {slots:jam.slots,patternId:jam.patternId,bpm:bpm,narrow:!!jam.narrow,
+   brk:jam.brk}))}catch(e){} }
 /* THE PROGRESSION A STUDENT MEETS FIRST (David, 27 Aug): Dmin · B♭maj · Fmaj
    · Cmaj on a D-minor pan — i · VI · III · VII — and "the equivalent on the
    selected scale" everywhere else. So it is built from the pan's own home
@@ -10149,6 +10282,18 @@ function saveJamLS(){ try{localStorage.setItem("hps.jam",JSON.stringify(
    Emin · Cmaj · Gmaj · Dmaj, and a major-rooted pan gets the same idea read
    from its relative minor, which is where that shape lives. Any chord the
    instrument can't play in full drops the whole set back to what it has. */
+/* The break settings, kept legal. `len` is bars, `every` is CYCLES, and the
+   length is clamped against the progression itself so a jam that loses a chord
+   cannot leave a break hanging off the end. `marker` defaults ON — a walking
+   marker is what a student meets first; parking it is the harder exercise. */
+function jamBrkNorm(b,cycBars){
+  b=(b&&typeof b==="object")?b:{};
+  const N=Math.max(1,cycBars||4);
+  return {on:!!b.on,
+    len:Math.max(1,Math.min(N,Math.round(+b.len)||2)),
+    every:Math.max(1,Math.min(16,Math.round(+b.every)||2)),
+    click:!!b.click, marker:b.marker!==false};
+}
 function defaultJam(){
   const full=jamDefs().list.filter(c=>!c.miss&&c.group==="Triads");
   const plain=full.filter(c=>!jamDim(c));       // a first jam never opens on a diminished
@@ -10172,7 +10317,7 @@ function defaultJam(){
   let slots=names.slice(0,4).map(chord=>({chord,bars:1}));
   if(!slots.length) slots=full.slice(0,4).map(c=>({chord:c.name,bars:1}));
   return {slots:slots.length?slots:[{chord:full[0]&&full[0].name||"Cmaj",bars:1}],
-    patternId:JAMPATS[0].id,bpm:72,narrow:false};
+    patternId:JAMPATS[0].id,bpm:72,narrow:false,brk:jamBrkNorm(null,4)};
 }
 function enterJam(){
   if(jamOn) return;
@@ -10187,6 +10332,7 @@ function enterJam(){
   // one gets the default; chords this pan can't voice stay as silent bars
   if(!jam||!Array.isArray(jam.slots)) jam=defaultJam();
   if(!allPats().some(p=>p.id===jam.patternId)) jam.patternId=JAMPATS[0].id;
+  jam.brk=jamBrkNorm(jam.brk,4);      // a stored jam from before breaks existed
   if(jam.bpm) bpm=jam.bpm;
   jamOn=true; document.body.classList.add("jam");
   /* A JAM OPENS ON THE CHORDS (David, 29 Aug: "jam mode should always open
@@ -10213,6 +10359,8 @@ function leaveJam(){
   try{ $("grooveDlg").close(); }catch(e){}
   saveJamLS();
   jamOn=false; jamEditSlot=-1; document.body.classList.remove("jam");
+  clearBrkDim(); try{ $("brkDlg").close(); }catch(e){}
+  $("brkBtn").classList.add("hidden");
   updatePracticeBtn(); if(!PHONE) $("jampanel").classList.add("hidden");
   $("grooveHost").innerHTML="";
   // the voicings leave the notation head with the jam that owned them
@@ -10247,6 +10395,8 @@ function applyJam(){
     fired=[]; lastPaint=-1;
   }
   else loadPiece(built);
+  // the progression's length may just have changed under the break
+  jam.brk=jamBrkNorm(jam.brk,brkCycleBars());
   renderJamPanel(); saveJamLS();
   if(PHONE) placeJamPanel();     // the Chords side owns it here
   // the rebuild wiped the chord row's amber wash — put it straight back
@@ -10266,9 +10416,104 @@ function jamPaintChord(pi){
     from=to;
   }
   document.querySelectorAll("#jamProg .jslot.playing").forEach(el=>{
-    if(+el.dataset.i!==idx) el.classList.remove("playing"); });
+    if(+el.dataset.i!==idx) el.classList.remove("playing","brk"); });
   if(idx>=0){ const el=document.querySelector('#jamProg .jslot[data-i="'+idx+'"]');
-    if(el) el.classList.add("playing"); }
+    if(el){ el.classList.add("playing");
+      /* inside a break the card is DIMMED, not amber: amber says "sounding
+         now" everywhere in this app, and nothing is sounding (29 Aug) */
+      el.classList.toggle("brk",!!(playing&&brkPaint&&brkPaint.inBreak&&!brkPaint.first)); } }
+}
+/* The breaks control, as a sentence: OFF|ON, then — only once it is on — how
+   long the break is, how often it comes, and the two things that may keep you
+   company through it. The steppers write their own badge instead of asking for
+   a re-render: the mask is stateless, so a change is audible on the next
+   look-ahead without touching the piece. */
+function brkLenLabel(){ return jam.brk.len===1?"1-bar break":jam.brk.len+"-bar break"; }
+function brkEveryLabel(){ return jam.brk.every===1?"every cycle":"every "+jam.brk.every+" cycles"; }
+function buildBrkWrap(){
+  const w=document.createElement("span"); w.id="brkWrap";
+  const pills=document.createElement("span");
+  pills.className="pills"; pills.id="brkSwitch";
+  pills.setAttribute("role","group"); pills.setAttribute("aria-label","Breaks");
+  [["Off",false],["On",true]].forEach(([label,on])=>{
+    const b=document.createElement("button");
+    b.textContent=label;
+    b.setAttribute("aria-pressed",String(!!jam.brk.on===on));
+    b.title=on?"Scheduled silences — hold your groove through them"
+              :"The backing plays every bar";
+    b.addEventListener("click",()=>{
+      if(!!jam.brk.on===on) return;
+      /* the pressed state moves HERE, not on a re-render: this control is
+         often on loan to the sheet or the drawer, and the rebuilt copy is not
+         the one being looked at — the same trap the voicing pills hit */
+      pills.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));
+      jam.brk.on=on; paintBrk(); saveJamLS();
+      if(!on) clearBrkDim();
+      if(PHONE) phoneFit();
+      toast(on?"Breaks on — "+brkLenLabel()+", "+brkEveryLabel():"Breaks off");
+    });
+    pills.appendChild(b);
+  });
+  w.appendChild(pills);
+  const step=(cls,label,bump)=>{
+    const g=document.createElement("span"); g.className="brkstep brkon";
+    const badge=document.createElement("span"); badge.className="badge";
+    const b=document.createElement("b"); b.className=cls; badge.appendChild(b);
+    const key=(txt,d,aria)=>{ const x=document.createElement("button");
+      x.className="ctl"; x.textContent=txt; x.setAttribute("aria-label",aria);
+      x.addEventListener("click",()=>{ bump(d);
+        jam.brk=jamBrkNorm(jam.brk,brkCycleBars()); paintBrk(); saveJamLS(); });
+      return x; };
+    g.appendChild(key("−",-1,"Less "+label));
+    g.appendChild(badge);
+    g.appendChild(key("＋",1,"More "+label));
+    w.appendChild(g);
+  };
+  step("brkLen","the break",d=>{ jam.brk.len+=d; });
+  step("brkEvery","often",d=>{ jam.brk.every+=d; });
+  const tog=(cls,txt,title,get,set)=>{
+    const b=document.createElement("button");
+    b.className="ctl brkon "+cls; b.textContent=txt; b.title=title;
+    b.addEventListener("click",()=>{ set(!get()); paintBrk(); saveJamLS(); });
+    w.appendChild(b);
+  };
+  tog("brkClick","Click during break",
+    "Keep the metronome going through the silence — it only sounds if the metronome is on",
+    ()=>jam.brk.click,v=>{ jam.brk.click=v; });
+  tog("brkMark","Marker during break",
+    "On: the marker walks the silent bars. Off: it waits on the last beat you heard.",
+    ()=>jam.brk.marker,v=>{ jam.brk.marker=v; if(v===false) return; });
+  paintBrk(w);
+  return w;
+}
+/* ONE PAINTER for every face of the setting — the group itself, the sheet's
+   description, and the head button that states it. They cannot disagree
+   because none of them holds the value. */
+function paintBrk(root){
+  const w=root||document.getElementById("brkWrap");
+  if(w){
+    w.classList.toggle("off",!jam.brk.on);
+    const sw=w.querySelector("#brkSwitch");
+    if(sw) sw.querySelectorAll("button").forEach((x,i)=>
+      x.setAttribute("aria-pressed",String(!!jam.brk.on===(i===1))));
+    const L=w.querySelector(".brkLen"); if(L) L.textContent=brkLenLabel();
+    const E=w.querySelector(".brkEvery"); if(E) E.textContent=brkEveryLabel();
+    const c=w.querySelector(".brkClick"); if(c) c.classList.toggle("on",!!jam.brk.click);
+    const m=w.querySelector(".brkMark"); if(m) m.classList.toggle("on",!!jam.brk.marker);
+  }
+  const d=document.getElementById("brkDlg");
+  if(d){
+    d.classList.toggle("off",!jam.brk.on);
+    const desc=document.getElementById("bkStepDesc");
+    if(desc){
+      const N=brkCycleBars();
+      desc.textContent="A cycle is one pass of the progression — "+N
+        +(N===1?" bar":" bars")+" here. The break takes its last "
+        +(jam.brk.len===1?"bar":jam.brk.len+" bars")+", "+brkEveryLabel()
+        +", and ends on the first beat of the next.";
+    }
+  }
+  paintBrkBtn();
 }
 function renderJamPanel(){
   const prog=$("jamProg"); prog.innerHTML="";
@@ -10475,6 +10720,11 @@ function renderJamPanel(){
   });
   deep.appendChild(vpills);
   deep.appendChild(cwrap);
+  /* THE BREAKS GROUP travels the same way the voicings and the spice slider
+     do — ONE element, moved between the sheet (desktop) and the drawer's
+     "This jam" section (phone), so two copies can never disagree. Built here,
+     after the slider, which is where the phone shows it (David, 29 Aug). */
+  deep.appendChild(buildBrkWrap());
   mk("♭","Transpose the whole progression down a semitone",()=>jamTranspose(-1));
   mk("♯","Transpose the whole progression up a semitone",()=>jamTranspose(1));
   mk("Clear","Remove all chords and start fresh",()=>{
@@ -10520,7 +10770,8 @@ function renderJamPanel(){
        ABOVE Feel (David, 29 Aug) — the order is transport, arrangement, this
        jam, my pan, feel */
     if(host){ dwModeReset(); host.appendChild(deep);
-      if(!jamSetRehome(vpills,cwrap)) paintColour(); }
+      if(!jamSetRehome(vpills,cwrap)) paintColour();
+      paintBrk(deep.querySelector("#brkWrap")); }
   } else {
     prog.appendChild(tools);
     /* THE VOICINGS GO TOP RIGHT, beside 🎲 Generate (David, 28 Aug) — the
@@ -10530,6 +10781,9 @@ function renderJamPanel(){
        static markup and keeps the corner. */
     const hr=$("scoreheadR");
     if(hr){ hr.insertBefore(deep,$("jamSetBtn"));
+      // the breaks group is never shown in the head — it lives in its sheet
+      paintBrkBtn();
+      if(brkRehome(deep.querySelector("#brkWrap"))) return;
       if(jamSetRehome(vpills,cwrap)) return;
       /* SYNCHRONOUSLY, then again on the next frame. It hung on rAF alone,
          and rAF does not run while the page is not being composited — the
@@ -13519,7 +13773,7 @@ function openJamLibDlg(){
 }
 function jamRecipe(){
   const pat=allPats().find(p=>p.id===jam.patternId);
-  const r={v:1, slots:jam.slots.map(s=>({chord:s.chord,bars:s.bars||1})),
+  const r={v:1, slots:jam.slots.map(s=>({chord:s.chord,bars:s.bars||1})), brk:jam.brk,
     patternId:jam.patternId, bpm:bpm, narrow:!!jam.narrow};
   if(pat&&pat.user) r.groove=pat;      // travels with it
   return r;
@@ -13554,6 +13808,7 @@ function importJam(r){
   jam.slots=r.slots.map(s=>({chord:s.chord,bars:Math.max(1,s.bars||1)}));
   jam.patternId=allPats().some(p=>p.id===r.patternId)?r.patternId:JAMPATS[0].id;
   jam.narrow=!!r.narrow;
+  jam.brk=jamBrkNorm(r.brk,4);        // a shared jam from before breaks existed
   if(r.bpm){ bpm=r.bpm; $("bpm").value=bpm; }
   jamEditSlot=-1; jamFitSlots(); applyJam(); saveJamLS();
   toast("Jam loaded — "+jam.slots.length+" chords");
@@ -13808,9 +14063,86 @@ function fitJamHead(){
         || hr.scrollWidth>hr.clientWidth+1; };
   /* the icon always stays; only the word gives way */
   const face=w=>'<svg width="15" height="15"><use href="#is-chord"/></svg> '+w+' <span class="dn">▾</span>';
+  /* THE LADDER, IN DAVID'S ORDER (29 Aug): "exchange chord voicings for just
+     chords BEFORE anything else has to collapse". Then the breaks button
+     drops the setting it is stating, and only last does the generator give up
+     its word. Every rung keeps its icon. */
+  const bk=$("brkBtn"), gen=$("genBtn");
   btn.innerHTML=face("Chord voicings");
+  if(bk&&!bk.classList.contains("hidden")) bk.innerHTML=brkBtnFace(true);
+  if(gen) gen.innerHTML="🎲 Generate";
   if(!tight()) return;
   btn.innerHTML=face("Chords");
+  if(!tight()) return;
+  if(bk&&!bk.classList.contains("hidden")){
+    bk.innerHTML=brkBtnFace(false);
+    if(!tight()) return;
+  }
+  if(gen) gen.innerHTML="🎲";
+}
+/* THE BREAKS BUTTON STATES THE SETTING, so the head answers "what is set?"
+   without being opened: amber and "Breaks · 2 every 2" while on, plain
+   "Breaks" while off. It sits between the voicings and the generator
+   (David, 29 Aug). */
+function brkBtnFace(full){
+  const icon='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" '
+    +'stroke="currentColor" stroke-width="2.2" stroke-linecap="round">'
+    +'<path d="M4 12h4"/><path d="M16 12h4"/></svg>';
+  let w="Breaks";
+  if(jam&&jam.brk&&jam.brk.on&&full)
+    w+=" · "+jam.brk.len+" every "+jam.brk.every;
+  return icon+" "+w+' <span class="dn">▾</span>';
+}
+function paintBrkBtn(){
+  const b=document.getElementById("brkBtn"); if(!b||!jam||!jam.brk) return;
+  b.classList.toggle("on",!!jam.brk.on);
+  b.classList.toggle("hidden",!jamOn||PHONE);
+  b.innerHTML=brkBtnFace(true);
+  if(!PHONE&&jamOn) fitJamHead();
+}
+/* A RENDER WHILE THE SHEET IS OPEN hands it the NEW control and throws the
+   stale one away — the same rule jamSetRehome follows, and for the same
+   reason: applyJam() builds a fresh group and the sheet would go on showing
+   a dead one. */
+function brkRehome(w){
+  const d=document.getElementById("brkDlg"); if(!d||!d.open) return false;
+  const host=document.getElementById("bkSwitchHost");
+  document.getElementById("bkStepHost").innerHTML="";
+  document.getElementById("bkOptHost").innerHTML="";
+  host.innerHTML=""; host.appendChild(w);
+  brkSplit(); paintBrk(w);
+  return true;
+}
+/* Inside the sheet the one group is DEALT OUT across the three blocks — the
+   switch by its name, the steppers by theirs, the two toggles by theirs — so
+   each option gets its own description. The elements are the same ones; only
+   their parents differ, which is what keeps a single source of truth. */
+function brkSplit(){
+  const w=document.getElementById("brkWrap"); if(!w) return;
+  const st=document.getElementById("bkStepHost"), op=document.getElementById("bkOptHost");
+  if(!st||!op) return;
+  w.querySelectorAll(".brkstep").forEach(el=>st.appendChild(el));
+  w.querySelectorAll(".brkClick,.brkMark").forEach(el=>op.appendChild(el));
+}
+function brkGather(){
+  const w=document.getElementById("brkWrap"); if(!w) return;
+  document.querySelectorAll("#bkStepHost .brkstep,#bkOptHost .ctl")
+    .forEach(el=>w.appendChild(el));
+}
+function openBrk(){
+  const w=document.getElementById("brkWrap"); if(!w) return;
+  document.getElementById("bkSwitchHost").appendChild(w);
+  brkSplit(); paintBrk(w); openDlg(document.getElementById("brkDlg"));
+}
+function closeBrk(){ document.getElementById("brkDlg").close(); }
+/* the controls come home even when the sheet is dismissed with Esc */
+function brkHome(){
+  const deep=document.querySelector(".jdeep"), w=document.getElementById("brkWrap");
+  if(!deep||!w) return;
+  brkGather();
+  if(!deep.contains(w)) deep.appendChild(w);
+  paintBrk(w);
+  if(!PHONE) fitJamHead();
 }
 /* the description under the voicing pair describes the one that is CHOSEN,
    which is more use than naming both (David, 29 Aug: "give each option its
@@ -13930,13 +14262,10 @@ function ppRow(p,scaleKey){
     nm.appendChild(bl);
   }
   row.append(chk,nm);
-  const pv=document.createElement("button");
-  pv.type="button"; pv.className="ppv"; pv.textContent="▸";
-  pv.setAttribute("aria-label","Hear "+p.name);
-  pv.addEventListener("click",e=>{ e.stopPropagation(); panPreview(p); });
-  row.appendChild(pv);
-  /* the heart marks the SCALE, so it only appears on a library row — a row in
-     My pans is already the student's own short list and has nothing to sift */
+  /* HEART FIRST, THEN PREVIEW (David, 29 Aug: "exchange the positions of the
+     preview and favourite buttons"). The heart marks the SCALE, so it only
+     appears on a library row — a row in My pans is already the student's own
+     short list and has nothing to sift. */
   if(scaleKey){
     const fv=document.createElement("button");
     fv.type="button";
@@ -13947,6 +14276,11 @@ function ppRow(p,scaleKey){
     fv.addEventListener("click",e=>{ e.stopPropagation(); toggleFav(scaleKey); renderPanPick(); });
     row.appendChild(fv);
   }
+  const pv=document.createElement("button");
+  pv.type="button"; pv.className="ppv"; pv.textContent="▸";
+  pv.setAttribute("aria-label","Hear "+p.name);
+  pv.addEventListener("click",e=>{ e.stopPropagation(); panPreview(p); });
+  row.appendChild(pv);
   row.addEventListener("click",()=>choosePan(p.id));
   return row;
 }
@@ -14102,6 +14436,9 @@ function boot(){
   document.addEventListener("input",e=>{ if(e.target&&e.target.id==="jamColourBar") onColour(e); });
   $("jamSetBtn").addEventListener("click",openJamSet);
   $("jsClose").addEventListener("click",closeJamSet);
+  $("brkBtn").addEventListener("click",openBrk);
+  $("bkClose").addEventListener("click",closeBrk);
+  $("brkDlg").addEventListener("close",brkHome);
   $("jamSetDlg").addEventListener("close",()=>{
     // the controls must come home even when the sheet is dismissed by Esc
     const deep=document.querySelector(".jdeep");
