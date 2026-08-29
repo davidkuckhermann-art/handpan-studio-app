@@ -9831,6 +9831,18 @@ const JV_MUD3_TOP=53;   // midi F3
 const JV_WIDE=24;      // what a wide/open voicing is worth
 const JV_REG=2;        // per semitone a voicing sits above the lowest legal one
 const JV_ROOT=8;       // the close root at the bottom
+/* WHAT DROPPING THE FIFTH COSTS (David, 30 Aug: "if we have the root note of
+   a chord as a bass note, we should play it. The root note high in the melody
+   does not make up for a missing root note in the bass… in a case like this
+   we can skip the fifth degree. Play the root in the bass, then the third
+   higher up, and then the root again in the melody. We could also play the
+   fifth instead of the third, but then we would lose the colour of the chord,
+   so we prefer the third and drop the fifth").
+   Priced well under JV_BASS, so a voicing that gives up its fifth to put the
+   root underneath is always worth more than one that keeps the fifth and puts
+   something else down there — and priced high enough that a fifth is never
+   dropped for nothing. The THIRD is not droppable: it is the colour. */
+const JV_NO5=18;
 /* WHAT THIS PAN CAN SOUND OF A CHORD (David, 27 Aug). After a scale change a
    progression keeps its chords, and a chord whose ROOT the new pan hasn't got
    does not even exist in jamChordDefs() — the list is built from the roots the
@@ -10011,13 +10023,18 @@ function jvCandidates(name,V,narrow){
   const thirdPc=def?def.degs["3"]:null, fifthPc=def?def.degs["5"]:null;
   const BASS_TOP=57;          // midi A3 — "below A3" is bass (David)
   const ROOT_CLOSE=3;         // a minor third — "close-by" (David)
+  /* THE FIFTH IS THE ONE TONE A VOICING MAY GO WITHOUT (David, 30 Aug) — the
+     root anchors the chord and the third colours it, so those two stay. */
+  const fifthOf=[(rootPc+7)%12,(rootPc+6)%12,(rootPc+8)%12].find(pc=>kept.includes(pc));
   const out=[], pick=[];
   const walk=i=>{
     if(pick.length===Vp){
       const pcs=new Set(pick.map(f=>jpc(myPan.posMidi(f))));
-      if(!kept.every(pc=>pcs.has(pc))) return;     // the chord stays complete
+      // the chord keeps every tone but its fifth, which it may drop
+      if(!kept.every(pc=>pcs.has(pc)||pc===fifthOf)) return;
+      const no5=fifthOf!=null&&!pcs.has(fifthOf);
       const ms=pick.map(f=>myPan.posMidi(f));
-      out.push({sel:pick.slice(), ms,
+      out.push({sel:pick.slice(), ms, no5,
         bassOk:ms[0]>=BASS_TOP||jpc(ms[0])===rootPc,
         rootBottom:jpc(ms[0])===rootPc,
         wide:isTriad&&V===3&&Vp===3&&jpc(ms[0])===rootPc&&jpc(ms[1])===fifthPc
@@ -10055,11 +10072,22 @@ function jvCandidates(name,V,narrow){
      Excluded outright rather than priced, in the same shape as the bass and
      semitone rules, because a price can always be outbid. */
   const oneLow=c=>{ let n=0; for(const m of c.ms) if(m<BASS_TOP) n++; return n<=1; };
+  /* AND NO CLOSED THIRD DOWN THERE, WHENEVER POSSIBLE (David, 30 Aug: "what
+     we don't want are closed thirds in the low register… they sound really
+     bad"). It was priced before, at JV_MUD3, and a price can be outbid — the
+     lesson this file has learned twice already. It is a rule now, given up
+     only when the pan leaves nothing else. */
+  const noMud3=c=>{
+    for(let i=1;i<c.ms.length;i++)
+      if(c.ms[i]-c.ms[i-1]<=4&&c.ms[i-1]<JV_MUD3_TOP) return false;
+    return true;
+  };
   /* strictest first, then give up one rule at a time — a semitone low down is
      the worse sound of the two, so `clean` outranks `oneLow` when the pan
      cannot honour both */
   let use=out;
-  for(const f of [c=>c.bassOk&&clean(c)&&oneLow(c), c=>c.bassOk&&clean(c),
+  for(const f of [c=>c.bassOk&&clean(c)&&oneLow(c)&&noMud3(c),
+                  c=>c.bassOk&&clean(c)&&oneLow(c), c=>c.bassOk&&clean(c),
                   c=>c.bassOk&&oneLow(c), c=>c.bassOk]){
     const s=out.filter(f); if(s.length){ use=s; break; }
   }
@@ -10096,6 +10124,7 @@ function jvCandidates(name,V,narrow){
         : JV_REG*(c.ms[0]-low)-(c.wide?JV_WIDE:0))               // keep the bottom low; open is a bonus
       -(bassRoot?JV_BASS:0)                                      // the root, in the bass, whenever it exists
       -(c.rootBottom&&c.ms[0]-low<=ROOT_CLOSE?JV_ROOT:0)         // the close root, either way
+      +(c.no5?JV_NO5:0)                                          // …and what the missing fifth costs
       +rub(c);
   }
   use.sort((a,b)=>(a.pen-b.pen)||reg(a,b));
