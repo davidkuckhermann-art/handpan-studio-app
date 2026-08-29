@@ -487,6 +487,15 @@ body.phone #panPickDlg{width:100%; max-height:82vh}
   border:1px solid var(--rule); border-radius:999px; padding:4px 12px}
 .chip.on{background:var(--ink); color:var(--paper); border-color:var(--ink)}
 .chip.playing{background:var(--dixie-soft); border-color:var(--dixie); color:var(--ink)}
+/* BLACK WINS WHEN THEY ARE THE SAME PART (David, 30 Aug: "the arrangement
+   pills sometimes revert to orange"). The amber says "the music is here" and
+   the black says "this is what you are looking at" — and the sounding chip is
+   given .playing on every paint, so any time the view was on the part being
+   played the amber simply covered the black, which is the one case where it
+   tells you nothing you cannot already see. Amber is left to do the job it is
+   actually for: pointing at the part sounding somewhere OTHER than the table
+   in front of you. */
+.chip.on.playing{background:var(--ink); color:var(--paper); border-color:var(--ink)}
 .chip.loop{box-shadow:0 0 0 2px var(--dixie)}
 input[type=number], input[type=text]{font:inherit; font-size:13px; border:1px solid var(--rule);
   border-radius:8px; padding:6px 9px; background:var(--card); color:var(--ink); width:64px}
@@ -494,6 +503,23 @@ input[type=text]{width:auto}
 
 /* ---- the score ---- */
 #scorewrap{overflow-x:auto; padding-bottom:4px}
+/* FULL-SCREEN NOTATION (30 Aug, David: "so that students can practice with
+   their instruments and don't have to sit close to the monitor"). Desktop
+   only — the phone's landscape view already IS the notation full-screen, and
+   the phone hides #scorehead, where the button lives. The WRAP is what goes
+   fullscreen, so every control already inside the frame comes along for free;
+   fsFit() then zooms the card until the music fills the screen. The editors
+   and quizzes take no part (David's call): the button hides there, and
+   entering one leaves fullscreen. body.fsmax is the fallback face for when
+   the native API is missing or refuses (a lesson iframe whose embed block
+   predates allowfullscreen) — same look, pinned over the page instead. */
+body.editing #fsBtn,body.gedit #fsBtn{display:none}
+body.fs #scorewrap{background:var(--bg); overflow:auto; padding:16px}
+body.fsmax #scorewrap{position:fixed; inset:0; z-index:80}
+/* the scale selector rides in the head's top-left while fullscreen — next to
+   the section name in the arranger, beside the groove chip in a jam — so a
+   student can change pans without leaving the screen */
+body.fs #scoreheadL #panSel{max-width:230px; flex:0 1 auto}
 .score{min-width:540px; background:var(--sc-bg); border:1.5px solid var(--sc-edge);
   border-radius:13px; padding:12px 14px 14px; font-family:Inter,Figtree,sans-serif;
   box-shadow:var(--shadow)}
@@ -2416,6 +2442,8 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <symbol id="is-snd" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13L7.5 14.5H4z" fill="currentColor"/><path d="M16 9.2a4 4 0 010 5.6M18.8 6.6a8 8 0 010 10.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
   <symbol id="is-sndoff" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13L7.5 14.5H4z" fill="currentColor"/><path d="M16.2 9.4l5 5.2M21.2 9.4l-5 5.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
   <symbol id="is-loop" viewBox="0 0 24 24"><path d="M4 9.5A5 5 0 019 5h9M20 14.5A5 5 0 0115 19H6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path fill="currentColor" d="M16.6 2.2L20.4 5l-3.8 2.8zM7.4 16.2L3.6 19l3.8 2.8z"/></symbol>
+  <symbol id="is-fs" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></g></symbol>
+  <symbol id="is-fsx" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h5V4M20 9h-5V4M4 15h5v5M20 15h-5v5"/></g></symbol>
   <!-- three voices stacked, longest at the bottom: a chord's own shape, and
        distinct from is-set's knobbed sliders (David, 29 Aug) -->
   <symbol id="is-chord" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 7h8M6 12h11M6 17h14"/></g></symbol>
@@ -2635,8 +2663,9 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <!-- the frame's HEAD: section name left, transport CENTRED over the music
        (David, 26 Aug — back up here after a spell in the footer) -->
   <div id="scorehead">
-   <!-- one grid cell: section name + (in jam mode) the groove selector -->
-   <span style="display:flex;align-items:center;gap:10px;min-width:0">
+   <!-- one grid cell: section name + (in jam mode) the groove selector; in
+        fullscreen the scale selector steps in here too (David, 30 Aug) -->
+   <span id="scoreheadL" style="display:flex;align-items:center;gap:10px;min-width:0">
      <span class="secname" id="secLabel"></span><span id="grooveHost"></span>
    </span>
    <div id="sctools">
@@ -2659,6 +2688,8 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
      <!-- BREAKS sits between the voicings and the generator (David, 29 Aug) -->
      <button class="ctl hidden" id="brkBtn" title="Scheduled silences — timing training"></button>
      <button class="ctl" id="genBtn" title="Fill the whole progression with a fresh chord sequence">🎲 Generate</button>
+     <!-- fullscreen lives in the frame's corner, like a video player's (30 Aug) -->
+     <button class="ib" id="fsBtn" title="Full screen — practice from across the room" aria-label="Full screen"><svg width="14" height="14"><use href="#is-fs"/></svg></button>
    </span>
   </div>
   <div id="score"></div>
@@ -3502,6 +3533,19 @@ const $=id=>document.getElementById(id);
 const FLAT_DLG=window!==window.top;
 const EMBEDDED=window!==window.top;   // running under a Kajabi/Circle lesson video
 function openDlg(d){
+  /* A FULLSCREEN ELEMENT IS THE ONLY THING PAINTED, and in an iframe the
+     dialogs are NOT top-layer (they open with .show(), below) — so while the
+     notation is fullscreen a flat dialog steps INSIDE the wrap to be visible
+     at all, and walks home when it closes. showModal() dialogs need none of
+     this: the top layer paints above fullscreen by spec. */
+  if(FLAT_DLG&&fsOn()){
+    const w=$("scorewrap");
+    if(d.parentElement!==w){
+      w.appendChild($("dlgShade")); w.appendChild(d);
+      d.addEventListener("close",()=>{ if(d.parentElement===w){
+        document.body.appendChild($("dlgShade")); document.body.appendChild(d); } },{once:true});
+    }
+  }
   if(!FLAT_DLG){ d.showModal(); dlgFocus(d); return; }
   d.classList.add("flat"); $("dlgShade").classList.remove("hidden"); d.show();
   dlgFocus(d);
@@ -8413,6 +8457,16 @@ function arrRuns(){ const runs=[];
     else runs.push({base:b,from:e.from,to:e.to,ais:[e.ai]}); }
   return runs; }
 function renderArr(){
+  /* WHETHER THE JAM HAS PARTS IS READ OFF THE PIECE, HERE (David, 30 Aug:
+     "when there is only 1 notation table, we don't need the black pill Jam
+     there" — and a reduction to one cycle that "doesn't register"). It was set
+     in applyJam alone, so every OTHER rebuild left it stale: switching pan
+     rebuilds the jam piece without going through applyJam, and the row then
+     kept showing a single "Jam" pill for a jam that had one table. This is the
+     function that draws the pills, so it is the one place that can never be
+     out of step with them. */
+  document.body.classList.toggle("jamparts",
+    !!(typeof jamOn!=="undefined"&&jamOn&&piece&&piece.arrangement&&piece.arrangement.length>1));
   const el=$("arrChips"); el.innerHTML="";
   const runs=arrRuns();
   const selRun=runs.find(r=>r.ais.includes(selAi))||runs[0];
@@ -10380,7 +10434,7 @@ function jamMotifVary(m,rnd){
    into that note is deliberate and unbounded. Everywhere else in Motion a step
    is capped; here it is not, because the ear hears a run arriving, not
    departing. */
-function jamRunFields(lad,pulses,rnd){
+function jamRunFields(lad,pulses,rnd,longOk){
   if(!lad||!lad.length||pulses<2) return null;
   const all=rqFieldsLowHigh();
   /* WEIGHTED TOWARDS THE ONES YOU CAN HEAR (David, 30 Aug: "I still don't
@@ -10392,7 +10446,15 @@ function jamRunFields(lad,pulses,rnd){
      part he was looking at. Short runs are still the commonest, but four,
      five and six now carry more than half the weight between them. */
   const r=rnd();
-  const want=r<0.2?2:r<0.45?3:r<0.7?4:r<0.88?5:6;
+  let want=r<0.2?2:r<0.45?3:r<0.7?4:r<0.88?5:6;
+  /* A LONG ROLL BELONGS AT A JOIN (David, 30 Aug: "for the long ones, 3 out of
+     4 times, they should appear in the last bar of the sequence, or at the last
+     bar of the 1st half of the sequence"). Those two bars are where the form
+     turns, and a run of four or more is a lead-back rather than an ornament —
+     it wants somewhere to lead TO. Away from them a run keeps to two or three
+     notes, and the caller lets one through now and then so the rule does not
+     become a metronome of its own. */
+  if(!longOk) want=Math.min(want,3);
   const len=Math.max(2,Math.min(pulses,want));
   const land=rnd()<0.5?lad[0]:lad[lad.length-1];      // its lowest or its highest
   const li=all.indexOf(land); if(li<0) return null;
@@ -11116,8 +11178,17 @@ function buildJamPiece(){
          that chord's lowest or highest note on this pan */
       const nf=form[(i+1)%form.length];
       const ndef=nf&&jamDefs().list.find(c=>c.name===nf.chord);
-      const wantRun=!rest&&runs<2&&(runs===0||mrnd()<0.3)&&mrnd()<(evenBar?0.55:0.15);
-      const run=wantRun&&ndef?jamRunFields(rqLadder(ndef),bp,mrnd):null;
+      /* THE TWO JOINS OF THE FORM: its last bar, and the last bar of its
+         first half. A run may take one of those even though it would
+         otherwise have rested there — a roll into the turn IS the full stop,
+         and it is the one place a rest can be spent better. */
+      const lastOfForm=i===form.length-1;
+      const lastOfHalf=i===Math.floor(form.length/2)-1;
+      const join=lastOfForm||lastOfHalf;
+      const wantRun=runs<2&&(runs===0||mrnd()<0.3)
+        &&(join?mrnd()<0.9:(!rest&&mrnd()<(evenBar?0.6:0.25)));
+      const longOk=join||mrnd()<0.08;
+      const run=wantRun&&ndef?jamRunFields(rqLadder(ndef),bp,mrnd,longOk):null;
       runs=run?runs+1:0;
       /* ONE MOTIF PER PHRASE, stated and then varied — the shape of David's
          own A section: statement, variation, rest, answer. The rest bars are
@@ -11391,9 +11462,6 @@ function applyJam(){
     fired=[]; lastPaint=-1;
   }
   else loadPiece(built);
-  /* the arrangement row is the navigator between Motion's passes, and it is
-     hidden for a jam of one table — set on BOTH paths, playing or not */
-  document.body.classList.toggle("jamparts",built.arrangement.length>1);
   // the progression's length may just have changed under the break
   jam.brk=jamBrkNorm(jam.brk,brkCycleBars());
   renderJamPanel(); saveJamLS();
@@ -13052,6 +13120,7 @@ function enterQuiz(){
   $("title").readOnly=true;
   fitTitle();
   quizOn=true; QZ=null;
+  fsLeave();                    // the quizzes take no part in fullscreen
   document.body.classList.add("quiz");
   $("quizwrap").classList.remove("hidden");
   updatePracticeBtn();
@@ -14533,6 +14602,7 @@ function enterRhythmQuiz(){
   $("title").readOnly=true;      // the quiz borrows the slot; the piece keeps its name
   fitTitle();
   rqOn=true; RQ=null; rqI=0; rqLog=[];
+  fsLeave();                    // the quizzes take no part in fullscreen
   document.body.classList.add("rquiz");
   $("rqwrap").classList.remove("hidden");
   updatePracticeBtn();
@@ -14714,6 +14784,7 @@ function startGrooveEdit(opts){    // opts: {id?, name, meter, sub, unit?, ref, 
   if(opts.unit&&opts.unit!==4) p.unit=opts.unit;
   grooveEdit={id:opts.id||null, ref:opts.ref, wasJam, prevPiece, prevBpm,
     origin:opts.origin||"browser", sig0:""};
+  fsLeave();                    // the editors take no part in fullscreen
   document.body.classList.add("gedit");
   placeGrooveTools();
   try{ $("grooveDlg").close(); }catch(e){}
@@ -15269,7 +15340,7 @@ function fitJamHead(){
      drops the setting it is stating, and only last does the generator give up
      its word. Every rung keeps its icon. */
   const bk=$("brkBtn"), gen=$("genBtn");
-  btn.innerHTML=face("Chord voicings");
+  btn.innerHTML=face("Chord settings");
   if(bk&&!bk.classList.contains("hidden")) bk.innerHTML=brkBtnFace(true);
   if(gen) gen.innerHTML="🎲 Generate";
   if(!tight()) return;
@@ -15306,8 +15377,12 @@ function paintBrkBtn(){
 function paintJamSetBtn(){
   const b=document.getElementById("jamSetBtn"); if(!b) return;
   b.classList.toggle("hidden",!jamOn);
+  /* "Chord settings", not "Chord voicings" (David, 30 Aug) — the sheet holds
+     the voicings, the spice slider and Motion's own two controls, so the
+     button now says what it opens rather than one of the things inside it.
+     The short rung of fitJamHead's ladder stays "Chords". */
   b.innerHTML='<svg width="15" height="15"><use href="#is-chord"/></svg> '
-    +'Chord voicings <span class="dn">▾</span>';
+    +'Chord settings <span class="dn">▾</span>';
 }
 /* A RENDER WHILE THE SHEET IS OPEN hands it the NEW control and throws the
    stale one away — the same rule jamSetRehome follows, and for the same
@@ -15867,6 +15942,7 @@ function boot(){
     editing=!editing; $("editBtn").classList.toggle("on",editing);
     if(editing) stampPieceSig();     // the piece as it was, for "did anything change"
     document.body.classList.toggle("editing",editing);
+    if(editing) fsLeave();      // the editors take no part in fullscreen
     if(editing&&view!=="table"){ setView("table",{skipRender:true}); toast("Editing uses the table view"); }
     $("viewPills").querySelectorAll("button").forEach(b=>b.disabled=editing);
     refresh();   // the pan card becomes the editor while editing (renderPanPanel)
@@ -17407,6 +17483,102 @@ function placePhoneControls(){
   // the pan's badge layout is orientation-specific too — rebuild it on rotate
   if(panOn) renderPanPanel();
   if(jamOn&&!PHONE) fitJamHead();
+}
+/* ---------------- FULL-SCREEN NOTATION (30 Aug) ----------------
+   David: "so that students can practice with their instruments and don't
+   have to sit close to the monitor." The WRAP goes fullscreen, so everything
+   already inside the frame — play, the generator, the groove chip — needs no
+   move; the one migrant is the scale selector, which steps into #scoreheadL
+   for the duration and goes home on exit. Native API first; in the lesson
+   iframe that needs `allowfullscreen` ON THE IFRAME TAG (embed build
+   2026-08-30a), and when the API is missing or refuses, body.fsmax pins the
+   wrap over the page instead, so the button never does nothing.
+   THE FIT IS MULTIPLICATIVE, NEVER RESET: fsFit nudges the zoom from where
+   it stands until the height lands, so at rest it writes nothing — which is
+   what lets a ResizeObserver call it on every re-render without the two of
+   them chasing each other around a loop. The card keeps width:auto, so at
+   zoom z it lays out at screenW/z and always fills the width exactly; the
+   height cap is the only search. */
+let fsPanHome=null;
+function fsOn(){ return document.body.classList.contains("fs"); }
+function fsNativeEl(){ return document.fullscreenElement||document.webkitFullscreenElement||null; }
+function fsFit(){
+  if(!fsOn()) return;
+  const wrap=$("scorewrap"), sc=$("scorecard");
+  const availW=wrap.clientWidth-32, availH=wrap.clientHeight-32;
+  if(availW<300||availH<160) return;
+  let z=parseFloat(sc.style.zoom)||1;
+  for(let i=0;i<4;i++){
+    const h=sc.getBoundingClientRect().height;
+    if(!h) return;
+    let nz=z*availH/h;
+    nz=Math.min(nz,availW/560);   // never lay the card out under its 540px min width
+    nz=Math.max(nz,.5);           // a very long piece scrolls rather than shrinking to dust
+    if(Math.abs(nz-z)<.01) break;
+    z=nz; sc.style.zoom=z;
+  }
+  // centre a card shorter than the screen (the width cap leaves height over)
+  const h=sc.getBoundingClientRect().height;
+  wrap.style.paddingTop=(16+Math.max(0,(availH-h)/2))+"px";
+}
+function fsApply(on){
+  if(on===fsOn()) return;
+  document.body.classList.toggle("fs",on);
+  const b=$("fsBtn"), u=b&&b.querySelector("use");
+  if(u) u.setAttribute("href",on?"#is-fsx":"#is-fs");
+  if(b) b.title=on?"Exit full screen":"Full screen — practice from across the room";
+  const wrap=$("scorewrap"), ps=$("panSel");
+  if(on){
+    // the scale selector migrates into the frame's top-left (David, 30 Aug):
+    // next to the section name in the arranger, beside the groove chip in jam
+    if(ps){ fsPanHome={p:ps.parentElement,n:ps.nextSibling}; $("scoreheadL").appendChild(ps); }
+    wrap.appendChild($("toast"));   // fixed-position — invisible from inside fullscreen otherwise
+    fsFit();
+  }else{
+    if(ps&&fsPanHome&&fsPanHome.p){ fsPanHome.p.insertBefore(ps,fsPanHome.n); }
+    fsPanHome=null;
+    document.body.appendChild($("toast"));
+    // sweep home anything openDlg moved in (the shade and any flat dialog)
+    const sh=$("dlgShade"); if(sh.parentElement===wrap) document.body.appendChild(sh);
+    [...wrap.querySelectorAll("dialog")].forEach(d=>document.body.appendChild(d));
+    $("scorecard").style.zoom="";
+    wrap.style.paddingTop="";
+    document.body.classList.remove("fsmax");
+  }
+}
+/* the editors and quizzes call this on the way in — their entry, not a class
+   observer, because the native exit is asynchronous and only they know when */
+function fsLeave(){
+  if(fsNativeEl()){
+    const x=document.exitFullscreen||document.webkitExitFullscreen;
+    try{ x.call(document); }catch(e){}
+  }
+  if(fsOn()&&!fsNativeEl()) fsApply(false);
+}
+{
+  const wrap=$("scorewrap");
+  $("fsBtn").addEventListener("click",()=>{
+    if(fsOn()){ fsLeave(); return; }
+    const req=wrap.requestFullscreen||wrap.webkitRequestFullscreen;
+    const fallback=()=>{ if(!fsNativeEl()&&!fsOn()){ document.body.classList.add("fsmax"); fsApply(true); } };
+    if(!req){ fallback(); return; }
+    let p=null;
+    try{ p=req.call(wrap); }catch(e){}
+    if(p&&p.catch) p.catch(fallback);
+    // the prefixed API returns nothing and can refuse silently (an iframe
+    // still on an embed block without allowfullscreen) — check back shortly
+    setTimeout(fallback,350);
+  });
+  const onchg=()=>{ if(!document.body.classList.contains("fsmax")) fsApply(fsNativeEl()===wrap); };
+  document.addEventListener("fullscreenchange",onchg);
+  document.addEventListener("webkitfullscreenchange",onchg);
+  addEventListener("resize",()=>{ if(fsOn()) fsFit(); });
+  // Esc leaves the fallback face too (native fullscreen handles its own Esc)
+  addEventListener("keydown",e=>{ if(e.key==="Escape"&&fsOn()&&!fsNativeEl()) fsApply(false); });
+  // a re-render (generate, section change) resizes #score — refit to it
+  if(window.ResizeObserver) new ResizeObserver(()=>{
+    if(fsOn()) requestAnimationFrame(fsFit);
+  }).observe($("score"));
 }
 if(PHONE){
   $("shareBtn").innerHTML='<svg aria-hidden="true"><use href="#is-share"/></svg>';
