@@ -4847,6 +4847,10 @@ function stop(){
   document.querySelectorAll(".chip.playing").forEach(el=>el.classList.remove("playing"));
   if(pendingStart!=null){ if(!C) C=compile(piece); paintPulse(pendingStart); } // show where play will resume
   updatePlayBtn();
+  /* clearMarks() has just taken the grey away with everything else the clock
+     owned — but a break set to every cycle is a fact about the SETTING, not
+     about the playhead, so it comes straight back. */
+  if(typeof paintBrkStill==="function") paintBrkStill();
 }
 
 /* ---------------- transposition ----------------
@@ -10476,15 +10480,43 @@ function jamBreakInfo(ab){
    ear, so the card and the marker must not ask its counter */
 let brkPaint=null, brkDimKey="";
 function paintBrkDim(bk){
-  const key=(bk&&bk.cyc&&playing)?(bk.fromBar+"+"+bk.L):"";
+  applyBrkDim((bk&&bk.cyc&&playing)?(bk.fromBar+"+"+bk.L):"",bk);
+}
+/* THE BREAK IS VISIBLE BEFORE A NOTE IS PLAYED (David, 29 Aug: "if the
+   frequency is every cycle, please mark the break in the notation in the
+   currently selected length already when that option is selected… the user
+   should see these changes in realtime in the notation").
+   ONLY when it breaks EVERY cycle, and that is not a shortcut: with every 2nd
+   or 3rd cycle, WHICH bars fall silent depends on how many cycles have gone
+   by, and a still notation has no cycle count to answer with. Every cycle is
+   the one setting whose answer is the same on every pass, so it is the one
+   that can be shown standing still. */
+function brkStillInfo(){
+  if(!jamOn||!jam||!jam.brk||!jam.brk.on||Math.max(1,jam.brk.every)!==1||!C) return null;
+  let c; try{ c=brkCycle(); }catch(e){ return null; }
+  const L=Math.max(1,Math.min(c.bars,jam.brk.len));
+  return {c,L,cyc:true,fromBar:Math.round(c.from/c.bp)+c.bars-L};
+}
+/* Painted from the SETTING rather than from the clock. While the music runs
+   the live painter owns the grey — it knows which cycle this is — so this one
+   stands aside. */
+function paintBrkStill(){
+  if(playing) return;
+  const bk=brkStillInfo();
+  applyBrkDim(bk?("still"+bk.fromBar+"+"+bk.L):"",bk);
+}
+/* ONE painter, two callers. The key is what makes the common path free, and
+   the still key carries its own prefix so that starting playback on the very
+   bars already greyed still counts as a change and repaints. */
+function applyBrkDim(key,bk){
   const els=document.querySelectorAll("#score .bar");
   // …and re-applied after a render() wiped the score out from under us
-  const stale=!!key&&!!els[bk.fromBar]&&!els[bk.fromBar].classList.contains("brkdim");
+  const stale=!!key&&!!bk&&!!els[bk.fromBar]&&!els[bk.fromBar].classList.contains("brkdim");
   if(key===brkDimKey&&!stale) return;               // the common path costs nothing
   brkDimKey=key;
   document.querySelectorAll("#score .bar.brkdim,#score .bar.brkfirst")
     .forEach(el=>el.classList.remove("brkdim","brkfirst"));
-  if(!key) return;
+  if(!key||!bk) return;
   for(let i=0;i<bk.L;i++){ const el=els[bk.fromBar+i]; if(el) el.classList.add("brkdim"); }
   const f=els[bk.fromBar]; if(f) f.classList.add("brkfirst");   // it still sounds
 }
@@ -10785,6 +10817,7 @@ function applyJam(){
   // of waiting for the next paint (David, 26 Aug: "the marker disappears")
   const pos=playing?loopedPulse(nextPulse):(pendingStart!=null?pendingStart:0);
   jamPaintChord(pos);
+  paintBrkStill();      // the bars are new; the grey has to find them again
 }
 // which chord card is sounding at this pulse — spans follow the slots' bars
 function jamPaintChord(pi){
@@ -10914,6 +10947,7 @@ function paintBrk(root){
     }
   }
   paintBrkBtn();
+  paintBrkStill();      // …and the notation itself is a face of the setting
 }
 function renderJamPanel(){
   const prog=$("jamProg"); prog.innerHTML="";
