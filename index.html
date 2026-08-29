@@ -10480,6 +10480,26 @@ function jamRunFields(lad,pulses,rnd,longOk){
   if(endI<0||endI>=all.length) return null;
   const fit=Math.min(len,room(d)+1);
   if(fit<2) return null;
+  const lim=i=>Math.max(0,Math.min(all.length-1,i));
+  /* A LONG RUN NEED NOT BE A STRAIGHT LINE (David, 30 Aug: "7 8 7 6 5 4 →
+     leading to 3, or 7 6 5 6 7 8 — leading to 9 can also be nice"). Both of
+     his shapes are the same idea — the run does not have to START at its
+     turning point. One TURNS at the head: it steps once the other way and
+     comes back through its own note before running down. The other WALKS IN
+     from the far side, so the line arrives at the turn with momentum. Either
+     way the last notes are the same straight approach, ending one short of
+     the chord's note, so what the ear is led to is unchanged.
+     Only for runs of four or more: two and three notes are the approach
+     itself and have nothing to spare for a preamble. */
+  if(fit>=4&&rnd()<0.45){
+    const tailLen=fit-2, startI=endI-d*(tailLen-1);
+    const head=rnd()<0.5
+      ? [startI,startI-d]                        // 7 8 · 7 6 5 4
+      : [lim(startI+d*2),lim(startI+d)];         // 7 6 · 5 6 7 8
+    const notes=head.map(i=>all[lim(i)]);
+    for(let k=0;k<tailLen;k++) notes.push(all[lim(startI+d*k)]);
+    return {notes,land};
+  }
   const notes=[];
   for(let k=0;k<fit;k++) notes.push(all[endI-d*(fit-1-k)]);
   return {notes,land};
@@ -17598,7 +17618,7 @@ function fsApply(on){
     // next to the section name in the arranger, beside the groove chip in jam
     if(ps){ fsPanHome={p:ps.parentElement,n:ps.nextSibling}; $("scoreheadL").appendChild(ps); }
     wrap.appendChild($("toast"));   // fixed-position — invisible from inside fullscreen otherwise
-    fsFit();
+    fsZCap=Infinity; fsFit();
   }else{
     if(ps&&fsPanHome&&fsPanHome.p){ fsPanHome.p.insertBefore(ps,fsPanHome.n); }
     fsPanHome=null;
@@ -17641,13 +17661,27 @@ function fsLeave(){
     if(!document.body.classList.contains("fsmax")) fsApply(fsNativeEl()===wrap); };
   document.addEventListener("fullscreenchange",onchg);
   document.addEventListener("webkitfullscreenchange",onchg);
-  addEventListener("resize",()=>{ if(fsOn()) fsFit(); });
+  addEventListener("resize",()=>{ if(fsOn()){ fsZCap=Infinity; fsFit(); } });
   // Esc leaves the fallback face too (native fullscreen handles its own Esc)
   addEventListener("keydown",e=>{ if(e.key==="Escape"&&fsOn()&&!fsNativeEl()) fsApply(false); });
-  // a re-render (generate, section change) resizes #score — refit to it
-  if(window.ResizeObserver) new ResizeObserver(()=>{
-    if(fsOn()) requestAnimationFrame(fsFit);
-  }).observe($("score"));
+  /* A RE-RENDER REFITS; OUR OWN ZOOM DOES NOT. Generate, a section change and
+     Table↔Tab all rebuild #score's CHILDREN, while fsFit only ever writes a
+     style attribute on #score itself — so watching childList tells the two
+     apart exactly, and the fit can never observe its own writes. (A
+     ResizeObserver cannot make that distinction: setting zoom changes the
+     layout box, so every fit fed itself straight back in.) The playback
+     marker moves by className, which is an ATTRIBUTE change and is ignored
+     here — it would otherwise refit on every pulse.
+     A rebuild is a different piece on the screen, so the squeeze's cap is
+     lifted and re-measured from scratch. */
+  if(window.MutationObserver){
+    let pend=false;
+    new MutationObserver(()=>{
+      if(!fsOn()||pend) return;
+      pend=true;
+      requestAnimationFrame(()=>{ pend=false; fsZCap=Infinity; fsFit(); });
+    }).observe($("score"),{childList:true,subtree:true});
+  }
 }
 if(PHONE){
   $("shareBtn").innerHTML='<svg aria-hidden="true"><use href="#is-share"/></svg>';
