@@ -10491,7 +10491,13 @@ function jamRunFields(lad,pulses,rnd,longOk){
      the chord's note, so what the ear is led to is unchanged.
      Only for runs of four or more: two and three notes are the approach
      itself and have nothing to spare for a preamble. */
-  if(fit>=4&&rnd()<0.45){
+  /* …BUT A SHORT ONE MOSTLY GOES ONE WAY (David, 30 Aug: "1232, D121 kind of
+     runs happen way too often. For short runs up to 4 notes, they should be
+     one-direction 75% of the time"). At four notes a turn costs half the run:
+     two notes of preamble leave only two of approach, so the shape reads as a
+     wobble rather than as a line arriving. Five and six have the room, and
+     keep the shape he liked. */
+  if(fit>=4&&rnd()<(fit>=5?0.45:0.25)){
     const tailLen=fit-2, startI=endI-d*(tailLen-1);
     const head=rnd()<0.5
       ? [startI,startI-d]                        // 7 8 · 7 6 5 4
@@ -17673,13 +17679,16 @@ function fsLeave(){
      marker moves by className, which is an ATTRIBUTE change and is ignored
      here — it would otherwise refit on every pulse.
      A rebuild is a different piece on the screen, so the squeeze's cap is
-     lifted and re-measured from scratch. */
+     lifted and re-measured from scratch.
+     The debounce is a TIMER, NEVER rAF: rAF stops entirely in a hidden pane
+     (the bridge learned this the hard way, 26 Aug), so one mutation while
+     hidden would set the pending flag, the frame would never come, and the
+     observer would be deaf for the rest of the session. */
   if(window.MutationObserver){
-    let pend=false;
+    let pend=0;
     new MutationObserver(()=>{
       if(!fsOn()||pend) return;
-      pend=true;
-      requestAnimationFrame(()=>{ pend=false; fsZCap=Infinity; fsFit(); });
+      pend=setTimeout(()=>{ pend=0; fsZCap=Infinity; fsFit(); },40);
     }).observe($("score"),{childList:true,subtree:true});
   }
 }
