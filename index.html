@@ -10277,39 +10277,6 @@ function jamMelodyBar(n,curTop,nextTop,breathe,rnd,last,st){
      beside the next chord's note so the bar line completes it. It needs both
      room and distance, so it asks for at least three strokes and a gap worth
      crossing, and it comes about one bar in five. */
-  /* THE RUN IS NOT BOUND BY WHAT THE ORDINARY WALK CAN REACH. Gating it on
-     `way` meant it could only appear when the next note was three or four
-     fields off — the only gaps the walk itself is allowed to cross — and it
-     fired ONCE IN 192 BARS. A run exists precisely to cross a distance the
-     walk will not: it holds the chord's note, leaps once into the figure, and
-     steps home from there. */
-  if(!breathe&&n>=3&&st&&st.mayRun&&ni>=0){
-    const dist=Math.abs(ni-ci);
-    if(dist>=1){
-      st.ran=true;
-      /* HOW LONG A RUN IS (David, 29 Aug: "it can be two notes, three notes,
-         four notes, five notes, six notes… the shorter ones can be more
-         common than the longer ones"). Weighted so two and three are the
-         everyday figures and six is rare — then clamped by what the bar can
-         hold, since a run cannot be longer than the strokes the groove gives
-         its top voice. On a four-stroke groove that caps it at four; five and
-         six would have to begin in the bar before, which they cannot yet. */
-      const r=rnd();
-      const want=r<0.36?2:r<0.64?3:r<0.84?4:r<0.94?5:6;
-      /* WHERE THE RUN COMES FROM. Crossing a gap it walks straight into the
-         next note. But most gaps are ONE field — measured: of the bars offered
-         a run, more had a gap of 1 than of anything else — and a one-field gap
-         is not a run, it is a step. There the figure DEPARTS instead: it sets
-         off the other way and runs back in, which is the same stepwise motion
-         and the same arrival, with somewhere to have come from. */
-      const d=Math.sign(ni-ci)||1, end=ni-d;          // arrive beside the next note
-      const room=Math.abs(end-ci)+1;
-      const len=Math.max(2,Math.min(n-1,Math.max(room,want),want));
-      for(let k=0;k<n;k++) out[k]=all[ci];              // hold, then run
-      for(let k=0;k<len;k++) out[n-len+k]=all[lim(end-d*(len-1-k))];
-      return out;
-    }
-  }
   /* AND THE DETOUR SITS ON THE LAST MELODY NOTE (David: "the detour then
      should happen on the last note of the bar… last melody note"). A step to
      the side there is a turn INTO the chord change — the bar line completes
@@ -10320,6 +10287,45 @@ function jamMelodyBar(n,curTop,nextTop,breathe,rnd,last,st){
     const j=step(pos,rnd()<0.5?1:-1);
     if(j!==pos) out[n-1]=all[j];
   }
+  return out;
+}
+/* A RUN IS DEFINED BY WHERE IT LANDS, AND IT BREAKS THE GROOVE (David, 29
+   Aug, correcting me twice: "they can actually start at any point in the
+   pattern, and they can start also at any note. So for these runs, the normal
+   rule that we shouldn't make long jumps is deactivated. For these runs, we
+   only wanna look at where they land, and they should land around the lowest
+   or highest note of the following chord" — and then: "these runs can break
+   the rhythm of the pattern. They are kind of independent of which pattern you
+   are playing… a continuous run of notes in the subdivision, like the smallest
+   cell of timing of the groove").
+   So a run is not a choice of notes for the strokes the groove happens to
+   offer. It is its OWN rhythm: `len` notes on consecutive pulses at the end of
+   the bar, whatever the groove was going to play there. It is built BACKWARDS
+   from its landing note — the lowest or the highest note the NEXT chord has on
+   this pan — so wherever the first note falls is where it starts, and the leap
+   into that note is deliberate and unbounded. Everywhere else in Motion a step
+   is capped; here it is not, because the ear hears a run arriving, not
+   departing. */
+function jamRunFields(lad,pulses,rnd){
+  if(!lad||!lad.length||pulses<2) return null;
+  const all=rqFieldsLowHigh();
+  const r=rnd();
+  const want=r<0.36?2:r<0.64?3:r<0.84?4:r<0.94?5:6;
+  const len=Math.max(2,Math.min(pulses,want));
+  const land=rnd()<0.5?lad[0]:lad[lad.length-1];      // its lowest or its highest
+  const li=all.indexOf(land); if(li<0) return null;
+  /* ROOM DECIDES BOTH THE DIRECTION AND THE LENGTH. Clamping the notes to the
+     pan instead struck the same field three times over and called it a run —
+     `0 0 0 1` was the first one it made, a landing on the second-lowest field
+     with nowhere below it to come from. It arrives from whichever side has
+     room, and it is only as long as that room allows. */
+  let d=rnd()<0.5?1:-1;
+  const room=x=>x>0?li:(all.length-1-li);
+  if(room(d)<1) d=-d;
+  const fit=Math.min(len,room(d)+1);
+  if(fit<2) return null;
+  const out=[];
+  for(let k=0;k<fit;k++) out.push(all[li-d*(fit-1-k)]);
   return out;
 }
 /* Every bar of the form, in order, with the chord it plays and whether it is
@@ -10383,7 +10389,7 @@ function jamMotionVoices(form,V){
     if(prev<0) break;
     k=from[i][k]; i=prev;
   }
-  return form.map((f,i)=>chosen[i]?jvMap(chosen[i],V):null);
+  return {vm:form.map((f,i)=>chosen[i]?jvMap(chosen[i],V):null),cands};
 }
 /* the whole progression at once: cheapest total of squared melodic jumps
    between neighbouring tops (cyclic — the loop returns to its first chord)
@@ -10966,7 +10972,7 @@ function buildJamPiece(){
      form runs 1, 2 or 4 times through so the line has room to travel. */
   if(jam.motion){
     const form=jamFormBars(jamPasses());
-    const vm=jamMotionVoices(form,VV);
+    const mv=jamMotionVoices(form,VV), vm=mv.vm, mcands=mv.cands;
     const bars=[], gb=patBars(pat), bp=pat.meter[0]*pat.sub;
     /* the melody is the groove's HIGHEST voice; the ones under it keep the
        bar's own voicing, so the chord never flickers while the top moves */
@@ -11014,15 +11020,51 @@ function buildJamPiece(){
          pattern"). About one bar in seven carries one — three times likelier
          on an even bar than an odd one, so the figure keeps its place in the
          phrase without becoming the phrase. */
-      const st={mayRun:runs<2&&(runs===0||mrnd()<0.3)&&mrnd()<(evenBar?0.4:0.08)};
+      /* the run needs the next CHORD, not just its melody note — it lands on
+         that chord's lowest or highest note on this pan */
+      const nf=form[(i+1)%form.length];
+      const ndef=nf&&jamDefs().list.find(c=>c.name===nf.chord);
+      const wantRun=!rest&&runs<2&&(runs===0||mrnd()<0.3)&&mrnd()<(evenBar?0.4:0.08);
+      const run=wantRun&&ndef?jamRunFields(rqLadder(ndef),bp,mrnd):null;
+      runs=run?runs+1:0;
+      const st={};
       const line=jamMelodyBar(tops,v[topTok],
         (nv&&nv[topTok]!=null)?nv[topTok]:v[topTok],
-        rest,mrnd,i===form.length-1,st);
-      runs=st.ran?runs+1:0;
+        rest||!!run,mrnd,i===form.length-1,st);
       let n=0;
-      const bar=evs.map(([t,k,h])=>k===topTok
-        ? patEv(t-gi*bp,k,h,Object.assign({},v,{[k]:line[n++]}))
-        : patEv(t-gi*bp,k,h,v));
+      /* WHERE A RUN LANDS IN THE BAR: on its last pulses, one note a pulse. The
+         groove's own top strokes inside that span give way to it — that is the
+         "breaking the rhythm" he asked for — while the bass and the percussion
+         underneath carry straight on, so the bar still keeps its feet. */
+      const from=run?bp-run.length:bp;
+      const bar=evs.filter(([t,k])=>!(run&&k===topTok&&(t-gi*bp)>=from))
+        .map(([t,k,h])=>k===topTok
+          ? patEv(t-gi*bp,k,h,Object.assign({},v,{[k]:line[n++]}))
+          : patEv(t-gi*bp,k,h,v));
+      if(run){
+        run.forEach((fl,x)=>bar.push(F(from+x,fl,x%2?"R":"L")));
+        bar.sort((a,b)=>a.t-b.t);
+        /* AND THE RUN TAKES THE MELODY WITH IT (David, 29 Aug: "these runs can
+           go out of the melody arc for sure, and they can be a good way to
+           lead to a more distant place in the melody line… you can have a
+           melody that ends in the midrange, and then the run going up… this can
+           bring your melody to a different register in a short amount of
+           time"). Without this the arc simply resumed where it had planned to
+           be and the run was a flourish that changed nothing. The bar AFTER a
+           run takes the voicing whose top note is nearest where the run landed,
+           so the line carries on from there — the run is a move, not a
+           gesture. The last bar of the form is left alone: its neighbour is
+           bar one, already written, and the loop has to close on it. */
+        const j=i+1;
+        if(j<form.length){
+          const L=mcands.get(form[j].chord), lm=myPan.midiFor(run[run.length-1]);
+          if(L&&L.length&&lm!=null){
+            let best=null,bd=Infinity;
+            for(const c of L){ const d=Math.abs(c.top-lm); if(d<bd){ bd=d; best=c; } }
+            if(best) vm[j]=jvMap(best,VV);
+          }
+        }
+      }
       if(f.first&&bar.length) bar[0]=Object.assign({},bar[0],{chord:f.chord});
       bars.push(bar);
     });
