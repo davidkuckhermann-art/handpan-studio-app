@@ -10901,6 +10901,11 @@ function buildJamPiece(){
        reshuffle every approach, and vice versa */
     const mrnd=jamRnd(((jam.mseed||1)^0x9E3779B9)>>>0);
     const phrase=Math.max(1,Math.round(form.length/4));
+    /* A LINE RESTS WHERE IT LIKES, not only where the phrase ends (David, 29
+       Aug: "there can also be resting points in the middle of a phrase"). So
+       about one bar in five settles on its note wherever it stands — never two
+       running, or the line stops rather than breathes. */
+    let rested=false;
     form.forEach((f,i)=>{
       const v=vm[i];
       if(!v){ bars.push([]); return; }        // a chord this pan cannot voice keeps its bar
@@ -10908,9 +10913,12 @@ function buildJamPiece(){
       const evs=pat.ev.filter(([t])=>Math.floor(t/bp)===gi);
       let tops=0; for(const e of evs) if(e[1]===topTok) tops++;
       const nv=vm[(i+1)%form.length];         // the loop closes onto its own first bar
+      const ends=(i+1)%phrase===0;
+      const rest=ends||(!rested&&mrnd()<0.22);
+      rested=rest&&!ends;
       const line=jamMelodyBar(tops,v[topTok],
         (nv&&nv[topTok]!=null)?nv[topTok]:v[topTok],
-        (i+1)%phrase===0,mrnd,i===form.length-1);
+        rest,mrnd,i===form.length-1);
       let n=0;
       const bar=evs.map(([t,k,h])=>k===topTok
         ? patEv(t-gi*bp,k,h,Object.assign({},v,{[k]:line[n++]}))
