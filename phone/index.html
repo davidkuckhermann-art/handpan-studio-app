@@ -1194,6 +1194,14 @@ body.jam #srcBadge{display:none !important}
   font-family:Inter,sans-serif}
 .qbig .n small{color:var(--ink3); font-size:.5em; font-weight:700}
 .qbig .of{font-size:12.5px; font-weight:600; color:var(--ink3)}
+/* the sentence a stopped round gets instead of a number (David, 29 Aug) —
+   the size of a statement, not of a score */
+.qbig .stopped{font-size:19px; font-weight:700; line-height:1.3; color:var(--sc-ink);
+  text-align:center; margin-bottom:4px}
+.qbig .stopped b{color:var(--sc-ink); font-weight:800}
+.rqhead .rqstopped{font-size:17px; font-weight:700; line-height:1.35; color:var(--sc-ink)}
+.rqhead .rqstopped span{display:block; font-size:12.5px; font-weight:600;
+  color:var(--ink3); margin-top:2px}
 .qbig .detail{font-size:12.5px; font-weight:600; color:var(--ink2);
   margin-top:7px; padding-top:7px; border-top:1px solid var(--sc-rule);
   text-align:center; white-space:nowrap}
@@ -11522,7 +11530,7 @@ function qzStopClocks(){ clearInterval(qzTick); qzTick=null;
 function qzNext(){
   qzStopClocks();
   if(!QZ) return;
-  if(QZ.total&&QZ.i>=QZ.total){ qzFinish(); return; }
+  if(QZ.total&&QZ.i>=QZ.total){ qzFinish(true); return; }
   QZ.i++; QZ.cur=qzPick(); QZ.phase="ask";
   QZ.picked=new Set(); QZ.wrong=0; QZ.won=false; QZ.hold=false;
   QZ.tried=[];                                  // answers already ruled out
@@ -11644,14 +11652,27 @@ function qzRevealSound(){
    it is worth 1; every further attempt costs a third of it, down to a floor
    — a chord you got there in the end is still worth more than one you never
    found. Self-check has no attempt count to read, so it is simply 1 or 0. */
+/* AN ENDLESS ROUND HAS NO LAST QUESTION (David, 29 Aug), so leaving one is
+   allowed to count as finishing it — "as long as there have been at least
+   five question answers". Without this an endless round could never be
+   scored at all, since the only way out of it is the way out. */
+const QUIZ_ENDLESS_MIN=5;
 function qzCredit(r){
   if(!r||!r.hit) return 0;
   const t=Math.max(1,r.tries||1);
   return Math.max(0.15,1-0.35*(t-1));
 }
-function qzFinish(){
+/* FINISHED, OR MERELY STOPPED (David, 29 Aug: "the scoring in the quizzes
+   should only happen when the quiz is finished, not when it's aborted").
+   Playing through to the last question finishes a round; End round does not,
+   and neither does walking out of the door — that one never reaches a summary
+   at all. The flag is set HERE, where the two paths part, and read by the
+   summary, so nothing downstream has to guess. */
+function qzFinish(complete){
   qzStopClocks();
   if(!QZ) return;
+  QZ.complete=complete===true
+    ||(!QZ.total&&QZ.results.length>=QUIZ_ENDLESS_MIN);
   QZ.phase="sum"; renderQuiz();
 }
 // abandon the round and go back to the overview
@@ -11981,7 +12002,10 @@ function renderQuiz(){
      End round stops and shows how it went, and the summary carries on to the
      overview from there. Nothing is lost: every answer went to memory as it
      was given. */
-  mk2("End round","",qzFinish,"Stop here and see how you did");
+  /* wrapped, because mkIn hands the click EVENT to its handler and an event
+     is truthy — passing qzFinish bare would have called it qzFinish(event)
+     and marked every abandoned round finished */
+  mk2("End round","",()=>qzFinish(false),"Stop here and see how you did");
   /* THE INSTRUMENT IS DRAWN ONCE PER QUESTION (David, 26 Aug: "the handpan
      graphic jumps and the badge gets redrawn when the arpeggio starts").
      Going from search to reveal used to replace the whole SVG: the drawing
@@ -12141,7 +12165,14 @@ function renderQuizSum(){
   const score=scored
     ? Math.round(100*QZ.results.reduce((a,r)=>a+qzCredit(r),0)/scored) : 0;
   const big=document.createElement("div"); big.className="qbig";
-  if(scored){
+  if(scored&&!QZ.complete){
+    /* A ROUND THAT WAS STOPPED GETS NO NUMBER, it gets a sentence — David's
+       own wording, 29 Aug. The tally is still true and still worth reading;
+       what it is not is a score, because a score is what finishing earns. */
+    big.innerHTML='<span class="stopped">You answered <b>'+hits+'</b> of <b>'+scored
+      +'</b> question'+(scored===1?'':'s')+' correctly</span>'
+      +'<span class="of">Next time, finish the quiz to get your score</span>';
+  } else if(scored){
     /* The headline is the SCORE, not the tally: getting eight of ten on the
        third guess each time is not the same round as eight first time, and
        the number has to know the difference. The tally stays underneath so
@@ -13696,22 +13727,32 @@ function rqRevealUI(card){
   nx.style.cssText="background:var(--dixie);border-color:var(--dixie);color:#231703;font-weight:700";
   nx.textContent=(rqcfg.len!=="endless"&&rqI+1>=rqcfg.len)?"See the summary":"Next rhythm";
   nx.addEventListener("click",()=>{ rqStop(); rqI++;
-    if(rqcfg.len!=="endless"&&rqI>=rqcfg.len) renderRQSum(); else rqNext(); });
+    if(rqcfg.len!=="endless"&&rqI>=rqcfg.len) renderRQSum(true); else rqNext(); });
   row.appendChild(nx);
   const end=document.createElement("button"); end.className="ctl"; end.textContent="End round";
-  end.addEventListener("click",()=>{ rqStop(); renderRQSum(); });
+  end.addEventListener("click",()=>{ rqStop(); renderRQSum(false); });
   row.appendChild(end);
   card.appendChild(row);
 }
-function renderRQSum(){
+/* …and the same rule in the rhythm quiz: the last rhythm finishes a round,
+   End round only stops it, and an endless round counts as finished once five
+   have been answered (David, 29 Aug). */
+function renderRQSum(complete){
+  const done=complete===true
+    ||(rqcfg.len==="endless"&&rqLog.length>=QUIZ_ENDLESS_MIN);
   rqLoopOn=false; RQ=null; rqStop();
   $("rqsetup").classList.add("hidden"); $("rqstage").classList.add("hidden");
   const box=$("rqsum"); box.classList.remove("hidden"); box.innerHTML="";
   const card=document.createElement("div"); card.className="rqcard";
+  const named=rqLog.filter(r=>r.won).length;
   const sc=rqLog.length?Math.round(100*rqLog.reduce((a,r)=>a+rqCredit(r),0)/rqLog.length):0;
   const h=document.createElement("div"); h.className="rqhead";
-  h.innerHTML="<div class='rqbig' style='font-size:44px'>"+sc+"</div>"
-    +"<span class='pill'>"+rqLog.filter(r=>r.won).length+" of "+rqLog.length+" named</span>";
+  h.innerHTML=(done||!rqLog.length)
+    ? "<div class='rqbig' style='font-size:44px'>"+sc+"</div>"
+      +"<span class='pill'>"+named+" of "+rqLog.length+" named</span>"
+    : "<div class='rqstopped'>You answered <b>"+named+"</b> of <b>"+rqLog.length
+      +"</b> question"+(rqLog.length===1?"":"s")+" correctly"
+      +"<span>Next time, finish the quiz to get your score</span></div>";
   card.appendChild(h);
   const by={};
   for(const r of rqLog){ by[r.sig]=by[r.sig]||{h:0,n:0}; by[r.sig].n++; if(r.won) by[r.sig].h++; }
