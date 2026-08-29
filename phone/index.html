@@ -10212,7 +10212,7 @@ function jamMotionLine(N,lo,hi,seed){
    length (David: "let the form decide"), and the last chord of a phrase makes
    no approach at all — the line arrives and stays, which is what tells the ear
    one sentence has ended before the next begins. */
-function jamMelodyBar(n,curTop,nextTop,breathe,rnd,last){
+function jamMelodyBar(n,curTop,nextTop,breathe,rnd,last,st){
   const out=new Array(Math.max(0,n)).fill(curTop);
   if(n<=1) return out;
   const all=rqFieldsLowHigh(), ci=all.indexOf(curTop);
@@ -10239,9 +10239,17 @@ function jamMelodyBar(n,curTop,nextTop,breathe,rnd,last){
      Those bars are given somewhere to come back FROM instead: they depart a
      field or two AWAY from the change and return, so the last strokes are
      still walking into it. */
+  /* …AND A BAR DOES NOT WALK A DISTANCE IT CANNOT COVER (David, 29 Aug: "it
+     shouldn't be that the melody simply goes up and down the scale all the
+     time… it should not become the norm"). When the next note is further off
+     than the strokes can reach, every stroke was FORCED to step and the bar
+     came out as a scale; two such bars in a row and the line is running up
+     the instrument. A distant note is left to the bar line now — the leap
+     belongs there, where the chord changes — and the bar keeps its own shape. */
   const gap=ni>=0?Math.abs(ni-ci):0;
+  const reach=n-1;
   let way;
-  if(ni>=0&&gap>=2) way=[ci,ni>ci?ni-1:ni+1];
+  if(ni>=0&&gap>=2&&gap-1<=reach) way=[ci,ni>ci?ni-1:ni+1];
   else{
     const to=ni>ci?1:(ni<ci?-1:0);
     const away=to?-to:(rnd()<0.5?1:-1);
@@ -10276,15 +10284,36 @@ function jamMelodyBar(n,curTop,nextTop,breathe,rnd,last){
      beside the next chord's note so the bar line completes it. It needs both
      room and distance, so it asks for at least three strokes and a gap worth
      crossing, and it comes about one bar in five. */
-  if(!breathe&&way.length===2&&n>=3){
-    const dist=Math.abs(way[1]-ci);
-    if(dist>=2&&rnd()<0.22){
-      const len=Math.min(n-1,dist,4), d=Math.sign(way[1]-ci);
+  /* THE RUN IS NOT BOUND BY WHAT THE ORDINARY WALK CAN REACH. Gating it on
+     `way` meant it could only appear when the next note was three or four
+     fields off — the only gaps the walk itself is allowed to cross — and it
+     fired ONCE IN 192 BARS. A run exists precisely to cross a distance the
+     walk will not: it holds the chord's note, leaps once into the figure, and
+     steps home from there. */
+  if(!breathe&&n>=3&&st&&st.mayRun&&ni>=0){
+    const dist=Math.abs(ni-ci);
+    if(dist>=1){
+      st.ran=true;
+      /* HOW LONG A RUN IS (David, 29 Aug: "it can be two notes, three notes,
+         four notes, five notes, six notes… the shorter ones can be more
+         common than the longer ones"). Weighted so two and three are the
+         everyday figures and six is rare — then clamped by what the bar can
+         hold, since a run cannot be longer than the strokes the groove gives
+         its top voice. On a four-stroke groove that caps it at four; five and
+         six would have to begin in the bar before, which they cannot yet. */
+      const r=rnd();
+      const want=r<0.36?2:r<0.64?3:r<0.84?4:r<0.94?5:6;
+      /* WHERE THE RUN COMES FROM. Crossing a gap it walks straight into the
+         next note. But most gaps are ONE field — measured: of the bars offered
+         a run, more had a gap of 1 than of anything else — and a one-field gap
+         is not a run, it is a step. There the figure DEPARTS instead: it sets
+         off the other way and runs back in, which is the same stepwise motion
+         and the same arrival, with somewhere to have come from. */
+      const d=Math.sign(ni-ci)||1, end=ni-d;          // arrive beside the next note
+      const room=Math.abs(end-ci)+1;
+      const len=Math.max(2,Math.min(n-1,Math.max(room,want),want));
       for(let k=0;k<n;k++) out[k]=all[ci];              // hold, then run
-      for(let k=0;k<len;k++){
-        const at=n-len+k;
-        out[at]=all[lim(way[1]-d*(len-1-k))];
-      }
+      for(let k=0;k<len;k++) out[n-len+k]=all[lim(end-d*(len-1-k))];
       return out;
     }
   }
@@ -10952,14 +10981,19 @@ function buildJamPiece(){
     /* its own stream of randomness, so that rerolling the line does not also
        reshuffle every approach, and vice versa */
     const mrnd=jamRnd(((jam.mseed||1)^0x9E3779B9)>>>0);
-    const phrase=Math.max(1,Math.round(form.length/4));
+    /* FOUR PHRASES, BUT NEVER SHORTER THAN FOUR BARS. "Let the form decide"
+       divides the form in four — which on an eight-bar form makes a phrase TWO
+       bars long, so every second bar was a phrase end and rested, and half the
+       melody sat still. Two bars is not a phrase; four is the shortest thing
+       that can hold a rise and an arrival. */
+    const phrase=Math.max(4,Math.round(form.length/4));
     /* A LINE RESTS WHERE IT LIKES, not only where the phrase ends (David, 29
        Aug: "there can also be resting points in the middle of a phrase") — but
        AT MOST ONCE PER PHRASE. Left only with a "never twice running" rule it
        could rest seven bars in sixteen when the arc ran flat, and a line that
        rests half the time is not breathing, it is asleep. One rest inside a
        phrase, plus the rest that ends it, is the punctuation he asked for. */
-    let restInPhrase=false;
+    let restInPhrase=false, runs=0;
     form.forEach((f,i)=>{
       const v=vm[i];
       if(!v){ bars.push([]); return; }        // a chord this pan cannot voice keeps its bar
@@ -10968,11 +11002,30 @@ function buildJamPiece(){
       let tops=0; for(const e of evs) if(e[1]===topTok) tops++;
       const nv=vm[(i+1)%form.length];         // the loop closes onto its own first bar
       const ends=(i+1)%phrase===0;
-      const rest=ends||(!restInPhrase&&mrnd()<0.2);
+      const rest=ends||(!restInPhrase&&mrnd()<0.12);
       if(ends) restInPhrase=false; else if(rest) restInPhrase=true;
+      /* A RUN MAY CARRY ON INTO THE NEXT BAR — "maybe in the next bar
+         continues this movement" — but never into a third. Two bars of
+         stepwise motion is a phrase; three is the melody running up the
+         instrument, which is what he asked me not to make the norm.
+         AND THEY FALL ON THE EVEN BARS (David: "they should happen more often
+         at the end of the second or fourth or sixth or eighth bar of a
+         sequence than at the end of the first or third or fifth… they can
+         still happen in those bars, but not as often"). Three times as likely
+         on an even bar as on an odd one — the run then leads into the strong
+         bar rather than out of it. */
+      const evenBar=((i+1)%2)===0;
+      /* AND THEY ARE RARE (David: "overall, they shouldn't happen all the
+         time. Not every bar, not every second or every third bar. But just
+         from time to time for musical variety and for a break from the
+         pattern"). About one bar in seven carries one — three times likelier
+         on an even bar than an odd one, so the figure keeps its place in the
+         phrase without becoming the phrase. */
+      const st={mayRun:runs<2&&(runs===0||mrnd()<0.3)&&mrnd()<(evenBar?0.4:0.08)};
       const line=jamMelodyBar(tops,v[topTok],
         (nv&&nv[topTok]!=null)?nv[topTok]:v[topTok],
-        rest,mrnd,i===form.length-1);
+        rest,mrnd,i===form.length-1,st);
+      runs=st.ran?runs+1:0;
       let n=0;
       const bar=evs.map(([t,k,h])=>k===topTok
         ? patEv(t-gi*bp,k,h,Object.assign({},v,{[k]:line[n++]}))
