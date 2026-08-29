@@ -619,7 +619,16 @@ body.phone{--btpad:.12em}
    `top`, not a margin, so nothing in the layout moves. */
 /* glyphs breathe with slot density: alone large, stacked smaller */
 .slot.n1 .sym{font-size:37px}
-.slot.n1 .sym.d2{font-size:31px}
+/* 31 → 27 (29 Aug). The alone-in-its-slot size is the one place a two-digit
+   number could still outgrow its share, and after the second import it does:
+   the library now runs to 18 top fields, so positions 10 and up are ordinary
+   and two of them can land in neighbouring subdivisions. Measured on the
+   phone with an E Romanian Hijaz 20 — at 31px the pair overlapped by 2.7px,
+   at 27px they clear by 1.98, which is the 2px `--subgap` the design already
+   asks for. This is the SAME rule as before, not a new one: ".d2 writes
+   smaller… the size is what finally keeps the pair inside its own slot" — it
+   was simply tuned when no pan went past eleven fields. Single digits keep 37. */
+.slot.n1 .sym.d2{font-size:27px}
 .slot.n2 .sym.d2{font-size:17px}
 .slot.n3 .sym.d2{font-size:13.5px}
 .slot.n2 .sym{font-size:20px}
@@ -1263,9 +1272,19 @@ body.jam #srcBadge{display:none !important}
 #brkDlg{width:min(430px,94vw)}
 .brkstep{display:inline-flex; align-items:center; gap:5px}
 .brkstep .ctl{padding:6px 10px; font-size:14px; line-height:1}
-.brkstep .badge{min-width:96px; justify-content:center}
-#brkWrap{display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap}
+.brkstep .badge{min-width:84px; justify-content:center}
+/* one setting, one captioned row — the label and its control never separate */
+.brkrow{display:inline-flex; align-items:center; gap:7px}
+.brkrow .vlab{margin-right:0}
+#brkWrap{display:inline-flex; align-items:center; gap:8px 14px; flex-wrap:wrap}
+/* THE PHONE STACKS THEM. Wrapped side by side, a stepper's − and ＋ ended up
+   on a different line from the value they change. */
+body.phone #brkWrap{display:flex; flex-direction:column; align-items:flex-start; gap:11px}
+body.phone .brkrow{width:100%; justify-content:space-between}
+#brkDlg .brkrow{justify-content:flex-end}
 #brkWrap.off .brkon,#brkDlg.off .brkon{display:none}
+/* the sheet already names the block, so the row inside it drops its caption */
+#bkSwitchHost .brkrow .vlab{display:none}
 /* IT READS WITH THE SWING SLIDER BELOW IT, so it is the same length (David,
    29 Aug). Taking the whole row made it half again as long as swing (258px
    against 139px at 390px) — swing's own row spends width on its caption, its
@@ -6671,15 +6690,15 @@ function reanchorLoop(){
 // header-numbers marker (countMark) across the row's barsPerRow bars.
 function buildCountRow(m,cls){
   const cnt=document.createElement("div"); cnt.className="count"+(cls?" "+cls:"");
-  cnt.style.gridTemplateColumns="repeat("+m.bpr+",1fr)"; cnt.style.gap="0 14px";
+  cnt.style.gridTemplateColumns="repeat("+m.bpr+",minmax(0,1fr))"; cnt.style.gap="0 14px";
   for(let r=0;r<m.bpr;r++){
     const cb=document.createElement("div");
     /* one column per SUBDIVISION, each holding its own positions — the bar's
        own structure, so the numbers cannot drift off the notes (see .count) */
-    cb.style.display="grid"; cb.style.gridTemplateColumns="repeat("+m.beats+",1fr)";
+    cb.style.display="grid"; cb.style.gridTemplateColumns="repeat("+m.beats+",minmax(0,1fr))";
     for(let b=0;b<m.beats;b++){
       const cell=document.createElement("div"); cell.className="cbeat";
-      cell.style.gridTemplateColumns="repeat("+m.sub+",1fr)";
+      cell.style.gridTemplateColumns="repeat("+m.sub+",minmax(0,1fr))";
       for(let k=0;k<m.sub;k++){
         const t=b*m.sub+k;
         const sp=document.createElement("span"); sp.dataset.ct=r*m.bp+t;
@@ -6716,18 +6735,30 @@ function renderTableView(sc){
     // the row knows its own pulse span, so a double tap can loop it (David, 26 Aug)
     markRow(rowEl,b0*m.bp,Math.min(b0+m.bpr,sec.bars.length)*m.bp);
     rowEl.style.display="grid";
-    rowEl.style.gridTemplateColumns="repeat("+m.bpr+",1fr)";
+    rowEl.style.gridTemplateColumns="repeat("+m.bpr+",minmax(0,1fr))";
     rowEl.style.gap="0 14px";
     for(let bi=b0;bi<Math.min(b0+m.bpr,sec.bars.length);bi++){
       const bar=sec.bars[bi];
       const byT=new Map();
       for(const ev of bar){ if(!byT.has(ev.t)) byT.set(ev.t,[]); byT.get(ev.t).push(ev); }
       const bc=barChordLabel(bar);
+      /* minmax(0,1fr), NOT 1fr (David, 29 Aug: "on mobile, there are some
+         issues in the notation now with uneven cells"). A bare `1fr` is
+         `minmax(auto,1fr)`, so a column can never shrink below its content's
+         MIN-CONTENT width — and a subdivision holding a two-digit number is
+         wider than one holding a single digit. On the phone that pushed one
+         beat to 33px while its neighbours took 20.5, where all three should be
+         25.5. It only began to show now because the second import filled the
+         library with 12-to-18-field pans, so positions 10 and up are ordinary
+         rather than rare. Every score grid takes the same treatment, because
+         the whole horizontal budget in HANDOVER assumes an EQUAL SHARE — `.d2`
+         exists precisely so a two-digit number fits the share it is given
+         rather than demanding a bigger one. */
       const bel=document.createElement("div"); bel.className="bar";
-      bel.style.gridTemplateColumns="repeat("+m.beats+",1fr)";
+      bel.style.gridTemplateColumns="repeat("+m.beats+",minmax(0,1fr))";
       for(let b=0;b<m.beats;b++){
         const be=document.createElement("div"); be.className="beat";
-        be.style.gridTemplateColumns="repeat("+m.sub+",1fr)";
+        be.style.gridTemplateColumns="repeat("+m.sub+",minmax(0,1fr))";
         for(let sN=0;sN<m.sub;sN++){
           const t=b*m.sub+sN, rel=bi*m.bp+t;
           const sl=document.createElement("div"); sl.className="slot"; sl.dataset.rel=rel;
@@ -7624,17 +7655,17 @@ function renderTabView(sc){
     // the row knows its own pulse span, so a double tap can loop it (David, 26 Aug)
     markRow(rowEl,b0*m.bp,Math.min(b0+m.bpr,sec.bars.length)*m.bp);
     rowEl.style.display="grid";
-    rowEl.style.gridTemplateColumns="repeat("+m.bpr+",1fr)";
+    rowEl.style.gridTemplateColumns="repeat("+m.bpr+",minmax(0,1fr))";
     rowEl.style.gap="0 14px";
     for(let bi=b0;bi<Math.min(b0+m.bpr,sec.bars.length);bi++){
       const bar=sec.bars[bi];
       const byT=new Map();
       for(const ev of bar){ if(!byT.has(ev.t)) byT.set(ev.t,[]); byT.get(ev.t).push(ev); }
       const bel=document.createElement("div"); bel.className="bar";
-      bel.style.gridTemplateColumns="repeat("+m.beats+",1fr)";
+      bel.style.gridTemplateColumns="repeat("+m.beats+",minmax(0,1fr))";
       for(let b=0;b<m.beats;b++){
         const be=document.createElement("div"); be.className="beat tbeat";
-        be.style.gridTemplateColumns="repeat("+m.sub+",1fr)";
+        be.style.gridTemplateColumns="repeat("+m.sub+",minmax(0,1fr))";
         for(let sN=0;sN<m.sub;sN++){
           const t=b*m.sub+sN, rel=bi*m.bp+t;
           const col=document.createElement("div"); col.className="slot tcol"; col.dataset.rel=rel;
@@ -8407,13 +8438,13 @@ function paintEditDeck(){
   $("edLaneLab").textContent=viewSec+" · Bar "+(bar+1)+" of "+sec.bars.length
     +(winBP<m.bp?" · beats "+(b0+1)+"–"+Math.min(m.beats,b0+winBeats):"")+" ▾";
   const box=$("edCells"); box.innerHTML="";
-  box.style.gridTemplateColumns="repeat("+winBeats+",1fr)";
+  box.style.gridTemplateColumns="repeat("+winBeats+",minmax(0,1fr))";
   const data=sec.bars[bar]||[], byT=new Map();
   for(const ev of data){ if(!byT.has(ev.t)) byT.set(ev.t,[]); byT.get(ev.t).push(ev); }
   for(let b=0;b<winBeats;b++){
     if(b0+b>=m.beats) break;              // a clamped window shows only real beats
     const be=document.createElement("div"); be.className="edbeat";
-    be.style.gridTemplateColumns="repeat("+m.sub+",1fr)";
+    be.style.gridTemplateColumns="repeat("+m.sub+",minmax(0,1fr))";
     const num=document.createElement("span"); num.className="edbeatnum";
     num.textContent=b0+b+1; be.appendChild(num);
     for(let sN=0;sN<m.sub;sN++){
@@ -10421,61 +10452,76 @@ function jamPaintChord(pi){
    company through it. The steppers write their own badge instead of asking for
    a re-render: the mask is stateless, so a change is audible on the next
    look-ahead without touching the piece. */
-function brkLenLabel(){ return jam.brk.len===1?"1-bar break":jam.brk.len+"-bar break"; }
+function brkLenLabel(){ return jam.brk.len===1?"1 bar":jam.brk.len+" bars"; }
 function brkEveryLabel(){ return jam.brk.every===1?"every cycle":"every "+jam.brk.every+" cycles"; }
+/* EVERY SETTING IS A CAPTIONED ROW, exactly like "CHORD VOICINGS: Narrow|Wide"
+   above it in the drawer (David, 29 Aug: the phone controls "don't react
+   properly"). They were one long wrapping line of bare buttons before — the
+   − and ＋ ended up on a different line from the value they change, and the
+   two options read as instructions ("Click during break") rather than as
+   switches, so tapping one told you nothing. A caption plus a pair of pills
+   says what the control IS and which way it is set, in the app's own idiom. */
+function brkRow(w,caption){
+  const r=document.createElement("span"); r.className="brkrow";
+  const lab=document.createElement("span"); lab.className="lab vlab";
+  lab.textContent=caption; r.appendChild(lab);
+  w.appendChild(r); return r;
+}
+function brkPills(row,aria,labels,get,set){
+  const g=document.createElement("span"); g.className="pills";
+  g.setAttribute("role","group"); g.setAttribute("aria-label",aria);
+  labels.forEach(([label,val,title])=>{
+    const b=document.createElement("button");
+    b.textContent=label; b.title=title||"";
+    b.setAttribute("aria-pressed",String(get()===val));
+    b.addEventListener("click",()=>{
+      if(get()===val) return;
+      /* the pressed state moves HERE, not on a re-render: this group is often
+         on loan to the sheet or the drawer, and the rebuilt copy is not the
+         one being looked at — the trap the voicing pills hit first */
+      g.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));
+      set(val);
+    });
+    g.appendChild(b);
+  });
+  row.appendChild(g); return g;
+}
 function buildBrkWrap(){
   const w=document.createElement("span"); w.id="brkWrap";
-  const pills=document.createElement("span");
-  pills.className="pills"; pills.id="brkSwitch";
-  pills.setAttribute("role","group"); pills.setAttribute("aria-label","Breaks");
-  [["Off",false],["On",true]].forEach(([label,on])=>{
-    const b=document.createElement("button");
-    b.textContent=label;
-    b.setAttribute("aria-pressed",String(!!jam.brk.on===on));
-    b.title=on?"Scheduled silences — hold your groove through them"
-              :"The backing plays every bar";
-    b.addEventListener("click",()=>{
-      if(!!jam.brk.on===on) return;
-      /* the pressed state moves HERE, not on a re-render: this control is
-         often on loan to the sheet or the drawer, and the rebuilt copy is not
-         the one being looked at — the same trap the voicing pills hit */
-      pills.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));
-      jam.brk.on=on; paintBrk(); saveJamLS();
-      if(!on) clearBrkDim();
+  brkPills(brkRow(w,"Breaks:"),"Breaks",[["Off",false],["On",true]],
+    ()=>!!jam.brk.on,v=>{
+      jam.brk.on=v; paintBrk(); saveJamLS();
+      if(!v) clearBrkDim();
       if(PHONE) phoneFit();
-      toast(on?"Breaks on — "+brkLenLabel()+", "+brkEveryLabel():"Breaks off");
+      toast(v?"Breaks on — "+brkLenLabel()+", "+brkEveryLabel():"Breaks off");
     });
-    pills.appendChild(b);
-  });
-  w.appendChild(pills);
-  const step=(cls,label,bump)=>{
-    const g=document.createElement("span"); g.className="brkstep brkon";
+  const step=(caption,cls,aria,bump)=>{
+    const r=brkRow(w,caption); r.classList.add("brkon");
+    const g=document.createElement("span"); g.className="brkstep";
     const badge=document.createElement("span"); badge.className="badge";
     const b=document.createElement("b"); b.className=cls; badge.appendChild(b);
-    const key=(txt,d,aria)=>{ const x=document.createElement("button");
-      x.className="ctl"; x.textContent=txt; x.setAttribute("aria-label",aria);
+    const key=(txt,d,lbl)=>{ const x=document.createElement("button");
+      x.className="ctl"; x.textContent=txt; x.setAttribute("aria-label",lbl);
       x.addEventListener("click",()=>{ bump(d);
         jam.brk=jamBrkNorm(jam.brk,brkCycleBars()); paintBrk(); saveJamLS(); });
       return x; };
-    g.appendChild(key("−",-1,"Less "+label));
+    g.appendChild(key("−",-1,"Less "+aria));
     g.appendChild(badge);
-    g.appendChild(key("＋",1,"More "+label));
-    w.appendChild(g);
+    g.appendChild(key("＋",1,"More "+aria));
+    r.appendChild(g);
   };
-  step("brkLen","the break",d=>{ jam.brk.len+=d; });
-  step("brkEvery","often",d=>{ jam.brk.every+=d; });
-  const tog=(cls,txt,title,get,set)=>{
-    const b=document.createElement("button");
-    b.className="ctl brkon "+cls; b.textContent=txt; b.title=title;
-    b.addEventListener("click",()=>{ set(!get()); paintBrk(); saveJamLS(); });
-    w.appendChild(b);
-  };
-  tog("brkClick","Click during break",
-    "Keep the metronome going through the silence — it only sounds if the metronome is on",
-    ()=>jam.brk.click,v=>{ jam.brk.click=v; });
-  tog("brkMark","Marker during break",
-    "On: the marker walks the silent bars. Off: it waits on the last beat you heard.",
-    ()=>jam.brk.marker,v=>{ jam.brk.marker=v; if(v===false) return; });
+  step("Break length:","brkLen","break length",d=>{ jam.brk.len+=d; });
+  step("How often:","brkEvery","often",d=>{ jam.brk.every+=d; });
+  const cr=brkRow(w,"Metronome:"); cr.classList.add("brkon");
+  brkPills(cr,"Metronome during the break",
+    [["Silent",false,"The break is real silence"],
+     ["Keeps time",true,"The click carries on through the break — if the metronome is on"]],
+    ()=>!!jam.brk.click,v=>{ jam.brk.click=v; paintBrk(); saveJamLS(); });
+  const mr=brkRow(w,"Marker:"); mr.classList.add("brkon");
+  brkPills(mr,"Marker during the break",
+    [["Waits",false,"It stays on the last beat you heard and comes back with the music"],
+     ["Walks on",true,"It keeps moving through the silent bars"]],
+    ()=>!!jam.brk.marker,v=>{ jam.brk.marker=v; paintBrk(); saveJamLS(); });
   paintBrk(w);
   return w;
 }
@@ -10486,13 +10532,14 @@ function paintBrk(root){
   const w=root||document.getElementById("brkWrap");
   if(w){
     w.classList.toggle("off",!jam.brk.on);
-    const sw=w.querySelector("#brkSwitch");
-    if(sw) sw.querySelectorAll("button").forEach((x,i)=>
-      x.setAttribute("aria-pressed",String(!!jam.brk.on===(i===1))));
+    const set=(aria,on)=>{ const g=w.querySelector('.pills[aria-label="'+aria+'"]');
+      if(g) g.querySelectorAll("button").forEach((x,i)=>
+        x.setAttribute("aria-pressed",String(on===(i===1)))); };
+    set("Breaks",!!jam.brk.on);
+    set("Metronome during the break",!!jam.brk.click);
+    set("Marker during the break",!!jam.brk.marker);
     const L=w.querySelector(".brkLen"); if(L) L.textContent=brkLenLabel();
     const E=w.querySelector(".brkEvery"); if(E) E.textContent=brkEveryLabel();
-    const c=w.querySelector(".brkClick"); if(c) c.classList.toggle("on",!!jam.brk.click);
-    const m=w.querySelector(".brkMark"); if(m) m.classList.toggle("on",!!jam.brk.marker);
   }
   const d=document.getElementById("brkDlg");
   if(d){
@@ -13383,7 +13430,7 @@ function grooveMini(pat){
     ||Object.fromEntries(JV_TOK.map(k=>[k,0]));
   const bp=pat.meter[0]*pat.sub, total=bp*patBars(pat);
   const box=document.createElement("div"); box.className="gmini";
-  box.style.gridTemplateColumns="repeat("+total+",1fr)";
+  box.style.gridTemplateColumns="repeat("+total+",minmax(0,1fr))";
   const slots=[];
   for(let t=0;t<total;t++){ const s=document.createElement("div");
     if(t&&t%pat.sub===0) s.classList.add("gb");
@@ -14077,14 +14124,14 @@ function fitJamHead(){
    without being opened: amber and "Breaks · 2 every 2" while on, plain
    "Breaks" while off. It sits between the voicings and the generator
    (David, 29 Aug). */
+/* NO ICON (David, 29 Aug: "the break button doesn't need the dashes before
+   and after Breaks"). The two short strokes that said "a gap in the music"
+   read as stray dashes beside the word, so the button is the word alone. */
 function brkBtnFace(full){
-  const icon='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" '
-    +'stroke="currentColor" stroke-width="2.2" stroke-linecap="round">'
-    +'<path d="M4 12h4"/><path d="M16 12h4"/></svg>';
   let w="Breaks";
   if(jam&&jam.brk&&jam.brk.on&&full)
     w+=" · "+jam.brk.len+" every "+jam.brk.every;
-  return icon+" "+w+' <span class="dn">▾</span>';
+  return w+' <span class="dn">▾</span>';
 }
 function paintBrkBtn(){
   const b=document.getElementById("brkBtn"); if(!b||!jam||!jam.brk) return;
@@ -14114,12 +14161,13 @@ function brkSplit(){
   const w=document.getElementById("brkWrap"); if(!w) return;
   const st=document.getElementById("bkStepHost"), op=document.getElementById("bkOptHost");
   if(!st||!op) return;
-  w.querySelectorAll(".brkstep").forEach(el=>st.appendChild(el));
-  w.querySelectorAll(".brkClick,.brkMark").forEach(el=>op.appendChild(el));
+  const rows=[...w.querySelectorAll(".brkrow")];
+  rows.slice(1,3).forEach(el=>st.appendChild(el));   // break length · comes
+  rows.slice(3).forEach(el=>op.appendChild(el));     // metronome · marker
 }
 function brkGather(){
   const w=document.getElementById("brkWrap"); if(!w) return;
-  document.querySelectorAll("#bkStepHost .brkstep,#bkOptHost .ctl")
+  document.querySelectorAll("#bkStepHost .brkrow,#bkOptHost .brkrow")
     .forEach(el=>w.appendChild(el));
 }
 function openBrk(){
