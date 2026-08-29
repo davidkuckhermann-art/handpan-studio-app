@@ -12380,6 +12380,34 @@ function renderQuizSum(){
    three in the phone's menu, and the body class. Nothing else may light them,
    or leaving one room can darken the wrong button — the rule the old single
    pill already had, now with three lamps instead of one. */
+/* WHERE YOU ARE, AS ONE WORD — and the only place that decides it (David, 29
+   Aug: "please make the mode … stick when the app is closed and re-opened").
+   It was written at closing time alone, which is a promise the browser does
+   not always keep: `beforeunload` is skipped when a WebKit shell is quit and
+   when a tab is discarded, so a room could be left and never recorded. It is
+   written as it CHANGES now, and the closing handlers are merely the last of
+   several chances rather than the only one.
+   THE GROOVE BENCH IS NOT A ROOM here. A half-written groove is stored
+   nowhere, so "reopen the bench" could only ever open an empty one; it reports
+   the room it was opened FROM — the jam it belongs to, or the score — which is
+   where leaving the bench would have put you anyway. */
+function roomNow(){
+  if(rqOn) return "rquiz";
+  if(quizOn) return "quiz";
+  if(typeof grooveEdit!=="undefined"&&grooveEdit)
+    return grooveEdit.origin==="jam"?"jam":"score";
+  if(jamOn) return "jam";
+  if(editing) return "edit";
+  return "score";
+}
+/* Nothing is stored until restoreSession has READ the stored room — otherwise
+   the first paint of a fresh page would overwrite it with "score" before the
+   app ever looked. A lesson player never sets the flag, so it never writes. */
+let roomOpen=false;
+function saveRoom(){
+  if(!roomOpen) return;
+  try{ localStorage.setItem("hps.room",roomNow()); }catch(e){}
+}
 function updatePracticeBtn(){
   const on=jamOn||quizOn||rqOn;
   /* ARRANGER IS LIT WHENEVER YOU ARE NOT IN ANOTHER ROOM — reading the piece
@@ -12403,6 +12431,7 @@ function updatePracticeBtn(){
   if(rb) rb.classList.toggle("on",rqOn);
   // in jam the phone's Chords side shows the progression, not the chord card
   if(PHONE) placeJamPanel();
+  saveRoom();          // this function IS "where am I"; the store follows it
 }
 function leavePractice(){ if(quizOn) leaveQuiz(); if(rqOn) leaveRhythmQuiz(); if(jamOn) leaveJam(); }
 function enterQuiz(){
@@ -15197,6 +15226,7 @@ function boot(){
     // student's answer when the dialog drove the exit, and an untouched
     // groove needs no asking, so it simply leaves without saving
     if(!editing&&grooveEdit) grooveEditFinish(grooveExitGo==="save");
+    saveRoom();        // updatePracticeBtn never hears about the editor
   });
   document.addEventListener("keydown",e=>{
     const typing=["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName);
@@ -15383,6 +15413,10 @@ function boot(){
        showing. */
     try{
       if(document.documentElement.classList.contains("player")||EMBEDDED) return;
+      /* the gate opens HERE, before a single room is entered: from this line
+         on every change is worth storing, and the read below has already
+         happened by the time any enter function calls saveRoom */
+      roomOpen=true;
       if(location.hash.startsWith("#p=")||WANT_PIECE) return;
       const room=localStorage.getItem("hps.room");
       if(room==="jam") enterJam();
@@ -15403,12 +15437,18 @@ function boot(){
        Written HERE, in the one handler that already runs at closing time,
        rather than in each of the eight enter/leave functions — five places
        each half-remembering is how they drift apart. */
-    try{ localStorage.setItem("hps.room",
-      rqOn?"rquiz":quizOn?"quiz":jamOn?"jam":editing?"edit":"score"); }catch(e){}
+    saveRoom();
     const p=jamOn&&jamPrev?jamPrev.piece:(grooveEdit?grooveEdit.prevPiece:piece);
     if(p&&(p.id==="jam"||p.id==="groove-edit")) return;
     try{ localStorage.setItem("hps.lastPiece","HPS1:"+enc(p)); }catch(e){}
   });
+  /* …and two signals `beforeunload` does not give. Safari fires `pagehide`
+     where it skips `beforeunload` entirely, and a WebKit shell being quit
+     often gives nothing but `visibilitychange`. Both are cheap and idempotent
+     — saveRoom writes one short string. */
+  window.addEventListener("pagehide",saveRoom);
+  document.addEventListener("visibilitychange",()=>{
+    if(document.visibilityState==="hidden") saveRoom(); });
   $("setBtn").addEventListener("click",()=>openDlg($("setDlg")));
   $("setClose").addEventListener("click",()=>$("setDlg").close());
   $("libBtn").addEventListener("click",()=>{ renderLib(); openDlg($("libDlg")); });
