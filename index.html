@@ -10162,7 +10162,16 @@ function jamMotionLine(N,lo,hi,seed){
     dir=-dir;
   }
   pts.push([1,startV]);
-  const ease=x=>x*x*(3-2*x);                 // no corners at the turns
+  /* A STEADY RATE, NOT A SMOOTHSTEP (David, 29 Aug: "the melody starts low
+     for the first two bars, and then it goes suddenly very high… it's okay if
+     it goes high, but in that case the melody should start to move high
+     earlier, and it should move all the way or at least a big part of the
+     way"). Smoothstep is FLAT AT BOTH ENDS by construction — that is what it
+     is for — so the first quarter of every climb barely moved and the middle
+     had to make up the whole distance. Straight interpolation spends the same
+     rise evenly across the bars it has, which is what "start earlier and go
+     most of the way" means arithmetically. */
+  const ease=x=>x;
   const out=[];
   for(let i=0;i<N;i++){
     const t=N===1?0:i/N;
@@ -10250,6 +10259,27 @@ function jamMelodyBar(n,curTop,nextTop,breathe,rnd,last){
     if(seg<way.length&&pos===way[seg]&&seg<way.length-1) seg++;
     run=(pos===was)?run+1:1;
     out[k]=all[pos];
+  }
+  /* A TRANSITION RUN, NOW AND THEN (David, 29 Aug: "let's bring in transition
+     runs of notes… from time to time, at the end of a bar, insert transition
+     phrases. These phrases should usually have stepwise motion, so they go up
+     or down the scale and lead to the next chord"). Where the ordinary walk
+     spreads its steps across the whole bar, a run holds the chord's note and
+     then MOVES — three or four fields in a row, one after another, arriving
+     beside the next chord's note so the bar line completes it. It needs both
+     room and distance, so it asks for at least three strokes and a gap worth
+     crossing, and it comes about one bar in five. */
+  if(!breathe&&way.length===2&&n>=3){
+    const dist=Math.abs(way[1]-ci);
+    if(dist>=2&&rnd()<0.22){
+      const len=Math.min(n-1,dist,4), d=Math.sign(way[1]-ci);
+      for(let k=0;k<n;k++) out[k]=all[ci];              // hold, then run
+      for(let k=0;k<len;k++){
+        const at=n-len+k;
+        out[at]=all[lim(way[1]-d*(len-1-k))];
+      }
+      return out;
+    }
   }
   /* AND THE DETOUR SITS ON THE LAST MELODY NOTE (David: "the detour then
      should happen on the last note of the bar… last melody note"). A step to
@@ -15126,7 +15156,19 @@ function paintVoicingDesc(){
       d.textContent="The line rises and returns over "+n+(n===1?" bar":" bars")
         +" — "+jamPasses()+(jamPasses()===1?" pass":" passes")+" of your "
         +jam.slots.length+(jam.slots.length===1?" chord":" chords")
-        +" — and the notation is that whole form. New line draws another shape over the same chords."; }
+        +" — and the notation is that whole form. New line draws another shape over the same chords.";
+      /* AND IT SAYS WHEN THE GROOVE CANNOT CARRY A MELODY (David, 29 Aug —
+         he lost real listening time to this on the phone). Two of the ten
+         grooves strike the top voice once a bar, and a melody that moves
+         inside the bar has nothing to move on there: one stroke, one note.
+         The line still moves from chord to chord; it simply cannot sing
+         within one. Better said here than discovered by ear. */
+      const pt=allPats().find(x=>x.id===jam.patternId)||JAMPATS[0];
+      const V=patVoices(pt), tk=JV_TOK[Math.max(0,V-1)], bp=pt.meter[0]*pt.sub;
+      let strokes=0; for(const e of (pt.ev||[])) if(Math.floor(e[0]/bp)===0&&e[1]===tk) strokes++;
+      if(strokes<=1) d.textContent+=" \u2014 note that \u201c"+pt.name+"\u201d plays its top voice "
+        +"once a bar, so the melody can only move between chords here, not inside one. "
+        +"A groove like Fast arpeggio or the 2/4 polyrhythm gives it room."; }
   }
 }
 function openJamSet(){
