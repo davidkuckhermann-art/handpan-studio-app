@@ -1288,7 +1288,13 @@ body.jam #srcBadge{display:none !important}
    on a different line from the value they change. */
 body.phone #brkWrap{display:flex; flex-direction:column; align-items:flex-start; gap:11px}
 body.phone .brkrow{width:100%; justify-content:space-between}
-#brkDlg .brkrow{justify-content:flex-end}
+body:not(.phone) #brkDlg .brkrow{justify-content:flex-end}
+/* THE SHEET STACKS ON THE PHONE. Its blocks put the name and the control on
+   one line, which is right on a 430px sheet and wrong on a 375px screen —
+   the name wrapped into a four-line column and squeezed the controls. */
+body.phone #brkDlg .jshead{flex-direction:column; align-items:stretch; gap:9px}
+body.phone #bkStepHost,body.phone #bkOptHost{display:flex; flex-direction:column; gap:10px}
+body.phone #brkDlg .brkrow{width:100%; justify-content:space-between}
 #brkWrap.off .brkon,#brkDlg.off .brkon{display:none}
 /* the sheet already names the block, so the row inside it drops its caption */
 #bkSwitchHost .brkrow .vlab{display:none}
@@ -10392,6 +10398,7 @@ function leaveJam(){
   jamOn=false; jamEditSlot=-1; document.body.classList.remove("jam");
   clearBrkDim(); try{ $("brkDlg").close(); }catch(e){}
   $("brkBtn").classList.add("hidden");
+  if(PHONE) $("jamSetBtn").classList.add("hidden");
   updatePracticeBtn(); if(!PHONE) $("jampanel").classList.add("hidden");
   $("grooveHost").innerHTML="";
   // the voicings leave the notation head with the jam that owned them
@@ -10537,17 +10544,20 @@ function buildBrkWrap(){
    because none of them holds the value. */
 function paintBrk(root){
   const w=root||document.getElementById("brkWrap");
-  if(w){
-    w.classList.toggle("off",!jam.brk.on);
-    const set=(aria,on)=>{ const g=w.querySelector('.pills[aria-label="'+aria+'"]');
-      if(g) g.querySelectorAll("button").forEach((x,i)=>
-        x.setAttribute("aria-pressed",String(on===(i===1)))); };
-    set("Breaks",!!jam.brk.on);
-    set("Metronome during the break",!!jam.brk.click);
-    set("Marker during the break",!!jam.brk.marker);
-    const L=w.querySelector(".brkLen"); if(L) L.textContent=brkLenLabel();
-    const E=w.querySelector(".brkEvery"); if(E) E.textContent=brkEveryLabel();
-  }
+  if(w) w.classList.toggle("off",!jam.brk.on);
+  /* THE CONTROLS ARE FOUND FROM THE DOCUMENT, not from the wrap. While a sheet
+     is open the rows have been dealt out into ITS hosts and are no longer
+     inside #brkWrap, so a wrap-scoped lookup found nothing and the badges sat
+     on their old values while the setting changed underneath (29 Aug). There
+     is only ever ONE of each, wherever it is currently living. */
+  const set=(aria,on)=>{ const g=document.querySelector('.pills[aria-label="'+aria+'"]');
+    if(g) g.querySelectorAll("button").forEach((x,i)=>
+      x.setAttribute("aria-pressed",String(on===(i===1)))); };
+  set("Breaks",!!jam.brk.on);
+  set("Metronome during the break",!!jam.brk.click);
+  set("Marker during the break",!!jam.brk.marker);
+  const L=document.querySelector(".brkLen"); if(L) L.textContent=brkLenLabel();
+  const E=document.querySelector(".brkEvery"); if(E) E.textContent=brkEveryLabel();
   const d=document.getElementById("brkDlg");
   if(d){
     d.classList.toggle("off",!jam.brk.on);
@@ -10816,9 +10826,21 @@ function renderJamPanel(){
     /* the phone puts it in the drawer's "This jam" section, which already sits
        ABOVE Feel (David, 29 Aug) — the order is transport, arrangement, this
        jam, my pan, feel */
+    /* THE DRAWER GETS BUTTONS, NOT THE CONTROLS (David, 29 Aug: "on mobile in
+       the drawer, please use a popup window for the jam settings. Otherwise
+       the drawer gets too crowded"). The voicings, the spice slider and the
+       five break rows had grown into a block of their own; behind two buttons
+       the section is two chips again. They are the SAME buttons and the SAME
+       sheets the desktop uses — `deep` still holds the live controls while a
+       sheet is shut, so nothing is duplicated and the two platforms cannot
+       drift apart. */
     if(host){ dwModeReset(); host.appendChild(deep);
+      deep.classList.add("hidden");
+      host.appendChild($("jamSetBtn")); host.appendChild($("brkBtn"));
+      paintJamSetBtn();
       if(!jamSetRehome(vpills,cwrap)) paintColour();
-      paintBrk(deep.querySelector("#brkWrap")); }
+      if(!brkRehome(deep.querySelector("#brkWrap")))
+        paintBrk(deep.querySelector("#brkWrap")); }
   } else {
     prog.appendChild(tools);
     /* THE VOICINGS GO TOP RIGHT, beside 🎲 Generate (David, 28 Aug) — the
@@ -14143,9 +14165,17 @@ function brkBtnFace(full){
 function paintBrkBtn(){
   const b=document.getElementById("brkBtn"); if(!b||!jam||!jam.brk) return;
   b.classList.toggle("on",!!jam.brk.on);
-  b.classList.toggle("hidden",!jamOn||PHONE);
+  b.classList.toggle("hidden",!jamOn);
   b.innerHTML=brkBtnFace(true);
   if(!PHONE&&jamOn) fitJamHead();
+}
+/* on the desktop fitJamHead writes this face as part of its ladder; the phone
+   has no ladder, so the button still needs saying */
+function paintJamSetBtn(){
+  const b=document.getElementById("jamSetBtn"); if(!b) return;
+  b.classList.toggle("hidden",!jamOn);
+  b.innerHTML='<svg width="15" height="15"><use href="#is-chord"/></svg> '
+    +'Chord voicings <span class="dn">▾</span>';
 }
 /* A RENDER WHILE THE SHEET IS OPEN hands it the NEW control and throws the
    stale one away — the same rule jamSetRehome follows, and for the same
@@ -15957,6 +15987,14 @@ function dwModeReset(){
   if(!m) return;
   ["edBarAdd","edBarDel"].forEach(id=>{ const el=$(id);
     if(el&&m.contains(el)&&chips) chips.appendChild(el); });
+  /* THE JAM'S TWO SHEET BUTTONS LIVE HERE ON THE PHONE, and this function
+     wipes the section — which DESTROYED them on the second render, so the
+     next one appended null (29 Aug). They go home to the notation head, which
+     is where the desktop keeps them anyway; the phone takes them back on the
+     next render. */
+  const hr=$("scoreheadR"), gen=$("genBtn");
+  ["jamSetBtn","brkBtn"].forEach(id=>{ const el=$(id);
+    if(el&&m.contains(el)&&hr) hr.insertBefore(el,gen||null); });
   m.innerHTML="";
 }
 function placeDrawer(){
