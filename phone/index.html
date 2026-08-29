@@ -934,7 +934,10 @@ body:not(.phone) #viewrow{margin:20px 0 12px}
   box-shadow:0 1px 3px rgba(70,52,28,.35)}
 .jchord .sdot.soft{width:11px; height:11px; top:-4px; left:-4px;
   background:#fff; border:2px solid var(--dixie); opacity:.7; box-shadow:none}
-body.jam .auth{display:none !important}
+/* EDIT STAYS IN JAM MODE (David, 29 Aug: "it should have the same edit button
+   in jam mode that it has in arranger mode") — it just asks WHICH thing you
+   mean to edit. Video sync is the one that goes: a jam has no video. */
+body.jam #syncOpen{display:none !important}
 /* a jam is ONE section — its arrangement pill in the frame's footer and the
    arrangement card are pure noise ("what does the jam button next to
    arrangement do?" — David, 26 Aug) */
@@ -2939,6 +2942,31 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 <!-- SHARE, WHATEVER IS IN FRONT OF YOU (27 Aug, David): the header's share
      button saves and loads the piece, the jam, or the groove, depending on
      the room. Pieces keep their own dialog; jams and grooves share this one. -->
+<!-- THE JAM'S EDIT DOOR (David, 29 Aug). A jam is two things at once — an
+     arrangement you could write out, and a groove underneath it — so the Edit
+     button cannot simply toggle an editor the way it does in the arranger; it
+     has to ask which one you mean. These are the same two doors the load/save
+     sheet carries, calling the same two functions, and David asked for them in
+     both places: "yes, it's okay to have these options in the Share window and
+     also now triggered by the new Edit button." -->
+<dialog id="jamEditDlg">
+  <h3>Edit</h3>
+  <button class="pchoice" id="jeArr">
+    <b>Arrangement</b>
+    <span>Copies this jam into a new piece &mdash; its chords, its groove and its
+    tempo &mdash; and opens that piece in the editor. Save it from the Library.</span>
+  </button>
+  <button class="pchoice" id="jeGroove">
+    <b>Groove</b>
+    <span>Opens the groove this jam is playing on the groove bench. What you
+    write there is carried to every chord of the progression; one of David's
+    built-in grooves opens as your own copy, so the original is never
+    overwritten.</span>
+  </button>
+  <div class="row"><span class="spacer"></span>
+    <button class="ctl" id="jeClose">Close</button></div>
+</dialog>
+
 <dialog id="ctxShareDlg">
   <!-- THE TWO DOORS OUT OF A JAM (David, 28 Aug), above the two ways of
        keeping it and separated by a rule: they DO something rather than store
@@ -15045,6 +15073,11 @@ function boot(){
   // webfonts land after first paint and change the measurement
   if(document.fonts&&document.fonts.ready) document.fonts.ready.then(fitTitle);
   $("editBtn").addEventListener("click",()=>{
+    /* IN A JAM, EDIT ASKS WHAT (David, 29 Aug). Guarded on jamOn, which is
+       already false by the time jamToPiece() reaches its own
+       `$("editBtn").click()` — it calls leaveJam() first — so that path still
+       walks straight into the editor rather than reopening this dialog. */
+    if(jamOn){ openDlg($("jamEditDlg")); return; }
     /* Leaving the GROOVE bench asks what to do with the work first (David,
        27 Aug) — unless nothing changed, or the dialog is the one driving the
        exit. It has to happen BEFORE `editing` flips, or Cancel would have to
@@ -15439,6 +15472,10 @@ function boot(){
      functions, called from both places (28 Aug) */
   $("csToArr").addEventListener("click",()=>{ $("ctxShareDlg").close(); jamToPiece(); });
   $("csToGroove").addEventListener("click",()=>{ $("ctxShareDlg").close(); editThisGroove(); });
+  // the same two doors, opened from the header's Edit button
+  $("jeArr").addEventListener("click",()=>{ $("jamEditDlg").close(); jamToPiece(); });
+  $("jeGroove").addEventListener("click",()=>{ $("jamEditDlg").close(); editThisGroove(); });
+  $("jeClose").addEventListener("click",()=>$("jamEditDlg").close());
   $("gnCreate").addEventListener("click",()=>{
     const mv=$("gnMeter").value.split("/"), beats=+mv[0], den=+mv[1];
     const sub=+$("gnSub").value;
