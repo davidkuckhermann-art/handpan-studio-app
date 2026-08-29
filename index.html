@@ -229,6 +229,39 @@ body{-webkit-user-select:none; user-select:none}
    magnifying effect when I long-click into the notation") */
 body,#score,#scorewrap,#scorecard{-webkit-touch-callout:none}
 input,textarea,select{-webkit-user-select:text; user-select:text}
+/* SLIDERS ON iOS, PART 1 OF 2 — THE DARK BAR (David, 29 Aug: "when I touch
+   it, a dark bar appears around it"). Safari paints its tap highlight over
+   any range under a finger; it is shaped like the slider, which is why it
+   reads as a bar and not as a glow. World Groove Grid hit the identical
+   symptom on 23 Aug 2026 and killed it with this one line — ported here.
+   EVERY range, not just the spices one: they all draw it, spices is simply
+   the one he lives in. Part 2 is `iosSliders()`, which takes the drag. */
+input[type=range]{-webkit-tap-highlight-color:transparent}
+/* THE BIG SLIDER (David, 29 Aug, for spices and Feel). Both are in-row
+   sliders squeezed to ~140px, where 0–100 in steps of 5 gives about 6px a
+   step — no thumb is reliable at that size. Touch one and the gesture is
+   handed to THIS, full width at the top of the screen: the finger keeps
+   dragging wherever it is, the whole screen width becomes the range, and the
+   value is read here instead of from under the fingertip. Ported from World
+   Groove Grid's #bigsl. Top, not bottom: the drawer these sliders live in
+   comes up from the bottom, and the hand is already there. */
+#bigsl{display:none; position:fixed; left:10px; right:10px; top:14px; z-index:60;
+  background:var(--card); border:1px solid var(--rule); border-radius:14px;
+  padding:13px 15px 16px; box-shadow:0 14px 46px rgba(30,27,22,.28)}
+body.showbigsl #bigsl{display:block}
+#bigsl .hd{display:flex; align-items:baseline; justify-content:space-between; gap:10px}
+#bigsl .lb{font-size:10.5px; font-weight:800; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink3)}
+#bigsl .val{font-size:19px; font-weight:800; color:var(--ink);
+  font-variant-numeric:tabular-nums}
+#bigsl .trk{position:relative; height:14px; border-radius:99px;
+  background:var(--dust); margin-top:11px}
+#bigsl .fill{position:absolute; left:0; top:0; bottom:0; border-radius:99px;
+  background:var(--dixie)}
+#bigsl .knob{position:absolute; top:50%; width:34px; height:34px; margin-left:-17px;
+  margin-top:-17px; border-radius:50%; background:var(--dixie);
+  border:3px solid var(--card); box-shadow:0 2px 10px rgba(30,27,22,.3)}
+#bigsl .hint{margin:9px 0 0; font-size:11px; color:var(--ink3)}
 button{font:inherit; cursor:pointer}
 .ctlgroup{display:inline-flex; gap:6px; padding:4px 7px; border:1px solid var(--rule);
   border-radius:12px; background:var(--card)}                /* the three panel toggles live together */
@@ -492,13 +525,34 @@ body.mkline .mkbox{top:auto; bottom:-1px; height:2px; background:var(--dixie);
    lays a warm translucent wash OVER the top — so a plain neutral fill softens
    on exactly the rows that matter. It carries a hairline of its own as well,
    which is geometry rather than shading and survives all three grounds. */
-.sym.bt{position:relative; isolation:isolate}
+.sym.bt{position:relative; isolation:isolate;
+  padding-inline:var(--btpad,.21em); max-width:calc(100% - 2px)}
+/* THE BADGE'S ROOM IS PART OF THE GLYPH'S BOX (David, 29 Aug: the badges
+   "should never sit on top of other letters/symbols or over borders
+   (including the marker orange border)"). It used to be paint hanging outside
+   that box — `width:calc(100% + .42em)` on a shape nothing in the layout knew
+   about — so at two bars to a row on a phone it lay across its neighbour by
+   7.6px, escaped its slot by 4.5px and was cut by the marker's edge in 26 of
+   the positions tested. Now the overhang is PADDING: the glyph's box is as
+   wide as its badge, so the slot's own centring holds it, and `max-width`
+   caps it at the slot when a bar is tight — the badge can no longer reach a
+   gutter, a cell border or the marker, because it cannot leave its slot.
+   --btpad is the overhang, halved on the phone (below), which is his "a bit
+   narrower when space is tight". The cap is 2px UNDER the slot rather than
+   flush with it, so that where it binds the badge still shows daylight either
+   side instead of appearing to fill the column. */
 .sym.bt::before{content:""; position:absolute; z-index:-1;
-  left:50%; top:50%; width:calc(100% + .42em); height:.94em; transform:translate(-50%,-50%);
+  left:0; right:0; top:50%; height:.94em; transform:translateY(-50%);
   border-radius:.26em; background:var(--sc-under)}
 /* on the tab skin the glyph is the whole cell, so the ground hugs a single
    big number a touch closer */
-.tabsym.bt::before{width:calc(100% + .34em); height:.9em}
+/* A NARROWER BADGE ON THE PHONE (David, 29 Aug: "on desktop the current
+   default size is ok, on mobile let's make it a bit narrower"). Only the
+   overhang changes — the ground still hugs the digit the same way. Declared
+   at top level on purpose: a phone is a phone in landscape too. */
+body.phone{--btpad:.12em}
+.tabsym.bt{--btpad:.17em}
+.tabsym.bt::before{height:.9em}
 /* THE RUN OF UNDERSIDE NOTES SHARES ONE GROUND (David, 29 Aug, C2/C5). They
    always sit together at the foot of a stack, so two badges touching was
    never a stack of stickers — it is the instrument's cellar, and it is drawn
@@ -516,11 +570,13 @@ body.mkline .mkbox{top:auto; bottom:-1px; height:2px; background:var(--dixie);
    descender where the font box does. --symlh is declared beside every
    line-height that governs a stacked glyph; if one moves, its partner moves. */
 .btcap{position:relative; isolation:isolate; display:flex;
-  flex-direction:inherit; align-items:center; gap:inherit}
+  flex-direction:inherit; align-items:center; gap:inherit;
+  padding-inline:var(--btpad,.21em); max-width:calc(100% - 2px)}  /* its room, in the box */
 .btcap::before{content:""; position:absolute; z-index:-1;
-  inset:calc((var(--symlh,1.02) - 1.206) * .5em + .101em) -.21em
+  inset:calc((var(--symlh,1.02) - 1.206) * .5em + .101em) 0
         calc((var(--symlh,1.02) - 1.206) * .5em + .109em);
   border-radius:.28em; background:var(--sc-under)}
+.btcap .sym.bt{padding-inline:0; max-width:none}   /* the capsule holds the room */
 .btcap .sym.bt::before{display:none}
 /* A TWO-DIGIT NUMBER WRITES SMALLER AND TIGHTER (David, 29 Aug: "make 2-digit
    numbers a bit smaller and have the digits a tiny bit closer together. This
@@ -6689,19 +6745,77 @@ function placeCyclops(P,L,innerSet,domeY){
     space=Math.min(space,Math.hypot(q.x-cx,q.y-domeY)-RD.of(f)); }
   space=(isFinite(space)?space:(L.ringR||148)-41)-2;
   const pitchR=Math.max(...innerSet.map(rawR));
-  const place=(list,rr,rIn)=>{
-    const k2=list.length, st=k2>1?Math.asin(Math.min(.85,(rIn*2+4)/(2*rr)))*2:0;
+  /* the tightest gap the RING leaves between two of its own neighbours — the
+     instrument's own idea of how much air a pair of fields wants */
+  const ringGap=()=>{ let g=Infinity;
+    const rs=[];
+    for(const k in L.f){ const f=+k; if(!f||innerSet.includes(f)) continue;
+      rs.push({q:L.f[k],r:RD.of(f)}); }
+    for(let i=0;i<rs.length;i++) for(let j=i+1;j<rs.length;j++)
+      g=Math.min(g,Math.hypot(rs[i].q.x-rs[j].q.x,rs[i].q.y-rs[j].q.y)-rs[i].r-rs[j].r);
+    return isFinite(g)?Math.max(4,g):4; };
+  /* ASK THE DRAWING, DON'T MODEL IT: widening the arc walks its ends down
+     toward the ring's flanks, and whether that still clears depends on where
+     the ring's fields actually fell. So the candidate is built and measured. */
+  /* HOW WIDE THE ARC MAY GET, measured against the DOME rather than picked.
+     A cyclops that sits lower than the dome's own top edge has stopped being
+     "above the ding" and reads as beside it — at 149° the end fields were
+     26px above the dome's centre where the dome itself is 52. So the arc may
+     reach exactly as far as `acos(52/rr)` either side and no further, WITH
+     ONE RELEASE: where the count alone already needs more than that, the
+     touching arc stands, because tightening it would mean overlapping. Five
+     mutants are exactly that case, which is why they gain nothing here — and
+     "if the space is there" (David) is the whole of the rule. */
+  const arcCap=rr=>2*Math.acos(Math.min(0.999,52/rr));
+  const arcFits=(rr,rIn,g)=>{
+    const st=stepFor(rr,rIn,g);
+    if((m-1)*st>Math.max(arcCap(rr),(m-1)*stepFor(rr,rIn,4))) return false;
+    for(let k=0;k<m;k++){
+      const a=-Math.PI/2+(k-(m-1)/2)*st;
+      const x=cx-rr*Math.cos(a), y=domeY+rr*Math.sin(a);
+      for(const sp of ringSpots)
+        if(Math.hypot(x-sp.q.x,y-sp.q.y)<rIn+sp.r+4) return false;
+    }
+    return true;
+  };
+  const stepFor=(rr,rIn,g)=>Math.asin(Math.min(.85,(rIn*2+g)/(2*rr)))*2;
+  const place=(list,rr,rIn,gap)=>{
+    const k2=list.length, st=k2>1?stepFor(rr,rIn,gap==null?4:gap):0;
     list.forEach((f,k)=>{ const a=-Math.PI/2+(k-(k2-1)/2)*st;
       L.f[f]={x:+(cx-rr*Math.cos(a)).toFixed(1),y:+(domeY+rr*Math.sin(a)).toFixed(1)}; });
   };
+  /* the ring fields, already placed, with the radius they are actually drawn */
+  const ringSpots=[];
+  for(const k in L.f){ const f=+k; if(!f||innerSet.includes(f)) continue;
+    ringSpots.push({q:L.f[k],r:RD.of(f)}); }
   if(m<CYCROWS){
     /* biased OUTWARD across the free band (David, 28 Aug: "place the cyclopses
        a bit further away from the central note, almost halfway to the circle
        of tone fields") — dead centre read as a collar round the dome. */
     const rIn=Math.min(pitchR*cycScale(m),Math.max(9,(space-52)/2-2));
     const lo=52+rIn+3, hi=space-rIn;
-    place(innerSet,hi>lo?lo+(hi-lo)*0.72:Math.max(lo,hi),rIn);
+    const rr=hi>lo?lo+(hi-lo)*0.72:Math.max(lo,hi);
+    /* BREATHING ROOM (David, 29 Aug: "if the space is there, give them a bit
+       more breathing room and don't put them right next to each other") — the
+       same correction he had just made to the high underside notes, and the
+       same cause: `2r+4` is a TOUCHING pair, so the group read as one lump.
+       The air asked for is the air THE RING ITSELF carries between its own
+       neighbours, which makes the two groups read as one instrument rather
+       than a loose ring around a tight cluster — and it needs no new constant,
+       because the ring is already drawn by the time we get here.
+       It is a CEILING, NOT A PROMISE. The arc gives a pixel back at a time
+       until it both fits inside MAXARC and clears every ring field, so a
+       two-mutant pan opens right up while a five-mutant one barely moves.
+       "If the space is there" is precisely the test, so it is asked rather
+       than assumed. */
+    let gap=4;
+    if(m>1){
+      const want=Math.round(ringGap());
+      for(let g=want;g>4;g--) if(arcFits(rr,rIn,g)){ gap=g; break; }
+    }
+    place(innerSet,rr,rIn,gap);
     L.cycs=+(rIn/pitchR).toFixed(3);
+    L.cycgap=gap;
     delete L.cycrows;
   }else{
     const nOut=Math.ceil(m/2);
@@ -13830,6 +13944,7 @@ function boot(){
   $("viewTab").addEventListener("click",()=>setView("tab"));
   $("playBtn").addEventListener("click",()=>togglePlay());
   tempoControl();
+  iosSliders();          // every range the app has, or will ever build
   updatePlayBtn();   // the bigger icons from the first paint on
   updateScoreTools();   // Follow/Sound/Loop start hidden until they mean something
   $("bpm").addEventListener("change",()=>{ bpm=Math.min(200,Math.max(30,+$("bpm").value||72)); piece.tempo=bpm; });
@@ -14697,6 +14812,112 @@ function mouseLoopNav(){
     }
   });
 }
+/* ============ SLIDERS ON iOS, PART 2 OF 2 — TAKING THE DRAG ============
+   David, 29 Aug: the spices slider "is not reliable to operate" on the phone.
+   World Groove Grid spent two rounds on the identical report (22–23 Aug 2026,
+   its tempo slider: "impossible to operate", the thumb never moving, nothing
+   wrong on the Mac) and the answer that finally held was to stop leaning on
+   iOS's native range drag and take the touch ourselves. This app never got
+   that port — none of its four ranges had any touch handling at all — while
+   the one control here that has NEVER drawn a complaint, the BPM scrubber
+   below, is exactly this pattern already. So: two handlers, and the rule for
+   any range we add later is in HANDOVER.md.
+
+   BOUND BY DELEGATION, NOT PER ELEMENT — and that is not a style choice.
+   #jamColourBar is rebuilt by every renderJamPanel() and #tempoRange by every
+   openTempoPop(), so a handler attached at boot would be holding a corpse
+   within one jam edit. It is the same reason the colour listener next to
+   `onColour` is delegated. One document-level pointerdown covers every range
+   the app will ever create. */
+const BIGSL={jamColourBar:["Chord suggestions","🍚 mild → fiery 🌶️"],
+             swing:["Swing","straight → swung"]};
+function iosSliders(){
+  document.addEventListener("pointerdown",e=>{
+    if(e.pointerType==="mouse") return;          // a mouse keeps the native drag
+    const el=e.target;
+    if(!el||el.tagName!=="INPUT"||el.type!=="range"||el.disabled) return;
+    const big=BIGSL[el.id];
+    if(big&&matchMedia("(pointer:coarse)").matches) bigSlider(e,el,big[0],big[1]);
+    else touchSlider(e,el);
+  },{passive:false});
+}
+/* THE SLIDER TAKES ITS OWN TOUCH. The finger's position is mapped straight
+   onto the track — pointerdown puts the thumb under it, moves follow, release
+   fires `change`. Absolute mapping, so it still feels like the native control
+   it replaces. For the sliders that are wide enough to aim at: the tempo
+   popup's range, and the Settings copy of spices. */
+function touchSlider(e,input){
+  e.preventDefault(); e.stopPropagation();
+  input.style.touchAction="none";              // the drag is ours, not the page's
+  const min=+input.min, max=+input.max, step=+input.step||1;
+  const set=ev=>{
+    const r=input.getBoundingClientRect(), pad=12;        // the thumb's half-width
+    const f=Math.min(1,Math.max(0,(ev.clientX-r.left-pad)/Math.max(1,r.width-2*pad)));
+    let v=min+f*(max-min); v=Math.round(v/step)*step;
+    v=Math.min(max,Math.max(min,v));
+    if(v!==+input.value){ input.value=v; input.dispatchEvent(new Event("input",{bubbles:true})); }
+  };
+  set(e);
+  const move=ev=>set(ev);
+  const end=()=>{
+    window.removeEventListener("pointermove",move);
+    window.removeEventListener("pointerup",end);
+    window.removeEventListener("pointercancel",end);
+    input.dispatchEvent(new Event("change",{bubbles:true}));
+  };
+  window.addEventListener("pointermove",move);
+  window.addEventListener("pointerup",end);
+  window.addEventListener("pointercancel",end);
+}
+/* …AND FOR THE TWO THAT ARE TOO SMALL TO AIM AT, the gesture moves to the
+   full-width panel at the top of the screen. RELATIVE mapping here, deliberately
+   different from touchSlider: the value must not jump when the finger lands,
+   because the finger is nowhere near the big track it is now driving. */
+function bigSlider(e,input,label,hint){
+  e.preventDefault(); e.stopPropagation();
+  const box=bigSlBox(), trk=box.querySelector(".trk");
+  const min=+input.min, max=+input.max, step=+input.step||1;
+  const start=+input.value, x0=e.clientX;
+  document.body.classList.add("showbigsl");
+  box.querySelector(".lb").textContent=label;
+  box.querySelector(".hint").textContent=hint;
+  const draw=()=>{
+    const f=(+input.value-min)/(max-min);
+    box.querySelector(".fill").style.width=(f*100)+"%";
+    box.querySelector(".knob").style.left=(f*100)+"%";
+    box.querySelector(".val").textContent=(+input.value)+"%";
+  };
+  draw();
+  // measured AFTER the panel is shown, or a display:none box reports zero
+  const w=trk.getBoundingClientRect().width||window.innerWidth;
+  const move=ev=>{
+    let v=start+((ev.clientX-x0)/w)*(max-min);
+    v=Math.round(v/step)*step; v=Math.min(max,Math.max(min,v));
+    if(v!==+input.value){ input.value=v; input.dispatchEvent(new Event("input",{bubbles:true})); }
+    draw();
+  };
+  const end=()=>{
+    document.body.classList.remove("showbigsl");
+    window.removeEventListener("pointermove",move);
+    window.removeEventListener("pointerup",end);
+    window.removeEventListener("pointercancel",end);
+    input.dispatchEvent(new Event("change",{bubbles:true}));
+  };
+  window.addEventListener("pointermove",move);
+  window.addEventListener("pointerup",end);
+  window.addEventListener("pointercancel",end);
+}
+function bigSlBox(){
+  let box=$("bigsl");
+  if(!box){
+    box=document.createElement("div"); box.id="bigsl";
+    box.innerHTML='<div class="hd"><span class="lb"></span><span class="val"></span></div>'
+      +'<div class="trk"><div class="fill"></div><div class="knob"></div></div>'
+      +'<p class="hint"></p>';
+    document.body.appendChild(box);
+  }
+  return box;
+}
 /* Tempo lives on the BPM button now (David, 26 Aug): swipe it up or down.
    Works in both orientations — preventDefault keeps the page from scrolling
    under the finger, and a plain tap still reaches the number field. */
@@ -14865,7 +15086,14 @@ if(PHONE){
   wrapEl.addEventListener("touchstart",e=>{
     if(e.touches.length===1&&Date.now()-lastEnd<=400) e.preventDefault();
   },{passive:false});
-  document.addEventListener("touchend",e=>{
+  /* SCOPED TO THE NOTATION, like its touchstart twin (David, 29 Aug). On
+     `document` this refused the default of EVERY touchend that landed within
+     400 ms of the one before it, anywhere on the page — and adjusting a
+     slider, or any control, in quick little taps puts every touch after the
+     first inside that window. The guard is about double-tapping the score;
+     nothing outside #scorewrap was ever its business. `lastEnd` now tracks
+     the score's own taps too, which is what the touchstart check wants. */
+  wrapEl.addEventListener("touchend",e=>{
     const now=Date.now();
     if(now-lastEnd<=400) e.preventDefault();
     lastEnd=now;
