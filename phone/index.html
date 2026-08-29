@@ -10281,6 +10281,31 @@ function jamMelodyBar(n,curTop,nextTop,motif,rnd,last){
     if(motif[k]&&d) pos=lim(pos+d*motif[k]);
     out[k]=all[pos];
   }
+  /* THE BAR MUST NOT ARRIVE BEFORE THE BAR LINE DOES (David, 30 Aug: "if one
+     chord has tone field 7 as highest note and the next chord tone field 8,
+     it's not so nice to play that same 8 already on the last high note of the
+     first chord"). Leaning towards the next note is right; landing ON it a
+     stroke early spends the change before it happens and then repeats it —
+     `7 7 8 | 8 8` says the same thing twice.
+     His two alternatives, and the code takes one or the other: OVERSHOOT, so
+     the line passes the note and the bar line comes back down to it
+     (`7 7 9 | 8`); or COME HOME, so the bar ends on its own note and the move
+     goes earlier as a step away and back (`7 6 7 | 8`). Overshoot needs
+     somewhere to overshoot to, so coming home is the fallback as well as the
+     other half of the coin. */
+  if(n>=2&&d&&ni>=0&&pos===ni&&rnd()<0.8){
+    /* …four times in five (David: "it's not that the double 8 across the bar
+       line can't ever happen, but not nearly as much as it currently does").
+       Arriving early is a legitimate sound now and then — it is only a habit
+       that is dull. */
+    const over=lim(ni+d);
+    if(rnd()<0.5&&over!==ni&&over!==ci) out[n-1]=all[over];
+    else{
+      out[n-1]=all[ci];
+      if(n>=3){ const away=lim(ci-d); if(away!==ci) out[n-2]=all[away]; }
+      else if(over!==ni&&over!==ci) out[n-1]=all[over];
+    }
+  }
   return out;
 }
 /* THE MELODY IS A MOTIF, STATED AND VARIED (David, 30 Aug, after taking his
@@ -10350,9 +10375,17 @@ function jamRunFields(lad,pulses,rnd){
      `0 0 0 1` was the first one it made, a landing on the second-lowest field
      with nowhere below it to come from. It arrives from whichever side has
      room, and it is only as long as that room allows. */
-  let d=rnd()<0.5?1:-1;
+  /* THE DIRECTION FOLLOWS THE ROOM (David, 30 Aug: "I don't think I have
+     heard any melody runs as chord transitions above 2 notes"). He was right,
+     and this was why: the direction was drawn first and the length then cut to
+     whatever room was left beneath or above the landing note. Landing on a
+     chord's LOWEST note — half of all runs, by design — leaves almost nothing
+     below it, so an ascending run into it was clipped to two notes over and
+     over. Pick the side that can carry the length instead: you run DOWN into a
+     low note and UP into a high one, which is what the ear expects anyway. */
   const room=x=>x>0?li:(all.length-1-li);
-  if(room(d)<1) d=-d;
+  let d=rnd()<0.5?1:-1;
+  if(room(d)<len-1&&room(-d)>room(d)) d=-d;
   const fit=Math.min(len,room(d)+1);
   if(fit<2) return null;
   const out=[];
