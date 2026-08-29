@@ -12740,6 +12740,22 @@ function rqChordDef(){
   return use.length?use[Math.floor(Math.random()*use.length)]:null;
 }
 const RQSHAPES=["groove","groove","groove","up","up","arch","down"];
+/* HOW FAR ONE STROKE MAY TRAVEL (David, 29 Aug: "there are some crazy tone
+   jumps from mid-range all the way up to the highest notes. That doesn't
+   sound so musical"). His 28 Aug rules stand — a low accent takes the lowest
+   note of the chord, a high accent the highest — but they were written while
+   we were looking at a D Kurd 10, where a triad's ladder is 0·1·4·6·8: five
+   rungs inside 19 semitones, so even crossing it is a walk. On a 14-field pan
+   the same rules cross the whole instrument: E Kurd 21 gives Dmin as 3·7·10·14
+   and Amin as 0·2·4·7·9·11·14, spanning 19 and 29 semitones — which is how his
+   11/8 came out `1 14 3 4 11 14`, the low accent and the high accent two and a
+   half octaves apart.
+   So the ladder stays whole and the STEP is bounded: a stroke moves at most an
+   octave from the one before it, and when the note it wants is further than
+   that it goes as far in that direction as the cap allows. The gesture is not
+   cancelled, it is spread — a groove climbing to the top note now takes two
+   strokes to get there, which is what a player's hand does too. */
+const RQLEAP=12;
 /* Returns {slot: [field,...]} — a list because an accent may be a stack. */
 function rqVoiceGroove(pat,def){
   const lad=rqLadder(def); if(lad.length<3) return null;
@@ -12755,12 +12771,21 @@ function rqVoiceGroove(pat,def){
   on.forEach((e,k)=>{
     let f;
     if(shape!=="groove"){
-      // a plain arpeggio walks the ladder and lets the accents fall where they may
+      /* A plain arpeggio walks the ladder and lets the accents fall where they
+         may — and it TURNS AROUND at the ends (David, 29 Aug: "there are some
+         crazy tone jumps from mid-range all the way up to the highest notes.
+         That doesn't sound so musical"). Only the arch used to turn; up and
+         down reset to the far end of the ladder instead, and that reset was
+         the whole fault — measured over 4200 intervals, every leap of an
+         octave or more (6% of them, up to NINETEEN semitones) happened on
+         that one step: `0 2 4 7 | 0 2 4 7` drops a twelfth in a single beat.
+         Folding turns the leap into the next step of the same walk, which is
+         what an arpeggio does when it runs out of instrument. */
       if(k===0){ i=shape==="down"?top:0; dir=shape==="down"?-1:1; }
       else{
         i+=dir;
-        if(i>top){ if(shape==="arch"){ dir=-1; i=Math.max(0,top-1); } else i=0; }
-        else if(i<0){ if(shape==="arch"){ dir=1; i=Math.min(top,1); } else i=top; }
+        if(i>top){ dir=-1; i=Math.max(0,top-1); }
+        else if(i<0){ dir=1; i=Math.min(top,1); }
       }
       f=lad[i];
     }else if(e.acc){
@@ -12774,6 +12799,19 @@ function rqVoiceGroove(pat,def){
       if(Math.random()<0.16){
         const j=all.indexOf(f), alt=all[j+(Math.random()<0.5?-1:1)];
         if(alt!=null) f=alt;
+      }
+    }
+    /* …and no stroke leaps further than RQLEAP from the one before it. Applied
+       here, before the two rules below, because they move by a single rung and
+       a rung is never the problem — the leap is. */
+    if(prev!=null){
+      const pm=myPan.midiFor(prev), fm=myPan.midiFor(f);
+      if(Math.abs(fm-pm)>RQLEAP){
+        const dir=fm>pm?1:-1;
+        let best=null, bd=0;
+        lad.forEach(g=>{ const d=(myPan.midiFor(g)-pm)*dir;
+          if(d>0&&d<=RQLEAP&&d>bd){ bd=d; best=g; } });
+        if(best!=null){ f=best; i=lad.indexOf(f); }
       }
     }
     /* TWO RULES THAT CAN EACH UNDO THE OTHER, so they are settled together
@@ -13408,12 +13446,14 @@ function renderRQ(){
     const r=document.createElement("div"); r.className="row";
     const again=document.createElement("button"); again.className="ctl";
     again.textContent="▶ Hear it again";
+    /* ONE REPLAY BUTTON (David, 29 Aug: "the 'With the count-in' button is not
+       necessary because the normal 'hear it again' button already plays with
+       count-in"). He is right — rqPlay counts in unless it is told not to, and
+       this call never told it not to, so the second button was the same sound
+       under another name. The reveal's pair is a real pair: there "Hear it
+       again" passes countIn:false and "Slowly" is the one that counts in. */
     again.addEventListener("click",()=>rqPlay(RQ.pat,RQ.voice,{reps:RQREVEALREPS}));
     r.appendChild(again);
-    const full=document.createElement("button"); full.className="ctl";
-    full.textContent="▶ With the count-in";
-    full.addEventListener("click",()=>rqPlay(RQ.pat,RQ.voice,{reps:RQREVEALREPS,countIn:true}));
-    r.appendChild(full);
     const left=document.createElement("span"); left.className="rqtally";
     left.textContent=(RQGUESSES-RQ.wrong)+" guess"+((RQGUESSES-RQ.wrong)===1?"":"es")+" left";
     r.appendChild(left);
