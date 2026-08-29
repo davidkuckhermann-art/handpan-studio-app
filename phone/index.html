@@ -10197,37 +10197,61 @@ function jamMotionLine(N,lo,hi,seed){
    length (David: "let the form decide"), and the last chord of a phrase makes
    no approach at all — the line arrives and stays, which is what tells the ear
    one sentence has ended before the next begins. */
-function jamMelodyBar(strokes,curTop,nextTop,breathe,rnd){
-  const out=new Array(Math.max(0,strokes)).fill(curTop);
-  if(strokes<=1||breathe) return out;
-  const all=rqFieldsLowHigh(), ci=all.indexOf(curTop), ni=all.indexOf(nextTop);
+function jamMelodyBar(n,curTop,nextTop,breathe,rnd,last){
+  const out=new Array(Math.max(0,n)).fill(curTop);
+  if(n<=1) return out;
+  const all=rqFieldsLowHigh(), ci=all.indexOf(curTop);
   if(ci<0) return out;
-  const gap=ni>=0?Math.abs(ni-ci):0;
-  if(ni>=0&&gap>=2){
-    /* One step, or two — but two only when the targets are CLOSE. Measured on
-       an A Minor 25: a two-note approach across five fields came out
-       12·12·8·7, which leaps four fields in the middle of the bar to set up a
-       step. Over a wide gap the leap belongs at the bar line, where the chord
-       changes and the ear expects it, so a distant target is approached by a
-       single pickup note. */
-    const k=Math.max(1,Math.min(strokes-1,gap-1,gap<=3&&rnd()<0.55?2:1));
-    const dir=ni>ci?1:-1;
-    for(let s=0;s<k;s++){
-      const idx=ni-dir*(s+1), pos=strokes-1-s;
-      if(pos>0&&idx>=0&&idx<all.length) out[pos]=all[idx];
+  const ni=all.indexOf(nextTop);
+  const lim=i=>Math.max(0,Math.min(all.length-1,i));
+  /* THE PHRASE ENDS BY ARRIVING. One bar in four holds its note — that
+     silence of movement is what tells the ear a sentence has finished, and it
+     is what makes the other three sound like a line rather than a scale. */
+  if(breathe){
+    /* A RESTING POINT, AND THE LAST ONE IS A FULL STOP (David, 29 Aug: "there
+       can be resting points, especially in the end"). A phrase ends by settling
+       on its note — that is what makes the three bars before it read as a
+       sentence — so it mostly holds, with an occasional single step out and
+       back to keep it from sounding switched off. The FORM's last bar takes no
+       step at all: it is where the line comes home before the loop turns. */
+    if(!last&&n>=3&&rnd()<0.35) out[n-2]=all[lim(ci+(rnd()<0.5?1:-1))];
+    return out;
+  }
+  /* AND THE OTHER THREE WALK (David, 29 Aug: "there can be more movement…
+     try to find nice phrases and longer clear melody lines"). The bar no
+     longer holds its note and steps at the last moment; it walks from where
+     it is to beside where it is going, one field at a time, and the bar line
+     completes the step onto the next chord's note.
+     WHAT MAKES IT A MELODY RATHER THAN A RUN is the slack. When the distance
+     is shorter than the strokes available, the spare ones are spent on a step
+     the other way or on holding — so the line breathes inside the bar too,
+     and the same two targets give a different figure each time. When the
+     distance is longer than the strokes, every stroke steps and the bar reads
+     as one clear ascent or descent. Where the target does not move at all,
+     the walk has nowhere to be and turns around its own note, which is
+     David's "step a tone or two away and come back". */
+  const aim=ni>=0?(ni>ci?ni-1:ni<ci?ni+1:ci):ci;
+  let pos=ci, away=rnd()<0.5?1:-1, run=1;
+  for(let k=1;k<n;k++){
+    const left=n-k, dist=Math.abs(aim-pos), toward=Math.sign(aim-pos);
+    const was=pos;
+    if(dist>=left) pos+=toward;                 // no room left to wander
+    else{
+      const r=rnd();
+      /* RARELY A THIRD TIME ON THE SAME NOTE (David, 29 Aug: "the chord stay
+         3x on the same melody note should not happen so much" — then, when it
+         had been banned outright, "it's ok sometimes if a chord stays on the
+         same note multiple times"). Two in a row is a held note and reads as
+         one; three is the line resting, which is fine now and then and dull as
+         a habit. So a third is allowed one time in seven and a fourth never. */
+      const mayHold=run<2||(run===2&&rnd()<0.15);
+      if(r<0.5&&toward) pos+=toward;            // on towards it
+      else if(r<0.8||!mayHold){ pos+=toward?-toward:away; away=-away; }
+      // else: hold, and let the next stroke carry it
     }
-  }else if(strokes>=3){
-    /* NOTHING TO STEP THROUGH — the next chord's top note is the one already
-       sounding, or the field right beside it. Both are David's second case:
-       "the melody can also move a step or 2 away and then come back". */
-    // the target holds: a step or two away, and back before the change
-    const away=rnd()<0.5?-1:1, dist=rnd()<0.6?1:2;
-    const idx=ci+away*dist, mid=Math.max(1,Math.floor(strokes/2)-1);
-    if(idx>=0&&idx<all.length){
-      out[mid]=all[idx];
-      const back=ci+away;                       // half way home on the next stroke
-      if(mid+1<strokes-1&&back>=0&&back<all.length&&back!==ci) out[mid+1]=all[back];
-    }
+    pos=lim(pos);
+    run=(pos===was)?run+1:1;
+    out[k]=all[pos];
   }
   return out;
 }
@@ -10893,7 +10917,7 @@ function buildJamPiece(){
       const nv=vm[(i+1)%form.length];         // the loop closes onto its own first bar
       const line=jamMelodyBar(tops,v[topTok],
         (nv&&nv[topTok]!=null)?nv[topTok]:v[topTok],
-        (i+1)%phrase===0,mrnd);
+        (i+1)%phrase===0,mrnd,i===form.length-1);
       let n=0;
       const bar=evs.map(([t,k,h])=>k===topTok
         ? patEv(t-gi*bp,k,h,Object.assign({},v,{[k]:line[n++]}))
