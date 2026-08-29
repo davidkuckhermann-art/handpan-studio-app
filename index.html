@@ -10170,6 +10170,60 @@ function jamMotionLine(N,lo,hi,seed){
     if(rnd()<0.28) out[i]+=(rnd()<0.5?-1:1)*span*0.12;
   return out.map(v=>Math.max(lo,Math.min(hi,v)));
 }
+/* THE MELODY MOVES TOWARDS THE CHANGE (David, 29 Aug, his own rule and a
+   better one than any I offered: "instead of having the melody move all the
+   time, it would make more sense to have it move towards the chord
+   transitions… the move can just be 1 note before the chord change, sometimes
+   2. If the new chord can have the same upper note as the current one, the
+   melody can also move a step or 2 away and then come back").
+   So the top note is still ONE target per chord — the arc decides it — and
+   what happens inside the bar is voice leading rather than busyness: the last
+   one or two strokes of the top voice walk into the next chord's note, and
+   when that note is the one already sounding, the melody steps away and comes
+   home instead, so a held target is decorated rather than dull.
+   THE APPROACH MAY LEAVE THE CHORD (his call): it steps through whatever pan
+   field lies between the two targets, which is what makes it sound like it is
+   leading somewhere — the same licence his rhythm-quiz fills have ("a fill
+   need not be a chord tone… still registers as C maj"). Only the LANDING is a
+   chord tone, and it always is, because the next bar's voicing chose it.
+   AND EVERY PHRASE BREATHES. The form divides into four phrases whatever its
+   length (David: "let the form decide"), and the last chord of a phrase makes
+   no approach at all — the line arrives and stays, which is what tells the ear
+   one sentence has ended before the next begins. */
+function jamMelodyBar(strokes,curTop,nextTop,breathe,rnd){
+  const out=new Array(Math.max(0,strokes)).fill(curTop);
+  if(strokes<=1||breathe) return out;
+  const all=rqFieldsLowHigh(), ci=all.indexOf(curTop), ni=all.indexOf(nextTop);
+  if(ci<0) return out;
+  const gap=ni>=0?Math.abs(ni-ci):0;
+  if(ni>=0&&gap>=2){
+    /* One step, or two — but two only when the targets are CLOSE. Measured on
+       an A Minor 25: a two-note approach across five fields came out
+       12·12·8·7, which leaps four fields in the middle of the bar to set up a
+       step. Over a wide gap the leap belongs at the bar line, where the chord
+       changes and the ear expects it, so a distant target is approached by a
+       single pickup note. */
+    const k=Math.max(1,Math.min(strokes-1,gap-1,gap<=3&&rnd()<0.55?2:1));
+    const dir=ni>ci?1:-1;
+    for(let s=0;s<k;s++){
+      const idx=ni-dir*(s+1), pos=strokes-1-s;
+      if(pos>0&&idx>=0&&idx<all.length) out[pos]=all[idx];
+    }
+  }else if(strokes>=3){
+    /* NOTHING TO STEP THROUGH — the next chord's top note is the one already
+       sounding, or the field right beside it. Both are David's second case:
+       "the melody can also move a step or 2 away and then come back". */
+    // the target holds: a step or two away, and back before the change
+    const away=rnd()<0.5?-1:1, dist=rnd()<0.6?1:2;
+    const idx=ci+away*dist, mid=Math.max(1,Math.floor(strokes/2)-1);
+    if(idx>=0&&idx<all.length){
+      out[mid]=all[idx];
+      const back=ci+away;                       // half way home on the next stroke
+      if(mid+1<strokes-1&&back>=0&&back<all.length&&back!==ci) out[mid+1]=all[back];
+    }
+  }
+  return out;
+}
 /* Every bar of the form, in order, with the chord it plays and whether it is
    that chord's first bar (which is where the chord's name is written). */
 function jamFormBars(passes){
@@ -10816,12 +10870,27 @@ function buildJamPiece(){
     const form=jamFormBars(jamPasses());
     const vm=jamMotionVoices(form,VV);
     const bars=[], gb=patBars(pat), bp=pat.meter[0]*pat.sub;
+    /* the melody is the groove's HIGHEST voice; the ones under it keep the
+       bar's own voicing, so the chord never flickers while the top moves */
+    const topTok=JV_TOK[Math.max(0,VV-1)];
+    /* its own stream of randomness, so that rerolling the line does not also
+       reshuffle every approach, and vice versa */
+    const mrnd=jamRnd(((jam.mseed||1)^0x9E3779B9)>>>0);
+    const phrase=Math.max(1,Math.round(form.length/4));
     form.forEach((f,i)=>{
       const v=vm[i];
       if(!v){ bars.push([]); return; }        // a chord this pan cannot voice keeps its bar
       const gi=bars.length%gb;
-      const bar=pat.ev.filter(([t])=>Math.floor(t/bp)===gi)
-        .map(([t,k,h])=>patEv(t-gi*bp,k,h,v));
+      const evs=pat.ev.filter(([t])=>Math.floor(t/bp)===gi);
+      let tops=0; for(const e of evs) if(e[1]===topTok) tops++;
+      const nv=vm[(i+1)%form.length];         // the loop closes onto its own first bar
+      const line=jamMelodyBar(tops,v[topTok],
+        (nv&&nv[topTok]!=null)?nv[topTok]:v[topTok],
+        (i+1)%phrase===0,mrnd);
+      let n=0;
+      const bar=evs.map(([t,k,h])=>k===topTok
+        ? patEv(t-gi*bp,k,h,Object.assign({},v,{[k]:line[n++]}))
+        : patEv(t-gi*bp,k,h,v));
       if(f.first&&bar.length) bar[0]=Object.assign({},bar[0],{chord:f.chord});
       bars.push(bar);
     });
