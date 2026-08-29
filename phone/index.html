@@ -10926,30 +10926,31 @@ function clearBrkDim(){
     .forEach(el=>el.classList.remove("brkdim","brkfirst"));
   document.querySelectorAll("#jamProg .jslot.brk").forEach(el=>el.classList.remove("brk"));
 }
+/* GENERATE STARTS THE NEW PROGRESSION AT ONCE (David, 30 Aug: "as soon as
+   that button is clicked, there should be a small fadeout, independently of
+   where we are in the bar. Then playing should start from the beginning of
+   the cycle").
+   It used to wait for the coming bar line — the old cycle fading out to land
+   exactly on it, which is what his 28 August note asked for. He has changed
+   his mind about the waiting, not about the fade: a new progression should
+   arrive when you ask for it. So the ramp starts the moment the button is
+   pressed and the clock is re-planted on chord one directly behind it.
+   The fade still ends before the first new note, and `live` is emptied by it,
+   so nothing of the old progression can be caught by a ramp belonging to the
+   new one: chord one arrives at full level, with no in-ramp, which is the
+   half of his older note that still stands. */
+const JAM_REGEN_FADE=0.14;      // long enough to sound deliberate, short enough to feel instant
 function jamRestartNextBar(){
-  if(!playing||!C) return;
-  const pat=allPats().find(p=>p.id===jam.patternId)||JAMPATS[0];
-  const bp=Math.max(1,pat.meter[0]*pat.sub);
-  jamRestartDue=Math.ceil(nextPulse/bp)*bp;   // the coming bar line
-  jamRestartAt=0;                            // …and then chord one
-  /* THE OLD CYCLE FADES OUT; THE NEW ONE DOES NOT FADE IN (David, 28 Aug:
-     "all I actually want is to take away the fade in — have the old cycle fade
-     out, but the new chord progression start on the first beat with no in
-     ramp"). What he heard as a fade-in was the outgoing chord still ramping
-     down underneath chord one, because the ramp was `now + min(left, 0.5)`:
-     it started at the wall clock while `left` was measured from `nextTime`,
-     which sits up to a look-ahead ahead of it, so the ramp did not land where
-     the bar line actually was.
-     The ramp now STARTS THE MOMENT GENERATE IS PRESSED and ENDS EXACTLY ON
-     THE BAR LINE, so the old cycle is under way immediately and gone at the
-     instant chord one sounds. And
-     `live` is emptied by the fade, so every voice of the new progression is
-     created after it and can never be caught by a ramp: chord one arrives at
-     full level, on the beat. */
-  const left=(jamRestartDue-nextPulse)*pulseDurOf(loopedPulse(nextPulse));
-  jamFadeLiveTo(nextTime+left);
+  if(!playing||!C||!ctx) return;
+  jamRestartDue=null;                       // no bar line to wait for any more
+  jamFadeLiveTo(ctx.currentTime+JAM_REGEN_FADE);
+  /* Re-plant the clock rather than stopping and starting: the transport stays
+     lit, the marker keeps its thread, and the scheduler simply finds itself at
+     the top of the form. Everything already handed to the audio clock is
+     silenced by the fade above. */
+  nextPulse=0; nextTime=ctx.currentTime+JAM_REGEN_FADE;
+  fired=[]; lastPaint=-1;
 }
-
 // Can this pan put a chord's ROOT at the bottom of a voicing? On a D Kurd it
 // cannot for C7 — the ♭7 sits below the root, and David: "the C7 voicing is
 // awkward … include this rule only for scales that have a 7th voicing with
