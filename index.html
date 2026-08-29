@@ -10215,89 +10215,64 @@ function jamMotionLine(N,lo,hi,seed){
    length (David: "let the form decide"), and the last chord of a phrase makes
    no approach at all — the line arrives and stays, which is what tells the ear
    one sentence has ended before the next begins. */
-function jamMelodyBar(n,curTop,nextTop,breathe,rnd,last,st){
+function jamMelodyBar(n,curTop,nextTop,motif,rnd,last){
   const out=new Array(Math.max(0,n)).fill(curTop);
-  if(n<=1) return out;
+  if(n<=1||!motif) return out;
   const all=rqFieldsLowHigh(), ci=all.indexOf(curTop);
   if(ci<0) return out;
   const ni=all.indexOf(nextTop);
   const lim=i=>Math.max(0,Math.min(all.length-1,i));
-  const step=(i,d)=>{ const j=lim(i+d); return j===i?lim(i-d):j; };
-  /* THE PHRASE ENDS BY ARRIVING, and the form's last bar comes to a full stop
-     (David, 29 Aug: "there can be resting points, especially in the end").
-     Where a resting bar does move, it moves on its LAST note — see below. */
-  if(breathe){
-    if(!last&&n>=3&&rnd()<0.45) out[n-1]=all[step(ci,rnd()<0.5?1:-1)];
-    return out;
-  }
-  /* WHERE THE BAR IS GOING (David: "often the middle melody node is another
-     one… 8, then 9, then 8 again. I'd rather have the movement go towards the
-     next chord change, so there is more of a sense of direction").
-     The bar aims to arrive BESIDE the next chord's note, so the bar line
-     completes the step. Two cases have no such target: when the next note is
-     the one already sounding, and — the one that quietly emptied half the
-     bars — when it is the very next field, because then "beside it" IS the
-     note we are on. Measured: seeds whose arc rose a field at a time came out
-     eight and nine bars flat in sixteen, at 23% movement.
-     Those bars are given somewhere to come back FROM instead: they depart a
-     field or two AWAY from the change and return, so the last strokes are
-     still walking into it. */
-  /* …AND A BAR DOES NOT WALK A DISTANCE IT CANNOT COVER (David, 29 Aug: "it
-     shouldn't be that the melody simply goes up and down the scale all the
-     time… it should not become the norm"). When the next note is further off
-     than the strokes can reach, every stroke was FORCED to step and the bar
-     came out as a scale; two such bars in a row and the line is running up
-     the instrument. A distant note is left to the bar line now — the leap
-     belongs there, where the chord changes — and the bar keeps its own shape. */
-  const gap=ni>=0?Math.abs(ni-ci):0;
-  const reach=n-1;
-  let way;
-  if(ni>=0&&gap>=2&&gap-1<=reach) way=[ci,ni>ci?ni-1:ni+1];
-  else{
-    const to=ni>ci?1:(ni<ci?-1:0);
-    const away=to?-to:(rnd()<0.5?1:-1);
-    const depth=Math.min(n>=5?2:1,Math.floor((n-1)/2));
-    way=depth?[ci,lim(ci+away*depth),ci]:[ci];
-  }
-  /* …and the walking leans hard towards the next waypoint. It used to step
-     towards it half the time and AWAY three times in ten, which is exactly
-     the wobble he heard; there are no mid-bar detours at all now. */
-  let pos=ci, run=1, seg=1;
-  for(let k=1;k<n;k++){
-    const left=n-k, was=pos;
-    let need=0, p=pos;
-    for(let q=seg;q<way.length;q++){ need+=Math.abs(way[q]-p); p=way[q]; }
-    const toward=seg<way.length?Math.sign(way[seg]-pos):0;
-    if(need>=left) pos+=toward||0;              // no room left to linger
-    else if(toward){
-      const mayHold=run<2||(run===2&&rnd()<0.15);
-      if(rnd()<0.8||!mayHold) pos+=toward;
-    }
-    pos=lim(pos);
-    if(seg<way.length&&pos===way[seg]&&seg<way.length-1) seg++;
-    run=(pos===was)?run+1:1;
+  /* WHICH WAY THE MOTIF LEANS comes from the next chord, not from the shape:
+     towards the note the next bar will open on, so every move is a move
+     towards the change. With nowhere to go — the next bar sits on this very
+     note — it leans away instead and the bar line brings it home, which is
+     the "step a tone or two away and come back" he asked for in the first
+     place. The last bar of the form leans nowhere: it is the full stop. */
+  let d=(ni>=0&&ni!==ci)?Math.sign(ni-ci):(rnd()<0.5?1:-1);
+  if(last) d=0;
+  let pos=ci;
+  for(let k=0;k<n;k++){
+    if(motif[k]&&d) pos=lim(pos+d*motif[k]);
     out[k]=all[pos];
   }
-  /* A TRANSITION RUN, NOW AND THEN (David, 29 Aug: "let's bring in transition
-     runs of notes… from time to time, at the end of a bar, insert transition
-     phrases. These phrases should usually have stepwise motion, so they go up
-     or down the scale and lead to the next chord"). Where the ordinary walk
-     spreads its steps across the whole bar, a run holds the chord's note and
-     then MOVES — three or four fields in a row, one after another, arriving
-     beside the next chord's note so the bar line completes it. It needs both
-     room and distance, so it asks for at least three strokes and a gap worth
-     crossing, and it comes about one bar in five. */
-  /* AND THE DETOUR SITS ON THE LAST MELODY NOTE (David: "the detour then
-     should happen on the last note of the bar… last melody note"). A step to
-     the side there is a turn INTO the chord change — the bar line completes
-     it — where the same step in the middle of a bar is just a wobble. The
-     out-and-back he first described is still allowed, "just not as much":
-     that is what a departing bar is, and it is now the rarer figure. */
-  if(n>=2&&rnd()<(way.length>1?0.18:0.5)){
-    const j=step(pos,rnd()<0.5?1:-1);
-    if(j!==pos) out[n-1]=all[j];
-  }
   return out;
+}
+/* THE MELODY IS A MOTIF, STATED AND VARIED (David, 30 Aug, after taking his
+   own Composition 2 apart with me). That tune's whole A section is one
+   rhythmic cell four times over — `6 6 6 8 | 6 6 8 9 | 7 7 7 7 | 7 7 9 8` —
+   where eleven of the sixteen notes repeat the note before them, the move
+   always comes on beat 3 or 4, and the sense of rising lives in the LEFT hand,
+   which climbs a field a bar while the melody stays put. Our line had no
+   memory: it walked somewhere new every bar and so it was never a tune.
+   A motif here is a shape, not a set of notes: one slot per stroke the groove
+   gives the top voice, each saying HOLD or MOVE-BY-ONE or MOVE-BY-TWO. The
+   direction is not in the motif — it is taken from the next chord, so the same
+   shape leans towards whatever is coming, and the pitch it starts from is the
+   bar's own target, so the arc still carries the line up and down while the
+   shape stays recognisable. That is exactly how Composition 2 is built.
+   REPETITION IS THE POINT HERE, not a fault (David: "let's try that, but try
+   to use that more relaxed rule to create actual motifs"). A wandering line
+   repeating a note is dull; a motif repeating one is the tune. */
+function jamMotif(n,rnd){
+  const m=new Array(Math.max(1,n)).fill(0);
+  if(n<=1) return m;
+  /* the move sits late — Composition 2 moves on beat 3 or 4 of four, never
+     at the start, which is what makes the bar sound like it is leading
+     somewhere rather than merely wandering */
+  const at=n<=2?n-1:(rnd()<0.6?n-1:n-2);
+  m[at]=rnd()<0.25?2:1;
+  if(n>=4&&at===n-2&&rnd()<0.45) m[n-1]=1;   // …and sometimes it keeps going
+  return m;
+}
+/* the same shape with its tail changed — the "variation" bar of a phrase */
+function jamMotifVary(m,rnd){
+  const v=m.slice();
+  if(v.length<2) return v;
+  const last=v.length-1;
+  if(rnd()<0.5){ v[last]=v[last]?0:(rnd()<0.3?2:1); }
+  else{ const j=Math.max(0,last-1); v[j]=v[j]?0:1; }
+  if(!v.some(x=>x)) v[last]=1;               // a variation that moves nowhere is a rest
+  return v;
 }
 /* A RUN IS DEFINED BY WHERE IT LANDS, AND IT BREAKS THE GROOVE (David, 29
    Aug, correcting me twice: "they can actually start at any point in the
@@ -11002,7 +10977,7 @@ function buildJamPiece(){
        could rest seven bars in sixteen when the arc ran flat, and a line that
        rests half the time is not breathing, it is asleep. One rest inside a
        phrase, plus the rest that ends it, is the punctuation he asked for. */
-    let restInPhrase=false, runs=0;
+    let restInPhrase=false, runs=0, motif=null;
     form.forEach((f,i)=>{
       const v=vm[i];
       if(!v){ bars.push([]); return; }        // a chord this pan cannot voice keeps its bar
@@ -11037,10 +11012,17 @@ function buildJamPiece(){
       const wantRun=!rest&&runs<2&&(runs===0||mrnd()<0.3)&&mrnd()<(evenBar?0.4:0.08);
       const run=wantRun&&ndef?jamRunFields(rqLadder(ndef),bp,mrnd):null;
       runs=run?runs+1:0;
-      const st={};
+      /* ONE MOTIF PER PHRASE, stated and then varied — the shape of David's
+         own A section: statement, variation, rest, answer. The rest bars are
+         the phrase's punctuation and simply hold; a bar carrying a run has no
+         motif at all, because the run IS its melody. */
+      const inPhrase=i%phrase;
+      if(inPhrase===0||!motif||motif.length!==tops) motif=jamMotif(tops,mrnd);
+      const shape=(rest||run)?null
+        :(inPhrase>=2&&mrnd()<0.65)?jamMotifVary(motif,mrnd):motif;
       const line=jamMelodyBar(tops,v[topTok],
         (nv&&nv[topTok]!=null)?nv[topTok]:v[topTok],
-        rest||!!run,mrnd,i===form.length-1,st);
+        (rest||run)?null:shape,mrnd,i===form.length-1);
       let n=0;
       /* WHERE A RUN LANDS IN THE BAR: on its last pulses, one note a pulse. The
          groove's own top strokes inside that span give way to it — that is the
