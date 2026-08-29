@@ -3282,6 +3282,23 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <div class="jshead"><span class="jsname">Chord voicings</span><span id="jsVoicingHost"></span></div>
     <p class="jsdesc" id="jsVoicingDesc"></p>
   </div>
+  <!-- MOTION'S OWN TWO (David, 29 Aug). How long the form is decides how far
+       the line can travel before it has to come home — "let me choose, so I
+       can compare" — and the reroll asks for another line over the same
+       chords, since the shape is drawn from a stored seed. Shown only while
+       Motion is the chosen voicing. -->
+  <div class="jsopt hidden" id="jsMotionRow">
+    <div class="jshead"><span class="jsname">How far it travels</span>
+      <span style="display:flex;align-items:center;gap:8px">
+        <span class="pills" id="jsPasses" role="group" aria-label="Length of the form">
+          <button data-passes="1" title="One pass of the chords — a swell">1×</button>
+          <button data-passes="2" title="Two passes — a rise and a fall with room to breathe">2×</button>
+          <button data-passes="4" title="Four passes — the line can reach the top of the pan and come back unhurried">4×</button>
+        </span>
+        <button class="ctl" id="jsReline" title="Another line over the same chords">New line</button>
+      </span></div>
+    <p class="jsdesc" id="jsMotionDesc"></p>
+  </div>
   <div class="jsopt">
     <div class="jshead"><span class="jsname">Chord suggestions</span><span id="jsColourHost"></span></div>
     <p class="jsdesc">Mild keeps to plain triads. Hotter lets sevenths, ninths
@@ -10087,6 +10104,142 @@ function jvMap(c,V){          // ranks onto voices — order kept, ends pinned
   for(let r=0;r<V;r++) map[JV_TOK[r]]=c.sel[V===1?0:Math.round(r*(Vp-1)/(V-1))];
   return map;
 }
+/* ---------------- MOTION: the top voice sings (David, 29 Aug, ABC'd) -------
+   Narrow and Wide both ask the same question of the progression — how should
+   these chords SIT — and jamProgVoices answers it by keeping the top note as
+   still as voice-leading allows. Motion asks the opposite: give the top note
+   somewhere to GO. It is the same machinery with the cost re-aimed. Instead
+   of "stay near the last top", each bar is scored against a target line:
+   `(top − target)² + the voicing's own penalty`. Every candidate is still a
+   real, playable voicing of that chord on this pan, so the harmony cannot go
+   wrong while the line moves — which is why this is a re-aiming and not a
+   melody generator with chords hung underneath it.
+
+   THE ARC'S PERIOD IS THE WRITTEN FORM (David's decision). One pass of four
+   chords is four bars, and a line that must rise AND return inside four bars
+   is a swell, not a journey — so Motion writes the form 1, 2 or 4 times
+   through, his choice, and the arc closes at the end of the whole thing. The
+   loop still seams because the last bar sits near where the first began.
+
+   THE LINE IS FROZEN, NOT LIVE. A voicing worked out at draw time would not
+   be the one played, so the contour comes from a stored SEED: the same jam
+   draws the same line every time, and only a chord change or the reroll asks
+   for another. */
+function jamRnd(a){                 // mulberry32 — small, and repeatable
+  return function(){ a|=0; a=a+0x6D2B79F5|0;
+    let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t;
+    return ((t^t>>>14)>>>0)/4294967296; };
+}
+/* One target top note per bar of the form. David's shape: "a clear direction,
+   probably starting low, going high and coming back down, or the other way
+   round… if there is enough space, the melody can take little detours here
+   and there… or it can go, come back, go, come back."
+   `|sin|` gives exactly that: one hump is the single arch, two humps are the
+   go-come-go-come. t runs to (N−1)/N rather than 1, so the last bar sits NEAR
+   the start rather than exactly on it — the loop closes without the line
+   thudding back into place on its final bar. */
+/* TURNING POINTS, NOT A SINE WAVE. A sine was the obvious shape and it was
+   wrong for a reason worth keeping: L humps over N bars repeat exactly every
+   N/L bars, so any shape with two humps writes the same music twice and
+   Motion sounds like nothing happened. Measured on the way in — a 16-bar form
+   came out 65·67·72·65·69·72·72·65 twice over, an 8-bar form wearing a
+   16-bar coat.
+   So the line is built from a few TURNING POINTS instead: where it changes
+   direction, and how high it gets there, both drawn from the seed. Two turns
+   give David's "go, come back, go, come back" without the two humps being
+   twins, one turn gives the plain arch, and the last point returns to the
+   first so the form closes. Bars are sampled up to (N−1)/N rather than 1, so
+   the last bar sits NEAR the start rather than thudding onto it. */
+function jamMotionLine(N,lo,hi,seed){
+  const rnd=jamRnd(seed||1), span=Math.max(1,hi-lo);
+  const up=rnd()<0.55;                       // climb first, or fall first
+  const startV=up?lo+span*0.10*rnd():hi-span*0.10*rnd();
+  const turns=N>=14?(rnd()<0.5?3:2):(N>=7?2:1);
+  const pts=[[0,startV]];
+  let dir=up?1:-1;
+  for(let k=1;k<=turns;k++){
+    const t=k/(turns+1)+(rnd()-0.5)*0.5/(turns+1);   // spaced, then jittered
+    pts.push([t, dir>0?hi-span*0.18*rnd():lo+span*0.18*rnd()]);
+    dir=-dir;
+  }
+  pts.push([1,startV]);
+  const ease=x=>x*x*(3-2*x);                 // no corners at the turns
+  const out=[];
+  for(let i=0;i<N;i++){
+    const t=N===1?0:i/N;
+    let j=0; while(j<pts.length-2&&t>pts[j+1][0]) j++;
+    const [t0,v0]=pts[j], [t1,v1]=pts[j+1];
+    const u=t1>t0?ease((t-t0)/(t1-t0)):0;
+    out.push(v0+(v1-v0)*u);
+  }
+  // the detours: never on the first or last bar, which carry the loop's seam
+  if(N>=6) for(let i=1;i<N-1;i++)
+    if(rnd()<0.28) out[i]+=(rnd()<0.5?-1:1)*span*0.12;
+  return out.map(v=>Math.max(lo,Math.min(hi,v)));
+}
+/* Every bar of the form, in order, with the chord it plays and whether it is
+   that chord's first bar (which is where the chord's name is written). */
+function jamFormBars(passes){
+  const out=[];
+  for(let p=0;p<Math.max(1,passes);p++)
+    jam.slots.forEach(sl=>{ const n=Math.max(1,sl.bars||1);
+      for(let b=0;b<n;b++) out.push({chord:sl.chord,first:b===0}); });
+  return out;
+}
+/* The voicing for each bar: the candidate whose top note lands nearest the
+   line, its own penalty still counted so a clumsy voicing is not chosen for
+   the sake of one semitone. Candidates are fetched once per CHORD, not per
+   bar — the same chord in two bars is the same set, differently chosen from.
+   Wide candidates always: Motion is reaching for the top of the pan, and
+   narrow candidates are the ones that refuse to. */
+function jamMotionVoices(form,V){
+  const cands=new Map();
+  for(const f of form) if(!cands.has(f.chord)) cands.set(f.chord,jvCandidates(f.chord,V,false));
+  let lo=Infinity, hi=-Infinity;
+  cands.forEach(L=>{ if(L) for(const c of L){ if(c.top<lo) lo=c.top; if(c.top>hi) hi=c.top; } });
+  if(lo===Infinity) return form.map(()=>null);
+  const line=jamMotionLine(form.length,lo,hi,jam.mseed||1);
+  /* THE LINE IS FOLLOWED, NOT POUNCED ON. Scoring each bar against the target
+     alone picked whichever voicing sat nearest it, and with sparse candidates
+     that leaps: measured 77·88·81·86 and 60·74 between neighbouring bars on an
+     A Minor 25 — an octave and a fifth in one step, which is the very thing
+     the rhythm quiz had to be cured of this morning. So the DP that Narrow and
+     Wide use comes back, with a third term: distance to the target leads,
+     the voicing's own penalty still counts, and a light continuity cost
+     breaks ties towards the note nearer the last one. The result follows the
+     shape without lurching at it. */
+  const W=0.35;                       // how much smoothness may bend the line
+  const idx=form.map(f=>cands.get(f.chord)).map(L=>L&&L.length?L:null);
+  const first=idx.findIndex(L=>L);
+  if(first<0) return form.map(()=>null);
+  const cost=[], from=[];
+  for(let i=0;i<form.length;i++){ cost[i]=[]; from[i]=[]; }
+  const aim=(c,i)=>{ const d=c.top-line[i]; return d*d+c.pen; };
+  for(let i=0;i<form.length;i++){
+    const L=idx[i]; if(!L) continue;
+    const prev=(()=>{ for(let j=i-1;j>=0;j--) if(idx[j]) return j; return -1; })();
+    for(let k=0;k<L.length;k++){
+      if(prev<0){ cost[i][k]=aim(L[k],i); from[i][k]=-1; continue; }
+      let bc=Infinity,bf=0;
+      for(let j=0;j<idx[prev].length;j++){
+        const dd=L[k].top-idx[prev][j].top;
+        const v=cost[prev][j]+W*dd*dd;
+        if(v<bc){ bc=v; bf=j; }
+      }
+      cost[i][k]=bc+aim(L[k],i); from[i][k]=bf;
+    }
+  }
+  const last=(()=>{ for(let j=form.length-1;j>=0;j--) if(idx[j]) return j; return -1; })();
+  let bk=0; for(let k=1;k<cost[last].length;k++) if(cost[last][k]<cost[last][bk]) bk=k;
+  const chosen=[];
+  for(let i=last,k=bk;i>=0;){
+    chosen[i]=idx[i][k];
+    const prev=(()=>{ for(let j=i-1;j>=0;j--) if(idx[j]) return j; return -1; })();
+    if(prev<0) break;
+    k=from[i][k]; i=prev;
+  }
+  return form.map((f,i)=>chosen[i]?jvMap(chosen[i],V):null);
+}
 /* the whole progression at once: cheapest total of squared melodic jumps
    between neighbouring tops (cyclic — the loop returns to its first chord)
    plus each voicing's own penalty (its rank, less the wide bonus). */
@@ -10655,12 +10808,38 @@ function jamSuggest(){
   jam.slots.push({chord:pick.name,bars:1});
   applyJam();
 }
+/* NARROW OR WIDE — and neither while Motion is on, which always wants the
+   whole pan under it. One reader, so no call site has to remember. */
+function jamNarrowNow(){ return !jam.motion&&!!jam.narrow; }
+function jamPasses(){ const n=+jam.mpasses||2; return [1,2,4].includes(n)?n:2; }
 function buildJamPiece(){
   const pat=allPats().find(p=>p.id===jam.patternId)||JAMPATS[0];
   const VV=patVoices(pat);            // grooves may carry more than three voices
+  /* MOTION WRITES A LONGER FORM, one voicing per BAR (David, 29 Aug). The
+     ordinary path voices the progression once and every pass plays the same
+     chords the same way; here each bar is its own moment on the line, and the
+     form runs 1, 2 or 4 times through so the line has room to travel. */
+  if(jam.motion){
+    const form=jamFormBars(jamPasses());
+    const vm=jamMotionVoices(form,VV);
+    const bars=[], gb=patBars(pat), bp=pat.meter[0]*pat.sub;
+    form.forEach((f,i)=>{
+      const v=vm[i];
+      if(!v){ bars.push([]); return; }        // a chord this pan cannot voice keeps its bar
+      const gi=bars.length%gb;
+      const bar=pat.ev.filter(([t])=>Math.floor(t/bp)===gi)
+        .map(([t,k,h])=>patEv(t-gi*bp,k,h,v));
+      if(f.first&&bar.length) bar[0]=Object.assign({},bar[0],{chord:f.chord});
+      bars.push(bar);
+    });
+    return { format:"hpd-1", id:"jam", title:"Jam mode", author:"",
+      writtenFor:myPanId, tempo:bpm||72, meter:pat.meter, sub:pat.sub,
+      unit:pat.unit||4,
+      barsPerRow:pat.bpr||1, sections:{Jam:{bars}}, arrangement:["Jam"] };
+  }
   // the WHOLE progression is voiced together — the melody between chords is
   // what decides wide against narrow (David, 27 Aug)
-  const vs=jamProgVoices(jam.slots.map(s=>s.chord),VV,!!jam.narrow);
+  const vs=jamProgVoices(jam.slots.map(s=>s.chord),VV,jamNarrowNow());
   const bars=[];
   jam.slots.forEach((slot,si)=>{
     const v=vs[si];
@@ -10718,6 +10897,7 @@ function jamToPiece(){
 }
 function saveJamLS(){ try{localStorage.setItem("hps.jam",JSON.stringify(
   {slots:jam.slots,patternId:jam.patternId,bpm:bpm,narrow:!!jam.narrow,
+   motion:!!jam.motion,mpasses:jamPasses(),mseed:jam.mseed||1,
    brk:jam.brk}))}catch(e){} }
 /* THE PROGRESSION A STUDENT MEETS FIRST (David, 27 Aug): Dmin · B♭maj · Fmaj
    · Cmaj on a D-minor pan — i · VI · III · VII — and "the equivalent on the
@@ -11162,14 +11342,20 @@ function renderJamPanel(){
   vpills.className="pills"; vpills.id="jamVoicing";
   vpills.title=JV_TIP;
   vpills.setAttribute("role","group"); vpills.setAttribute("aria-label","Chord voicings");
-  [["Narrow",true],["Wide",false]].forEach(([label,nar])=>{
+  /* THREE, SINCE 29 AUG. Narrow and Wide are two answers to "how should these
+     chords sit"; Motion answers a different question — "where should the top
+     note GO" — and takes the spread into its own hands, so it stands beside
+     them rather than under them (David's call: "a third pill"). */
+  const vsel=()=>jam.motion?"motion":(jam.narrow?"narrow":"wide");
+  [["Narrow","narrow"],["Wide","wide"],["Motion","motion"]].forEach(([label,mode])=>{
     const b=document.createElement("button");
     b.textContent=label;
-    b.setAttribute("aria-pressed",String(!!jam.narrow===nar));
-    b.title=nar?"The pan's high notes stay free for your melody"
-               :"Grounded voicings that use the whole pan";
+    b.setAttribute("aria-pressed",String(vsel()===mode));
+    b.title=mode==="narrow"?"The pan's high notes stay free for your melody"
+           :mode==="wide"?"Grounded voicings that use the whole pan"
+           :"The top note travels — a line that climbs and comes back over the whole form";
     b.addEventListener("click",()=>{
-      if(!!jam.narrow===nar) return;
+      if(vsel()===mode) return;
       /* MOVE THE PRESSED STATE HERE, not by waiting for a re-render. These
          pills used to be rebuilt by applyJam() with the new state baked in,
          which was enough while they lived in the head. Now they can be on
@@ -11178,9 +11364,16 @@ function renderJamPanel(){
          "the narrow/wide button still doesn't animate"). */
       vpills.querySelectorAll("button").forEach(x=>
         x.setAttribute("aria-pressed",String(x===b)));
-      jam.narrow=nar; applyJam(); saveJamLS();
+      jam.motion=mode==="motion";
+      if(mode!=="motion") jam.narrow=mode==="narrow";
+      // a first turn to Motion needs a line to sing; later turns keep theirs
+      if(jam.motion&&!jam.mseed) jam.mseed=jamNewSeed();
+      applyJam(); saveJamLS();
       if(typeof paintVoicingDesc==="function") paintVoicingDesc();
-      toast(nar?"Narrow chords — the top of the pan is yours":"Wide chords");
+      toast(mode==="narrow"?"Narrow chords — the top of the pan is yours"
+           :mode==="wide"?"Wide chords"
+           :"Motion — the top note travels over "+jamPasses()
+             +(jamPasses()===1?" pass":" passes")+" of the chords");
     });
     vpills.appendChild(b);
   });
@@ -11377,7 +11570,7 @@ function renderJamDlg(){
 function jamHear(){
   const s=jam.slots[jamEditSlot]; if(!s) return;
   ensureCtx();
-  const v=jamVoice(s.chord,3,!!jam.narrow); if(!v) return;
+  const v=jamVoice(s.chord,3,jamNarrowNow()); if(!v) return;
   /* posMidi, not midiFor — an underside voice ("b1") has no top field, so
      midiFor returned null and the slot preview simply skipped the bass the
      voicer had chosen. Found while retiring the brackets (29 Aug). */
@@ -14016,7 +14209,7 @@ function jamFadeLive(dur){
   live=[];
 }
 function grooveMini(pat){
-  const v=jamVoice(jam.slots[0]&&jam.slots[0].chord,patVoices(pat),!!jam.narrow)
+  const v=jamVoice(jam.slots[0]&&jam.slots[0].chord,patVoices(pat),jamNarrowNow())
     ||Object.fromEntries(JV_TOK.map(k=>[k,0]));
   const bp=pat.meter[0]*pat.sub, total=bp*patBars(pat);
   const box=document.createElement("div"); box.className="gmini";
@@ -14053,7 +14246,7 @@ function jamPreviewToggle(patId,btn){
   if(jpv&&jpv.patId===patId){ jamPreviewStop(); return; }
   jamPreviewStop(); ensureCtx();
   const pat=allPats().find(p=>p.id===patId); if(!pat) return;
-  const v=jamVoice(jam.slots[0]&&jam.slots[0].chord,patVoices(pat),!!jam.narrow);
+  const v=jamVoice(jam.slots[0]&&jam.slots[0].chord,patVoices(pat),jamNarrowNow());
   if(!v){ toast("Add a chord first"); return; }
   const evs=pat.ev.map(([t,k,h])=>k==="g"?null:patEv(t,k,h,v))
     .filter(Boolean);
@@ -14404,7 +14597,8 @@ function openJamLibDlg(){
 function jamRecipe(){
   const pat=allPats().find(p=>p.id===jam.patternId);
   const r={v:1, slots:jam.slots.map(s=>({chord:s.chord,bars:s.bars||1})), brk:jam.brk,
-    patternId:jam.patternId, bpm:bpm, narrow:!!jam.narrow};
+    patternId:jam.patternId, bpm:bpm, narrow:!!jam.narrow,
+    motion:!!jam.motion, mpasses:jamPasses(), mseed:jam.mseed||1};
   if(pat&&pat.user) r.groove=pat;      // travels with it
   return r;
 }
@@ -14438,6 +14632,9 @@ function importJam(r){
   jam.slots=r.slots.map(s=>({chord:s.chord,bars:Math.max(1,s.bars||1)}));
   jam.patternId=allPats().some(p=>p.id===r.patternId)?r.patternId:JAMPATS[0].id;
   jam.narrow=!!r.narrow;
+  /* the line travels with the jam, seed and all — a shared Motion jam must
+     sing the same tune at the other end, not merely the same chords */
+  jam.motion=!!r.motion; jam.mpasses=r.mpasses||2; jam.mseed=r.mseed||1;
   jam.brk=jamBrkNorm(r.brk,4);        // a shared jam from before breaks existed
   if(r.bpm){ bpm=r.bpm; $("bpm").value=bpm; }
   jamEditSlot=-1; jamFitSlots(); applyJam(); saveJamLS();
@@ -14797,11 +14994,29 @@ function jamSetRehome(vp,cw){
   paintColour(); paintVoicingDesc();
   return true;
 }
+function jamNewSeed(){ return 1+Math.floor(Math.random()*4294967294); }
 function paintVoicingDesc(){
-  const el=$("jsVoicingDesc"); if(!el) return;
-  el.textContent=jam&&jam.narrow
+  const el=$("jsVoicingDesc");
+  if(el) el.textContent=(jam&&jam.motion)
+    ? "Motion gives the top note somewhere to go: it climbs and comes back across the whole form, and every chord underneath it is still a real voicing of that chord."
+    : (jam&&jam.narrow)
     ? "Narrow keeps the chords in the middle of the pan, so its high notes stay free for your melody."
     : "Wide uses the whole instrument and grounds each chord in the bass.";
+  /* Motion's own controls appear with it and say what the choice MEANS in
+     bars, because "2×" is only a number until you know the progression. */
+  const row=$("jsMotionRow");
+  if(row){
+    row.classList.toggle("hidden",!(jam&&jam.motion));
+    const ps=$("jsPasses");
+    if(ps) ps.querySelectorAll("button").forEach(b=>
+      b.setAttribute("aria-pressed",String(+b.dataset.passes===jamPasses())));
+    const d=$("jsMotionDesc");
+    if(d){ const n=jamBarCount()*jamPasses();
+      d.textContent="The line rises and returns over "+n+(n===1?" bar":" bars")
+        +" — "+jamPasses()+(jamPasses()===1?" pass":" passes")+" of your "
+        +jam.slots.length+(jam.slots.length===1?" chord":" chords")
+        +" — and the notation is that whole form. New line draws another shape over the same chords."; }
+  }
 }
 function openJamSet(){
   const deep=document.querySelector(".jdeep"); if(!deep) return;
@@ -15074,6 +15289,15 @@ function boot(){
   const cs=$("jamColour"); if(cs) cs.addEventListener("input",onColour);
   document.addEventListener("input",e=>{ if(e.target&&e.target.id==="jamColourBar") onColour(e); });
   $("jamSetBtn").addEventListener("click",openJamSet);
+  $("jsPasses").addEventListener("click",e=>{
+    const b=e.target.closest("button[data-passes]"); if(!b) return;
+    const n=+b.dataset.passes; if(n===jamPasses()) return;
+    jam.mpasses=n; applyJam(); saveJamLS(); paintVoicingDesc();
+  });
+  $("jsReline").addEventListener("click",()=>{
+    jam.mseed=jamNewSeed(); applyJam(); saveJamLS(); paintVoicingDesc();
+    toast("A new line over the same chords");
+  });
   $("jsClose").addEventListener("click",closeJamSet);
   $("brkBtn").addEventListener("click",openBrk);
   $("bkClose").addEventListener("click",closeBrk);
