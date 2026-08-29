@@ -507,7 +507,7 @@ input[type=text]{width:auto}
    the native API is missing or refuses (a lesson iframe whose embed block
    predates allowfullscreen) — same look, pinned over the page instead. */
 body.editing #fsBtn,body.gedit #fsBtn{display:none}
-body.fs #scorewrap{background:var(--bg); overflow:auto; padding:16px}
+body.fs #scorewrap{background:var(--paper); overflow:auto; padding:16px}
 body.fsmax #scorewrap{position:fixed; inset:0; z-index:80}
 /* the scale selector rides in the head's top-left while fullscreen — next to
    the section name in the arranger, beside the groove chip in a jam — so a
@@ -10464,14 +10464,25 @@ function jamRunFields(lad,pulses,rnd,longOk){
      below it, so an ascending run into it was clipped to two notes over and
      over. Pick the side that can carry the length instead: you run DOWN into a
      low note and UP into a high one, which is what the ear expects anyway. */
-  const room=x=>x>0?li:(all.length-1-li);
+  /* IT STOPS ONE NOTE SHORT (David, 30 Aug: "they should end one note before
+     the highest or lowest note of the next chord, not already land on it
+     before the new bar"). The same principle as the melody's bar line: a run
+     that plays the note it is heading for spends the arrival early and then
+     repeats it. It leads TO the chord's note and lets the bar line sound it —
+     which is also why `land` still travels back to the caller: the melody
+     that follows is re-aimed at the note the run was leading to, not at the
+     last note the run actually played. */
   let d=rnd()<0.5?1:-1;
+  const endOf=x=>li-x;                       // the note one short, on that side
+  const room=x=>x>0?endOf(x):(all.length-1-endOf(x));
   if(room(d)<len-1&&room(-d)>room(d)) d=-d;
+  const endI=endOf(d);
+  if(endI<0||endI>=all.length) return null;
   const fit=Math.min(len,room(d)+1);
   if(fit<2) return null;
-  const out=[];
-  for(let k=0;k<fit;k++) out.push(all[li-d*(fit-1-k)]);
-  return out;
+  const notes=[];
+  for(let k=0;k<fit;k++) notes.push(all[endI-d*(fit-1-k)]);
+  return {notes,land};
 }
 /* Every bar of the form, in order, with the chord it plays and whether it is
    that chord's first bar (which is where the chord's name is written). */
@@ -11181,7 +11192,8 @@ function buildJamPiece(){
       const wantRun=runs<2&&(runs===0||mrnd()<0.3)
         &&(join?mrnd()<0.9:(!rest&&mrnd()<(evenBar?0.6:0.25)));
       const longOk=join||mrnd()<0.08;
-      const run=wantRun&&ndef?jamRunFields(rqLadder(ndef),bp,mrnd,longOk):null;
+      const rf=wantRun&&ndef?jamRunFields(rqLadder(ndef),bp,mrnd,longOk):null;
+      const run=rf?rf.notes:null;
       runs=run?runs+1:0;
       /* ONE MOTIF PER PHRASE, stated and then varied — the shape of David's
          own A section: statement, variation, rest, answer. The rest bars are
@@ -11225,7 +11237,7 @@ function buildJamPiece(){
            bar one, already written, and the loop has to close on it. */
         const j=i+1;
         if(j<form.length){
-          const L=mcands.get(form[j].chord), lm=myPan.midiFor(run[run.length-1]);
+          const L=mcands.get(form[j].chord), lm=myPan.midiFor(rf.land);
           if(L&&L.length&&lm!=null){
             let best=null,bd=Infinity;
             for(const c of L){ const d=Math.abs(c.top-lm); if(d<bd){ bd=d; best=c; } }
@@ -15766,7 +15778,20 @@ function boot(){
   $("jamSetBtn").addEventListener("click",openJamSet);
   $("jsPasses").addEventListener("click",e=>{
     const b=e.target.closest("button[data-passes]"); if(!b) return;
-    const n=+b.dataset.passes; if(n===jamPasses()) return;
+    const n=+b.dataset.passes;
+    /* THE PRESSED PILL MOVES HERE, not on a repaint after the rebuild — the
+       same trap the voicing pills hit in August (David, 30 Aug: "the menu
+       button still doesn't animate/react when I switch back to 1x… the table
+       is a 1x jam, but the menu button still shows 2x"). Two faults, one
+       cause: the paint came AFTER applyJam, so anything that went wrong in
+       the rebuild left the pills describing the old state — and then the
+       `already selected` guard below made the button permanently dead, since
+       jam.mpasses had moved even though the pill had not. Painting first
+       makes the control honest whatever the rebuild does, and the guard now
+       repaints before it returns. */
+    $("jsPasses").querySelectorAll("button").forEach(x=>
+      x.setAttribute("aria-pressed",String(x===b)));
+    if(n===jamPasses()){ paintVoicingDesc(); return; }
     jam.mpasses=n; applyJam(); saveJamLS(); paintVoicingDesc();
   });
   $("jsReline").addEventListener("click",()=>{
@@ -17486,36 +17511,83 @@ function placePhoneControls(){
    iframe that needs `allowfullscreen` ON THE IFRAME TAG (embed build
    2026-08-30a), and when the API is missing or refuses, body.fsmax pins the
    wrap over the page instead, so the button never does nothing.
+   THE MUSIC ZOOMS, THE FRAME DOES NOT (David's screenshot, 30 Aug: zooming
+   the whole card blew the head's controls up to 3x and they collided —
+   the student needs the NOTATION readable from across the room, and the
+   controls are for the moments they walk up to the screen anyway). So the
+   zoom goes on #score alone; the head and footer keep their size and lay
+   out across the full screen width, which is also what keeps the jam's
+   crowded head from ever being squeezed.
    THE FIT IS MULTIPLICATIVE, NEVER RESET: fsFit nudges the zoom from where
    it stands until the height lands, so at rest it writes nothing — which is
    what lets a ResizeObserver call it on every re-render without the two of
-   them chasing each other around a loop. The card keeps width:auto, so at
-   zoom z it lays out at screenW/z and always fills the width exactly; the
-   height cap is the only search. */
-let fsPanHome=null;
+   them chasing each other around a loop. #score keeps width:auto, so at
+   zoom z it lays out at cardW/z and always fills the width exactly; the
+   height cap is the only search.
+   AND THE TWO CAPS MUST NOT FIGHT (David, 30 Aug: "crazy flickering" in the
+   arranger, none in jam — a jam is one bar and never reaches the squeeze).
+   The height loop GROWS the music and the squeeze below SHRINKS it, so with
+   both starting fresh on every observation they took turns forever, the
+   ResizeObserver feeding each write straight back in. The squeeze's verdict
+   is therefore REMEMBERED in fsZCap and the height loop is clamped by it, so
+   the second call computes the same number as the first, writes nothing, and
+   the loop dies. The cap is a fact about the current layout: entering
+   fullscreen and every resize clear it, and a re-render lifts it by one
+   step so a shorter piece can grow again. */
+let fsPanHome=null, fsFbT=0, fsZCap=Infinity;
 function fsOn(){ return document.body.classList.contains("fs"); }
 function fsNativeEl(){ return document.fullscreenElement||document.webkitFullscreenElement||null; }
+/* THE UNDERSIDE TILES MUST HOLD THEIR DIGITS (David's screenshot, 30 Aug:
+   "the bottom note pills are still buggy"). The badge's overhang is PADDING
+   around the glyph and the slot caps the span at max-width:100% − 2px — so
+   in a layout squeezed to its minimum the digit overflows its own box to
+   the RIGHT and the ground reads shifted LEFT. That is a fact about ANY
+   window near the 540px floor, but fullscreen is the one place that CHOOSES
+   its layout width — so it must choose one where nothing clamps: measure
+   the ink against the room and give zoom back until every tile holds. */
+function fsSqueezed(z){
+  const rg=document.createRange();
+  for(const e of $("score").querySelectorAll(".sym.bt,.btcap")){
+    if(!e.offsetParent) continue;
+    const cs=getComputedStyle(e);
+    const avail=e.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
+    rg.selectNodeContents(e);
+    // the range rect is visual px, clientWidth is layout px — divide out z
+    if(rg.getBoundingClientRect().width/z>avail+.6) return true;
+  }
+  return false;
+}
 function fsFit(){
   if(!fsOn()) return;
-  const wrap=$("scorewrap"), sc=$("scorecard");
-  const availW=wrap.clientWidth-32, availH=wrap.clientHeight-32;
-  if(availW<300||availH<160) return;
-  let z=parseFloat(sc.style.zoom)||1;
-  for(let i=0;i<4;i++){
-    const h=sc.getBoundingClientRect().height;
-    if(!h) return;
-    let nz=z*availH/h;
-    nz=Math.min(nz,availW/560);   // never lay the card out under its 540px min width
+  const wrap=$("scorewrap"), sc=$("scorecard"), mus=$("score");
+  const availH=wrap.clientHeight-32;
+  if(availH<160||!mus.offsetParent) return;
+  let z=parseFloat(mus.style.zoom)||1;
+  const setZ=v=>{ z=v; mus.style.zoom=v; };
+  for(let i=0;i<6;i++){
+    const h=mus.getBoundingClientRect().height;
+    // the head, footer and card padding around the music — unzoomed, but
+    // remeasured each pass because the head can rewrap as the music moves
+    const chrome=sc.getBoundingClientRect().height-h;
+    const room=availH-chrome;
+    if(!h||room<80) return;
+    let nz=z*room/h;
+    // never lay the music out under its 540px min width (offsetWidth is the
+    // LAYOUT width, so the card's real width is z times it)
+    nz=Math.min(nz,z*mus.offsetWidth/560,fsZCap);
     nz=Math.max(nz,.5);           // a very long piece scrolls rather than shrinking to dust
     if(Math.abs(nz-z)<.01) break;
-    z=nz; sc.style.zoom=z;
+    setZ(nz);
   }
-  // centre a card shorter than the screen (the width cap leaves height over)
+  // …and the squeeze's verdict is kept, or it and the loop above alternate
+  for(let i=0;i<10&&z>.5&&fsSqueezed(z);i++){ setZ(z*.94); fsZCap=z; }
+  // centre a card shorter than the screen (the caps can leave height over)
   const h=sc.getBoundingClientRect().height;
   wrap.style.paddingTop=(16+Math.max(0,(availH-h)/2))+"px";
 }
 function fsApply(on){
   if(on===fsOn()) return;
+  clearTimeout(fsFbT);          // a settled state cancels any pending fallback
   document.body.classList.toggle("fs",on);
   const b=$("fsBtn"), u=b&&b.querySelector("use");
   if(u) u.setAttribute("href",on?"#is-fsx":"#is-fs");
@@ -17534,7 +17606,7 @@ function fsApply(on){
     // sweep home anything openDlg moved in (the shade and any flat dialog)
     const sh=$("dlgShade"); if(sh.parentElement===wrap) document.body.appendChild(sh);
     [...wrap.querySelectorAll("dialog")].forEach(d=>document.body.appendChild(d));
-    $("scorecard").style.zoom="";
+    $("score").style.zoom="";
     wrap.style.paddingTop="";
     document.body.classList.remove("fsmax");
   }
@@ -17559,10 +17631,14 @@ function fsLeave(){
     try{ p=req.call(wrap); }catch(e){}
     if(p&&p.catch) p.catch(fallback);
     // the prefixed API returns nothing and can refuse silently (an iframe
-    // still on an embed block without allowfullscreen) — check back shortly
-    setTimeout(fallback,350);
+    // still on an embed block without allowfullscreen) — check back shortly.
+    // The timer is KEPT AND CANCELLED once a state settles (fsApply, onchg),
+    // or a quick native enter-and-Esc within 350ms would let it re-engage
+    // the fallback on a screen the student had just left.
+    clearTimeout(fsFbT); fsFbT=setTimeout(fallback,350);
   });
-  const onchg=()=>{ if(!document.body.classList.contains("fsmax")) fsApply(fsNativeEl()===wrap); };
+  const onchg=()=>{ clearTimeout(fsFbT);
+    if(!document.body.classList.contains("fsmax")) fsApply(fsNativeEl()===wrap); };
   document.addEventListener("fullscreenchange",onchg);
   document.addEventListener("webkitfullscreenchange",onchg);
   addEventListener("resize",()=>{ if(fsOn()) fsFit(); });
