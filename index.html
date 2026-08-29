@@ -691,10 +691,19 @@ body.phone{--btpad:.12em}
    CANNOT differ in height: a group holding a stacked note used to grow alone
    (measured 56px beside 47px on a 5/8 chord groove, 4 bars in every 40). ---- */
 .rqrow{display:flex; justify-content:center}
-.rqscore{background:var(--sc-bg); border:1.5px solid var(--sc-edge); border-radius:14px;
-  padding:13px 16px 11px; display:inline-grid; grid-template-columns:auto auto;
-  column-gap:16px; align-items:center; max-width:100%;
-  overflow-x:auto; overscroll-behavior-x:contain}
+/* NO FRAME (David, 29 Aug: "the answers are currently displayed with an
+   unnecessary frame around them"). The printed-card dress — white ground,
+   brown edge — belongs to the piece you are reading; a three-group answer is
+   a specimen inside a quiz card that already has an edge of its own, and the
+   cells carry their own outlines. The overflow goes with the frame: setting
+   `overflow-x:auto` makes overflow-y compute to auto as well, so one stray
+   pixel put BOTH scrollbars inside the box — and the horizontal bar then ate
+   the height that summoned the vertical one. Nothing is lost by dropping it,
+   because rqFitScore is what guarantees the fit: measured 0 overflow on a
+   3/4 bar from 1280px down to 400px, and it narrows a slot to 19px before it
+   would ever come to scrolling. */
+.rqscore{display:inline-grid; grid-template-columns:auto auto;
+  column-gap:16px; align-items:center; max-width:100%}
 /* THE SIGNATURE SITS ON THE NOTATION ROW (David: "right now it is too low").
    It used to be a flex child of a bottom-aligned row, so it sank to the level
    of the konnakol line. Row 2 of this grid is the bar itself. The grouping
@@ -734,7 +743,7 @@ body.phone{--btpad:.12em}
 .rqscore.g-mid .slot.n1 .sym.pc{font-size:24px}
 .rqscore.g-small .slot.n1 .sym{font-size:22px}
 .rqscore.g-small .slot.n1 .sym.pc{font-size:20px}
-.rqscore.mini{padding:9px 10px 8px; border-width:1px; border-radius:11px; column-gap:11px}
+.rqscore.mini{column-gap:11px}
 .rqscore.mini .beat{min-height:34px; padding:4px 1px 3px}
 .rqscore.mini .slot{min-height:24px}
 .rqscore.mini .slot.n1 .sym{font-size:20px}
@@ -1931,7 +1940,7 @@ body.phone .gmini i{font-size:10px}
     box-shadow:0 -8px 12px -8px rgba(70,52,28,.18)}
   body.phone .rqcard{padding:13px 13px 12px}
   body.phone .rqhead .rqbig{font-size:19px}
-  body.phone .rqscore{padding:10px 11px 9px; column-gap:11px}
+  body.phone .rqscore{column-gap:11px}
   body.phone .rqscore .slot.n1 .sym{font-size:23px}
   body.phone .rqkon span{font-size:10px}
   body.phone .rqgrps{font-size:13px}
@@ -12433,6 +12442,15 @@ function rqPickGrouping(n){
    below is a WEIGHT, and the unusual shape stays reachable. Only rule 3, the
    one he said "always", is a gate. */
 const RQACC=1, RQFILL=0.55;          // how hard an accent is struck against a fill
+/* AND THE FILL THAT LEADS INTO A NEW GROUP DUCKS (David, 29 Aug: "when there
+   is a filler note right before the accent of a new subdivision, please make
+   that filler note significantly softer than the others so the accent and the
+   start of the new subdivision don't get masked"). In a chord groove the
+   grouping is carried by WEIGHT alone — the timbre does not change as it does
+   between doum and tak — so a fill still ringing into the downbeat is not a
+   blemish, it is the answer being hidden. Half a fill, and a third of an
+   accent. */
+const RQLEAD=0.28;
 const RQCOUNTIN=4;                   // pulses before the bar — never the bar's own length
 /* WHERE A FILLING DOUM BELONGS (David, 28 Aug): at the END of its group,
    leading into a following doum accent. "A low stroke in the very end can
@@ -12700,11 +12718,26 @@ function rqFieldsLowHigh(){
 function rqLadder(def){
   return rqFieldsLowHigh().filter(f=>def.pcs.indexOf(jpc(myPan.midiFor(f)))>=0);
 }
-// a random chord this pan can play (David: "random chord that your pan can play")
+/* A RANDOM CHORD THIS PAN CAN PLAY (David: "random chord that your pan can
+   play") — AND AN ACTUAL CHORD (David, 29 Aug: "please choose notes from an
+   actual chord. At the moment they seem to use all tone fields of the pan").
+   He was right, and the cause was the VOCABULARY, not the voicing.
+   rqVoiceGroove already walks a ladder of chord tones — measured over 3272
+   notes, 3.5% fall off it, which is his own passing-tone rule from 28 Aug and
+   nothing else. But jamDefs offers ninths beside triads, and a ninth's ladder
+   swallows the instrument: on a D Kurd 10, Dmin9 is 0·1·3·4·5·6·8·9 and
+   B♭maj9 the same count — EIGHT of the ten fields, which is exactly "all tone
+   fields of the pan". A triad's ladder is three to five fields, and that is a
+   chord you can hear: Dmin 0·1·4·6·8, Cmaj 3·5·7·9, Edim 2·5·7.
+   So the quiz takes triads — seven of them on that pan. Sevenths (five to
+   seven fields) stay as a fallback for an instrument that offers no triad at
+   all, never as a first choice. */
 function rqChordDef(){
-  const list=jamDefs().list.filter(c=>!c.miss&&c.pcs&&c.pcs.length>=3
-    &&rqLadder(c).length>=3);
-  return list.length?list[Math.floor(Math.random()*list.length)]:null;
+  const ok=c=>!c.miss&&c.pcs&&rqLadder(c).length>=3;
+  const all=jamDefs().list.filter(ok);
+  const triads=all.filter(c=>c.pcs.length===3);
+  const use=triads.length?triads:all.filter(c=>c.pcs.length===4);
+  return use.length?use[Math.floor(Math.random()*use.length)]:null;
 }
 const RQSHAPES=["groove","groove","groove","up","up","arch","down"];
 /* Returns {slot: [field,...]} — a list because an accent may be a stack. */
@@ -12981,6 +13014,17 @@ function rqPlay(pat,voice,o){
   const step=beat*4/g.note, barSec=g.n*step;
   const reps=o.reps==null?rqcfg.plays:o.reps;
   const evs=rqEvents(pat,voice);
+  /* WHICH FILLS DUCK: the ones standing on the slot before a group's opening
+     accent. Only in a chord groove — doum and tak part by timbre as well as
+     weight, so a tak before a doum masks nothing. It WRAPS, because the last
+     slot of the bar leads into the next repetition's first accent, and that
+     downbeat is the one the student is counting from. Only where an accent
+     actually sounds: a group that opens on a rest has nothing to be masked. */
+  const startSet=new Set(rqStarts(g.groups));
+  const accAt=new Set(evs.filter(e=>e.acc).map(e=>e.p));
+  const ducks=new Set(voice!=="groove"?[]
+    :evs.filter(e=>!e.acc&&startSet.has((e.p+1)%g.n)&&accAt.has((e.p+1)%g.n))
+        .map(e=>e.p));
   return Promise.resolve(preloadBank()).then(()=>{
     // `at` lets a loop hand the next chunk the exact time the last one ends,
     // so an endless bar does not breathe every four turns
@@ -13005,7 +13049,7 @@ function rqPlay(pat,voice,o){
       for(const e of evs){
         const at=base+e.p*step;
         // a stack sums, so scale by 1/√n — app.html's equal-power rule
-        const g=(e.acc?RQACC:RQFILL)/Math.sqrt(byP.get(e.p)||1);
+        const g=(e.acc?RQACC:(ducks.has(e.p)?RQLEAD:RQFILL))/Math.sqrt(byP.get(e.p)||1);
         if(e.kind==="perc") fire(bankBuf("p_tak"+(e.hand==="L"?"L":"R"))||percBuf("tak"),at,.9*g);
         else{ const m=myPan.midiFor(e.f);
               fire(bankBuf("o"+m)||synthBuf(m,"open"),at,g); }
