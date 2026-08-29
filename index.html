@@ -380,23 +380,70 @@ input[type=text]{width:auto}
    shade darker than the in-score copy (David, 26 Aug). The head's height is
    set by the 44px play button, so this costs the notation nothing. */
 #secLabel{font-size:16px; letter-spacing:.04em; color:var(--ink2)}
+/* THE COUNT ROW IS BUILT LIKE THE BAR, cell for cell (29 Aug). It used to be
+   one flat grid of bp columns across the whole bar, which lined up only while
+   a cell was pure 1fr slots — the moment the cells gained a gutter the beat
+   numbers began sliding off the notes they count (measured: 1.4px by the end
+   of a cell, and it would have been ~9px once the separator got its air). So
+   it carries the same padding, the same gutter and the same negative margin,
+   and alignment holds by construction rather than by luck. */
 .count{display:grid; margin-bottom:8px}
+.count .cbeat{display:grid; padding:0 var(--cellpad); column-gap:var(--subgap);
+  margin:0 -1px 0 0; border:1px solid transparent; border-width:0 1px}
+  /* the transparent side borders are not decoration: the cell below carries a
+     1px border on each flank, and without the same two pixels the count's
+     inner width differs from the music's and the numbers drift again */
 .count span{text-align:center; font-size:17px; font-weight:700; color:var(--sc-count); font-variant-numeric:tabular-nums; position:relative}
 .bar{display:grid; gap:0}
-.beat{display:grid; align-items:end; border:1px solid var(--sc-rule); margin:0 -1px -1px 0; padding:6px 1px 5px; min-height:46px; position:relative}
+/* THE SLOT IS THE UNIT (David, 29 Aug — mockups-notation-space.html, A).
+   A slot is a share of the cell, but ink was sized to itself: a two-digit
+   number outgrew its share and landed against its neighbour, so "12 6" read
+   "126". A real gutter gives every position a column of its own, and it is
+   also where the marker's edges now land — see .mkbox. `isolation` is what
+   lets that marker sit BEHIND the glyphs without falling behind the cell.
+   AND THE SEPARATOR GETS AIR (David, 29 Aug — mockups-subdiv-space.html, 01:
+   "move the numbers and symbols a little bit away from those separator
+   lines"). A SUBDIVISION IS THE CELL — his word, and the interface's own; see
+   HANDOVER. The cell's contents step 6px back from each line, so every
+   separator has 12px of white around it and each subdivision holds its
+   contents as a group. It is PAID FOR out of the gutter (5px → 2px), so the
+   bar is exactly as wide as before — which is the only reason it is
+   affordable on a 20-note pan. Both numbers live here, because the count row
+   has to use the very same ones. */
+.score{--cellpad:6px; --subgap:2px}
+.beat{display:grid; align-items:end; border:1px solid var(--sc-rule); margin:0 -1px -1px 0;
+  padding:6px var(--cellpad) 5px; min-height:46px; position:relative; isolation:isolate;
+  column-gap:var(--subgap)}
 .beat.band{background:var(--sc-band)}
+/* ---- two notation options, switched in Settings › Notation (David, 29 Aug) ----
+   B · SLOT LINES. A · gutters is the default and answers the ambiguity with
+   space; this answers it with a line, for the densest music. The rule is
+   lighter than the beat's own border, and it rides in the GUTTER the cell
+   already has, so turning it on moves nothing. */
+body.slotlines .beat>.slot+.slot::before{content:""; position:absolute;
+  left:-3px; top:2px; bottom:2px; width:1px; background:var(--rule2); pointer-events:none}
+/* M2 · THE MARKER AS A LINE ON THE CELL'S OWN BORDER (David, 29 Aug: "with the
+   line ON the border line below the cell instead of below"). It replaces the
+   band rather than joining it, so the played position is said once. 2px sitting
+   on the 1px border covers it exactly — the cell's bottom edge lights up. */
+body.mkline .mkbox{top:auto; bottom:-1px; height:2px; background:var(--dixie);
+  border:none; border-radius:0}
 /* --symlh: the line-height its stacked glyphs use, for .btcap's alignment
    arithmetic. Declared on the CONTAINER because a custom property inherits
    down: the capsule is the glyphs' parent and cannot read their value. */
 .slot{--symlh:1.02; display:flex; flex-direction:column-reverse; align-items:center; justify-content:flex-start;
   min-height:34px; border-radius:4px; padding:1px 0; position:relative}
 .slot.cursor{outline:2px solid var(--steel); outline-offset:0}
-/* The playback marker (16th/8th/strokes): ONE even rectangle laid over the
-   covered slots as a full-height beat-cell overlay, so neighbouring symbols
-   of different sizes never jag the box. 1px border — like an active button;
-   the wash is translucent so the glyphs stay crisp beneath it. */
-.mkbox{position:absolute; top:-1px; bottom:-1px; pointer-events:none;
-  background:rgba(229,147,21,.13);
+/* The playback marker (16th/8th/strokes): ONE even rectangle over the covered
+   slots as a full-height beat-cell overlay, so neighbouring symbols of
+   different sizes never jag the box.
+   IT SITS BEHIND THE GLYPHS NOW (David, 29 Aug: "the playhead marker crossing
+   through numbers"). It used to be drawn on top and to snap to the GAP between
+   two glyphs — which is exactly why it cut them: once a glyph is wider than
+   its share there is no gap to snap to. Behind the type it cannot touch ink at
+   all, and its edges land in the gutter the cell now carries. */
+.mkbox{position:absolute; top:-1px; bottom:-1px; pointer-events:none; z-index:-1;
+  background:var(--sc-band);
   border-top:1px solid var(--dixie); border-bottom:1px solid var(--dixie)}
 .beat.tbeat>.mkbox{top:1px; bottom:1px}   /* the tab's fit David approved */
 .mkbox.mkbL{border-left:1px solid var(--dixie);
@@ -475,8 +522,36 @@ input[type=text]{width:auto}
         calc((var(--symlh,1.02) - 1.206) * .5em + .109em);
   border-radius:.28em; background:var(--sc-under)}
 .btcap .sym.bt::before{display:none}
+/* A TWO-DIGIT NUMBER WRITES SMALLER AND TIGHTER (David, 29 Aug: "make 2-digit
+   numbers a bit smaller and have the digits a tiny bit closer together. This
+   will also help distinguish them from 2 separate numbers"). Both halves earn
+   their place: the smaller size is what finally keeps the pair inside its own
+   slot, and the tighter tracking is what makes it read as ONE number rather
+   than two neighbours. `glyphFor` adds `.d2` to any glyph of more than one
+   character, so this follows the score wherever it is drawn.
+   Sized per density in absolute px, NOT in em: `font-size:.84em` would compute
+   from the parent's size, not from the .sym size being overridden. A new
+   density rule needs its own .d2 partner here. */
+.sym.d2{font-size:19.5px; letter-spacing:-.055em; position:relative; top:-.1em}
+/* …and it RIDES A LITTLE HIGHER (David, 29 Aug: "move double digits up a
+   little bit so they look vertically centered compared to single digits").
+   A smaller number hangs low beside a big one, and by MORE than the type
+   sizes suggest: glyphs are not aligned on a shared baseline here — the cell
+   is `align-items:end`, so what lines up is the BOTTOM of each line box, and
+   a smaller box also carries less room under its own baseline. Measured from
+   a line box's foot, a cap's centre sits at (L − C)/2 + descent + cap/2 ≈
+   0.515em of that glyph's size; the raise is therefore 0.515 × the difference
+   in size, which is 0.092–0.114em of the smaller one across every density in
+   the score. 0.1em serves them all to well under half a pixel.
+   (The first attempt used half the cap-height difference — 0.07em — and left
+   the pair 1.1px low, because it assumed a shared baseline. The same trap as
+   the capsule's alignment: measure against the box that actually lines up.)
+   `top`, not a margin, so nothing in the layout moves. */
 /* glyphs breathe with slot density: alone large, stacked smaller */
 .slot.n1 .sym{font-size:37px}
+.slot.n1 .sym.d2{font-size:31px}
+.slot.n2 .sym.d2{font-size:17px}
+.slot.n3 .sym.d2{font-size:13.5px}
 .slot.n2 .sym{font-size:20px}
 .slot.n3{--symlh:1.08}
 .slot.n3 .sym{font-size:16px; line-height:1.08}
@@ -1317,9 +1392,12 @@ body.phone #pcbar{font-size:11.5px}
 .tsyms{display:flex; flex-direction:column-reverse; justify-content:center; align-items:center;
   flex:1; width:100%}
 .tcol .sym{font-size:33px}
+.tcol .sym.d2{font-size:27px}     /* the .d2 partners — see .sym.d2 */
 .tcol.n2 .sym{font-size:19px}
+.tcol.n2 .sym.d2{font-size:16px}
 .tcol.n3{--symlh:1.1}
 .tcol.n3 .sym{font-size:15px; line-height:1.1}
+.tcol.n3 .sym.d2{font-size:12.5px}
 .tcol .sym.gh{font-size:30px; margin:auto 0}
 .tcol.n2 .sym.gh,.tcol.n3 .sym.gh{font-size:17px; margin:0}
 .tcol .sym.pc{font-size:30px}
@@ -1702,6 +1780,7 @@ body.phone .gmini i{font-size:10px}
   .edslot.cur{background:var(--dixie-soft); box-shadow:inset 0 0 0 2px var(--dixie)}
   /* lane glyphs at finger scale — the score's own .sym classes, resized */
   .edslot .sym{font-size:24px}
+  .edslot .sym.d2{font-size:20px}
   .edslot.n1 .sym{font-size:30px}
   .edslot.n2 .sym{font-size:19px}
   .edslot.n3 .sym{font-size:15px}
@@ -2758,6 +2837,16 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <h4>Notation</h4>
   <div class="drow"><span>Hand letters</span>
     <button class="ctl" id="handsBtn" title="Show the L/R hand letters">Hands</button></div>
+  <!-- the two crowding options (David, 29 Aug). Both belong to how the score
+       is DRAWN, so they live here beside the other notation choices. -->
+  <div class="drow"><span>Slot lines</span>
+    <button class="ctl" id="slotLinesBtn"
+      title="Draw a faint line between the positions inside a beat">Lines</button></div>
+  <div class="drow"><span>Playing marker</span>
+    <span class="pills" id="mkPills" role="group" aria-label="Playing marker">
+      <button id="mkStyleBox" title="A band behind the notes being played">Band</button>
+      <button id="mkStyleLine" title="A line on the beat's lower border">Line</button>
+    </span></div>
   <div class="drow tabonly"><span>Tab rows</span>
     <select class="ctl" id="rowsSel" title="Tab notation in one row, or split into left- and right-hand rows">
       <option value="one">One</option><option value="split">L + R</option></select></div>
@@ -3798,6 +3887,15 @@ function setPanCustom(v){
   else renderPanPanel();
   if(panCustom) toast("Drag the fields to match your instrument — they cannot overlap");
 }
+/* the two notation options (David, 29 Aug). Stored like every other setting,
+   applied as body classes so the CSS carries them and nothing has to re-render
+   to change how the score is drawn. */
+let slotLines=(()=>{ try{return localStorage.getItem("hps.slotlines")==="1"}catch(e){return false} })();
+let mkStyle=(()=>{ try{return localStorage.getItem("hps.mkstyle")==="line"?"line":"band"}catch(e){return "band"} })();
+function applyNotaOpts(){
+  document.body.classList.toggle("slotlines",slotLines);
+  document.body.classList.toggle("mkline",mkStyle==="line");
+}
 function panLayouts(){ try{return JSON.parse(localStorage.getItem("hps.panlayout")||"{}")}catch(e){return{}} }
 function setPanLayouts(o){ try{localStorage.setItem("hps.panlayout",JSON.stringify(o))}catch(e){} }
 function layoutFor(id){ const l=panLayouts()[id]; return (l&&(l.f||l.b))?l:null; }
@@ -4002,24 +4100,22 @@ function clearSlotMarks(){
    halfway between the last glyph of one and the first glyph of the next. Falls
    back to the arithmetic boundary when either side is empty or the two overlap
    (nothing sensible to split). */
+/* THE EDGE LANDS IN THE GUTTER, between two SLOTS (David, 29 Aug).
+   It used to be found from the GLYPHS either side and set at their midpoint —
+   which worked while every glyph fitted its share, and cut straight through
+   the ink once one did not: a wide glyph leaves no gap to aim at, so the
+   midpoint fell inside it. The slots themselves always have a gap between
+   them (.beat carries a column-gap), and it is empty by construction, so the
+   boundary between two slots is the honest place for an edge. */
 function mkEdgePct(be,relA,relB,fallback){
   const box=be.getBoundingClientRect();
   if(!box.width) return fallback;
-  const edge=(rel,side)=>{
-    const sl=be.querySelector('[data-rel="'+rel+'"]');
-    if(!sl) return null;
-    const gl=sl.querySelectorAll(".sym");
-    if(!gl.length) return null;
-    let v=null;
-    for(const g of gl){ const r=g.getBoundingClientRect();
-      if(!r.width) continue;
-      const x=side<0?r.right:r.left;
-      v=v==null?x:(side<0?Math.max(v,x):Math.min(v,x)); }
-    return v;
-  };
-  const a=edge(relA,-1), b=edge(relB,1);
-  if(a==null||b==null||b<a) return fallback;
-  return Math.max(0,Math.min(100,((a+b)/2-box.left)/box.width*100));
+  const rect=rel=>{ const sl=be.querySelector('[data-rel="'+rel+'"]');
+    if(!sl) return null; const r=sl.getBoundingClientRect();
+    return r.width?r:null; };
+  const a=rect(relA), b=rect(relB);
+  if(!a||!b||b.left<a.right-0.5) return fallback;
+  return Math.max(0,Math.min(100,((a.right+b.left)/2-box.left)/box.width*100));
 }
 function drawMarkBox(m,barI,s,e){
   const barBase=barI*m.bp;
@@ -5897,7 +5993,11 @@ function glyphFor(ev,disp){
      faded, outlined or made harder to read, and it costs no glyph width. */
   const bot=isBotPos(f);
   let base=bot?String(botIdx(f)):(f===0?(ev.art==="mute"?"M":"D"):String(f));
-  let cls="sym"+(bot?" bt":"");
+  /* .d2 — a number of more than one character writes smaller and tighter, so
+     it stays inside its own slot and reads as one number (David, 29 Aug).
+     Measured on `base`, before the mute's <small>m</small> is appended: that
+     is a suffix on a single-digit number, not a second digit. */
+  let cls="sym"+(bot?" bt":"")+(base.length>1?" d2":"");
   if(ev.art==="overtone") cls+=" ot";
   if(ev.art==="mute"&&f!==0){ base+="<small>m</small>"; cls+=" mu"; }
   return {t:base,cls};
@@ -6339,11 +6439,19 @@ function buildCountRow(m,cls){
   cnt.style.gridTemplateColumns="repeat("+m.bpr+",1fr)"; cnt.style.gap="0 14px";
   for(let r=0;r<m.bpr;r++){
     const cb=document.createElement("div");
-    cb.style.display="grid"; cb.style.gridTemplateColumns="repeat("+m.bp+",1fr)";
-    for(let t=0;t<m.bp;t++){
-      const sp=document.createElement("span"); sp.dataset.ct=r*m.bp+t;
-      sp.textContent=t%m.sub===0?String(t/m.sub+1):(m.sub%2===0&&t%m.sub===m.sub/2?"+":"·");
-      cb.appendChild(sp);
+    /* one column per SUBDIVISION, each holding its own positions — the bar's
+       own structure, so the numbers cannot drift off the notes (see .count) */
+    cb.style.display="grid"; cb.style.gridTemplateColumns="repeat("+m.beats+",1fr)";
+    for(let b=0;b<m.beats;b++){
+      const cell=document.createElement("div"); cell.className="cbeat";
+      cell.style.gridTemplateColumns="repeat("+m.sub+",1fr)";
+      for(let k=0;k<m.sub;k++){
+        const t=b*m.sub+k;
+        const sp=document.createElement("span"); sp.dataset.ct=r*m.bp+t;
+        sp.textContent=k===0?String(b+1):(m.sub%2===0&&k===m.sub/2?"+":"·");
+        cell.appendChild(sp);
+      }
+      cb.appendChild(cell);
     }
     cnt.appendChild(cb);
   }
@@ -13655,6 +13763,25 @@ function boot(){
   $("orient1").addEventListener("click",()=>setOrient("1"));
   $("orient2").addEventListener("click",()=>setOrient("2"));
   paintOrient();
+  /* Slot lines and the marker's shape: body classes, so neither needs a
+     re-render — the drawing already on screen changes under the new rules. */
+  const paintNotaOpts=()=>{
+    $("slotLinesBtn").classList.toggle("on",slotLines);
+    $("slotLinesBtn").setAttribute("aria-pressed",String(slotLines));
+    $("mkStyleBox").setAttribute("aria-pressed",String(mkStyle!=="line"));
+    $("mkStyleLine").setAttribute("aria-pressed",String(mkStyle==="line"));
+  };
+  $("slotLinesBtn").addEventListener("click",()=>{
+    slotLines=!slotLines;
+    try{localStorage.setItem("hps.slotlines",slotLines?"1":"0")}catch(e){}
+    applyNotaOpts(); paintNotaOpts();
+  });
+  const setMkStyle=v=>{ if(mkStyle===v) return; mkStyle=v;
+    try{localStorage.setItem("hps.mkstyle",v)}catch(e){}
+    applyNotaOpts(); paintNotaOpts(); };
+  $("mkStyleBox").addEventListener("click",()=>setMkStyle("band"));
+  $("mkStyleLine").addEventListener("click",()=>setMkStyle("line"));
+  applyNotaOpts(); paintNotaOpts();
   $("handsBtn").classList.toggle("on",handsOn);
   $("handsBtn").addEventListener("click",()=>{ handsOn=!handsOn;
     try{localStorage.setItem("hps.hands",handsOn?"on":"off")}catch(e){}
