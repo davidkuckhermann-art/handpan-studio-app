@@ -6824,6 +6824,27 @@ const pvEl=p=>isBotPos(p)?$("pvb"+(botIdx(p)-1)):$("pvf"+p);
    Angles are a DEFAULT, not a fact: spread evenly across an arc centred on the
    player's side, widening with the count until six ring the instrument. They
    are layout, so the customiser will move them. */
+/* WHERE THE TOP SHELL'S FIELDS ARE — ONE COPY (29 Aug). panViewSVG worked
+   this out inline, twice over (once to measure touch boxes, once to draw), and
+   the UNDERSIDE had no way to ask at all — which is why a bottom note could
+   come to rest on top of a field and nothing in the drawing noticed. Both now
+   read this. Pass LAY if you already resolved it; omit it and the same
+   stored-then-computed order is used that panViewSVG uses. */
+function topSpots(P,LAY){
+  const cx=215, pr=148, n=P.fields.length, ring=zigzag(n);
+  const L=(LAY===undefined)?(layoutFor(P.pan&&P.pan.id)||defaultLayout(P)):LAY;
+  const RAD=panRadii(P,L);
+  const half=(!L&&panOrient==="2")?Math.PI/n:0;
+  const out=ring.map((f,k)=>{
+    const a=Math.PI/2+half+k*2*Math.PI/n, c=L&&L.f&&L.f[f];
+    return {f, r:RAD.of(f),
+      x:c?c.x:+(cx-pr*Math.cos(a)).toFixed(1),
+      y:c?c.y:+(cx+pr*Math.sin(a)).toFixed(1)};
+  });
+  const c0=L&&L.f&&L.f[0];
+  out.push({f:0, r:52, x:c0?c0.x:cx, y:c0?c0.y:cx});
+  return out;
+}
 function undersideGeom(P,under){
   const bots=(under&&P.bottom)||[];
   if(!bots.length) return {bots:[],pad:0,place:null};
@@ -6860,11 +6881,12 @@ function undersideGeom(P,under){
      same few pixels clear of the shell. The phone keeps straddling the rim,
      which is the −12% it already pays. */
   const crFor=bottomRing;
-  let pad=0;
-  const at=(e,a)=>{ const r=rad(e.b), c=crFor(r);
-    pad=Math.max(pad,c+r-R);
-    return {b:e.b,i:e.i,r,cr:c,x:+(215-c*Math.cos(a)).toFixed(1),y:+(215+c*Math.sin(a)).toFixed(1)}; };
-  const place=[];
+  /* WHO SITS AT WHICH ANGLE is decided first and the DISCS ARE PLACED AFTER,
+     so the settling pass below can move them all together without the rules
+     above having to know anything about it. `pad` is measured at the end, from
+     where they actually ended up. */
+  const seats=[];
+  const at=(e,a)=>{ seats.push({e,a}); return null; };
   const HISTEP=Math.PI/9;                  // 20° — a third of the low notes' 60°
   const MARGIN=Math.PI/9;                  // and 20° of no-man's-land either side
   // the low ones: the ring walk, arc narrowed so a pair stays near the player
@@ -6885,7 +6907,7 @@ function undersideGeom(P,under){
     zigzag(mL).forEach((bn,idx)=>{
       let dev=idx*2*Math.PI/mL+half;
       dev=((dev+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI;
-      place.push(at(lows[bn-1],Math.PI/2+dev*squeeze));
+      at(lows[bn-1],Math.PI/2+dev*squeeze);
     });
   }
   /* THE HIGH ONES ARE SEPARATED TOO (David, 29 Aug: "the high bottom notes
@@ -6900,9 +6922,61 @@ function undersideGeom(P,under){
   if(mH){
     const hr=rad(highs[0].b), hc=crFor(hr);
     const step=mH>1?Math.max(HISTEP,Math.asin(Math.min(.9,(hr*2+4)/(2*hc)))*2):0;
-    highs.forEach((e,k)=>place.push(at(e,-Math.PI/2+(k-(mH-1)/2)*step)));
+    highs.forEach((e,k)=>at(e,-Math.PI/2+(k-(mH-1)/2)*step));
   }
-  return {bots,pad:Math.max(0,Math.ceil(pad)+2),place};
+  /* ---- THE UNDERSIDE GIVES WAY TO THE TOP SHELL (David, 29 Aug) -----------
+     "If a bottom note marker eats into the space of a top note, the bottom
+     note should slide a bit up/down/left/right if possible. If possible, we
+     always want a few px gap between tone fields. If this is an issue on both
+     sides of the instrument, we prefer the bottom notes to move in a way that
+     preserves geometry between the bottom notes on both sides if possible."
+
+     IT IS A PHONE FAULT, and it was there before the mutant work made it
+     worse: the desktop hangs each disc OUTSIDE the rim (`207+r+4`) so the
+     closest anything came was 7.8px, but the PHONE straddles the rim at 207
+     flat to save width — and a straddling disc reaches inward to `207−r`,
+     which is exactly where a pushed-out mutant ring now sits. 43 of the 47
+     underside pans overlapped a top field on the phone, by up to 19.7px.
+
+     HIS PREFERENCE ORDER IS THE CODE'S ORDER. A single uniform radial push
+     preserves the geometry between the bottom notes EXACTLY — every angle and
+     every spacing untouched — so the smallest push that clears is tried
+     first, and it is what nearly every pan gets. Only a note still crowded
+     after that slides along the rim on its own, which does break the
+     symmetry, and it moves the fewest degrees that clear. */
+  const UGAP=5;                       // "a few px" between any two tone fields
+  const tops=topSpots(P);
+  const intrude=pl=>{ let w=0;
+    for(const t of tops){ const need=pl.r+t.r+UGAP, d=Math.hypot(pl.x-t.x,pl.y-t.y);
+      if(d<need) w=Math.max(w,need-d); }
+    return w; };
+  const seatAt=(e,a,push)=>{ const r=rad(e.b), c=crFor(r)+(push||0);
+    return {b:e.b,i:e.i,r,cr:c,a,
+      x:+(215-c*Math.cos(a)).toFixed(1), y:+(215+c*Math.sin(a)).toFixed(1)}; };
+  const worstOf=list=>list.reduce((m,pl)=>Math.max(m,intrude(pl)),0);
+  const PUSHMAX=36;
+  let place=seats.map(s=>seatAt(s.e,s.a,0)), push=0;
+  if(worstOf(place)>0.01){
+    for(let k=1;k<=PUSHMAX;k++){
+      const cand=seats.map(s=>seatAt(s.e,s.a,k));
+      if(worstOf(cand)<=0.01){ push=k; place=cand; break; }
+    }
+    if(!push){ push=PUSHMAX; place=seats.map(s=>seatAt(s.e,s.a,PUSHMAX)); }
+  }
+  place.forEach((pl,i)=>{
+    if(intrude(pl)<=0.01) return;
+    let best=pl, bw=intrude(pl);
+    for(let d=1;d<=45&&bw>0.01;d++)
+      for(const dir of [1,-1]){
+        const cand=seatAt(seats[i].e, seats[i].a+dir*d*Math.PI/180, push);
+        const w=intrude(cand);
+        if(w<bw-0.01){ bw=w; best=cand; }
+      }
+    place[i]=best;
+  });
+  let pad=0;
+  for(const pl of place) pad=Math.max(pad,Math.hypot(pl.x-215,pl.y-215)+pl.r-R);
+  return {bots,pad:Math.max(0,Math.ceil(pad)+2),place,push};
 }
 /* ---- THE MUTANT LAYOUT, COMPUTED (David, 29 Aug) --------------------------
    "Instead of storing a custom layout with every scale, create an algorithm
@@ -7153,25 +7227,22 @@ function panViewSVG(pan,label,opts){
     +'<circle class="pvring" cx="'+x+'" cy="'+y+'" r="'+r+'" fill="none" stroke-width="3.5"/>'
     +'<text x="'+x+'" y="'+(y+numSize*.32)+'" text-anchor="middle" font-family="Inter" font-size="'+numSize+'" font-weight="700" fill="var(--sc-ink)" pointer-events="none">'+num+'</text>'
     +'<text class="pvnote" x="'+x+'" y="'+(y+noteDy)+'" text-anchor="middle" font-family="Figtree" font-size="11.5" font-weight="600" fill="var(--ink3)" pointer-events="none">'+note+'</text></g>';
-  const ringPos=ring.map((f,k)=>{
-    const a=Math.PI/2+half+k*2*Math.PI/n;
-    const c=LAY&&LAY.f&&LAY.f[f], r=fRad(f);
-    return {f,r,x:c?c.x:+(cx-pr*Math.cos(a)).toFixed(1),y:c?c.y:+(cx+pr*Math.sin(a)).toFixed(1)};
-  });
+  /* ONE PLACEMENT, MEASURED AND DRAWN. This was worked out here twice — once
+     for the touch boxes and once again in the drawing loop — and a third time,
+     differently, nowhere at all: the underside could not ask where the fields
+     were. topSpots() is that one answer now, and the loop below reads it. */
+  const ringPos=topSpots(P,LAY).filter(q=>q.f!==0);
   ringPos.forEach(q=>spots.push(q));
   spots.push({f:0,r:dr,x:(LAY&&LAY.f&&LAY.f[0]?LAY.f[0].x:cx),y:(LAY&&LAY.f&&LAY.f[0]?LAY.f[0].y:cx)});
   (U.place||[]).forEach(pl0=>{
     const c=LAY&&LAY.b&&LAY.b[pl0.i];
     spots.push({b:pl0.i,r:pl0.r,x:c?c.x:pl0.x,y:c?c.y:pl0.y});
   });
-  ring.forEach((f,k)=>{
-    const a=Math.PI/2+half+k*2*Math.PI/n;
-    // mirrored: the zigzag's odd fields sit on the player's RIGHT (David, 26 Aug —
-    // "right is black and left is green" meant the drawn pan was flipped)
-    const c=LAY&&LAY.f&&LAY.f[f];
-    const x=c?c.x:+(cx-pr*Math.cos(a)).toFixed(1), y=c?c.y:+(cx+pr*Math.sin(a)).toFixed(1);
-    const r=fRad(f);
-    h+=field(f,x,y,r,String(f),P.labelFor(f),+(r*.568).toFixed(1),+(r*.649).toFixed(1));
+  // mirrored: the zigzag's odd fields sit on the player's RIGHT (David, 26 Aug —
+  // "right is black and left is green" meant the drawn pan was flipped) — see topSpots
+  ringPos.forEach(q=>{
+    h+=field(q.f,q.x,q.y,q.r,String(q.f),P.labelFor(q.f),
+             +(q.r*.568).toFixed(1),+(q.r*.649).toFixed(1));
   });
   const c0=LAY&&LAY.f&&LAY.f[0];
   h+=field(0,c0?c0.x:cx,c0?c0.y:cx,dr,"D",P.labelFor(0),26,32);
@@ -14866,11 +14937,37 @@ function boot(){
         }).catch(()=>{});
       }
     }catch(e){}
+    /* …and reopen the room it was closed in. NOT in the lesson player or an
+       embed: those have no way out of a quiz or the editor, and a student who
+       opened a lesson must always land on the score. Nor when a share link
+       named a piece — that link is a request to look at THAT, in the arranger.
+       Every room's entry function takes no arguments and refuses politely if
+       it is already open, so an unknown or stale value simply leaves the score
+       showing. */
+    try{
+      if(document.documentElement.classList.contains("player")||EMBEDDED) return;
+      if(location.hash.startsWith("#p=")||WANT_PIECE) return;
+      const room=localStorage.getItem("hps.room");
+      if(room==="jam") enterJam();
+      else if(room==="quiz") enterQuiz();
+      else if(room==="rquiz") enterRhythmQuiz();
+      else if(room==="edit"){ const b=$("editBtn"); if(b&&!editing) b.click(); }
+    }catch(e){}
   }
   window.addEventListener("beforeunload",()=>{
     // never persist a generated jam OR a groove workbench as the "last piece"
     // — closing mid-jam/mid-groove stores the piece they replaced (the jam
     // recipe lives in hps.jam; a half-written groove is simply lost)
+    /* THE ROOM YOU CLOSED IN (David, 29 Aug: "please also make the
+       view/mode/editor that is selected when app is closed save and re-open on
+       the same page when app is re-started"). Table|Tab and Chords|Pan already
+       stuck; the ROOM did not, so a jam, either quiz or the editor always
+       dropped back to the plain score on the next launch.
+       Written HERE, in the one handler that already runs at closing time,
+       rather than in each of the eight enter/leave functions — five places
+       each half-remembering is how they drift apart. */
+    try{ localStorage.setItem("hps.room",
+      rqOn?"rquiz":quizOn?"quiz":jamOn?"jam":editing?"edit":"score"); }catch(e){}
     const p=jamOn&&jamPrev?jamPrev.piece:(grooveEdit?grooveEdit.prevPiece:piece);
     if(p&&(p.id==="jam"||p.id==="groove-edit")) return;
     try{ localStorage.setItem("hps.lastPiece","HPS1:"+enc(p)); }catch(e){}
