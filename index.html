@@ -15379,11 +15379,32 @@ function toggleFav(k){
   return i<0;
 }
 const ppPick={};                       // scale key -> the build id its row shows
+/* THE SCALE READS IN PITCH ORDER (David, 30 Aug: "they should always be
+   displayed in pitch order. In this case something like: (B♭ C) D (F G) A B♭
+   C…"). It used to read ding · top shell, then every underside note bundled
+   into one bracket at the end — so a D Kurd 17's B♭2 and C3, which sit BELOW
+   the ding and are the whole reason to want that build, were listed after its
+   top E5. Underside notes keep their brackets, because where a note is
+   struck is worth knowing, but they now stand where they sound, and a run of
+   neighbouring ones shares a single pair. */
 const panNoteLine=p=>{
   const pc=n=>String(n).replace(/-?\d+$/,"");
-  let s=pc(p.ding)+" · "+p.fields.map(pc).join(" ");
-  if(p.bottom&&p.bottom.length) s+="  ("+p.bottom.map(pc).join(" ")+")";
-  return s;
+  const one=n=>({n,m:midiOf(n)});
+  const all=[one(p.ding)].concat((p.fields||[]).map(one))
+    .concat(((p.bottom||[]).map(n=>Object.assign(one(n),{b:true}))));
+  // a pan whose notes cannot be read stays on the old, order-free line
+  if(all.some(x=>x.m==null||isNaN(x.m))){
+    let s=pc(p.ding)+" · "+(p.fields||[]).map(pc).join(" ");
+    if(p.bottom&&p.bottom.length) s+="  ("+p.bottom.map(pc).join(" ")+")";
+    return s;
+  }
+  all.sort((x,y)=>x.m-y.m);
+  const out=[]; let run=null;
+  for(const x of all){
+    if(x.b){ if(!run){ run=[]; out.push(run); } run.push(pc(x.n)); }
+    else { run=null; out.push(pc(x.n)); }
+  }
+  return out.map(t=>Array.isArray(t)?"("+t.join(" ")+")":t).join(" ");
 };
 const panSize=p=>1+p.fields.length+((p.bottom&&p.bottom.length)||0);
 function ppBuildsOf(scale){
