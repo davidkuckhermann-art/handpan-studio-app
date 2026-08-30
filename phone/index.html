@@ -1845,7 +1845,8 @@ body.mkline .flow .mkbrd{top:auto; bottom:.06em; height:2px}
 .fbnfloat{position:absolute; top:-1.15em; left:.12em; font-size:.42em; line-height:1;
   font-weight:800; color:#A79878}
 .fprow{display:flex; gap:.24em; justify-content:space-around}
-.fpos{display:flex; flex-direction:column; align-items:center; min-width:1em;
+.fpos{display:flex; flex-direction:column; align-items:center; min-width:1em}
+.flanes{display:flex; flex-direction:column; align-items:center; align-self:stretch;
   position:relative}
 /* the same "slot lines" switch, in this skin's own measures: a faint line
    between the positions inside a cell — through the lanes, not the counts,
@@ -1854,11 +1855,10 @@ body.mkline .flow .mkbrd{top:auto; bottom:.06em; height:2px}
 /* …and they are SHORTER than the separator that closes the cell (David,
    30 Aug), so the hierarchy reads at a glance: gutter · slot line ·
    separator · bar line */
-body.slotlines .fprow>.fpos+.fpos::before{content:""; position:absolute; left:-.13em;
-  /* the same inset top and bottom, so the line is CENTRED in the lanes
-     (David, 30 Aug) — and deeper than the separator's, so the ladder reads
-     bar · separator · slot at a glance */
-  top:calc(var(--fHead) + .52em); bottom:calc(.14em + .52em);
+body.slotlines .fprow>.fpos+.fpos .flanes::before{content:""; position:absolute; left:-.13em;
+  /* MEASURED FROM THE LANES, not from the cell: top and bottom are one
+     number, so the line cannot be off-centre however the template changes */
+  top:.52em; bottom:.52em;
   width:1px; background:var(--rule2); z-index:-2; pointer-events:none}
 .fct{font-size:.42em; line-height:1; height:1.55em; font-weight:700; color:var(--sc-count)}
 .fct.b{color:#A6977E; font-weight:800}
@@ -8028,7 +8028,12 @@ function panViewSVG(pan,label,opts){
        big with the note small under them, or the note big — a name is wider
        than a digit, so it takes a smaller share of the same size ramp */
     +(panLabels==="note"
-      ?'<text x="'+x+'" y="'+(y+numSize*.66*.32)+'" text-anchor="middle" font-family="Figtree" font-size="'+(numSize*.66).toFixed(1)+'" font-weight="800" fill="var(--sc-ink)" pointer-events="none">'+note+'</text>'
+      /* A NAME IS BIG WHEN IT IS THE BIG LABEL (David, 30 Aug: "still way too
+         small"). It was drawn at .66 of the number's ramp, which is what a
+         SUBTITLE wants, not a title. Two chars take .92, three or more .76 —
+         the ramp already sizes the field, so this only spends the width a
+         longer name really needs. */
+      ?'<text x="'+x+'" y="'+(y+numSize*(note.length>2?.76:.92)*.32)+'" text-anchor="middle" font-family="Figtree" font-size="'+(numSize*(note.length>2?.76:.92)).toFixed(1)+'" font-weight="800" fill="var(--sc-ink)" pointer-events="none">'+note+'</text>'
        +'<text class="pvnote" x="'+x+'" y="'+(y+noteDy)+'" text-anchor="middle" font-family="Inter" font-size="11.5" font-weight="700" fill="var(--ink3)" pointer-events="none">'+num+'</text>'
       :'<text x="'+x+'" y="'+(y+numSize*1.12*.32)+'" text-anchor="middle" font-family="Inter" font-size="'+(numSize*1.12).toFixed(1)+'" font-weight="700" fill="var(--sc-ink)" pointer-events="none">'+num+'</text>'
        +'<text class="pvnote" x="'+x+'" y="'+(y+noteDy)+'" text-anchor="middle" font-family="Figtree" font-size="11.5" font-weight="600" fill="var(--ink3)" pointer-events="none">'+note+'</text>')
@@ -8067,7 +8072,7 @@ function panViewSVG(pan,label,opts){
       +'<circle class="pvtint" cx="'+pl.x+'" cy="'+pl.y+'" r="'+pl.r+'"/>'
       +'<circle class="pvring" cx="'+pl.x+'" cy="'+pl.y+'" r="'+pl.r+'" fill="none" stroke-width="3.5"/>'
       +(panLabels==="note"
-        ?'<text x="'+pl.x+'" y="'+(pl.y+ns*.62*.32)+'" text-anchor="middle" font-family="Figtree" font-size="'+(ns*.62).toFixed(1)+'"'
+        ?'<text x="'+pl.x+'" y="'+(pl.y+ns*(pl.b.label.length>2?.72:.88)*.32)+'" text-anchor="middle" font-family="Figtree" font-size="'+(ns*(pl.b.label.length>2?.72:.88)).toFixed(1)+'"'
          +' font-weight="800" fill="var(--sc-ink)" pointer-events="none">'+pl.b.label+'</text>'
          +'<text class="pvnote" x="'+pl.x+'" y="'+(pl.y+pl.r*.62+7)+'" text-anchor="middle" font-family="Inter"'
          +' font-size="9.5" font-weight="700" fill="var(--ink3)" pointer-events="none">'+(pl.i+1)+'</text>'
@@ -8789,8 +8794,14 @@ function renderFlowSection(sc,nm,ai,absStart){
         const G=flowHand(evs,true), B=flowHand(evs,false);
         if(G.length>1||B.length>1) cellExt=true;
         const pair=(flowLanes==="lr")?[B,G]:[G,B];
-        flowHandRows(pos,pair[0],true,r4);
-        flowHandRows(pos,pair[1],false,r4);
+        /* the lanes get their own box so the slot line can be drawn AGAINST
+           IT — em arithmetic against the cell kept landing off-centre,
+           because the count row's height is a font measure and the lanes'
+           is a line measure (David, 30 Aug, twice) */
+        const lanes=document.createElement("span"); lanes.className="flanes";
+        flowHandRows(lanes,pair[0],true,r4);
+        flowHandRows(lanes,pair[1],false,r4);
+        pos.appendChild(lanes);
         pos.addEventListener("pointerdown",e=>{ e.stopPropagation();
           seekToPulse((absStart==null?viewFromPulse():absStart)+rel); });
         prow.appendChild(pos);
