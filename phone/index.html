@@ -9278,13 +9278,29 @@ function fitBeatGlyphs(root){
     if(g>=.999) continue;                    // nothing here is crowded
     /* size first, then level: the raise is measured against the largest glyph
        AFTER the shrink, so the two passes cannot disagree about "largest" */
-    for(const el of be.querySelectorAll(".sym")){
+    /* MEASURED AGAINST THE BIGGEST GLYPH IN THE BEAT, AT FULL SIZE (David,
+       30 Aug: "the 11 is too low"). Lifting each glyph by its OWN loss restores
+       it to its own full-size height — but a two-digit number was already lower
+       than the digits beside it before anything shrank, by 0.515 of the
+       difference between 27px and 37px, so returning it to where it started
+       returns it to being low. Measured 3.56px below its neighbours that way.
+       The distance to cancel is therefore the whole gap between this glyph and
+       the LARGEST one at full size, which handles both drops at once: the
+       biggest glyph gets the full shrink correction, and everything smaller
+       gets that plus the amount it was already behind. It also subsumes
+       .sym.d2's own −.1em, so that is not added again. */
+    let baseMax=0;
+    const syms=[...be.querySelectorAll(".sym")].map(el=>{
       const base=parseFloat(getComputedStyle(el).fontSize);
+      if(base>baseMax) baseMax=base;
+      return [el,base];
+    });
+    for(const [el,base] of syms){
       if(!(base>0)) continue;
       const fs=base*g;
       el.style.fontSize=fs.toFixed(2)+"px";
       el.style.position="relative";
-      el.style.top=(-(LIFT*(base-fs))).toFixed(2)+"px";   // its own loss, nothing else
+      el.style.top=(-(LIFT*(baseMax-fs))).toFixed(2)+"px";
     }
     dropCrossedLines(be);
   }
@@ -9298,6 +9314,11 @@ function fitBeatGlyphs(root){
    Run after the sizes are settled, and over every beat rather than only the
    scaled ones, because a beat that needed no scaling is exactly where a
    full-size symbol in a narrow slot turns up. */
+/* the slot line is drawn at left:-3px of its slot and is 1px wide, so it does
+   NOT sit on the slot's edge — it sits three pixels before it, out in the
+   gutter. Testing the edge instead of the line is why one still crossed David's
+   T: ink can reach past the line and stop short of the edge. */
+const SLOTLINE_DX=-3, SLOTLINE_W=1;
 function dropCrossedLines(be){
   const slots=[...be.children];
   const box=s=>{ let l=null,r=null;
@@ -9307,9 +9328,9 @@ function dropCrossedLines(be){
     return (l===null)?null:{l:l,r:r}; };
   for(let i=1;i<slots.length;i++){
     if(!slots[i].classList.contains("smark")) continue;
-    const edge=slots[i].getBoundingClientRect().left;
+    const x0=slots[i].getBoundingClientRect().left+SLOTLINE_DX, x1=x0+SLOTLINE_W;
     const a=box(slots[i-1]), b=box(slots[i]);
-    if((a&&a.r>edge-1)||(b&&b.l<edge+1)) slots[i].classList.remove("smark");
+    if((a&&a.r>x0-.5)||(b&&b.l<x1+.5)) slots[i].classList.remove("smark");
   }
 }
 
