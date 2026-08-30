@@ -1979,6 +1979,17 @@ body.design-flow #fszDn,body.design-flow #fszUp{display:inline-flex;
 body.design-flow #score{overflow-y:auto; -webkit-overflow-scrolling:touch;
   overscroll-behavior:contain; scrollbar-gutter:stable}
 body.phone.design-flow #scorewrap{overflow:visible}
+/* THE STREAM STARTS NEARER THE TOP OF ITS WINDOW (David, 30 Aug: "in flow,
+   the notations should start further up inside its window"). Measured, the
+   lead-in was 45.7px of three separate things — 13.5 of card border and
+   padding, 22.6 for the section row, and .4em of the stream's own padding —
+   and none of them is carrying anything on the phone, where the frame's head
+   is hidden and every system already announces its own bar and chord. Trimmed
+   to about 26px. The section row itself stays: with the head hidden it is the
+   only thing naming where the music is. */
+body.phone.design-flow #scorecard{padding-top:6px}
+body.phone.design-flow #score .secrow{margin-bottom:0}
+body.phone.design-flow #score .flow{padding-top:0}
 /* …and the stepper rides the wrap's corner there, clear of the landscape
    play button at right:6px */
 body.phone.design-flow #scorewrap>#fszDn,
@@ -7504,6 +7515,69 @@ var LAND_TOP=12;
 function landStage(wrap){
   return Math.max(40,(wrap||$("scorewrap")).clientHeight-LAND_TOP-6);
 }
+/* THE TWO THINGS THE NOTATION IS CENTRED BETWEEN, measured rather than
+   assumed: the lowest header control, and the top of the transport's first
+   row of buttons. Neither is where its BOX ends — the header's box runs a
+   little past its buttons and the transport's starts a little above its own —
+   and the difference between those two leads is exactly what made the air
+   below the card read wider than the air above it. */
+/* AND THE TWO BUTTON ROWS SIT THE SAME DISTANCE FROM THE SCREEN'S EDGES
+   (David, 30 Aug: "buttons should have equal distance to top and bottom edge
+   of the screen"). They did not, and the reason is the HOME INDICATOR: in
+   LANDSCAPE the sensor housing is on the left or the right, so
+   `safe-area-inset-top` is zero while `-bottom` still reserves the indicator's
+   strip — the bar is pushed up off the edge and the header is not. Measured
+   here at 812×375 with no insets at all it was 4 against 14; on his phone the
+   gap is wider still.
+   The header comes DOWN to meet the bar rather than the bar going down to
+   meet the indicator: the strip is not ours to draw in. It costs a little
+   notation height, and centreLandStage then re-centres the card between the
+   two, so the screen reads as one symmetrical frame. No feedback loop — the
+   transport is `flex:none` at the end of the column, so moving the header
+   cannot move it. */
+function landSymmetry(hdr){
+  const row=$("prow1");
+  if(!hdr||!row||!row.offsetParent) return;
+  const bottomInset=innerHeight-row.getBoundingClientRect().bottom;
+  let topInset=Infinity;
+  for(const el of hdr.children)
+    if(el.offsetParent) topInset=Math.min(topInset,el.getBoundingClientRect().top);
+  if(!isFinite(topInset)) topInset=hdr.getBoundingClientRect().top;
+  const d=bottomInset-topInset;
+  if(d>0.5) hdr.style.marginTop=d.toFixed(1)+"px";
+}
+function landRefs(){
+  const hdr=document.querySelector("header");
+  let low=0;
+  if(hdr) for(const el of hdr.children)
+    if(el.offsetParent) low=Math.max(low,el.getBoundingClientRect().bottom);
+  const top=low||(hdr?hdr.getBoundingClientRect().bottom:0);
+  const row=$("prow1");
+  const bot=(row&&row.offsetParent)?row.getBoundingClientRect().top
+           :$("transport").getBoundingClientRect().top;
+  return {top,bot};
+}
+/* CENTRED BETWEEN THE TWO BUTTON ROWS, WITH THE AIR IT ALREADY HAD (David,
+   30 Aug, from the phone: "the row above the table is still too narrow and
+   the bar below the table too wide … the table should be center-aligned with
+   both button rows setting at equal distance on top and bottom. The available
+   space should be half-way between what is available on top and on bottom
+   now"). Splitting the SAME total air evenly is precisely that: each gap
+   becomes the mean of the two it replaces, and the card keeps its height.
+   Measured, not constant, because the leads differ by device — the safe-area
+   insets and the bar's own padding are not the same on every phone, which is
+   why a pair of constants could look even here and lopsided on his. */
+function centreLandStage(wrap,sc){
+  if(!matchMedia("(orientation:landscape)").matches) return;
+  const r=landRefs();
+  const band=r.bot-r.top;
+  const cardH=sc.getBoundingClientRect().height;
+  const air=band-cardH;
+  if(!(air>0)) return;
+  const wt=wrap.getBoundingClientRect().top;
+  const pad=Math.max(0,Math.min(wrap.clientHeight-cardH,r.top+air/2-wt));
+  wrap.style.paddingTop=pad.toFixed(1)+"px";
+}
 /* THE CONTROLS THAT FLOAT OVER THE CARD are anchored to the CARD, never to
    #scorewrap: when the card is narrower than the screen, or lower in it, the
    two are far apart. Play has always been placed here; A−/A+ were left to
@@ -7542,6 +7616,11 @@ function phoneFit(){
   const land=matchMedia("(orientation:landscape)").matches;
   const hdr=document.querySelector("header");
   hdr.style.marginTop="";              // measure from a clean slate every time
+  /* …and then, in landscape only, put it back deliberately: the header drops
+     until its buttons stand as far from the top edge as the bar's stand from
+     the bottom one. Before the fit, because it changes the band the fit
+     measures. */
+  if(land) landSymmetry(hdr);
   sc.style.zoom=1;
   /* clientWidth INCLUDES padding, and the editing ring gives the wrapper some
      — measuring with it made the card 10px too wide and pushed the ring off
@@ -7558,6 +7637,7 @@ function phoneFit(){
     sc.style.width=W+"px";
     flowFit();
     flowPhoneFit(wrap,land);
+    centreLandStage(wrap,sc);      // the air above and below, evenly split
     anchorWrapControls(wrap,sc);   // …which this branch used to skip entirely
     return;
   }
@@ -7626,11 +7706,11 @@ function phoneFit(){
      unzoomed size (David, 26 Aug: "still not centered vertically"). */
   wrap.style.paddingTop="";
   if(!land){ fitPortraitStack(sc,z,designW); centrePortraitStack(wrap); }
-  /* Landscape needs no centring pass any more: the card IS the stage, and the
-     stage's top pad is the whole of its placement. The header push that used
-     to carry the leftover slack upward went with the cap that created it —
-     with the band full there is no slack to carry. */
-  if(land) wrap.style.paddingTop=LAND_TOP+"px";
+  /* The header push that used to carry the leftover slack upward went with the
+     cap that created it. What is left is a placement, not a fit: the card's
+     height is already decided, and centreLandStage only says where in the
+     band it sits. */
+  if(land){ wrap.style.paddingTop=LAND_TOP+"px"; centreLandStage(wrap,sc); }
   // anchor the play button to the CARD's top-right, not the wrapper's — when
   // the card is narrower than the screen the two are far apart
   anchorWrapControls(wrap,sc);
