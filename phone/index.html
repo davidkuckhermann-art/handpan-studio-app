@@ -9147,50 +9147,76 @@ function buildCountRow(m,cls){
   }
   return cnt;
 }
-/* MORE THAN FOUR TO THE COUNT MUST SHRINK (David, 30 Aug, with both screens:
-   "in the horizontal example they should shrink a tiny bit, so they have a few
-   more px of space between them. In the vertical example they should shrink
-   substantially, so they don't sit on top of each other").
-   TWO ASKS, ONE RULE. Glyph size in these two skins is absolute px keyed on how
-   many symbols are STACKED in a slot — never on how wide the slot is — so a
-   beat of eight collides on a phone and merely crowds on a desktop. Measured on
-   one beat of eight: a 1580px bar leaves 23.9px between neighbouring inks, a
-   540px bar leaves MINUS 8.6. So the scale is the smaller of
-     · a flat 0.85, which is the "tiny bit" a wide bar wants, and
-     · what actually fits — (slot − 4px) / the widest ink in the beat —
-   which on a wide bar is 1.66 and never binds, and on a phone is 0.48 and does.
-   Floored at .42 so the ink can never vanish.
-   AND THE SMALLER SYMBOLS ARE LEVELLED WITH THE LARGER ONES BESIDE THEM
-   (David: "center the smaller symbols vertically, so it looks more in line with
-   the larger symbols"). This is .sym.d2's 29 Aug rule generalised: these slots
-   align on the FOOT of the line box, not on a shared baseline, so ANY glyph
-   smaller than its neighbours — a ghost at 33 against a digit at 37, a
-   two-digit number at 27 — sits low by 0.515 of the difference in size.
-   Measured against the LARGEST glyph in the beat, not against the glyph's own
-   former size: lifting everything by its own shrink would float the whole row
-   off the cell's floor, since every beat in a section like this shrinks by the
-   same amount. So the biggest glyph moves not at all and the rest come up to
-   meet it. This REPLACES .sym.d2's own −.1em inside a scaled beat rather than
-   adding to it, which is why the top is written for every glyph.
+/* SYMBOLS SHRINK ONLY WHERE THEY CROWD (David, 30 Aug: "the shrinking should
+   only happen where necessary — where 32nds are played and getting too close to
+   each other. Where there are no 32nd notes, symbol size should be normal").
+   The first cut scaled a beat by how many SLOTS it drew, which shrank three
+   sparse beats for the sake of the fourth: a beat of eight holding `7 · 9 ·`
+   is not crowded at all, and it came out small anyway.
+   SO THE MEASURE IS THE INK, NOT THE GRID. For each beat, walk the slots that
+   actually hold a symbol and ask how close the neighbouring ones come. Scaling
+   does not move a slot's centre — the ink is centred in it — so for a pair of
+   half-widths h1,h2 whose centres are d apart, the clearance after scaling by g
+   is d − g(h1+h2). Solving for the clearance we want gives the g that pair can
+   bear, and the beat takes the smallest of them. A beat whose symbols are
+   already far enough apart yields g > 1 and is left alone entirely.
+   Glyph size in these two skins is absolute px keyed on how many symbols are
+   STACKED in a slot, never on how wide the slot is — mockups-flow-spacing.html
+   §4 — which is why one beat of eight collides on a phone and merely crowds on
+   a desktop. This is that missing axis, spent only where it is needed.
+   AND THE SMALLER SYMBOLS COME UP LEVEL, which is .sym.d2's 29 Aug rule
+   generalised: these slots align on the FOOT of the line box, not on a shared
+   baseline, so any glyph smaller than its neighbours sits low by 0.515 of the
+   difference. Measured against the LARGEST glyph in the beat, so the biggest
+   does not move and the rest come up to meet it; it REPLACES .sym.d2's own
+   −.1em inside a scaled beat rather than adding to it.
    FLOW IS NOT TOUCHED: it measures and packs, so its cells widen instead of its
    glyphs shrinking. That is the whole difference between the skins. */
+/* Two dials, and they answer two different halves of what David asked for.
+   BEATGAP is the clearance neighbouring symbols must keep before anything is
+   done at all — set low, because a 16th figure on an eight-slot grid is tight
+   on a phone but perfectly readable, and he wants those left alone.
+   RUNTRIM is the "tiny bit" a genuine fast RUN gets even when it is not
+   colliding: three or more symbols in CONSECUTIVE slots is a 32nd run and
+   nothing else, since a 16th figure on this grid never fills two slots in a
+   row. On a wide screen that trim is all that happens; on a phone the
+   clearance rule asks for far more and wins. */
+const BEATGAP=6, RUNTRIM=.9, RUNLEN=3;
 function fitBeatGlyphs(root){
   for(const be of root.querySelectorAll(".beat")){
-    const slots=be.children;
-    if(slots.length<=4) continue;                 // four to the count is the norm
-    const sw=slots[0].getBoundingClientRect().width;
-    let ink=0;
-    const syms=be.querySelectorAll(".sym");
-    for(const g of syms){ const w=g.getBoundingClientRect().width; if(w>ink) ink=w; }
-    if(!ink||!sw) continue;
-    const fit=(sw-4)/ink;
-    const g=Math.max(.42,Math.min(.85,fit));
-    if(g>=.999) continue;
+    if(be.children.length<=4) continue;      // four to the count is the norm
+    /* the widest ink in each occupied slot, with its centre */
+    const ink=[];
+    for(const sl of be.children){
+      let w=0,c=0;
+      for(const q of sl.querySelectorAll(".sym")){
+        const r=q.getBoundingClientRect();
+        if(r.width>w){ w=r.width; c=(r.left+r.right)/2; }
+      }
+      if(w>0) ink.push({c:c,h:w/2});
+    }
+    let g=1;
+    for(let i=1;i<ink.length;i++){
+      const hh=ink[i-1].h+ink[i].h;
+      if(hh<=0) continue;
+      const need=(ink[i].c-ink[i-1].c-BEATGAP)/hh;
+      if(need<g) g=need;
+    }
+    /* …and a run of consecutive slots takes the trim whether it is crowded or
+       not, because that run IS the fast passage he is reading */
+    let run=1, longest=1;
+    for(let k=1;k<be.children.length;k++){
+      const a=be.children[k-1].querySelector(".sym"), b=be.children[k].querySelector(".sym");
+      run=(a&&b)?run+1:1;
+      if(run>longest) longest=run;
+    }
+    if(longest>=RUNLEN&&RUNTRIM<g) g=RUNTRIM;
+    g=Math.max(.42,Math.min(1,g));
+    if(g>=.999) continue;                    // nothing here is crowded
     /* size first, then level: the raise is measured against the largest glyph
-       AFTER the shrink, so the two passes cannot disagree about what "largest"
-       means */
+       AFTER the shrink, so the two passes cannot disagree about "largest" */
     const sized=[];
-    for(const el of syms){
+    for(const el of be.querySelectorAll(".sym")){
       const base=parseFloat(getComputedStyle(el).fontSize);
       if(!(base>0)) continue;
       const fs=base*g;
@@ -9204,6 +9230,7 @@ function fitBeatGlyphs(root){
     }
   }
 }
+
 function renderTableView(sc){
   const nm=viewSec, sec=piece.sections[nm], m0=SM(piece,nm);
   // a section with fewer bars than its bars-per-row spreads them across the
