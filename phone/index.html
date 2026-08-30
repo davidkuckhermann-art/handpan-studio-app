@@ -9121,10 +9121,24 @@ function buildCountRow(m,cls){
     for(let b=0;b<m.beats;b++){
       const cell=document.createElement("div"); cell.className="cbeat";
       cell.style.gridTemplateColumns="repeat("+m.sub+",minmax(0,1fr))";
+      /* FOUR TICKS TO THE BEAT, NOT EIGHT (David, 30 Aug: "for the counting
+         line we want to stick to 4 ticks/beat, not 8. Even if the composition
+         has 8 at times"). The COLUMNS stay one per subdivision — that is what
+         keeps the numbers from drifting off the notes, and it is why this row
+         is built cell for cell in the first place — but only the ones on the
+         groove's own grid are given a token. The rest are spacers.
+         Same slotStep as the slot lines use, so the counts and the lines can
+         never disagree about where the grid is; and with no base declared the
+         step is 1, which is every column labelled, exactly as before. */
+      const cstep=slotStep(m.sub,m.base), cden=m.sub/cstep;
       for(let k=0;k<m.sub;k++){
         const t=b*m.sub+k;
-        const sp=document.createElement("span"); sp.dataset.ct=r*m.bp+t;
-        sp.textContent=k===0?String(b+1):(m.sub%2===0&&k===m.sub/2?"+":"·");
+        const sp=document.createElement("span");
+        if(k%cstep===0){
+          const q=k/cstep;
+          sp.dataset.ct=r*m.bp+t;      // only a labelled tick can light
+          sp.textContent=q===0?String(b+1):(cden%2===0&&q===cden/2?"+":"·");
+        }
         cell.appendChild(sp);
       }
       cb.appendChild(cell);
@@ -10512,8 +10526,15 @@ function renderFlowSection(sc,nm,ai,absStart){
         const pos=document.createElement("span"); pos.className="fpos"; pos.dataset.rel=rel;
         if(k>0&&k%slotStep(res,m.base)===0) pos.classList.add("smark");
         const ct=document.createElement("span");
-        ct.className="fct"+(k===0?" b":""); ct.dataset.ctf=rel;
-        ct.textContent=k===0?String(b+1):(res%2===0&&k===res/2?"+":"·");
+        ct.className="fct"+(k===0?" b":"");
+        /* four ticks to the beat here too, by the same step — a cell of eight
+           gets 1 · + · with the fast positions unlabelled between them */
+        const cstep=slotStep(res,m.base), cden=res/cstep;
+        if(k%cstep===0){
+          const q=k/cstep;
+          ct.dataset.ctf=rel;
+          ct.textContent=q===0?String(b+1):(cden%2===0&&q===cden/2?"+":"·");
+        }
         pos.appendChild(ct);
         const evs=byT.get(t)||[];
         const G=flowHand(evs,true), B=flowHand(evs,false);
