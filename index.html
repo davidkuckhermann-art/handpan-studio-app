@@ -621,6 +621,13 @@ body.mkline .mkbox{top:auto; bottom:-1px; height:2px; background:var(--dixie);
    fill −3 · lines −2 · border −1, in every skin. */
 body.slotlines .beat>.slot+.slot::before{content:""; position:absolute; z-index:-2;
   left:-3px; top:2px; bottom:2px; width:1px; background:var(--rule2); pointer-events:none}
+/* …AND THEY GAIN CONTRAST UNDER THE WASH (David, 30 Aug: "in flow the marker
+   is properly see-through, but in table and tab it is not"). They were
+   already painting above it — proved by colouring them red — but #EFE9E0 over
+   an amber wash is nothing at all. Inside a marked cell they take a warmer,
+   darker tone, so the same lines keep reading. */
+body.slotlines .beat.nowbeat>.slot+.slot::before,
+body.slotlines .beat.mkcell>.slot+.slot::before{background:rgba(107,74,56,.22)}
 /* the stroke/16th/8th rectangle is drawn TWICE — a fill below the lines and
    a border above them. Two elements, not one with a pseudo: an element with
    its own z-index traps its children in that layer. */
@@ -643,7 +650,16 @@ body.slotlines .beat>.slot+.slot::before{content:""; position:absolute; z-index:
 /* the cell-filling modes (subdivision · half · bar): the cell's own
    background is the fill — it paints beneath its negative-z children, so the
    lines cross it — and an overlay carries the amber edge above them */
-.beat.nowbeat{background:var(--sc-band-t); z-index:1}
+/* THE WASH IS A LAYER, NOT THE CELL'S OWN BACKGROUND (David, 30 Aug: "in
+   flow the marker is properly see-through, but in table and tab it is not").
+   As the cell's background it painted at the very bottom of the cell's
+   stacking context — beneath the position lines in theory, and beneath them
+   in practice too, since those lines are painted by the SLOTS, whose own
+   backgrounds come later. Flow already does it this way and demonstrably
+   works: wash −3, lines −2, border −1, all under the ink. */
+.beat.nowbeat{background:none; z-index:1}
+.beat.nowbeat::before{content:""; position:absolute; inset:0; z-index:-3;
+  background:var(--sc-band-t); pointer-events:none}
 .beat.nowbeat::after{content:""; position:absolute; inset:-1px; z-index:-1;
   border:1px solid var(--dixie); pointer-events:none}
 /* …AND THE BAND/LINE SWITCH GOVERNS THESE MODES TOO (David, 30 Aug: "the
@@ -651,7 +667,7 @@ body.slotlines .beat>.slot+.slot::before{content:""; position:absolute; z-index:
    the stroke rectangle, so in Subdivision — the default — pressing either
    pill did nothing at all. Line gives the cell a lit lower edge instead of a
    fill, exactly what it means everywhere else. */
-body.mkline .beat.nowbeat{background:none}
+body.mkline .beat.nowbeat::before{background:none}
 body.mkline .beat.nowbeat::after{border:none; top:auto; height:2px;
   background:var(--dixie)}
 /* …and the SAME hazard bit the 16th/8th/strokes rectangle (David, 27 Aug:
@@ -1887,6 +1903,8 @@ body.mkline .flow .mkbox{top:auto; bottom:.06em; height:2px}
 /* …and they are SHORTER than the separator that closes the cell (David,
    30 Aug), so the hierarchy reads at a glance: gutter · slot line ·
    separator · bar line */
+.fcell.nowbeat::after{background:rgba(107,74,56,.3)}   /* the separator, through the wash */
+body.slotlines .fcell.nowbeat .flanes::before{background:rgba(107,74,56,.22) !important}
 body.slotlines .fprow>.fpos+.fpos .flanes::before{content:""; position:absolute; left:-.13em;
   /* MEASURED FROM THE LANES, not from the cell: top and bottom are one
      number, so the line cannot be off-centre however the template changes */
@@ -18397,7 +18415,12 @@ function fsFit(){
      clientHeight's reach here, and the last few pixels were being spent on a
      scrollbar that then narrowed the card and made it taller again. Ten
      pixels of slack ends that, and the gutter below keeps the width still. */
-  const availH=wrap.clientHeight-32-10;
+  /* TWO MEASURES, THE SMALLER ONE WINS (David, 30 Aug: fullscreen fits on the
+     MacBook and overflows on the external monitor). Moving the fullscreen
+     element to another display resizes it in two steps, and the wrap can
+     report the old screen's height while the visual viewport already has the
+     new one — so the fit was sized for a screen that was not there. */
+  const availH=Math.min(wrap.clientHeight,innerHeight)-32-10;
   if(availH<160||!mus.offsetParent) return;
   /* the Flow skin does not zoom — it re-sets itself to the fullscreen width
      (a no-op once the widths agree, so the observers cannot loop), and the
@@ -18467,6 +18490,7 @@ function fsApply(on){
        browser'''s instant fallback path hid from me. */
     setTimeout(()=>{ fsZCap=Infinity; fsFit(); },140);
     setTimeout(()=>{ fsZCap=Infinity; fsFit(); },420);
+    setTimeout(()=>{ fsZCap=Infinity; fsFit(); },900);   // a slow display change
   }else{
     if(ps&&fsPanHome&&fsPanHome.p){ fsPanHome.p.insertBefore(ps,fsPanHome.n); }
     fsPanHome=null;
