@@ -2439,7 +2439,11 @@ body.phone .pvchord{font-size:26px}
    heights, so the counts sit on one line and every system matches. Seams
    carry three strengths with one meaning each: gutter · half-height tick
    (subdivision) · full rule (bar). */
-.flow{display:flex; flex-direction:column; gap:1.9em; padding-top:.4em;
+.flow{display:flex; flex-direction:column; gap:1.9em;
+  /* WAS .4em, and it existed for ONE thing: the floated bar number of the
+     section's first system, which is no longer drawn. Every later system's
+     number lives in the 1.9em gap between systems, so nothing else wanted it. */
+  padding-top:0;
   /* the leftmost marker's border overhangs by a pixel, and #score is a
      scroller — without this it was shaved off (David, 30 Aug) */
   padding-left:2px;
@@ -2473,7 +2477,13 @@ body.phone .pvchord{font-size:26px}
    cells — otherwise the hands' line runs on across the empty tail of the row
    (David, 30 Aug: "the horizontal line should stop with the notation") */
 .fsys.flast{align-self:flex-start}
-.fcell{display:flex; flex-direction:column; padding:0 .3em .1em; position:relative;
+/* THE DEFAULT SPACING IS "SNUG" (David, 30 Aug, from mockups-flow-spacing.html
+   — he picked the preset by name). Was .3em / .24em / 1em / .21em; the study
+   measured what each costs, and the position FLOOR is the one that pays:
+   it is what every sparse position sits on, so lowering it squeezes air nobody
+   is using while the gap would close the distance between glyphs that are
+   already neighbours. */
+.fcell{display:flex; flex-direction:column; padding:0 .22em .1em; position:relative;
   isolation:isolate}
 /* the subdivision tick — through the lanes only */
 /* the separator's own layer is BELOW the marker's border (−1) and above its
@@ -2525,8 +2535,17 @@ body.mkline .flow .mkbox{top:auto; bottom:.06em; height:2px}
 .fchn.inf{opacity:.85}
 .fbnfloat{position:absolute; top:-1.15em; left:.12em; font-size:.42em; line-height:1;
   font-weight:800; color:var(--sc-bn)}
-.fprow{display:flex; gap:.24em; justify-content:space-around}
-.fpos{display:flex; flex-direction:column; align-items:center; min-width:1em}
+/* the section name sits closer now that nothing hangs beneath it. SCOPED: the
+   Table and Tab skins wear .secrow too, and their spacing is not in question. */
+body.design-flow #score .secrow{margin:6px 0 1px}
+.fprow{display:flex; gap:.16em; justify-content:space-around}
+.fpos{display:flex; flex-direction:column; align-items:center; min-width:.88em}
+/* the badge's overhang, SCOPED TO FLOW. --btpad is global in this app and the
+   phone narrows it twice over, so setting it at the root would have re-dressed
+   the Table and Tab skins as well and thrown away both phone values. The phone
+   keeps its own inside Flow too. */
+.flow{--btpad:.16em}
+body.phone .flow{--btpad:.12em}
 .flanes{display:flex; flex-direction:column; align-items:center; align-self:stretch;
   position:relative}
 /* the same "slot lines" switch, in this skin's own measures: a faint line
@@ -5651,7 +5670,15 @@ DEMOS.splice(2,0,level166());
 function SM(p,nm){ // section metrics: per-section meter/sub/barsPerRow over piece defaults
   const s=p.sections[nm]||{};
   const beats=(s.meter||p.meter)[0], sub=s.sub||p.sub;
-  return {beats,sub,bp:beats*sub,bpr:s.barsPerRow||p.barsPerRow||1};
+  /* SUB IS WHAT IS STORED; BASE IS WHAT IS DRAWN when a beat asks for nothing
+     finer (David, 30 Aug — fast notes, answer 1). The two were one number
+     until a section needed to hold a 32nd or a sextuplet, which forces the
+     STORED grid up to the common multiple of everything in it while the
+     groove is still written in sixteenths. Defaulting base to sub is what
+     makes the whole change inert for every piece that has one: with no base
+     declared, every beat draws at sub exactly as it always did. */
+  const base=Math.min(s.base||p.base||sub,sub);
+  return {beats,sub,bp:beats*sub,bpr:s.barsPerRow||p.barsPerRow||1,base};
 }
 function pieceOk(p){ return p&&typeof p==="object"&&String(p.format||"").startsWith("hpd")
   &&p.sections&&Array.isArray(p.arrangement)&&p.arrangement.every(n=>p.sections[n]); }
@@ -8311,6 +8338,10 @@ function panBoxFit(box,want){
    drag the whole page (and the lesson iframe) around with it. It pages
    rather than crawls: nothing moves until the sounding system has left the
    window, and then it comes to the middle. */
+/* which section the playhead was last seen in, as its arrangement INDEX and
+   not as the element: a re-render builds new nodes, and comparing nodes would
+   read every resize as a section change and turn the page for it */
+let flowPai=null;
 function flowFollow(){
   const mus=$("score");
   if(!mus||view!=="flow") return;
@@ -8318,8 +8349,30 @@ function flowFollow(){
   const lit=mus.querySelector(".fcell.nowbeat")||mus.querySelector(".mkcell")
     ||mus.querySelector(".mkbox");
   if(!lit) return;
+  const mr=mus.getBoundingClientRect();
+  /* A NEW SECTION OPENS AT THE TOP OF THE WINDOW (David, 30 Aug: "so that the
+     jumps don't always happen between section changes so much"). Paging on its
+     own turns wherever the sounding system happens to fall out of view, which
+     lands mid-section and at a different place every time round. Snapping on
+     the section boundary instead spends the turn where the music already has
+     one, and the rest of that section then reads without another.
+     WHOLE-PIECE ONLY, and it needs no flag to say so: `.flowpage` is the box a
+     paragraph gets when the whole arrangement is drawn, so on a single table
+     there is nothing to find and this falls straight through to the paging
+     below. The page carries the section NAME as well as its music, so the
+     name arrives at the top of the window with it. */
+  const page=lit.closest(".flowpage");
+  if(page){
+    const pai=page.dataset.pai;
+    if(pai!==flowPai){
+      flowPai=pai;
+      const pr=page.getBoundingClientRect();
+      mus.scrollTop+=(pr.top-mr.top)-6;
+      return;
+    }
+  }else flowPai=null;
   const sys=lit.closest(".fsys")||lit;
-  const mr=mus.getBoundingClientRect(), sr=sys.getBoundingClientRect();
+  const sr=sys.getBoundingClientRect();
   /* TO THE TOP, not the middle (David, 30 Aug): a page turn should put the
      row you are playing at the head of the window with everything that
      follows below it — which is what reading ahead needs. */
@@ -10049,6 +10102,24 @@ let flowAll=(localStorage.getItem("hps.flowall")||"0")==="1";
 let flowWin=(localStorage.getItem("hps.flowwin")||"fit")==="full"?"full":"fit";
 let flowW=0;                       // the width the last flow render was set for
 
+const FLOWRES=[1,2,3,4,5,6,7,8];
+function beatRes(byT,b,sub,base){
+  const occ=[];
+  for(let k=0;k<sub;k++) if(byT.has(b*sub+k)) occ.push(k);
+  const fits=d=>{ if(!d||sub%d) return false;
+    const step=sub/d; return occ.every(k=>k%step===0); };
+  let min=0;
+  for(const d of FLOWRES) if(fits(d)){ min=d; break; }
+  if(!min) return sub;          // nothing in the list can say it — draw the grid
+  /* THE BASE IS A FLOOR ONLY WHERE IT CAN HOLD THE BEAT. Its job is to stop a
+     sparse beat collapsing — one note should still draw four slots, so the bar
+     reads as an even ruler. It is NOT meant to re-divide music that is simply
+     in another family: a triplet against a sixteenth base fits neither 4 nor a
+     multiple of it, and forcing it up to a sextuplet with every other slot
+     empty says something the music does not. Where the base cannot express the
+     beat, the beat's own division wins. */
+  return (min<base&&fits(base))?base:min;
+}
 /* pitch for ordering inside one hand's chord — display-mapped, like the glyph */
 function flowPitch(ev){
   if(ev.v==="ghost"||ev.v==="perc") return 0;
@@ -10169,12 +10240,17 @@ function renderFlowSection(sc,nm,ai,absStart){
          lower hand's anchor, its reach. */
       let rowTop=99, rowBot=-1;
       const useRow=i=>{ if(i<rowTop) rowTop=i; if(i>rowBot) rowBot=i; };
-      for(let k=0;k<m.sub;k++){
-        const t=b*m.sub+k, rel=bi*m.bp+t;
+      /* the beat's own resolution, and the stride through the stored grid it
+         implies. With no base declared res === m.sub and stride === 1, which
+         is this loop exactly as it was. */
+      const res=beatRes(byT,b,m.sub,m.base), stride=m.sub/res;
+      cell.dataset.res=res;
+      for(let k=0;k<res;k++){
+        const t=b*m.sub+k*stride, rel=bi*m.bp+t;
         const pos=document.createElement("span"); pos.className="fpos"; pos.dataset.rel=rel;
         const ct=document.createElement("span");
         ct.className="fct"+(k===0?" b":""); ct.dataset.ctf=rel;
-        ct.textContent=k===0?String(b+1):(m.sub%2===0&&k===m.sub/2?"+":"·");
+        ct.textContent=k===0?String(b+1):(res%2===0&&k===res/2?"+":"·");
         pos.appendChild(ct);
         const evs=byT.get(t)||[];
         const G=flowHand(evs,true), B=flowHand(evs,false);
@@ -10251,10 +10327,18 @@ function renderFlowSection(sc,nm,ai,absStart){
     sys.classList.add("fsys");
     if(li===lines.length-1) sys.classList.add("flast");
     // the system announces the bar it begins in (mid-bar starts carry theirs)
-    if(strip) lead.el.querySelector(".fchs")
-      .insertAdjacentHTML("afterbegin",'<span class="fbn">'+(lead.bar+1)+'</span>');
-    else lead.el.insertAdjacentHTML("afterbegin",
-      '<span class="fbnfloat">'+(lead.bar+1)+'</span>');
+    /* NO BAR NUMBER WHERE A SECTION STARTS (David, 30 Aug). The first system of
+       a section always reads "1" — bars are numbered WITHIN the section — so
+       the number says nothing the section's own label has not already said. It
+       is a redundancy going away, not a trade, and the room it was living in
+       goes with it (see .flow's padding-top). Every later system keeps its
+       number exactly as before. */
+    if(li>0){
+      if(strip) lead.el.querySelector(".fchs")
+        .insertAdjacentHTML("afterbegin",'<span class="fbn">'+(lead.bar+1)+'</span>');
+      else lead.el.insertAdjacentHTML("afterbegin",
+        '<span class="fbnfloat">'+(lead.bar+1)+'</span>');
+    }
     ln.forEach(x=>sys.appendChild(x.c.el));
     root.appendChild(sys);
   });
