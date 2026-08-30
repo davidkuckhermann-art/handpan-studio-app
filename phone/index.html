@@ -1772,9 +1772,14 @@ body.phone .pvchord{font-size:26px}
   /* the vertical grammar, composed: strip + counts = where the lanes begin;
      --fLane1 = the lane boundary under them (the hands' seam line) */
   --fStrip:0em; --fCt:.72em; --fHead:calc(var(--fStrip) + var(--fCt));
-  --fLane1:1.12em}
+  --fLane1:1.12em;
+  /* where the MARKER starts and ends. A cell with no chord has nothing in
+     the outer reach rows, so the mark closes on the two anchors; a cell that
+     does carries a little more air than the rows themselves (David, 30 Aug). */
+  --fMark:var(--fHead); --fMarkB:.14em}
 .flow.strip{gap:1.5em; --fStrip:.72em}
-.flow.r4{--fLane1:2.16em}
+.flow.r4{--fLane1:2.16em; --fMark:calc(var(--fHead) + 1.04em); --fMarkB:1.18em}
+.flow.r4 .fcell.ext{--fMark:calc(var(--fHead) - .08em); --fMarkB:.06em}
 .flow.nocount{--fCt:.06em}
 .flow.nocount .fct{display:none}
 .flow.measure{flex-direction:row; flex-wrap:wrap; align-items:flex-start}
@@ -1787,26 +1792,33 @@ body.phone .pvchord{font-size:26px}
 .fcell{display:flex; flex-direction:column; padding:0 .3em .1em; position:relative;
   isolation:isolate}
 /* the subdivision tick — through the lanes only */
-.fcell::after{content:""; position:absolute; right:0; width:1px;
-  background:var(--sc-rule); top:var(--fHead); bottom:.14em}
+/* the separator's own layer is BELOW the marker's border (−1) and above its
+   fill (−3), so a lit cell shows the line crossing its wash with the amber
+   edge drawn over the top (David, 30 Aug) */
+.fcell::after{content:""; position:absolute; right:0; width:1px; z-index:-2;
+  background:var(--sc-rule); top:var(--fMark); bottom:var(--fMarkB)}
 /* the bar line — through counts and lanes, never the chord strip */
 .fcell.bend::after{width:2px; background:#B9AB97; border-radius:1px;
-  top:calc(var(--fStrip) + .04em)}
+  top:calc(var(--fStrip) + .04em); bottom:.14em}
 /* THE BAND COVERS THE NOTATION, NOT THE COUNTS (David, 30 Aug: "the marker
    doesn't need to encompass the counting line… it should sit right on the
    hairlines, not next to them") — so it is a ::before spanning the lanes
    exactly, edge to edge of the cell, square against the ticks. The stroke
    marker (.mkbox) takes the same window. */
-.fcell.nowbeat::before{content:""; position:absolute; left:0; right:0;
-  top:var(--fHead); bottom:.14em; background:var(--sc-band); z-index:-3}
+.fcell.nowbeat::before{content:""; position:absolute; left:-1px; right:0;
+  top:var(--fMark); bottom:var(--fMarkB); background:var(--sc-band); z-index:-3}
 /* the border rides on .fprow, which is not positioned, so it lands against
    the cell — and being a separate layer it can sit above the lines */
-.fcell.nowbeat .fprow::before{content:""; position:absolute; left:0; right:0;
-  top:var(--fHead); bottom:.14em; z-index:-1; pointer-events:none;
+.fcell.nowbeat .fprow::before{content:""; position:absolute; left:-1px; right:0;
+  top:var(--fMark); bottom:var(--fMarkB); z-index:-1; pointer-events:none;
   border:1.5px solid var(--dixie); border-radius:.24em}
 body.mkline .fcell.nowbeat::before{background:none}
-body.mkline .fcell.nowbeat .fprow::before{border:none; top:auto; height:2px;
-  border-radius:0; background:var(--dixie)}
+/* THE LINE MARKER RIDES THE HANDS' SEAM (David, 30 Aug): the line that
+   already runs between the two hands is the cell's own middle, so the
+   playhead marks the beat there rather than at the foot of the lanes. */
+body.mkline .fcell.nowbeat .fprow::before{border:none; border-radius:0;
+  top:calc(var(--fHead) + var(--fLane1) - 1px); bottom:auto; height:2px;
+  background:var(--dixie)}
 .flow .mkbox,.flow .mkbrd{top:var(--fHead); bottom:.14em}
 body.mkline .flow .mkbrd{top:auto; bottom:.06em; height:2px}
 .fchs{height:1.5em; font-size:.48em; line-height:1.25; display:flex; gap:.9em;
@@ -1823,9 +1835,12 @@ body.mkline .flow .mkbrd{top:auto; bottom:.06em; height:2px}
    between the positions inside a cell — through the lanes, not the counts,
    and quieter than the subdivision tick. z-index -2 keeps it under the
    playing band (-1), which must never be crossed by a line. */
+/* …and they are SHORTER than the separator that closes the cell (David,
+   30 Aug), so the hierarchy reads at a glance: gutter · slot line ·
+   separator · bar line */
 body.slotlines .fprow>.fpos+.fpos::before{content:""; position:absolute; left:-.13em;
-  top:var(--fCt); bottom:.12em; width:1px; background:var(--rule2);
-  z-index:-2; pointer-events:none}
+  top:calc(var(--fMark) + .34em); bottom:calc(var(--fMarkB) + .3em);
+  width:1px; background:var(--rule2); z-index:-2; pointer-events:none}
 .fct{font-size:.42em; line-height:1; height:1.55em; font-weight:700; color:var(--sc-count)}
 .fct.b{color:#A6977E; font-weight:800}
 .fct.cnow{color:var(--dixie); position:relative}
@@ -3445,9 +3460,9 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
       <button id="mkStyleBox" title="A band behind the notes being played">Band</button>
       <button id="mkStyleLine" title="A line on the beat's lower border">Line</button>
     </span></div>
-  <div class="drow tabonly"><span>Tab rows</span>
-    <select class="ctl" id="rowsSel" title="Tab notation in one row, or split into left- and right-hand rows">
-      <option value="one">One</option><option value="split">L + R</option></select></div>
+  <!-- "Tab rows" retired 30 Aug at David's word: the split IS the Tab skin —
+       with one row it is the Table skin without its grid, so the choice only
+       ever offered a worse table. -->
   <!-- the Flow skin's settings (30 Aug) — shown only while Flow is up, like
        the Tab rows above. The size pair is the phone's face of the stepper:
        these rows migrate into the phone's menu sheet, where the frame's own
@@ -4694,8 +4709,11 @@ let panLabels=localStorage.getItem("hps.panlabels")==="note"?"note":"num";
 let panZoom=parseFloat(localStorage.getItem("hps.panzoom"))||1;
 if(!(panZoom>=0.7&&panZoom<=1.4)) panZoom=1;
 // tab notation rows: one | split (green/left-hand lane above, black/right-hand below)
-let tabRows=localStorage.getItem("hps.tabrows")||"split";   // two rows by default (David)
-if(!["one","split"].includes(tabRows)) tabRows="one";
+/* THE TAB SKIN IS THE SPLIT (30 Aug). It was a setting with two positions,
+   and the other one drew the table's content without the table's grid — so
+   the switch could only make the skin worse. `hps.tabrows` is left unread;
+   nothing writes it any more. */
+const tabRows="split";
 // tab hand letters on/off (older keys carried three states / a boolean)
 /* THE L/R LETTERS START OFF, ALWAYS (David, 29 Aug: "de-activate the hands
    row R/L in tab notation view by default"). It was already off for a reader
@@ -7146,8 +7164,11 @@ function flowFollow(){
   if(!lit) return;
   const sys=lit.closest(".fsys")||lit;
   const mr=mus.getBoundingClientRect(), sr=sys.getBoundingClientRect();
+  /* TO THE TOP, not the middle (David, 30 Aug): a page turn should put the
+     row you are playing at the head of the window with everything that
+     follows below it — which is what reading ahead needs. */
   if(sr.top<mr.top+2||sr.bottom>mr.bottom-2)
-    mus.scrollTop+=(sr.top-mr.top)-Math.max(0,(mus.clientHeight-sr.height)/2);
+    mus.scrollTop+=(sr.top-mr.top)-6;
 }
 /* THE DESKTOP'S FLOW WINDOW. Same idea as the phone's: a height is what
    makes overflow mean anything. Measured from the music's own top down to
@@ -8727,6 +8748,7 @@ function renderFlowSection(sc,nm,ai,absStart){
         }
       }
       const prow=document.createElement("span"); prow.className="fprow";
+      let cellExt=false;      // does anything in this cell reach an outer row?
       for(let k=0;k<m.sub;k++){
         const t=b*m.sub+k, rel=bi*m.bp+t;
         const pos=document.createElement("span"); pos.className="fpos"; pos.dataset.rel=rel;
@@ -8736,6 +8758,7 @@ function renderFlowSection(sc,nm,ai,absStart){
         pos.appendChild(ct);
         const evs=byT.get(t)||[];
         const G=flowHand(evs,true), B=flowHand(evs,false);
+        if(G.length>1||B.length>1) cellExt=true;
         const pair=(flowLanes==="lr")?[B,G]:[G,B];
         flowHandRows(pos,pair[0],true,r4);
         flowHandRows(pos,pair[1],false,r4);
@@ -8743,6 +8766,7 @@ function renderFlowSection(sc,nm,ai,absStart){
           seekToPulse((absStart==null?viewFromPulse():absStart)+rel); });
         prow.appendChild(pos);
       }
+      if(cellExt) cell.classList.add("ext");
       cell.appendChild(prow);
       // the CELL is the tap target — the skin's atom, and a finger's size
       cell.addEventListener("pointerdown",()=>{
@@ -16542,10 +16566,6 @@ function boot(){
   $("countSel").addEventListener("change",()=>{ countMark=$("countSel").value;
     try{localStorage.setItem("hps.count",countMark)}catch(e){}
     clearMarks(); });
-  $("rowsSel").value=tabRows;
-  $("rowsSel").addEventListener("change",()=>{ tabRows=$("rowsSel").value;
-    try{localStorage.setItem("hps.tabrows",tabRows)}catch(e){}
-    render(); });
   applyHandColors();
   $("colL").addEventListener("input",()=>{ handCol.l=$("colL").value;
     try{localStorage.setItem("hps.colL",handCol.l)}catch(e){} applyHandColors(); });
