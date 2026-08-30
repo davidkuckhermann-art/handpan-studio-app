@@ -2332,13 +2332,18 @@ body.phone #pvwrap.sides #pvsvg{width:min(calc(236px*var(--panzoom,1)*var(--panf
 /* the sheet's rows need their own layout: .drow is styled under #setDlg and
    #menuDlg alone, so these had no flex at all and sat on each other
    (David, 30 Aug: "the rows hug each other") */
-#panMenuDlg{min-width:300px}
-#panMenuDlg h3{margin:0 0 4px}
-#panMenuDlg .drow{display:flex; align-items:center; justify-content:space-between;
+/* …and #flowMenuDlg wears the same clothes: one settings sub-window is a
+   pattern now, so the rules name both rather than being copied (David,
+   30 Aug — the Flow rows became a submenu of their own). */
+#panMenuDlg,#flowMenuDlg{min-width:300px}
+#panMenuDlg h3,#flowMenuDlg h3{margin:0 0 4px}
+#panMenuDlg .drow,#flowMenuDlg .drow{display:flex; align-items:center;
+  justify-content:space-between;
   gap:14px; padding:9px 2px; border-top:1px solid var(--rule2)}
-#panMenuDlg .drow:first-of-type{border-top:none}
-#panMenuDlg .drow>span:first-child{font-size:13.5px; font-weight:600; color:var(--ink2)}
-#panMenuDlg .pills{flex:0 0 auto}
+#panMenuDlg .drow:first-of-type,#flowMenuDlg .drow:first-of-type{border-top:none}
+#panMenuDlg .drow>span:first-child,#flowMenuDlg .drow>span:first-child{
+  font-size:13.5px; font-weight:600; color:var(--ink2)}
+#panMenuDlg .pills,#flowMenuDlg .pills{flex:0 0 auto}
 /* the two corner buttons are absolutely positioned over this row's right end,
    so the bar reserves their width — without it the phone ran "Reset" straight
    under them and half the button was unreachable */
@@ -4328,6 +4333,26 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <div class="row" style="justify-content:flex-end;margin:12px 0 0">
     <button class="ctl" id="pmClose">Done</button></div>
 </dialog>
+<dialog id="flowMenuDlg" aria-label="Flow notation settings">
+  <h3>Flow notation</h3>
+  <div class="drow"><span>Hands</span>
+    <select class="ctl" id="flowLaneSel" title="Which hand reads on the lower line in the Flow notation">
+      <option value="rl">Right low</option><option value="lr">Left low</option></select></div>
+  <div class="drow"><span>Counts</span>
+    <select class="ctl" id="flowCountSel" title="The counting numbers above the notes">
+      <option value="1">On</option><option value="0">Off</option></select></div>
+  <div class="drow"><span>Window</span>
+    <select class="ctl" id="flowWinSel" title="Keep the notation within the screen, or let the page run its full length">
+      <option value="fit">Fit the screen</option><option value="full">Full page</option></select></div>
+  <div class="drow"><span>Page</span>
+    <select class="ctl" id="flowAllSel" title="One table at a time, or the whole arrangement as one scrolling page">
+      <option value="0">Section</option><option value="1">Whole piece</option></select></div>
+  <!-- the size stepper is NOT duplicated here: A− / A+ already ride the
+       frame's own corner in every room and orientation, and a second copy
+       would be a control to keep in step for nothing. -->
+  <div class="row" style="justify-content:flex-end;margin:12px 0 0">
+    <button class="ctl" id="flowMenuClose">Done</button></div>
+</dialog>
 <dialog id="panMoveDlg">
   <h3>Transpose the jam?</h3>
   <p class="hint" id="pmText"></p>
@@ -4508,18 +4533,13 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
        the Tab rows above. The size pair is the phone's face of the stepper:
        these rows migrate into the phone's menu sheet, where the frame's own
        A−/A+ (hidden with the scorehead there) cannot be reached. -->
-  <div class="drow flowonly"><span>Flow hands</span>
-    <select class="ctl" id="flowLaneSel" title="Which hand reads on the lower line in the Flow notation">
-      <option value="rl">Right low</option><option value="lr">Left low</option></select></div>
-  <div class="drow flowonly"><span>Flow counts</span>
-    <select class="ctl" id="flowCountSel" title="The counting numbers above the notes">
-      <option value="1">On</option><option value="0">Off</option></select></div>
-  <div class="drow flowonly"><span>Flow window</span>
-    <select class="ctl" id="flowWinSel" title="Keep the notation within the screen, or let the page run its full length">
-      <option value="fit">Fit the screen</option><option value="full">Full page</option></select></div>
-  <div class="drow flowonly"><span>Flow page</span>
-    <select class="ctl" id="flowAllSel" title="One table at a time, or the whole arrangement as one scrolling page">
-      <option value="0">Section</option><option value="1">Whole piece</option></select></div>
+  <!-- ONE DOOR, not four rows (David, 30 Aug: "combine all the flow settings
+       into a submenu, so we only need 1 button in the main menu window"). The
+       four controls are the SAME elements, moved into #flowMenuDlg, so every
+       handler and every stored key keeps working untouched. Still .flowonly:
+       the door only appears while Flow is the skin on screen. -->
+  <div class="drow flowonly"><span>Flow notation</span>
+    <button class="ctl" id="flowMenuBtn" title="Hands, counts, window and page — the Flow skin's settings">Flow settings…</button></div>
   <div class="drow"><span>Pan orientation</span>
     <span class="pills" id="orientPills" role="group" aria-label="Pan orientation">
       <button id="orient1" title="The lowest field nearest you, dead centre">1 centred</button>
@@ -10536,6 +10556,13 @@ function flowBump(d){
 }
 [["fszDn",-2],["fszUp",2]].forEach(([id,d])=>{
   const b=$(id); if(b) b.addEventListener("click",()=>flowBump(d)); });
+/* the door into the Flow submenu, and its way out. openDlg (not .show()) so a
+   fullscreen notation still shows it — the same treatment every flat dialog
+   gets. */
+{ const fmb=$("flowMenuBtn");
+  if(fmb) fmb.addEventListener("click",()=>openDlg($("flowMenuDlg")));
+  const fmc=$("flowMenuClose");
+  if(fmc) fmc.addEventListener("click",()=>$("flowMenuDlg").close()); }
 { const fls=$("flowLaneSel"); if(fls){ fls.value=flowLanes;
   fls.addEventListener("change",()=>{ flowLanes=fls.value;
     try{localStorage.setItem("hps.flowlanes",flowLanes)}catch(e){}
