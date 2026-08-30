@@ -590,7 +590,9 @@ body.fs #scoreheadL #panSel{max-width:230px; flex:0 1 auto}
    line ON the border line below the cell instead of below"). It replaces the
    band rather than joining it, so the played position is said once. 2px sitting
    on the 1px border covers it exactly — the cell's bottom edge lights up. */
-body.mkline .mkbox{top:auto; bottom:-1px; height:2px; background:var(--dixie);
+/* the LINE style: the fill stands down and the border layer becomes the line */
+body.mkline .mkbox{display:none}
+body.mkline .mkbrd{top:auto; bottom:-1px; height:2px; background:var(--dixie);
   border:none; border-radius:0}
 /* --symlh: the line-height its stacked glyphs use, for .btcap's alignment
    arithmetic. Declared on the CONTAINER because a custom property inherits
@@ -606,13 +608,24 @@ body.mkline .mkbox{top:auto; bottom:-1px; height:2px; background:var(--dixie);
    two glyphs — which is exactly why it cut them: once a glyph is wider than
    its share there is no gap to snap to. Behind the type it cannot touch ink at
    all, and its edges land in the gutter the cell now carries. */
-.mkbox{position:absolute; top:-1px; bottom:-1px; pointer-events:none; z-index:-1;
-  background:var(--sc-band);
+/* THREE LAYERS UNDER THE INK, and the order is David's (30 Aug): the
+   marker's FILL sits under the position lines, the lines cross it, and the
+   marker's BORDER is drawn on top of them all — "the marker itself should
+   not sit on top of all the lines, but the marker's border should". So:
+   fill −3 · lines −2 · border −1, in every skin. */
+body.slotlines .beat>.slot+.slot::before{content:""; position:absolute; z-index:-2;
+  left:-3px; top:2px; bottom:2px; width:1px; background:var(--rule2); pointer-events:none}
+/* the stroke/16th/8th rectangle is drawn TWICE — a fill below the lines and
+   a border above them. Two elements, not one with a pseudo: an element with
+   its own z-index traps its children in that layer. */
+.mkbox{position:absolute; top:-1px; bottom:-1px; pointer-events:none; z-index:-3;
+  background:var(--sc-band)}
+.mkbrd{position:absolute; top:-1px; bottom:-1px; pointer-events:none; z-index:-1;
   border-top:1px solid var(--dixie); border-bottom:1px solid var(--dixie)}
-.beat.tbeat>.mkbox{top:1px; bottom:1px}   /* the tab's fit David approved */
-.mkbox.mkbL{border-left:1px solid var(--dixie);
+.beat.tbeat>.mkbox,.beat.tbeat>.mkbrd{top:1px; bottom:1px}   /* the tab's fit David approved */
+.mkbrd.mkbL{border-left:1px solid var(--dixie);
   border-top-left-radius:4px; border-bottom-left-radius:4px}
-.mkbox.mkbR{border-right:1px solid var(--dixie);
+.mkbrd.mkbR{border-right:1px solid var(--dixie);
   border-top-right-radius:4px; border-bottom-right-radius:4px}
 /* box markers (subdivision / half / bar): band fill + a hairline outline */
 /* THE MARKER SITS ON THE CELL'S OWN GRIDLINES (David, 27 Aug: "the timing
@@ -620,7 +633,20 @@ body.mkline .mkbox{top:auto; bottom:-1px; height:2px; background:var(--dixie);
    border, and the cells overlap by a negative margin, so the neighbour's
    border covered the bottom edge. Colouring the border itself and lifting the
    cell above its neighbours puts all four edges exactly on the lines. */
-.beat.nowbeat{background:var(--sc-band); border-color:var(--dixie); z-index:1}
+/* the cell-filling modes (subdivision · half · bar): the cell's own
+   background is the fill — it paints beneath its negative-z children, so the
+   lines cross it — and an overlay carries the amber edge above them */
+.beat.nowbeat{background:var(--sc-band); z-index:1}
+.beat.nowbeat::after{content:""; position:absolute; inset:-1px; z-index:-1;
+  border:1px solid var(--dixie); pointer-events:none}
+/* …AND THE BAND/LINE SWITCH GOVERNS THESE MODES TOO (David, 30 Aug: "the
+   playing marker band option doesn't currently work"). It only ever spoke to
+   the stroke rectangle, so in Subdivision — the default — pressing either
+   pill did nothing at all. Line gives the cell a lit lower edge instead of a
+   fill, exactly what it means everywhere else. */
+body.mkline .beat.nowbeat{background:none}
+body.mkline .beat.nowbeat::after{border:none; top:auto; height:2px;
+  background:var(--dixie)}
 /* …and the SAME hazard bit the 16th/8th/strokes rectangle (David, 27 Aug:
    "the marker is still sometimes incomplete"). Its edges sit ON the shared
    gridlines (top/bottom -1px), and a cell paints above the ones before it,
@@ -1772,10 +1798,17 @@ body.phone .pvchord{font-size:26px}
    exactly, edge to edge of the cell, square against the ticks. The stroke
    marker (.mkbox) takes the same window. */
 .fcell.nowbeat::before{content:""; position:absolute; left:0; right:0;
-  top:var(--fHead); bottom:.14em; background:var(--sc-band);
-  box-shadow:inset 0 0 0 1.5px var(--dixie); z-index:-1}
-.flow .mkbox{top:var(--fHead); bottom:.14em}
-body.mkline .flow .mkbox{top:auto; bottom:.06em; height:2px}
+  top:var(--fHead); bottom:.14em; background:var(--sc-band); z-index:-3}
+/* the border rides on .fprow, which is not positioned, so it lands against
+   the cell — and being a separate layer it can sit above the lines */
+.fcell.nowbeat .fprow::before{content:""; position:absolute; left:0; right:0;
+  top:var(--fHead); bottom:.14em; z-index:-1; pointer-events:none;
+  border:1.5px solid var(--dixie); border-radius:.24em}
+body.mkline .fcell.nowbeat::before{background:none}
+body.mkline .fcell.nowbeat .fprow::before{border:none; top:auto; height:2px;
+  border-radius:0; background:var(--dixie)}
+.flow .mkbox,.flow .mkbrd{top:var(--fHead); bottom:.14em}
+body.mkline .flow .mkbrd{top:auto; bottom:.06em; height:2px}
 .fchs{height:1.5em; font-size:.48em; line-height:1.25; display:flex; gap:.9em;
   white-space:nowrap; overflow:visible}
 .fbn{font-weight:800; color:#A79878}
@@ -1786,12 +1819,13 @@ body.mkline .flow .mkbox{top:auto; bottom:.06em; height:2px}
 .fprow{display:flex; gap:.24em; justify-content:space-around}
 .fpos{display:flex; flex-direction:column; align-items:center; min-width:1em;
   position:relative}
-/* the old "slot lines" switch, folded into the skin (David, 30 Aug): a faint
-   line between the positions inside a cell — through the lanes, not the
-   counts, and quieter than the subdivision tick */
-.fprow>.fpos+.fpos::before{content:""; position:absolute; left:-.13em;
+/* the same "slot lines" switch, in this skin's own measures: a faint line
+   between the positions inside a cell — through the lanes, not the counts,
+   and quieter than the subdivision tick. z-index -2 keeps it under the
+   playing band (-1), which must never be crossed by a line. */
+body.slotlines .fprow>.fpos+.fpos::before{content:""; position:absolute; left:-.13em;
   top:var(--fCt); bottom:.12em; width:1px; background:var(--rule2);
-  pointer-events:none}
+  z-index:-2; pointer-events:none}
 .fct{font-size:.42em; line-height:1; height:1.55em; font-weight:700; color:var(--sc-count)}
 .fct.b{color:#A6977E; font-weight:800}
 .fct.cnow{color:var(--dixie); position:relative}
@@ -1840,8 +1874,12 @@ body.design-flow #fszDn,body.design-flow #fszUp{display:inline-flex;
    makes overflow mean anything, and phoneFit computes it — without one the
    stream simply grew and pushed the pan card and the transport off the
    screen (David, 30 Aug: "flow on the phone is buggy"). */
+/* scrollbar-gutter is not a nicety here: without it the scrollbar's arrival
+   narrows the stream, which re-sets the systems, which can remove the
+   overflow, which widens it again — the loop David hit by dragging a window
+   edge (30 Aug: "the app just crashed when I resized"). */
 body.design-flow #score{overflow-y:auto; -webkit-overflow-scrolling:touch;
-  overscroll-behavior:contain}
+  overscroll-behavior:contain; scrollbar-gutter:stable}
 body.phone.design-flow #scorewrap{overflow:visible}
 /* …and the stepper rides the wrap's corner there, clear of the landscape
    play button at right:6px */
@@ -3397,9 +3435,11 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     </span></div>
   <div class="dsep"></div>
   <h4>Notation</h4>
-  <!-- Hand letters and Slot lines left here 30 Aug at David's word: the tab
-       reads by colour alone now, and the faint position lines became part of
-       the Flow skin's own drawing instead of a switch. -->
+  <!-- Hand letters left 30 Aug at David's word — the tab reads by colour.
+       Slot lines came back the same day, and now govern all three skins. -->
+  <div class="drow"><span>Slot lines</span>
+    <button class="ctl" id="slotLinesBtn"
+      title="A faint line between the positions inside a subdivision — in every notation">Lines</button></div>
   <div class="drow"><span>Playing marker</span>
     <span class="pills" id="mkPills" role="group" aria-label="Playing marker">
       <button id="mkStyleBox" title="A band behind the notes being played">Band</button>
@@ -4632,8 +4672,13 @@ function setPanCustom(v){
 /* the two notation options (David, 29 Aug). Stored like every other setting,
    applied as body classes so the CSS carries them and nothing has to re-render
    to change how the score is drawn. */
+/* Slot lines are BACK and belong to every skin (David, 30 Aug). Default ON
+   now: Flow has been drawing them since the day it shipped and he asked for
+   them, so an unset preference should look like what he has been using. */
+let slotLines=(()=>{ try{return (localStorage.getItem("hps.slotlines")||"1")==="1"}catch(e){return true} })();
 let mkStyle=(()=>{ try{return localStorage.getItem("hps.mkstyle")==="line"?"line":"band"}catch(e){return "band"} })();
 function applyNotaOpts(){
+  document.body.classList.toggle("slotlines",slotLines);
   document.body.classList.toggle("mkline",mkStyle==="line");
 }
 function panLayouts(){ try{return JSON.parse(localStorage.getItem("hps.panlayout")||"{}")}catch(e){return{}} }
@@ -4873,7 +4918,7 @@ function markerPulses(g,m){ // pulses covered by one marker unit (the beat is a 
 function clearSlotMarks(){
   // the classes are theirs alone, so no .beat/.bar prefix — the Flow skin's
   // cells (.fcell) wear the same marks (30 Aug)
-  document.querySelectorAll(".mkbox").forEach(el=>el.remove());
+  document.querySelectorAll(".mkbox,.mkbrd").forEach(el=>el.remove());
   document.querySelectorAll(".mkcell").forEach(el=>el.classList.remove("mkcell"));
   document.querySelectorAll(".nowbeat").forEach(el=>el.classList.remove("nowbeat"));
   document.querySelectorAll(".nowbar").forEach(el=>el.classList.remove("nowbar"));
@@ -4921,6 +4966,10 @@ function drawMarkBox(m,barI,s,e,scope){
     d.style.left=segS===cellS?"-1px":(mkEdgePct(be,segS-1,segS,(segS-cellS)/m.sub*100)+"%");
     d.style.right=segE===cellE?"-1px":((100-mkEdgePct(be,segE-1,segE,(segE-cellS)/m.sub*100))+"%");
     be.appendChild(d);
+    // the same rectangle again, as the BORDER layer above the lines
+    const bd=d.cloneNode(false);
+    bd.classList.remove("mkbox"); bd.classList.add("mkbrd");
+    be.appendChild(bd);
   }
 }
 function clearMarks(){
@@ -8746,10 +8795,17 @@ function renderFlowSection(sc,nm,ai,absStart){
 }
 /* re-set the stream when its room truly changed (fullscreen, a resize, the
    phone) — a no-op at the same width, so observers cannot loop through it */
+let flowFitting=false;
 function flowFit(){
-  if(view!=="flow"||editing) return;
+  if(view!=="flow"||editing||flowFitting) return;
   const sc=$("score"); if(!sc) return;
-  if(Math.abs((sc.clientWidth||0)-flowW)>4) render();
+  /* A WIDE DEAD BAND, and a re-entrancy latch. Re-setting the systems can
+     change the width that asked for it (a scrollbar appearing, a line
+     breaking differently), and at a 4px threshold the two chased each other
+     until the tab died. Nothing under 16px is worth a re-set. */
+  if(Math.abs((sc.clientWidth||0)-flowW)<16) return;
+  flowFitting=true;
+  try{ render(); } finally{ flowFitting=false; }
 }
 let flowRsT=0;
 addEventListener("resize",()=>{ if(view==="flow"&&!PHONE){
@@ -16533,9 +16589,16 @@ function boot(){
   /* Slot lines and the marker's shape: body classes, so neither needs a
      re-render — the drawing already on screen changes under the new rules. */
   const paintNotaOpts=()=>{
+    $("slotLinesBtn").classList.toggle("on",slotLines);
+    $("slotLinesBtn").setAttribute("aria-pressed",String(slotLines));
     $("mkStyleBox").setAttribute("aria-pressed",String(mkStyle!=="line"));
     $("mkStyleLine").setAttribute("aria-pressed",String(mkStyle==="line"));
   };
+  $("slotLinesBtn").addEventListener("click",()=>{
+    slotLines=!slotLines;
+    try{localStorage.setItem("hps.slotlines",slotLines?"1":"0")}catch(e){}
+    applyNotaOpts(); paintNotaOpts();
+  });
   const setMkStyle=v=>{ if(mkStyle===v) return; mkStyle=v;
     try{localStorage.setItem("hps.mkstyle",v)}catch(e){}
     applyNotaOpts(); paintNotaOpts(); };
