@@ -1230,15 +1230,15 @@ body.mkline .mkbox{top:auto; bottom:-1px; height:2px; background:var(--dixie);
    marker's BORDER is drawn on top of them all — "the marker itself should
    not sit on top of all the lines, but the marker's border should". So:
    fill −3 · lines −2 · border −1, in every skin. */
-body.slotlines .beat>.slot+.slot::before{content:""; position:absolute; z-index:-2;
+body.slotlines .beat>.slot.smark::before{content:""; position:absolute; z-index:-2;
   left:-3px; top:2px; bottom:2px; width:1px; background:var(--rule2); pointer-events:none}
 /* …AND THEY GAIN CONTRAST UNDER THE WASH (David, 30 Aug: "in flow the marker
    is properly see-through, but in table and tab it is not"). They were
    already painting above it — proved by colouring them red — but #EFE9E0 over
    an amber wash is nothing at all. Inside a marked cell they take a warmer,
    darker tone, so the same lines keep reading. */
-body.slotlines .beat.nowbeat>.slot+.slot::before,
-body.slotlines .beat.mkcell>.slot+.slot::before{background:var(--sc-thru2)}
+body.slotlines .beat.nowbeat>.slot.smark::before,
+body.slotlines .beat.mkcell>.slot.smark::before{background:var(--sc-thru2)}
 /* the stroke/16th/8th rectangle is drawn TWICE — a fill below the lines and
    a border above them. Two elements, not one with a pseudo: an element with
    its own z-index traps its children in that layer. */
@@ -2562,7 +2562,7 @@ body.phone .flow{--btpad:.12em}
    separator · bar line */
 .fcell.nowbeat::after{background:var(--sc-thru)}   /* the separator, through the wash */
 body.slotlines .fcell.nowbeat .flanes::before{background:var(--sc-thru2) !important}
-body.slotlines .fprow>.fpos+.fpos .flanes::before{content:""; position:absolute; left:-.13em;
+body.slotlines .fpos.smark .flanes::before{content:""; position:absolute; left:-.13em;
   /* MEASURED FROM THE LANES, not from the cell: top and bottom are one
      number, so the line cannot be off-centre however the template changes */
   top:calc(50% - .34em); bottom:calc(50% - .34em);
@@ -3287,20 +3287,29 @@ body.phone .gmini i{font-size:10px}
      was `width:100%` and the pan group was the flexible one, so the pan was
      handed whatever was left over — 151px for a group that wants 285 — and
      the pills were simply cut off by its own scroller. */
+  /* THE PILLS MAY NOT WRAP, IN ANY ROOM (David, 30 Aug: "the arrangement pills
+     are taking up 2 rows in the closed drawer. Instead, they should react the
+     same way as in the open drawer and scroll sideways"). A wrapped row both
+     lies about its width and makes the resting bar a line taller.
+     THIS WAS ALREADY SOLVED — twice — and only scoped too tightly: the open
+     drawer says it under #drawerNavHost and jam said it under body.phone.jam,
+     while a piece with a long arrangement in the closed drawer said it nowhere
+     and simply wrapped. The shared half is stated ONCE here; what follows it is
+     the part that really is jam's alone.
+     The renderer writes `flex-wrap:wrap` inline on the chip boxes, so only
+     !important reaches them — the drawer's copy of this rule says the same. */
+  body.phone #transport #prow2 #arrbox{min-width:0; overflow-x:auto;
+    scrollbar-width:none; -webkit-overflow-scrolling:touch}
+  body.phone #transport #prow2 #arrbox::-webkit-scrollbar{display:none}
+  body.phone #transport #prow2 #arrChips,
+  body.phone #transport #prow2 #subChips{flex-wrap:nowrap !important}
+  body.phone #transport #prow2 .chip{flex:none}
   /* ONLY IN JAM: every other room keeps `width:100%` here, which is what
-     pushes the table chips to the far end of the arrangement line. */
+     pushes the table chips to the far end of the arrangement line — and which
+     still works while the row scrolls, because an auto margin gives up its
+     space the moment the content overflows. */
   body.phone.jam #transport #prow2{gap:18px}
-  body.phone.jam #transport #prow2 #arrbox{width:auto; flex:0 1 auto;
-    min-width:0; overflow-x:auto; scrollbar-width:none}
-  body.phone.jam #transport #prow2 #arrbox::-webkit-scrollbar{display:none}
-  /* THE PILLS MAY NOT WRAP. They are the fixed quantity the pan is fitted
-     against, and a wrapped row both lies about its width and makes the resting
-     bar a line taller — my first cut did exactly that, four chords breaking
-     3 + 1. The renderer writes `flex-wrap:wrap` inline, so only !important
-     reaches it (the drawer's copy of this rule says the same). */
-  body.phone.jam #transport #prow2 #arrChips,
-  body.phone.jam #transport #prow2 #subChips{flex-wrap:nowrap !important}
-  body.phone.jam #transport #prow2 .chip{flex:none}
+  body.phone.jam #transport #prow2 #arrbox{width:auto; flex:0 1 auto}
   body.phone.jam #transport #prow2 #panNow{flex:0 0 auto; margin-left:auto;
     overflow:visible}
   /* …and the two compact faces of By position | Transpose. `psym` is the
@@ -5846,6 +5855,17 @@ function SM(p,nm){ // section metrics: per-section meter/sub/barsPerRow over pie
   const base=Math.min(s.base||p.base||sub,sub);
   return {beats,sub,bp:beats*sub,bpr:s.barsPerRow||p.barsPerRow||1,base};
 }
+/* THE SLOT LINES MARK THE GROOVE'S OWN GRID, not every drawn position (David,
+   30 Aug: "when a piece has 8 notes per count in some sections, the slot lines
+   should still mark 4"). Where the drawn resolution is a whole multiple of the
+   base, a line falls every res/base positions — so a beat of 32nds still reads
+   as four sixteenths with the fast notes sitting between them, instead of
+   dissolving into eight equal columns.
+   Where it is NOT a whole multiple there is no sub-grid to mark — a sextuplet
+   against a sixteenth base divides nothing evenly — so every position keeps its
+   line, exactly as before. And with no base declared base === sub, which makes
+   the step 1 and every existing piece byte-identical. */
+const slotStep=(res,base)=>(base&&res%base===0)?res/base:1;
 function pieceOk(p){ return p&&typeof p==="object"&&String(p.format||"").startsWith("hpd")
   &&p.sections&&Array.isArray(p.arrangement)&&p.arrangement.every(n=>p.sections[n]); }
 
@@ -9164,6 +9184,7 @@ function renderTableView(sc){
         for(let sN=0;sN<m.sub;sN++){
           const t=b*m.sub+sN, rel=bi*m.bp+t;
           const sl=document.createElement("div"); sl.className="slot"; sl.dataset.rel=rel;
+          if(sN>0&&sN%slotStep(m.sub,m.base)===0) sl.classList.add("smark");
           const _n=(byT.get(t)||[]).length;
           if(_n) sl.classList.add(_n===1?"n1":_n===2?"n2":"n3");
           const evs=sortStack((byT.get(t)||[]).slice(0,4),false);
@@ -10211,6 +10232,7 @@ function renderTabView(sc){
         for(let sN=0;sN<m.sub;sN++){
           const t=b*m.sub+sN, rel=bi*m.bp+t;
           const col=document.createElement("div"); col.className="slot tcol"; col.dataset.rel=rel;
+          if(sN>0&&sN%slotStep(m.sub,m.base)===0) col.classList.add("smark");
           col.addEventListener("pointerdown",()=>seekToPulse(viewFromPulse()+rel));
           const evs=sortStack((byT.get(t)||[]).slice(0,4),true);
           const lane=(list,split)=>{
@@ -10429,6 +10451,7 @@ function renderFlowSection(sc,nm,ai,absStart){
       for(let k=0;k<res;k++){
         const t=b*m.sub+k*stride, rel=bi*m.bp+t;
         const pos=document.createElement("span"); pos.className="fpos"; pos.dataset.rel=rel;
+        if(k>0&&k%slotStep(res,m.base)===0) pos.classList.add("smark");
         const ct=document.createElement("span");
         ct.className="fct"+(k===0?" b":""); ct.dataset.ctf=rel;
         ct.textContent=k===0?String(b+1):(res%2===0&&k===res/2?"+":"·");
