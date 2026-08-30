@@ -1960,6 +1960,8 @@ body.slotlines .fprow>.fpos+.fpos .flanes::before{content:""; position:absolute;
   top:-.1em; bottom:-.04em; transform:none}
 /* the frame's stepper shows only while Flow is up (the phone reaches the
    same value through the Settings row instead — its head is hidden) */
+/* landscape jam only — every other room and orientation hides it outright */
+#landGenBtn{display:none}
 #fszDn,#fszUp{display:none; font-size:12px; font-weight:800; color:var(--ink2)}
 body.design-flow #fszDn,body.design-flow #fszUp{display:inline-flex;
   align-items:center; justify-content:center}
@@ -2300,6 +2302,9 @@ body.phone .gmini i{font-size:10px}
   body.phone #jamInfo{font-size:11.5px; padding:6px 9px; margin-bottom:7px}
   /* the read-only chord card steps aside while the track is showing */
   body.phone #chordwrap.jamhide{display:none !important}
+  /* ⊘ — the third pill. A glyph among two words, so it gets the height of the
+     words back as size rather than sitting small in the middle of them. */
+  body.phone #bareBtn{font-size:17px; line-height:15px; padding:6px 11px}
   /* ---- the quiz in portrait ----
      It already clears the screen for itself (body.quiz hides the score, the
      cockpit and the view row), so the phone only has to size it: the ask on
@@ -2587,6 +2592,35 @@ body.phone .gmini i{font-size:10px}
     min-width:0; overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch}
   body.phone #panNow::-webkit-scrollbar{display:none}
   body.phone #panNow>*{flex:none}
+  /* JAM'S RESTING SECOND LINE (David, 30 Aug, with a screenshot of "By
+     position" running off the edge). The arrangement pills come first and take
+     only what they need; the pan group sits at the RIGHT END, compact, with
+     the leftover opening as the gap between them. Before this the arrangement
+     was `width:100%` and the pan group was the flexible one, so the pan was
+     handed whatever was left over — 151px for a group that wants 285 — and
+     the pills were simply cut off by its own scroller. */
+  /* ONLY IN JAM: every other room keeps `width:100%` here, which is what
+     pushes the table chips to the far end of the arrangement line. */
+  body.phone.jam #transport #prow2{gap:18px}
+  body.phone.jam #transport #prow2 #arrbox{width:auto; flex:0 1 auto;
+    min-width:0; overflow-x:auto; scrollbar-width:none}
+  body.phone.jam #transport #prow2 #arrbox::-webkit-scrollbar{display:none}
+  /* THE PILLS MAY NOT WRAP. They are the fixed quantity the pan is fitted
+     against, and a wrapped row both lies about its width and makes the resting
+     bar a line taller — my first cut did exactly that, four chords breaking
+     3 + 1. The renderer writes `flex-wrap:wrap` inline, so only !important
+     reaches it (the drawer's copy of this rule says the same). */
+  body.phone.jam #transport #prow2 #arrChips,
+  body.phone.jam #transport #prow2 #subChips{flex-wrap:nowrap !important}
+  body.phone.jam #transport #prow2 .chip{flex:none}
+  body.phone.jam #transport #prow2 #panNow{flex:0 0 auto; margin-left:auto;
+    overflow:visible}
+  /* …and the two compact faces of By position | Transpose. `psym` is the
+     COMPROMISE tier he asked for — the pair as symbols; `pbare` is the
+     smallest, the chooser alone, with the pair still one drawer-pull away. */
+  body.phone #panNow.psym .pills button{padding:6px 11px; font-size:16px;
+    line-height:15px}
+  body.phone #panNow.pbare .pills{display:none}
   /* the label is the BAR's — three ids, because the bar hides every .lab and
      the drawer shows every .lab, and each of those rules carries two */
   body.phone #transport #prow2 #panNowLab{display:inline-block}
@@ -2686,6 +2720,9 @@ body.phone #scorewrap>#playBtn::after{content:""; position:absolute; inset:-7px;
      the sections; hold one for its tables */
   body.phone #miniarr{display:inline-flex; gap:4px; margin-left:auto; align-items:center}
   body.phone .ctlgroup{display:none !important}
+  /* the generator joins the pills at the right end — see the markup */
+  body.phone.jam #landGenBtn{display:inline-flex; align-items:center;
+    font-size:15px; line-height:15px; padding:5px 10px}
 }
 </style>
 </head>
@@ -2841,6 +2878,14 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <button class="ctl hidden" id="notaBtn">Notation</button>
     <button class="ctl" id="chordBtn">Chords</button>
     <button class="ctl" id="panBtn">Pan</button>
+    <!-- THE THIRD SIDE: nothing under the notation (David, 30 Aug). PHONE AND
+         FLOW ONLY — Table and Tab are fitted by WIDTH and never grow into
+         spare height, so emptying the space below them would buy the music
+         nothing; the phone block below moves this into the pills and setView
+         shows it only while the Flow skin is on. The desktop has no use for
+         it either: there Chords and Pan are independent toggles, so "neither"
+         is already two taps away. -->
+    <button class="ctl hidden" id="bareBtn" title="Just the notation — nothing under it">&#x2298;</button>
   </span>
   <span class="spacer"></span>
   <span class="lab">My pan</span>
@@ -3061,6 +3106,15 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <span class="spacer"></span>
     <span class="hint">Space bar: play / pause</span>
     <span id="miniarr" title="Tap a section — hold one for its tables"></span>
+    <!-- LANDSCAPE JAM ONLY (David, 30 Aug): the generator under the notation,
+         hard right, with the arrangement pills beside it on the left. #miniarr
+         carries `margin-left:auto` there, so putting this AFTER it is what
+         places the pair — pills, then dice, both against the right edge. The
+         portrait bar has no room for it and the drawer's own 🎲 Generate
+         already serves that face. -->
+    <button class="ctl" id="landGenBtn"
+            title="Fill the whole progression with a fresh chord sequence"
+            aria-label="Generate a chord sequence">&#127922;</button>
     <span id="ptools"></span>
   </div>
   <div class="prow" id="prow2"></div>
@@ -7028,11 +7082,15 @@ let view=localStorage.getItem("hps.view")||"table";
 if(!["table","tab","flow"].includes(view)) view="table";   // "pan" is a companion panel now, not a main view
 function setView(v,opts){
   view=v; try{localStorage.setItem("hps.view",v)}catch(e){}
-  if(v!=="flow"){ const m=$("score"); if(m) m.style.maxHeight=""; }
+  if(v!=="flow"){ const m=$("score");
+    if(m){ m.style.maxHeight=""; m.style.minHeight=""; } }   // landscape sets both
   document.body.classList.remove("design-table","design-tab","design-flow");
   document.body.classList.add("design-"+v);
   for(const [id,k] of [["viewTable","table"],["viewTab","tab"],["viewFlow","flow"]])
     $(id).setAttribute("aria-pressed",String(view===k));
+  /* the third side belongs to Flow alone — see syncBare(). Before the render,
+     so the skin and the panels below it change in one paint. */
+  if(typeof syncBare==="function") syncBare();
   if(!(opts&&opts.skipRender)) render();
 }
 function render(){
@@ -7310,10 +7368,31 @@ function flowPhoneFit(wrap,land){
   const sc=$("scorecard"), mus=$("score");
   const bar=$("transport"), ex=$("drawerExtra");
   const barH=bar?bar.offsetHeight-((drawerOpen()&&ex)?ex.offsetHeight:0):0;
-  wrap.style.paddingTop=""; mus.style.maxHeight="";
+  wrap.style.paddingTop=""; mus.style.maxHeight=""; mus.style.minHeight="";
   const padB=parseFloat(getComputedStyle(document.body).paddingBottom)||0;
   let avail=innerHeight-wrap.getBoundingClientRect().top-barH-padB-8;
+  /* LANDSCAPE TAKES THE SHARED STAGE instead of measuring its own window
+     (David, 30 Aug — the three skins are one rectangle now). The music gets a
+     fixed height rather than a ceiling, so the BOX is the same whether the
+     stream fills it or not; that is what "the same dimensions" asks for, and
+     the stream scrolls inside it exactly as before. */
+  if(land){ wrap.style.paddingTop=LAND_TOP+"px"; avail=landStage(wrap); }
   if(!land){
+    /* THE JAM PANEL IS THE CHORDS SIDE IN A JAM (David, 30 Aug: "the chords
+       selection should have the chord selector and other buttons"). It was
+       missing from this measurement, and #chordwrap — the read-only card this
+       line does know about — wears .jamhide while a jam is up, so nothing at
+       all was subtracted: the stream took the whole screen and the groove
+       selector, ♭ ♯ Clear Generate and the chord strip laid out UNDERNEATH the
+       transport, inside a #belowrow that is overflow:hidden and 0px tall.
+       That is what made Chords look like the bare view. It is measured, not
+       zoomed — every one of those is a tap target, and the strip already
+       scrolls sideways, so its height is a fact rather than a budget. */
+    const jp=(jamOn&&chordRowOn)?$("jampanel"):null;
+    if(jp&&jp.offsetParent){
+      avail-=jp.getBoundingClientRect().height;
+      avail-=10;                      // the gap between the two cards
+    }
     const box=panOn?$("panbox"):(chordRowOn?$("chordbox"):null);
     if(box&&box.offsetParent){
       box.style.zoom=""; box.style.removeProperty("--panfit");
@@ -7324,7 +7403,9 @@ function flowPhoneFit(wrap,land){
   }
   // the card's own chrome (border, padding) is not the music's to scroll
   const chrome=Math.max(0,sc.getBoundingClientRect().height-mus.getBoundingClientRect().height);
-  mus.style.maxHeight=Math.max(90,avail-chrome)+"px";
+  const h=Math.max(90,avail-chrome);
+  mus.style.maxHeight=h+"px";
+  if(land) mus.style.minHeight=h+"px";     // the box, not just its ceiling
 }
 function fitPortraitStack(sc,z,designW){
   const wrap=$("scorewrap"), bar=$("transport");
@@ -7399,6 +7480,17 @@ function fitPortraitStack(sc,z,designW){
   if(Math.abs(cz-1)<0.02){ box.style.zoom=""; box.style.removeProperty("--panfit"); }
   else panBoxFit(box,box.getBoundingClientRect().height*cz);
 }
+/* THE LANDSCAPE STAGE — the one rectangle every skin fills (David, 30 Aug).
+   `LAND_TOP` is the air between the header and the notation: Flow used to
+   start flush against it at 37px and he called that "too far up", Tab sat at
+   52 and could come "a tiny little bit further up". 6px lands the card at 43
+   in both. The bottom is the band's own end, which is where Tab already was
+   and which he approved ("bottom edge looks good"); the 6 that comes off it
+   is the card's border and shadow, which #scorewrap clips. */
+var LAND_TOP=6;
+function landStage(wrap){
+  return Math.max(40,(wrap||$("scorewrap")).clientHeight-LAND_TOP-6);
+}
 function phoneFit(){
   if(!PHONE) return;
   const wrap=$("scorewrap"), sc=$("scorecard");
@@ -7408,7 +7500,7 @@ function phoneFit(){
      them mid-row with no way to scroll (David, 30 Aug: "on mobile, the table
      and tab notations are messed up now"). Cleared before anything else, so
      no path can leave it behind. */
-  if(view!=="flow") $("score").style.maxHeight="";
+  if(view!=="flow"){ const m=$("score"); m.style.maxHeight=""; m.style.minHeight=""; }
   const designW=view==="tab"?700:540;
   const land=matchMedia("(orientation:landscape)").matches;
   const hdr=document.querySelector("header");
@@ -7431,7 +7523,7 @@ function phoneFit(){
     flowPhoneFit(wrap,land);
     return;
   }
-  let z=W/designW;
+  let z=W/designW, landH=0;
   sc.style.width=designW+"px";
   /* Landscape fills the screen in BOTH directions. Scaling the fixed design
      width to the height that's left leaves the card at half the screen —
@@ -7448,21 +7540,47 @@ function phoneFit(){
        middle. The card is therefore capped at the tallest size that can still
        be centred — twice the SMALLER distance from the screen's middle to the
        band's edges. It costs a few px of height and buys the symmetry. */
-    wrap.style.paddingTop="";
-    const wr=wrap.getBoundingClientRect(), mid=innerHeight/2;
-    const band=wrap.clientHeight-8;    // -8 so the card's border isn't clipped
-    const centrable=2*Math.min(mid-wr.top,wr.bottom-mid)-8;
-    const availH=Math.max(40,Math.min(band,centrable));
+    /* ONE STAGE, THE SAME FOR ALL THREE SKINS (David, 30 Aug: "these 3 tables
+       should all have the same dimensions", with Tab starting "a tiny little
+       bit further up", Table "even smaller … wastes more space, both on top
+       and on the bottom", and Flow starting "too far up"). It is landStage()
+       for every skin, so nothing can drift apart again.
+       THIS RETIRES THE `centrable` CAP (26 Aug: the card was limited to twice
+       the SMALLER distance from the screen's middle, so it could sit dead
+       centre). Measured at 812×375 that cap alone cost Table 13px of the band
+       and left it 16px shorter than Tab — the waste in his screenshot. The
+       stage's own margins are close enough to even (43 above, 57 below) that
+       the symmetry it bought is no longer worth the height, and the header
+       push it needed goes with it. */
+    wrap.style.paddingTop=LAND_TOP+"px";
+    landH=landStage(wrap);
+    const availH=landH;
     sc.style.width=W+"px";             // measure the height at full width
     for(let i=0;i<2;i++){              // the narrower card can reflow slightly
       // the TALLEST table decides the scale, so every table reads the same size
       const natH=Math.max(sc.scrollHeight,pieceNaturalHeight(parseFloat(sc.style.width)||W));
       if(natH<=0) break;
-      z=Math.max(0.35,Math.min(2.4,availH/natH));
+      /* THE FLOOR HAD TO COME DOWN. Tab wanted 0.327 here and was clamped at
+         0.35, which is why it alone overflowed the band and slid 2px under
+         the transport — an overflow is worse than a small glyph, and the
+         floor is a guard against nothing, not a design size. */
+      z=Math.max(0.25,Math.min(2.4,availH/natH));
       sc.style.width=(W/z)+"px";
     }
   }
   sc.style.zoom=z;
+  /* …AND THEN MEASURE WHAT LANDED. `z` comes from a natural height and a
+     border that the zoom scales too, so the card came out 2–3px over the
+     stage — enough for the three skins to disagree by a pixel or three when
+     he had just asked for one rectangle. The same closing move the fullscreen
+     fits ended up needing: stop refining the model, take the overflow back
+     out of the result. */
+  if(land&&landH>0) for(let i=0;i<4;i++){
+    const over=sc.getBoundingClientRect().height-landH;
+    if(over<=0.5) break;
+    z=Math.max(0.2,z*(landH/(landH+over)));
+    sc.style.zoom=z;
+  }
   /* Centre the notation vertically from what is ACTUALLY on screen: measure
      the rendered height (getBoundingClientRect honours the zoom in every
      engine) and split the slack as padding on the unzoomed wrapper. Doing it
@@ -7470,19 +7588,11 @@ function phoneFit(){
      unzoomed size (David, 26 Aug: "still not centered vertically"). */
   wrap.style.paddingTop="";
   if(!land){ fitPortraitStack(sc,z,designW); centrePortraitStack(wrap); }
-  if(land){
-    // place it so the card's own middle sits on the SCREEN's middle
-    const h=sc.getBoundingClientRect().height, wr=wrap.getBoundingClientRect();
-    const want=(innerHeight/2-h/2)-wr.top;
-    /* The slack above the card would otherwise sit BETWEEN the title/buttons
-       and the notation, leaving the header stranded at the top of the screen
-       (David, 26 Aug: "the writing on top left can come down closer"). Push
-       that slack ABOVE the header instead: the header drops by exactly what
-       the wrapper's padding gives up, so the card does not move at all. */
-    const GAP=8;
-    if(want>GAP+1){ hdr.style.marginTop=(want-GAP)+"px"; wrap.style.paddingTop=GAP+"px"; }
-    else if(want>1) wrap.style.paddingTop=want+"px";
-  }
+  /* Landscape needs no centring pass any more: the card IS the stage, and the
+     stage's top pad is the whole of its placement. The header push that used
+     to carry the leftover slack upward went with the cap that created it —
+     with the band full there is no slack to carry. */
+  if(land) wrap.style.paddingTop=LAND_TOP+"px";
   // anchor the play button to the CARD's top-right, not the wrapper's — when
   // the card is narrower than the screen the two are far apart
   const pb=$("playBtn");
@@ -9116,6 +9226,77 @@ function storedSide(){
   return "pan";
 }
 function showSide(side){ if(side==="chords") setChords(true); else setPan(true); }
+/* ---- THE THIRD SIDE: NOTHING UNDER THE NOTATION (David, 30 Aug) ----
+   Not a fourth panel but the ABSENCE of one — both companions off, a state
+   the phone lost the day chords and pan became a switch. FLOW ONLY, and that
+   is his own reasoning: Table and Tab are fitted by WIDTH on the phone
+   (phoneFit's z = W/designW; fitPortraitStack only ever shrinks), so freeing
+   height under them buys the music nothing. Flow is the one skin that spends
+   it — the stream simply shows more systems. The desktop never sees the pill
+   either: there Chords and Pan are independent toggles, so "neither" already
+   is two taps.
+   A JAM STILL OPENS ON THE CHORDS (his 29 Aug call, re-confirmed 30 Aug:
+   "default for jam should always be with chord selector") — enterJam's
+   setChords(true) clears this by the same route any real side does. */
+let bareSide=(localStorage.getItem("hps.bare")||"0")==="1";
+/* THE STORED CHORDS/PAN PAIR MUST NOT BE SPENT ON THE WAY THROUGH "NEITHER".
+   setBare turns both off, and storedSide() reads both-off as the pan — so a
+   student who left Flow bare would come back to a piece on the pan when he
+   had chosen chords. The writes are muted for the transition instead, which
+   keeps the pair meaning "the last side you actually chose". */
+let sideQuiet=false;
+/* CHOOSING A REAL SIDE FORGETS THE BARE READING — AND ONLY A TAP COUNTS.
+   This lived inside setChords/setPan for an afternoon, which was wrong: the
+   app turns a side on programmatically all through boot, on the way out of a
+   jam and on every skin switch, and each of those quietly threw the choice
+   away (measured: a phone that booted bare came up on the chords, with
+   hps.bare rewritten to "0" by a restore that ran AFTER boot's own apply).
+   So the clear hangs off the two pills' listeners instead — the only two
+   places where a student says "put something back under the notation" —
+   and enterJam calls it on purpose, because a jam always opens on the
+   chords (David, 30 Aug). */
+function clearBare(){ if(!bareSide) return; bareSide=false;
+  if(sideSticks()) try{localStorage.setItem("hps.bare","0")}catch(e){} }
+function paintSidePills(){
+  const b=$("bareBtn"); if(!b) return;
+  const on=PHONE&&bareSide&&view==="flow";
+  b.classList.toggle("on",on);
+  b.setAttribute("aria-pressed",on?"true":"false");
+}
+function setBare(v){
+  bareSide=v;
+  if(sideSticks()) try{localStorage.setItem("hps.bare",v?"1":"0")}catch(e){}
+  if(v){ sideQuiet=true;
+    try{ setChords(false); setPan(false); } finally{ sideQuiet=false; } }
+  paintSidePills();
+  if(PHONE) phoneFit();
+}
+/* Called by setView: the pill exists only in Flow, and the state travels with
+   the skin — leave Flow and the side you last chose comes back, return to it
+   and the bare reading does. Nothing is forgotten by switching skins, which
+   is what a reader flipping between them expects. */
+/* THE GATE IS "IS THERE A PIECE YET", not setView's skipRender flag. Applying
+   a side calls render(), and boot's first setView runs before a piece exists
+   — that was the "Cannot read properties of null (reading 'sections')" crash
+   this feature earned itself. But the EDITOR's forced Table passes skipRender
+   too, with a perfectly good piece loaded, and gating on the flag left the
+   editor's exit standing in Table with neither companion under the notation.
+   The pill follows the skin either way; only the panels wait for a piece. */
+function syncBare(){
+  if(!PHONE) return;
+  const b=$("bareBtn"); if(b) b.classList.toggle("hidden",view!=="flow");
+  if(!(typeof piece!=="undefined"&&piece&&piece.sections)){ paintSidePills(); return; }
+  if(view==="flow"){ if(bareSide&&(chordRowOn||panOn)) setBare(true); }
+  else if(!chordRowOn&&!panOn){
+    /* Table and Tab have no bare reading, so a side has to come back — the
+       jam's is always the chords (David, 30 Aug), a piece's is the one it was
+       left on. Muted, so the bare choice survives the excursion and Flow is
+       still bare when he flips back to it. */
+    sideQuiet=true;
+    try{ showSide(jamOn?"chords":storedSide()); } finally{ sideQuiet=false; }
+  }
+  paintSidePills();
+}
 /* THE SIDE IS THE ROOM'S BUSINESS, NOT THE APP'S (David, 28 Aug). Jam ALWAYS
    opens on the pan, whatever was chosen last time, and what you tap while you
    are IN jam stays in jam — so a piece comes back to the side you left it on.
@@ -9124,19 +9305,19 @@ function showSide(side){ if(side==="chords") setChords(true); else setPan(true);
    wiped phone: fresh boot pan, one jam visit, chords ever after). */
 function sideSticks(){ return !(PHONE&&jamOn); }
 function setChords(v){ chordRowOn=v;
-  if(sideSticks()) try{localStorage.setItem("hps.chords",v?"1":"0")}catch(e){}
+  if(sideSticks()&&!sideQuiet) try{localStorage.setItem("hps.chords",v?"1":"0")}catch(e){}
   $("chordBtn").classList.toggle("on",v);
   $("chordBtn").setAttribute("aria-pressed",v?"true":"false");
   if(v&&PHONE&&panOn) setPan(false);
-  if(PHONE) placeJamPanel();
+  if(PHONE){ placeJamPanel(); paintSidePills(); }
   render(); }
 function setPan(v){ if(!v) panCustom=false; panOn=v;
-  if(sideSticks()) try{localStorage.setItem("hps.pan",v?"1":"0")}catch(e){}
+  if(sideSticks()&&!sideQuiet) try{localStorage.setItem("hps.pan",v?"1":"0")}catch(e){}
   $("panBtn").classList.toggle("on",v);
   $("panBtn").setAttribute("aria-pressed",v?"true":"false");
   document.body.classList.toggle("haspan",v);   // the row aligns right while it shows
   if(v&&PHONE&&chordRowOn) setChords(false);
-  if(PHONE) placeJamPanel();
+  if(PHONE){ placeJamPanel(); paintSidePills(); }
   renderPanPanel(); }
 /* Notation is a panel toggle now (David, 26 Aug): Notation · Chords · Pan.
    It hides the MUSIC and keeps the frame's head and footer — hiding the whole
@@ -9396,6 +9577,9 @@ function renderArr(){
     tv.appendChild(c);
   }
   fitFooter();
+  /* the pills just changed width, and the pan group beside them is fitted
+     against exactly that — a chord added to a jam moves this line */
+  if(PHONE) fitPanRow();
 }
 /* Long-press or right-click a section pill for its tables — the way in when
    the footer is too narrow to show them inline. Plain click still goes to the
@@ -12299,7 +12483,11 @@ function enterJam(){
      the view you left the app in is remembered for every other room, and jam
      simply does not consult it. On the phone the two are exclusive, so this
      puts the pan away by itself. */
-  setChords(true);
+  /* …and that beats the third side too (David, 30 Aug: "default for jam
+     should always be with chord selector"). Dropped in memory only — jamOn is
+     already true, so sideSticks() keeps the PIECE's stored choice intact and
+     leaveJam reads it back. */
+  clearBare(); setChords(true);
   updatePracticeBtn(); if(!PHONE) $("jampanel").classList.remove("hidden");
   paintTutorials();          // the jam note obeys the tutorial record now
   applyJam();
@@ -12324,7 +12512,13 @@ function leaveJam(){
   const prev=jamPrev; jamPrev=null;
   if(prev){ loadPiece(prev.piece); bpm=prev.bpm; $("bpm").value=bpm; }
   // the piece comes back to the side you left it on — jam never spent it
-  if(PHONE) showSide(storedSide());
+  /* …and that includes the bare reading: a jam always opens on the chords, so
+     entering one drops it, but the PIECE's choice is still in storage. Read
+     back after the side is restored (showSide would clear a flag set before
+     it), then syncBare applies it if Flow is up. */
+  if(PHONE){ showSide(storedSide());
+    try{ bareSide=(localStorage.getItem("hps.bare")||"0")==="1"; }catch(e){}
+    syncBare(); }
   if(PHONE){ setDrawer(false); placeDrawer(); phoneFit(); }   // …and a row shorter on the way out
 }
 // Regenerate from the recipe. Mid-playback the piece is swapped under the
@@ -16715,10 +16909,14 @@ function boot(){
   paintCountIn();
   $("halfBtn").addEventListener("click",()=>{ halfSpeed=!halfSpeed; $("halfBtn").classList.toggle("on",halfSpeed); });
   $("chordBtn").classList.toggle("on",chordRowOn);
-  $("chordBtn").addEventListener("click",()=>setChords(PHONE?true:!chordRowOn));
+  $("chordBtn").addEventListener("click",()=>{ clearBare(); setChords(PHONE?true:!chordRowOn); });
   $("panBtn").classList.toggle("on",panOn);
   document.body.classList.toggle("haspan",panOn);
-  $("panBtn").addEventListener("click",()=>setPan(PHONE?true:!panOn));
+  $("panBtn").addEventListener("click",()=>{ clearBare(); setPan(PHONE?true:!panOn); });
+  /* PHONE ONLY (the button is hidden everywhere else) — and it is a one-way
+     press like its two siblings there: the pills are a switch, so the way out
+     of "nothing" is to choose Chords or Pan. */
+  $("bareBtn").addEventListener("click",()=>{ if(PHONE&&!bareSide) setBare(true); });
   notaOn=true; try{ localStorage.setItem("hps.nota","1"); }catch(e){}
   setNota(true);            // always on now — a stored "off" must not strand it
   $("notaBtn").addEventListener("click",()=>setNota(!notaOn));
@@ -17231,6 +17429,8 @@ function boot(){
   $("geDrop").addEventListener("click",()=>grooveExit(false));
   $("geCancel").addEventListener("click",()=>{ afterEdit=null; $("grooveExitDlg").close(); });
   $("genBtn").addEventListener("click",()=>jamGenerate());
+  // the landscape phone's own face of the same action (David, 30 Aug)
+  { const lg=$("landGenBtn"); if(lg) lg.addEventListener("click",()=>jamGenerate()); }
   /* the same two actions the share sheet's top row offers — one pair of
      functions, called from both places (28 Aug) */
   $("csToArr").addEventListener("click",()=>{ $("ctxShareDlg").close(); jamToPiece(); });
@@ -17946,7 +18146,11 @@ else{
   cp.className="pills"; cp.setAttribute("role","group"); cp.setAttribute("aria-label","Under the notation");
   $("chordBtn").className=""; $("panBtn").className="";
   $("chordBtn").textContent="Chords"; $("panBtn").textContent="Pan";
-  cp.append($("chordBtn"),$("panBtn"));
+  /* ⊘ keeps `hidden` — setView hands it back in the Flow skin and takes it
+     away again in the other two (David, 30 Aug). */
+  $("bareBtn").className="hidden";
+  $("bareBtn").setAttribute("aria-label","Just the notation");
+  cp.append($("chordBtn"),$("panBtn"),$("bareBtn"));
   $("cpHost").appendChild(cp);
   /* PAN is the switch's default side (David, 26 Aug) — see storedSide(). This
      runs AFTER boot(), so a shared jam link that has already opened jam keeps
@@ -17955,6 +18159,17 @@ else{
   // boot painted the .on class but not the pressed state the pills read
   $("chordBtn").setAttribute("aria-pressed",chordRowOn?"true":"false");
   $("panBtn").setAttribute("aria-pressed",panOn?"true":"false");
+  /* boot ran setView before a piece existed, so the bare side is applied HERE
+     — after storedSide()/jam have settled which side is up. The flag is read
+     back first for the same reason leaveJam reads it back: restoring a side
+     runs clearBare() on the way through, which would drop the very choice
+     this line exists to honour. */
+  /* …and NOT when the app has reopened straight into a jam: a jam has no
+     stored side to restore (enterJam has already put it on the chords, which
+     is where David wants every jam to start), so re-reading the piece's flag
+     here would open the jam bare — measured, 30 Aug. */
+  if(!jamOn) try{ bareSide=(localStorage.getItem("hps.bare")||"0")==="1"; }catch(e){}
+  syncBare();
   $("mLib").appendChild($("libBtn"));
   $("mShare").appendChild($("shareBtn"));
   $("mSet").appendChild($("setBtn"));
@@ -18139,7 +18354,14 @@ function drawerTakeBar(up){
   if(matchMedia("(orientation:landscape)").matches) return;
   const now=$("dwNow"), play=$("playBtn"), arr=$("arrbox"), pan=$("panNow");
   if(!now) return;
-  const hasNav=!jamOn&&!grooveEdit;
+  /* THE JAM'S DRAWER NOW OPENS ON THE SAME SHAPE AS A PIECE'S (David, 30 Aug:
+     "the top elements of the drawer should have the same layout as in
+     arrangement mode … bpm counter/playhead row, then arrangement pills, then
+     full pan selector row, then 'this jam', then swing/groove map"). THIS
+     REVERSES the 28 Aug call that kept the arrangement row out of a jam
+     ("a jam's shape is its chord strip") — recorded as a reversal rather than
+     quietly rewritten. The groove bench still has none: a groove is one bar. */
+  const hasNav=!grooveEdit;
   /* IN JAM THE PAN STAYS ON SCREEN (David, 28 Aug: "it should also be visible
      when the drawer is closed"). It rides #prow2 — the line the arrangement
      owns in the other rooms, and which jam leaves empty. Everywhere else the
@@ -18175,16 +18397,55 @@ function fitDrawerTopRow(){
   c.textContent="Count-in";
   if(now.scrollWidth>now.clientWidth+1) c.textContent="Count";
 }
-/* The pan line drops its "My pan" caption when the chooser and the two
-   playback pills would not fit beside it — the same rule the transport line
-   and the feel line already follow. In the drawer the caption is hidden by
-   CSS anyway (the MY PAN heading is right above it), so this only ever
-   decides the bar. */
+/* THE PAN GROUP FOLDS IN FOUR STEPS, and it is measured against what the
+   ARRANGEMENT needs rather than against its own scroller (David, 30 Aug:
+   "make the pan selector more compact, depending on available space next to
+   the arrangement pills, which should have enough space and a big enough gap
+   to the pan selector"). The old version asked whether the group overflowed
+   ITSELF, which a scrolling group never really does — so "By position" was
+   quietly cut off at the screen's edge instead of folding.
+     1. My pan · chooser · By position | Transpose
+     2. the caption goes            (the transport and feel lines fold this way too)
+     3. the pair becomes two SYMBOLS — his own compromise
+     4. the chooser alone           — his own smallest version
+   Only the BAR folds. In the drawer the group is always whole: that is the
+   place the full switch is guaranteed to be, which is what makes step 4
+   safe. */
+/* The two faces of the switch. Held INSIDE the function, not in top-level
+   consts beside it: boot() runs earlier in this file than these lines do, and
+   renderArr calls the fit on its way through — a `const` up here is still in
+   its temporal dead zone at that moment and threw on the first paint.
+   ◎ the field stays where it is · ⇅ the pitch moves. The words travel on in
+   aria-label, so nothing is lost to a screen reader. */
+function panModeFace(sym){
+  const word={modePos:"By position",modeTrans:"Transpose"};
+  const symb={modePos:"\u25CE",modeTrans:"\u21C5"};
+  for(const id in word){
+    const b=$(id); if(!b) continue;
+    b.textContent=sym?symb[id]:word[id];
+    b.setAttribute("aria-label",word[id]);
+  }
+}
 function fitPanRow(){
   const row=$("panNow"), lab=$("panNowLab");
   if(!row||!lab||!PHONE||matchMedia("(orientation:landscape)").matches) return;
-  lab.style.display="";
-  if(row.scrollWidth>row.clientWidth+1) lab.style.display="none";
+  const p2=$("prow2"), inBar=row.parentNode===p2;
+  const whole=()=>{ lab.style.display="";
+    row.classList.remove("psym","pbare"); panModeFace(false); };
+  if(!inBar){ whole(); return; }
+  const arr=$("arrbox");
+  const need=(arr&&arr.parentNode===p2&&arr.offsetParent)?arr.scrollWidth:0;
+  const PAN_GAP=18;                  // the clear air he asked for between them
+  const avail=p2.clientWidth-need-(need?PAN_GAP:0);
+  const steps=[whole,
+    ()=>{ lab.style.display="none"; },
+    ()=>{ row.classList.add("psym"); panModeFace(true); },
+    ()=>{ row.classList.remove("psym"); panModeFace(false);
+          row.classList.add("pbare"); }];
+  for(let i=0;i<steps.length;i++){
+    steps[i]();
+    if(i===steps.length-1||row.scrollWidth<=avail) break;
+  }
 }
 /* The groove map sits at the right end of the swing line, labelled while the
    words fit and bare when they do not (David, 28 Aug). */
@@ -18270,7 +18531,7 @@ function placeDrawer(){
   /* THE ARRANGEMENT HAS ITS OWN LINE, in the rooms that have an arrangement:
      reading a piece and writing one. A jam's shape is its chord strip and a
      groove is one bar, so neither shows this row. */
-  const hasNav=!jamOn&&!grooveEdit;
+  const hasNav=!grooveEdit;          // …the jam included, since 30 Aug
   $("dsNav").classList.toggle("hidden",!hasNav);
   $("dwNav").classList.toggle("hidden",!hasNav);
   /* JAM PUTS THE PAN SECOND (David, 28 Aug: "right below the top line of bpm,
@@ -18278,7 +18539,10 @@ function placeDrawer(){
      bar, so opening the drawer does not shuffle it. The section is MOVED, not
      rebuilt: the chooser and the pills stay the same elements. Every other
      room keeps the old order, pan between the mode's settings and Feel. */
-  const ex=$("drawerExtra"), before=jamOn?$("dsNav"):$("dsFeel");
+  /* …and the pan sits AFTER the arrangement row now, not above it: transport,
+     arrangement, my pan, this jam, feel (David, 30 Aug — the second half of
+     the same instruction). `dsFeel` for a piece is where they already are. */
+  const ex=$("drawerExtra"), before=jamOn?$("dsMode"):$("dsFeel");
   ex.insertBefore($("dsPan"),before); ex.insertBefore($("dwPan"),before);
   /* The Chords|Pan switch went back to the top right, where it was (David,
      27 Aug), and the Notation toggle retired with it — the notation is always
