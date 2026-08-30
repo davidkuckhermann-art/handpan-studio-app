@@ -9232,7 +9232,11 @@ function buildCountRow(m,cls,bres){
    above the foot of its line box, measured against Inter's own metrics on
    29 Aug — so at 0.515 the two cap centres land level. It is a dial because
    "level" and "looks level" are not always the same thing to the eye. */
-const BEATGAP=6, RUNTRIM=.9, RUNLEN=3, LIFT=.515;
+/* DAVID'S NUMBERS, chosen on mockups-glyph-fit.html rather than argued for.
+   BEATGAP 0 — do nothing until symbols actually touch. RUNTRIM 1 — a run that
+   fits is left alone, so the cosmetic trim is off. LIFT .400 — his eye, a
+   little under the .515 that levels the cap centres exactly. */
+const BEATGAP=0, RUNTRIM=1, RUNLEN=3, LIFT=.4;
 function fitBeatGlyphs(root){
   for(const be of root.querySelectorAll(".beat")){
     if(be.children.length<=4) continue;      // four to the count is the norm
@@ -9248,19 +9252,13 @@ function fitBeatGlyphs(root){
       if(w>0) ink.push({c:c,h:w/2,w:w,slot:sl.getBoundingClientRect().width});
     }
     let g=1;
-    /* TWO WAYS TO BE TOO BIG, and they are not the same question (David,
-       30 Aug: "check out how the large T in bar 4 crosses the slot line").
-       ONE — a symbol crowds its NEIGHBOUR. Two notes close together in time.
-       TWO — a symbol is wider than ITS OWN SLOT, with no neighbour anywhere
-       near it. That is what happens to a lone T in a beat drawn at eight
-       because some OTHER bar has a run there: nothing is beside it, so the
-       neighbour test passes, and it lies across the slot line anyway.
-       Only the first was guarded. Both are now, and the beat takes whichever
-       asks for less. A slot that already holds its ink yields more than 1 and
-       changes nothing, which is why ordinary sixteenths stay untouched. */
-    for(const q of ink){
-      if(q.slot>0&&q.w>q.slot){ const need=q.slot/q.w; if(need<g) g=need; }
-    }
+    /* A SYMBOL WITH ROOM BESIDE IT KEEPS ITS SIZE (David, 30 Aug: "technically,
+       the first T on the last beat doesn't have to shrink"). It does not: the
+       slots either side of it are empty, so nothing collides — the only thing
+       wrong was a faint slot line drawn through it. Shrinking a glyph that has
+       room to answer a line that has no business being there is the wrong way
+       round, so the LINE gives way instead (see below), and the size question
+       is left to the neighbours alone. */
     for(let i=1;i<ink.length;i++){
       const hh=ink[i-1].h+ink[i].h;
       if(hh<=0) continue;
@@ -9288,6 +9286,30 @@ function fitBeatGlyphs(root){
       el.style.position="relative";
       el.style.top=(-(LIFT*(base-fs))).toFixed(2)+"px";   // its own loss, nothing else
     }
+    dropCrossedLines(be);
+  }
+  root.querySelectorAll(".beat").forEach(dropCrossedLines);
+}
+/* NO SLOT LINE UNDER A SYMBOL. The faint line between two positions is there to
+   say where the grid is; where a glyph lies across it, it says that badly and
+   the glyph is the thing worth reading. So a boundary whose neighbouring ink
+   reaches over it loses its line — and only the SLOT lines can be given up this
+   way. The beat's own border and the bar line are structure and stay put.
+   Run after the sizes are settled, and over every beat rather than only the
+   scaled ones, because a beat that needed no scaling is exactly where a
+   full-size symbol in a narrow slot turns up. */
+function dropCrossedLines(be){
+  const slots=[...be.children];
+  const box=s=>{ let l=null,r=null;
+    for(const q of s.querySelectorAll(".sym")){ const b=q.getBoundingClientRect();
+      if(!b.width) continue;
+      if(l===null||b.left<l) l=b.left; if(r===null||b.right>r) r=b.right; }
+    return (l===null)?null:{l:l,r:r}; };
+  for(let i=1;i<slots.length;i++){
+    if(!slots[i].classList.contains("smark")) continue;
+    const edge=slots[i].getBoundingClientRect().left;
+    const a=box(slots[i-1]), b=box(slots[i]);
+    if((a&&a.r>edge-1)||(b&&b.l<edge+1)) slots[i].classList.remove("smark");
   }
 }
 
