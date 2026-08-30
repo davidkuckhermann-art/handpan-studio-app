@@ -1771,6 +1771,9 @@ body.phone .pvchord{font-size:26px}
    carry three strengths with one meaning each: gutter · half-height tick
    (subdivision) · full rule (bar). */
 .flow{display:flex; flex-direction:column; gap:1.9em; padding-top:.4em;
+  /* the leftmost marker's border overhangs by a pixel, and #score is a
+     scroller — without this it was shaved off (David, 30 Aug) */
+  padding-left:2px;
   /* the vertical grammar, composed: strip + counts = where the lanes begin;
      --fLane1 = the lane boundary under them (the hands' seam line) */
   --fStrip:0em; --fCt:.72em; --fHead:calc(var(--fStrip) + var(--fCt));
@@ -1802,8 +1805,10 @@ body.phone .pvchord{font-size:26px}
    30 Aug: "slot lines in flow are off"). Only the MARKER adapts to what the
    cell holds. */
 .fcell::after{content:""; position:absolute; right:0; width:1px; z-index:-2;
-  background:var(--sc-rule); top:var(--fHead); bottom:.14em}
+  background:var(--sc-rule);
+  top:calc(var(--fHead) + .22em); bottom:calc(.14em + .22em)}
 /* the bar line — through counts and lanes, never the chord strip */
+/* the bar line is the LONGEST of the three, and reaches above the counts */
 .fcell.bend::after{width:2px; background:#B9AB97; border-radius:1px;
   top:calc(var(--fStrip) + .04em); bottom:.14em}
 /* THE BAND COVERS THE NOTATION, NOT THE COUNTS (David, 30 Aug: "the marker
@@ -1811,7 +1816,12 @@ body.phone .pvchord{font-size:26px}
    hairlines, not next to them") — so it is a ::before spanning the lanes
    exactly, edge to edge of the cell, square against the ticks. The stroke
    marker (.mkbox) takes the same window. */
-.fcell.nowbeat::before{content:""; position:absolute; left:-1px; right:0;
+/* THE BODY LETS THE LINES THROUGH; ONLY THE BORDER COVERS THEM (David,
+   30 Aug). The fill stops at the cell's own edge — reaching a pixel further
+   hid the neighbouring separator, because a cell is an isolated stacking
+   context and everything inside it paints over the cell before it, z-index
+   or no z-index. The border still reaches, and lands on that line. */
+.fcell.nowbeat::before{content:""; position:absolute; left:0; right:0;
   top:var(--fMark); bottom:var(--fMarkB); background:var(--sc-band); z-index:-3}
 /* the border rides on .fprow, which is not positioned, so it lands against
    the cell — and being a separate layer it can sit above the lines */
@@ -1845,7 +1855,10 @@ body.mkline .flow .mkbrd{top:auto; bottom:.06em; height:2px}
    30 Aug), so the hierarchy reads at a glance: gutter · slot line ·
    separator · bar line */
 body.slotlines .fprow>.fpos+.fpos::before{content:""; position:absolute; left:-.13em;
-  top:calc(var(--fHead) + .42em); bottom:.56em;
+  /* the same inset top and bottom, so the line is CENTRED in the lanes
+     (David, 30 Aug) — and deeper than the separator's, so the ladder reads
+     bar · separator · slot at a glance */
+  top:calc(var(--fHead) + .52em); bottom:calc(.14em + .52em);
   width:1px; background:var(--rule2); z-index:-2; pointer-events:none}
 .fct{font-size:.42em; line-height:1; height:1.55em; font-weight:700; color:var(--sc-count)}
 .fct.b{color:#A6977E; font-weight:800}
@@ -4987,12 +5000,22 @@ function drawMarkBox(m,barI,s,e,scope){
        marker goes through the slap sign"). A slot is a fixed share of the
        cell, but a pair like ^12 is wider than its share and spills into the
        neighbour — so the arithmetic edge can land in the middle of a glyph. */
-    d.style.left=segS===cellS?"-1px":(mkEdgePct(be,segS-1,segS,(segS-cellS)/m.sub*100)+"%");
-    d.style.right=segE===cellE?"-1px":((100-mkEdgePct(be,segE-1,segE,(segE-cellS)/m.sub*100))+"%");
+    const lEdge=mkEdgePct(be,segS-1,segS,(segS-cellS)/m.sub*100);
+    const rEdge=100-mkEdgePct(be,segE-1,segE,(segE-cellS)/m.sub*100);
+    /* the FILL stops at the cell's edge and the BORDER reaches a pixel past
+       it, so the lines show through the body while the edge lands on them
+       (David, 30 Aug). In the table the two have always shared -1px, and
+       there the cell's rules are borders rather than a neighbour's pseudo,
+       so nothing is hidden either way. */
+    const flow=be.classList.contains("fcell");
+    d.style.left=segS===cellS?(flow?"0px":"-1px"):(lEdge+"%");
+    d.style.right=segE===cellE?(flow?"0px":"-1px"):(rEdge+"%");
     be.appendChild(d);
     // the same rectangle again, as the BORDER layer above the lines
     const bd=d.cloneNode(false);
     bd.classList.remove("mkbox"); bd.classList.add("mkbrd");
+    bd.style.left=segS===cellS?"-1px":(lEdge+"%");
+    bd.style.right=segE===cellE?"-1px":(rEdge+"%");
     be.appendChild(bd);
   }
 }
