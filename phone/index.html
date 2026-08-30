@@ -603,9 +603,8 @@ body.fs #scoreheadL #panSel{max-width:230px; flex:0 1 auto}
    line ON the border line below the cell instead of below"). It replaces the
    band rather than joining it, so the played position is said once. 2px sitting
    on the 1px border covers it exactly — the cell's bottom edge lights up. */
-/* the LINE style: the fill stands down and the border layer becomes the line */
-body.mkline .mkbox{display:none}
-body.mkline .mkbrd{top:auto; bottom:-1px; height:2px; background:var(--dixie);
+/* the LINE style: the box becomes the line itself */
+body.mkline .mkbox{top:auto; bottom:-1px; height:2px; background:var(--dixie);
   border:none; border-radius:0}
 /* --symlh: the line-height its stacked glyphs use, for .btcap's alignment
    arithmetic. Declared on the CONTAINER because a custom property inherits
@@ -631,16 +630,15 @@ body.slotlines .beat>.slot+.slot::before{content:""; position:absolute; z-index:
 /* the stroke/16th/8th rectangle is drawn TWICE — a fill below the lines and
    a border above them. Two elements, not one with a pseudo: an element with
    its own z-index traps its children in that layer. */
-.mkbox{position:absolute; top:-1px; bottom:-1px; pointer-events:none; z-index:-3;
-  background:var(--sc-band-t)}
-.mkbrd{position:absolute; top:-1px; bottom:-1px; pointer-events:none; z-index:-1;
+.mkbox{position:absolute; top:-1px; bottom:-1px; pointer-events:none; z-index:-1;
+  background:var(--sc-band-t);
   border-top:1px solid var(--dixie); border-bottom:1px solid var(--dixie)}
 /* the tab used to inset its marker by a pixel, which is exactly why its band
    and line sat BESIDE the cell's rules instead of on them (David, 30 Aug).
    It now takes the table's own fit: the edges land on the gridlines. */
-.mkbrd.mkbL{border-left:1px solid var(--dixie);
+.mkbox.mkbL{border-left:1px solid var(--dixie);
   border-top-left-radius:4px; border-bottom-left-radius:4px}
-.mkbrd.mkbR{border-right:1px solid var(--dixie);
+.mkbox.mkbR{border-right:1px solid var(--dixie);
   border-top-right-radius:4px; border-bottom-right-radius:4px}
 /* box markers (subdivision / half / bar): band fill + a hairline outline */
 /* THE MARKER SITS ON THE CELL'S OWN GRIDLINES (David, 27 Aug: "the timing
@@ -1811,8 +1809,18 @@ body.phone .pvchord{font-size:26px}
      does carries a little more air than the rows themselves (David, 30 Aug). */
   --fMark:var(--fHead); --fMarkB:.14em}
 .flow.strip{gap:1.5em; --fStrip:.72em}
-.flow.r4{--fLane1:2.16em; --fMark:calc(var(--fHead) + 1.04em); --fMarkB:1.18em}
-.flow.r4 .fcell.ext{--fMark:calc(var(--fHead) - .08em); --fMarkB:.06em}
+.flow.r4{--fLane1:2.16em}
+/* THE MARKER HUGS THE OCCUPIED ROWS (David, 30 Aug, with two screenshots:
+   "too much space on top, and not enough on the bottom"). The renderer knows
+   exactly which of the lanes a cell fills, and writes the offsets as --mkT
+   and --mkB; the .12em either side is the marker's own breath. */
+/* DECLARED ON THE CELL, not on the stream: a custom property that references
+   another resolves where it is DECLARED, so putting these on .flow made every
+   cell inherit one already-computed value and the per-cell --mkT/--mkB never
+   reached them (the marker then hugged nothing at all). */
+.fcell{--mkT:0em; --mkB:0em;
+  --fMark:calc(var(--fHead) + var(--mkT) - .12em);
+  --fMarkB:max(0em, calc(.1em + var(--mkB) - .12em))}
 .flow.nocount{--fCt:.06em}
 .flow.nocount .fct{display:none}
 .flow.measure{flex-direction:row; flex-wrap:wrap; align-items:flex-start}
@@ -1849,22 +1857,24 @@ body.phone .pvchord{font-size:26px}
    hid the neighbouring separator, because a cell is an isolated stacking
    context and everything inside it paints over the cell before it, z-index
    or no z-index. The border still reaches, and lands on that line. */
-.fcell.nowbeat::before{content:""; position:absolute; left:0; right:0;
-  top:var(--fMark); bottom:var(--fMarkB); background:var(--sc-band-t); z-index:-3}
-/* the border rides on .fprow, which is not positioned, so it lands against
-   the cell — and being a separate layer it can sit above the lines */
-.fcell.nowbeat .fprow::before{content:""; position:absolute; left:-1px; right:0;
+/* ONE ELEMENT, not two. With a translucent wash the border no longer needs
+   its own layer above the lines — the lines are seen THROUGH the fill and
+   the border is simply drawn on the same box (David, 30 Aug: an orange
+   remnant was being left behind, and a second absolutely-positioned layer
+   under a stacking context is exactly the kind of thing that leaves one). */
+.fcell.nowbeat::before{content:""; position:absolute; left:-1px; right:0;
   top:var(--fMark); bottom:var(--fMarkB); z-index:-1; pointer-events:none;
-  border:1.5px solid var(--dixie); border-radius:.24em}
-body.mkline .fcell.nowbeat::before{background:none}
+  background:var(--sc-band-t); border:1.5px solid var(--dixie);
+  border-radius:.24em}
+body.mkline .fcell.nowbeat::before{background:none; border:none; border-radius:0}
 /* THE LINE MARKER RIDES THE HANDS' SEAM (David, 30 Aug): the line that
    already runs between the two hands is the cell's own middle, so the
    playhead marks the beat there rather than at the foot of the lanes. */
-body.mkline .fcell.nowbeat .fprow::before{border:none; border-radius:0;
-  top:calc(var(--fHead) + var(--fLane1) - 1px); bottom:auto; height:2px;
-  background:var(--dixie)}
-.flow .mkbox,.flow .mkbrd{top:var(--fHead); bottom:.14em}
-body.mkline .flow .mkbrd{top:auto; bottom:.06em; height:2px}
+body.mkline .fcell.nowbeat::after{content:""; position:absolute; left:-1px; right:0;
+  top:calc(var(--fHead) + var(--fLane1) - 1px); height:2px; bottom:auto;
+  background:var(--dixie); z-index:-1; pointer-events:none; width:auto}
+.flow .mkbox{top:var(--fMark); bottom:var(--fMarkB)}
+body.mkline .flow .mkbox{top:auto; bottom:.06em; height:2px}
 .fchs{height:1.5em; font-size:.48em; line-height:1.25; display:flex; gap:.9em;
   white-space:nowrap; overflow:visible}
 .fbn{font-weight:800; color:#A79878}
@@ -1886,9 +1896,14 @@ body.mkline .flow .mkbrd{top:auto; bottom:.06em; height:2px}
 body.slotlines .fprow>.fpos+.fpos .flanes::before{content:""; position:absolute; left:-.13em;
   /* MEASURED FROM THE LANES, not from the cell: top and bottom are one
      number, so the line cannot be off-centre however the template changes */
-  top:.86em; bottom:.86em;
+  top:calc(50% - .34em); bottom:calc(50% - .34em);
   width:1px; background:var(--rule2); z-index:-2; pointer-events:none}
-.fct{font-size:.42em; line-height:1; height:1.55em; font-weight:700; color:var(--sc-count)}
+/* the declared --fCt IS this row's height: .42em of type in a box of
+   .72em of the cell — so anything measured from --fHead lands where the
+   lanes really start (the trap that skewed the slot line, and then the
+   marker) */
+.fct{font-size:.42em; line-height:1.4; height:calc(var(--fCt) / .42);
+  font-weight:700; color:var(--sc-count)}
 .fct.b{color:#A6977E; font-weight:800}
 .fct.cnow{color:var(--dixie); position:relative}
 .fct.cnow::after{content:""; position:absolute; left:1px; right:1px; bottom:.25em;
@@ -4983,7 +4998,7 @@ function markerPulses(g,m){ // pulses covered by one marker unit (the beat is a 
 function clearSlotMarks(){
   // the classes are theirs alone, so no .beat/.bar prefix — the Flow skin's
   // cells (.fcell) wear the same marks (30 Aug)
-  document.querySelectorAll(".mkbox,.mkbrd").forEach(el=>el.remove());
+  document.querySelectorAll(".mkbox").forEach(el=>el.remove());
   document.querySelectorAll(".mkcell").forEach(el=>el.classList.remove("mkcell"));
   document.querySelectorAll(".nowbeat").forEach(el=>el.classList.remove("nowbeat"));
   document.querySelectorAll(".nowbar").forEach(el=>el.classList.remove("nowbar"));
@@ -5035,16 +5050,9 @@ function drawMarkBox(m,barI,s,e,scope){
        (David, 30 Aug). In the table the two have always shared -1px, and
        there the cell's rules are borders rather than a neighbour's pseudo,
        so nothing is hidden either way. */
-    const flow=be.classList.contains("fcell");
-    d.style.left=segS===cellS?(flow?"0px":"-1px"):(lEdge+"%");
-    d.style.right=segE===cellE?(flow?"0px":"-1px"):(rEdge+"%");
+    d.style.left=segS===cellS?"-1px":(lEdge+"%");
+    d.style.right=segE===cellE?"-1px":(rEdge+"%");
     be.appendChild(d);
-    // the same rectangle again, as the BORDER layer above the lines
-    const bd=d.cloneNode(false);
-    bd.classList.remove("mkbox"); bd.classList.add("mkbrd");
-    bd.style.left=segS===cellS?"-1px":(lEdge+"%");
-    bd.style.right=segE===cellE?"-1px":(rEdge+"%");
-    be.appendChild(bd);
   }
 }
 function clearMarks(){
@@ -8834,6 +8842,11 @@ function renderFlowSection(sc,nm,ai,absStart){
       }
       const prow=document.createElement("span"); prow.className="fprow";
       let cellExt=false;      // does anything in this cell reach an outer row?
+      /* which LANES this cell fills, so the marker can hug them (30 Aug).
+         Rows run top to bottom: the upper hand's reach, its anchor, the
+         lower hand's anchor, its reach. */
+      let rowTop=99, rowBot=-1;
+      const useRow=i=>{ if(i<rowTop) rowTop=i; if(i>rowBot) rowBot=i; };
       for(let k=0;k<m.sub;k++){
         const t=b*m.sub+k, rel=bi*m.bp+t;
         const pos=document.createElement("span"); pos.className="fpos"; pos.dataset.rel=rel;
@@ -8845,6 +8858,10 @@ function renderFlowSection(sc,nm,ai,absStart){
         const G=flowHand(evs,true), B=flowHand(evs,false);
         if(G.length>1||B.length>1) cellExt=true;
         const pair=(flowLanes==="lr")?[B,G]:[G,B];
+        if(pair[0].length>1) useRow(0);
+        if(pair[0].length) useRow(1);
+        if(pair[1].length) useRow(2);
+        if(pair[1].length>1) useRow(3);
         /* the lanes get their own box so the slot line can be drawn AGAINST
            IT — em arithmetic against the cell kept landing off-centre,
            because the count row's height is a font measure and the lanes'
@@ -8858,6 +8875,19 @@ function renderFlowSection(sc,nm,ai,absStart){
         prow.appendChild(pos);
       }
       if(cellExt) cell.classList.add("ext");
+      /* the lane ladder, in the cell's own em: the reach rows are .98 and the
+         anchors 1.16, with .06 between — so a marker that starts at row t and
+         ends at row b insets by these amounts. Kept beside the CSS that
+         declares those heights; if one moves, this moves. */
+      { const H=r4?[.98,1.16,1.16,.98]:[1.16,1.16], G0=.06;
+        const off=[]; let acc=0;
+        H.forEach((h,i)=>{ off[i]=acc; acc+=h+(i<H.length-1?G0:0); });
+        const total=acc;
+        let t=rowTop, b=rowBot;
+        if(b<0){ t=r4?1:0; b=r4?2:1; }               // an empty cell keeps the anchors
+        if(!r4){ t=Math.max(0,Math.min(1,t-1)); b=Math.max(0,Math.min(1,b-1)); }
+        cell.style.setProperty("--mkT",off[t].toFixed(3)+"em");
+        cell.style.setProperty("--mkB",(total-(off[b]+H[b])).toFixed(3)+"em"); }
       cell.appendChild(prow);
       // the CELL is the tap target — the skin's atom, and a finger's size
       cell.addEventListener("pointerdown",()=>{
