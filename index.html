@@ -2473,6 +2473,10 @@ html.player #title{ border-color:transparent; background:transparent; cursor:def
    indicator the bottom — every side is an inset (David, 26 Aug) */
 body.phone{padding:calc(10px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right))
            calc(30px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left))}
+#safeprobe{position:fixed; left:-99px; top:0; width:1px; height:1px; visibility:hidden;
+  pointer-events:none;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right)
+          env(safe-area-inset-bottom) env(safe-area-inset-left)}
 body.phone #syncOpen,body.phone #editBtn,
 body.phone #scorefoot,body.phone #scorehead{display:none !important}
 /* …AND THE BARS THOSE BUTTONS OPEN (David, 28 Aug: "the video sync dialogue is
@@ -2790,6 +2794,12 @@ body.phone .gmini i{font-size:10px}
   /* no editor ever needs the chord card — the deck replaces #belowrow
      entirely (David, 27 Aug) */
   body.phone.editing #cpHost{display:none}
+  /* …AND THE ✕ GOES WITH THEM WHILE EDITING (David, 30 Aug). In CSS, not only
+     in updatePracticeBtn: that function does not run on the edit toggle, so
+     the JS rule alone left the ✕ standing wherever its last practice state had
+     put it. Back is the way out now, and it lives in #undoHost, which this
+     build keeps on screen in the view row while editing. */
+  body.phone.editing #leaveBtn{display:none !important}
   #gwTools .ctl{font-size:12.5px; padding:6px 10px}
   /* one undo is enough: the lane's ↺ steps aside wherever the tools row has
      it — the arrangement editor too (David, 27 Aug) */
@@ -3071,6 +3081,11 @@ body.phone #scorewrap>#playBtn::after{content:""; position:absolute; inset:-7px;
      the sections; hold one for its tables */
   body.phone #miniarr{display:inline-flex; gap:4px; margin-left:auto; align-items:center}
   body.phone .ctlgroup{display:none !important}
+  /* LANDSCAPE HAS NO DRAWER, so its grip's row is eight pixels of nothing
+     standing between the bar's top edge and its buttons — and eight pixels the
+     notation could not reach, which is why the air came out 2 above and 8
+     below when he had asked for 5 and 5. */
+  body.phone #drawerHead{display:none}
   /* the generator joins the pills at the right end — see the markup — with
      clear air between the two (David, 30 Aug: "add a gap between jam button
      and arrangement pills"), because they are different kinds of thing: the
@@ -3263,6 +3278,12 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
          Chords|Pan pills in the view row, which is his call too: the header
          there is already full and the ⋮ sheet would bury them. -->
     <span id="undoHost">
+      <!-- BACK, beside undo and redo (David, 30 Aug) — and INSIDE #undoHost so
+           it travels with them: the boot moves that span into the phone's view
+           row, so one home serves both platforms and nothing has to place it
+           twice. Greyed rather than hidden when there is nowhere to go, his
+           call, and `disabled` is how the pair beside it already says that. -->
+      <button class="ctl" id="backBtn" aria-label="Back" title="Back">&#8592;</button>
       <button class="ctl" id="undoBtn" aria-label="Undo" title="Undo">↺</button>
       <button class="ctl" id="redoBtn" aria-label="Redo" title="Redo">↻</button>
     </span>
@@ -3751,13 +3772,26 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 
 <!-- Jam chord picker: only chords this pan can play. "Almost" chords (one
      tone missing) are offered too, marked — the missing tone plays the root. -->
+<!-- THE WORDING IS ABOUT WHICH CHORDS EXIST, NOT ABOUT WHAT IS PLAYED
+     (David, 30 Aug: "I think the info is incorrect, because bottom notes are
+     actually used in some ways even if this option is active, correct?" — he
+     is right). The switch governs the VOCABULARY: which chords the pan is
+     considered to have, and so what the picker lists, what Suggestions marks
+     and what Generate may reach for. It does not reach the VOICINGS, which
+     draw from panPositions() — "the underside among them", as jvChordPool's
+     own comment puts it — and that is deliberate: a real low root under a
+     chord is the freedom the 28 Aug split was made to keep. -->
 <dialog id="topChordsDlg">
   <h3>Top notes only</h3>
-  <p class="hint" style="margin:8px 0 0; max-width:44ch">Chords will be built from
-    the notes on top of the pan alone — the underside is left out.</p>
-  <p class="hint" style="margin:10px 0 0; max-width:44ch; display:flex; align-items:center;
+  <p class="hint" style="margin:8px 0 0; max-width:46ch"><b>Which chords your pan
+    is considered to have</b> is worked out from its top notes alone. That is what
+    this picker lists and what Suggestions marks.</p>
+  <p class="hint" style="margin:10px 0 0; max-width:46ch; display:flex; align-items:center;
      gap:7px; flex-wrap:wrap">This setting also affects
     <span class="ctl" aria-hidden="true" style="pointer-events:none">🎲 Generate</span></p>
+  <p class="hint" style="margin:10px 0 0; max-width:46ch"><b>The underside is still
+    played.</b> A voicing can still put a real low root under a chord, and you can
+    still write underside notes into the notation yourself.</p>
   <div class="row" style="margin:14px 0 0">
     <span class="spacer"></span>
     <button class="ctl" id="topChordsOk">Got it</button>
@@ -3773,7 +3807,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <h3 id="jamDlgTitle" style="margin:0">Chord</h3>
     <span class="spacer"></span>
     <button class="ctl" id="topChordsBtn"
-      title="Build chords from the notes on top of the pan only, ignoring the underside">Top notes only</button>
+      title="Work out WHICH CHORDS the pan has from its top notes alone — the underside is still played">Top notes only</button>
   </div>
   <p class="hint hidden" id="jamSugHint"></p>
   <div id="jamChordGrid"></div>
@@ -4334,6 +4368,9 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <span class="spacer"></span><button class="ctl" id="exStay">Keep editing</button></div>
 </dialog>
 
+<!-- the raw safe-area insets, readable: `env()` cannot be queried directly and
+     every other element already has other numbers folded into its padding -->
+<div id="safeprobe" aria-hidden="true"></div>
 <div id="drawerShade" class="hidden"></div>
 <div id="dlgShade" class="hidden"></div>
 <div id="toast" role="status"></div>
@@ -8074,9 +8111,28 @@ function fitPortraitStack(sc,z,designW){
    The bottom is the band's own end, which is where Tab already was
    and which he approved ("bottom edge looks good"); the 6 that comes off it
    is the card's border and shadow, which #scorewrap clips. */
-var LAND_TOP=12;
+/* HIS OWN NUMBERS, off the bench (David, 30 Aug: "air 5.0, edge 8.0"). AIR is
+   the gap between the notation and each row of buttons; EDGE is how far both
+   rows stand from the screen's edges. The bench that produced them is
+   `mockups-landscape-space.html`. */
+var LAND_AIR=5, LAND_EDGE=8;
+var LAND_TOP=LAND_AIR;
+/* The stage is now the band BETWEEN THE TWO BUTTON ROWS less the air he chose,
+   rather than the wrap's box less a guessed pad — the wrap's box is not what
+   he was looking at. */
 function landStage(wrap){
+  const r=landRefs();
+  const band=r.bot-r.top;
+  if(band>60) return Math.max(40,band-2*LAND_AIR);
   return Math.max(40,(wrap||$("scorewrap")).clientHeight-LAND_TOP-6);
+}
+/* the phone's REAL insets, read off a probe rather than deduced from a
+   computed padding that already has other numbers folded into it */
+function safeInsets(){
+  const el=$("safeprobe"); if(!el) return {t:0,r:0,b:0,l:0};
+  const cs=getComputedStyle(el);
+  return {t:parseFloat(cs.paddingTop)||0, r:parseFloat(cs.paddingRight)||0,
+          b:parseFloat(cs.paddingBottom)||0, l:parseFloat(cs.paddingLeft)||0};
 }
 /* THE TWO THINGS THE NOTATION IS CENTRED BETWEEN, measured rather than
    assumed: the lowest header control, and the top of the transport's first
@@ -8101,13 +8157,28 @@ function landStage(wrap){
 function landSymmetry(hdr){
   const row=$("prow1");
   if(!hdr||!row||!row.offsetParent) return;
-  const bottomInset=innerHeight-row.getBoundingClientRect().bottom;
+  /* THE TARGET IS HIS NUMBER, FLOORED BY THE HOME INDICATOR. That strip is not
+     ours to draw in, and the app settled on giving it half back on 28 Aug — so
+     where the floor is the larger, BOTH rows take the floor and stay equal,
+     which is the rule he set before he chose the number. */
+  const floor=safeInsets().b/2;
+  const target=Math.max(LAND_EDGE,floor);
+  /* The bottom row is moved by the BODY's padding, which is what actually
+     holds it off the edge — the bar itself carries none in landscape. Measured
+     and corrected by the difference, so it lands on the target whatever the
+     device folds in underneath. */
+  document.body.style.paddingBottom="";
+  const padNow=parseFloat(getComputedStyle(document.body).paddingBottom)||0;
+  const gapNow=innerHeight-row.getBoundingClientRect().bottom;
+  const want=Math.max(floor,padNow+(target-gapNow));
+  document.body.style.paddingBottom=want.toFixed(1)+"px";
+  // …and the header comes down to meet it
   let topInset=Infinity;
   for(const el of hdr.children)
     if(el.offsetParent) topInset=Math.min(topInset,el.getBoundingClientRect().top);
   if(!isFinite(topInset)) topInset=hdr.getBoundingClientRect().top;
-  const d=bottomInset-topInset;
-  if(d>0.5) hdr.style.marginTop=d.toFixed(1)+"px";
+  const d=target-topInset;
+  hdr.style.marginTop=d>0.5?d.toFixed(1)+"px":"";
 }
 function landRefs(){
   const hdr=document.querySelector("header");
@@ -8133,12 +8204,14 @@ function landRefs(){
 function centreLandStage(wrap,sc){
   if(!matchMedia("(orientation:landscape)").matches) return;
   const r=landRefs();
-  const band=r.bot-r.top;
   const cardH=sc.getBoundingClientRect().height;
-  const air=band-cardH;
-  if(!(air>0)) return;
+  /* LAND_AIR above and below, his own number — and if the card came out taller
+     than the band allows, share what is actually left rather than pushing it
+     off the top. */
+  const slack=(r.bot-r.top)-cardH;
+  const air=slack>=2*LAND_AIR?LAND_AIR:Math.max(0,slack/2);
   const wt=wrap.getBoundingClientRect().top;
-  const pad=Math.max(0,Math.min(wrap.clientHeight-cardH,r.top+air/2-wt));
+  const pad=Math.max(0,Math.min(wrap.clientHeight-cardH,r.top+air-wt));
   wrap.style.paddingTop=pad.toFixed(1)+"px";
 }
 /* THE CONTROLS THAT FLOAT OVER THE CARD are anchored to the CARD, never to
@@ -8179,6 +8252,7 @@ function phoneFit(){
   const land=matchMedia("(orientation:landscape)").matches;
   const hdr=document.querySelector("header");
   hdr.style.marginTop="";              // measure from a clean slate every time
+  if(!land) document.body.style.paddingBottom="";   // landSymmetry's lever, released
   /* …and then, in landscape only, put it back deliberately: the header drops
      until its buttons stand as far from the top edge as the bar's stand from
      the bottom one. Before the fit, because it changes the band the fit
@@ -12284,8 +12358,14 @@ function jamRunFields(lad,pulses,rnd,longOk){
      overshot: measured over 300 generations, 4+ was 49% of every run at one
      pass. 2 · 3 · 4 · 5 · 6 now read 30 · 30 · 20 · 13 · 7, so four-and-over
      is 40% of what this function offers rather than 55%. */
+  /* …AND THEN BACK UP AGAIN (David, 30 Aug: "now longer note runs are a bit
+     too rare … an average chance of 50% for a 4 bar phrase to have at least
+     one long run would be a nice frequency"). 19 · 19 · 32 · 19 · 11, so four
+     and over is 62% of what this function offers. Measured, not guessed: with
+     the two changes below it lands 53% / 51% / 50% of four-bar phrases across
+     one, two and four passes, verified on five grooves. */
   const r=rnd();
-  let want=r<0.30?2:r<0.60?3:r<0.80?4:r<0.93?5:6;
+  let want=r<0.19?2:r<0.38?3:r<0.70?4:r<0.89?5:6;
   /* A LONG ROLL BELONGS AT A JOIN (David, 30 Aug: "for the long ones, 3 out of
      4 times, they should appear in the last bar of the sequence, or at the last
      bar of the 1st half of the sequence"). Those two bars are where the form
@@ -12779,6 +12859,19 @@ function jamProgTemplate(n){
   while(out.length<n) out.push(...pick.names);
   return {names:out.slice(0,n), label:pick.P.n};
 }
+/* A NEW PROGRESSION IS A NEW PIECE, LINE AND ALL (David, 30 Aug: "a new chord
+   sequence should always reroll the melody line as well, no option needed for
+   this"). Generate used to re-roll only the CHORDS, and the consequence was
+   invisible until he counted: the melody's decisions — where it rests, where
+   it runs, how long each run is — all come from `jam.mseed`, so twenty presses
+   replayed the same run shape twenty times. Measured on a four-bar form, 20
+   presses on one seed gave 3 distinct shapes, and 23% of seeds showed no long
+   run at all across all twenty. He was not unlucky; he was looking at one
+   frozen draw. With eight chords the same stream yields twice the draws, which
+   is exactly why he said eight "looks fine".
+   `#jsReline` keeps its own meaning, which is now the case Generate no longer
+   covers: a new line over the SAME chords. */
+function jamReline(){ if(jam.motion) jam.mseed=jamNewSeed(); }
 function jamGenerate(bars){
   const n=Math.max(1,Math.min(JAM_MAX,bars||jamBarCount()||4));
   jamPreviewStop();
@@ -12789,7 +12882,7 @@ function jamGenerate(bars){
     const t=jamProgTemplate(n);
     if(t){
       jam.slots=t.names.map(c=>({chord:c,bars:1}));
-      jamEditSlot=-1; applyJam(); jamRestartNextBar();
+      jamEditSlot=-1; jamReline(); applyJam(); jamRestartNextBar();
       toast(t.label);
       return;
     }
@@ -12800,6 +12893,7 @@ function jamGenerate(bars){
     jam.slots.push({chord:pick.name,bars:1});
   }
   jamEditSlot=-1;
+  jamReline();
   applyJam();
   jamRestartNextBar();
   toast("New progression — "+jam.slots.length+(jam.slots.length===1?" chord":" chords"));
@@ -12825,10 +12919,21 @@ function jamGenerate(bars){
    ring out by themselves, which is what a real hand does.
 
    With a loop set the LOOP is the cycle; the run-in before it never breaks. */
+/* A CYCLE IS ONE TABLE (David, 30 Aug: "a cycle is always 1 table, as you see
+   it in the table notation, not the whole form" — and the wording went with
+   it: **every X TABLES**). THIS REVERSES the 29 Aug reading, where the cycle
+   was one pass of the whole progression; recorded as a reversal rather than
+   quietly rewritten, because that comment read as settled.
+   The consequence he should expect: in Motion at two or four passes the form
+   is two or four tables, so "every 2 tables" now comes round in eight bars
+   where it used to take sixteen or thirty-two. A loop still wins — a loop IS
+   the cycle, which is his own earlier rule and unaffected by this one. */
 function brkCycle(){
-  const bp=Math.max(1,SM(piece,piece.arrangement[0]||"Jam").bp);
+  const nm=piece.arrangement[0]||"Jam";
+  const bp=Math.max(1,SM(piece,nm).bp);
   const from=loopSec?loopSec.from:0;
-  const span=Math.max(bp,loopSec?(loopSec.to-loopSec.from):C.total);
+  const tbl=((piece.sections[nm]||{}).bars||[]).length*bp;
+  const span=Math.max(bp,loopSec?(loopSec.to-loopSec.from):(tbl||C.total));
   return {bp,from,span,bars:Math.max(1,Math.round(span/bp))};
 }
 function brkCycleBars(){ try{ return brkCycle().bars; }catch(e){ return 4; } }
@@ -12847,7 +12952,14 @@ function jamBreakInfo(ab){
   return {c,L,cyc,pos,
     inBreak:cyc&&pos>=start,
     first:cyc&&pos===start,
-    fromBar:Math.round(c.from/c.bp)+c.bars-L};      // first greyed bar
+    /* LOCAL to the table, because that is what the painter has in front of it:
+       `#score .bar` holds the DISPLAYED table's bars, and `fromBar` used to be
+       an index into the whole form — so on a two-table jam it asked for bar 6
+       of a four-element list and nothing greyed at all, on either table
+       (David, 30 Aug). `tableFrom` says which table it belongs to, so the
+       grey falls only where the break falls. */
+    fromBar:c.bars-L,
+    tableFrom:c.from+k*c.span};
 }
 /* THE BARS GREY AS THE BREAK-CARRYING CYCLE BEGINS (David, 29 Aug), not as the
    silence starts: seeing it coming is half the exercise. On the cycles in
@@ -12856,7 +12968,7 @@ function jamBreakInfo(ab){
    ear, so the card and the marker must not ask its counter */
 let brkPaint=null, brkDimKey="";
 function paintBrkDim(bk){
-  applyBrkDim((bk&&bk.cyc&&playing)?(bk.fromBar+"+"+bk.L):"",bk);
+  applyBrkDim((bk&&bk.cyc&&playing)?(bk.fromBar+"+"+bk.L+"@"+viewFromPulse()):"",bk);
 }
 /* THE BREAK IS VISIBLE BEFORE A NOTE IS PLAYED (David, 29 Aug: "if the
    frequency is every cycle, please mark the break in the notation in the
@@ -12871,7 +12983,8 @@ function brkStillInfo(){
   if(!jamOn||!jam||!jam.brk||!jam.brk.on||Math.max(1,jam.brk.every)!==1||!C) return null;
   let c; try{ c=brkCycle(); }catch(e){ return null; }
   const L=Math.max(1,Math.min(c.bars,jam.brk.len));
-  return {c,L,cyc:true,fromBar:Math.round(c.from/c.bp)+c.bars-L};
+  // no tableFrom: standing still, every table shows the same thing
+  return {c,L,cyc:true,fromBar:c.bars-L};
 }
 /* Painted from the SETTING rather than from the clock. While the music runs
    the live painter owns the grey — it knows which cycle this is — so this one
@@ -12879,12 +12992,18 @@ function brkStillInfo(){
 function paintBrkStill(){
   if(playing) return;
   const bk=brkStillInfo();
-  applyBrkDim(bk?("still"+bk.fromBar+"+"+bk.L):"",bk);
+  applyBrkDim(bk?("still"+bk.fromBar+"+"+bk.L+"@"+viewFromPulse()):"",bk);
 }
 /* ONE painter, two callers. The key is what makes the common path free, and
    the still key carries its own prefix so that starting playback on the very
    bars already greyed still counts as a change and repaints. */
 function applyBrkDim(key,bk){
+  /* ONLY WHERE IT FALLS (David, 30 Aug). While the music runs the break
+     belongs to ONE table; a table the student is merely looking at must not
+     grey. Standing still there is no playing table and every one reads alike,
+     so the still painter sends no `tableFrom` and the displayed table shows
+     it. The key carries the view, or switching tables would not repaint. */
+  if(key&&bk&&bk.tableFrom!=null&&bk.tableFrom!==viewFromPulse()){ key=""; bk=null; }
   const els=document.querySelectorAll("#score .bar");
   // …and re-applied after a render() wiped the score out from under us
   const stale=!!key&&!!bk&&!!els[bk.fromBar]&&!els[bk.fromBar].classList.contains("brkdim");
@@ -13084,10 +13203,18 @@ function buildJamPiece(){
          30% at four passes. The chance now scales with the form, so the two
          joins contribute the same amount to a generation however long it is:
          0.45 on four bars, the full 0.9 from eight up. */
-      const joinP=Math.min(0.9,0.9*form.length/8);
+      const joinP=Math.min(0.9,1.15*form.length/8);
+      /* A 4-BAR PHRASE END THAT IS NOT ONE OF THE FORM'S TWO JOINS. Long runs
+         were 99% at the joins, and a sixteen-bar form still has only two of
+         them spread over four phrases — which is why four passes sat at 19%
+         of phrases against one pass's 28%, and why no weighting could have
+         fixed it. It is structural, so the structure gained a rung: a phrase
+         end leads somewhere too. It bites only from four passes up, because at
+         one and two passes the phrase ends ALREADY are the joins. */
+      const pend=ends&&!join;
       const wantRun=runs<2&&(runs===0||mrnd()<0.3)
-        &&(join?mrnd()<joinP:(!rest&&mrnd()<(evenBar?0.6:0.25)));
-      const longOk=join||mrnd()<0.08;
+        &&(join?mrnd()<joinP:(pend?mrnd()<0.85:(!rest&&mrnd()<(evenBar?0.6:0.25))));
+      const longOk=join||pend||mrnd()<0.08;
       const rf=wantRun&&ndef?jamRunFields(rqLadder(ndef),bp,mrnd,longOk):null;
       const run=rf?rf.notes:null;
       runs=run?runs+1:0;
@@ -13213,7 +13340,16 @@ function buildJamPiece(){
    the way out, because the copy is where the student is going. */
 function jamToPiece(){
   const built=buildJamPiece();
-  const bars=built.sections.Jam.bars;
+  /* ACROSS ALL THE SECTIONS, not `sections.Jam` (David, 30 Aug: "I tried to
+     send a jam to arrangement editor and it didn't work"). A Motion jam at two
+     or four passes builds sections "1","2",… and has no `Jam` key at all, so
+     this line threw `Cannot read properties of undefined` — on the FIRST line,
+     after the share sheet had already closed, which is why the button looked
+     dead rather than broken. A one-table jam always worked, which is what hid
+     it. The rest of this function had handled several tables all along: it
+     renames them A1…A4 twenty lines below. */
+  const bars=Object.keys(built.sections).reduce(
+    (a,nm)=>a.concat(built.sections[nm].bars||[]),[]);
   if(!bars.length||!bars.some(b=>b.length)){
     toast("Add a chord this pan can play first"); return;
   }
@@ -13310,6 +13446,7 @@ function enterJam(){
   if(!allPats().some(p=>p.id===jam.patternId)) jam.patternId=JAMPATS[0].id;
   jam.brk=jamBrkNorm(jam.brk,4);      // a stored jam from before breaks existed
   if(jam.bpm) bpm=jam.bpm;
+  navPush("jam","the arranger",()=>leaveJam());
   jamOn=true; document.body.classList.add("jam");
   /* A JAM OPENS ON THE CHORDS (David, 29 Aug: "jam mode should always open
      with the chords view, even when I closed the app with pan view").
@@ -13339,6 +13476,7 @@ function leaveJam(){
   try{ $("grooveDlg").close(); }catch(e){}
   saveJamLS();
   jamOn=false; jamEditSlot=-1; document.body.classList.remove("jam");
+  navDrop("jam");
   clearBrkDim(); try{ $("brkDlg").close(); }catch(e){}
   $("brkBtn").classList.add("hidden");
   /* CHORD SETTINGS IS A JAM CONTROL, ON BOTH BUILDS (David, 30 Aug: "the
@@ -13443,7 +13581,7 @@ function jamPaintChord(pi){
    a re-render: the mask is stateless, so a change is audible on the next
    look-ahead without touching the piece. */
 function brkLenLabel(){ return jam.brk.len===1?"1 bar":jam.brk.len+" bars"; }
-function brkEveryLabel(){ return jam.brk.every===1?"every cycle":"every "+jam.brk.every+" cycles"; }
+function brkEveryLabel(){ return jam.brk.every===1?"every table":"every "+jam.brk.every+" tables"; }
 /* EVERY SETTING IS A CAPTIONED ROW, exactly like "CHORD VOICINGS: Narrow|Wide"
    above it in the drawer (David, 29 Aug: the phone controls "don't react
    properly"). They were one long wrapping line of bare buttons before — the
@@ -13492,8 +13630,21 @@ function buildBrkWrap(){
     const b=document.createElement("b"); b.className=cls; badge.appendChild(b);
     const key=(txt,d,lbl)=>{ const x=document.createElement("button");
       x.className="ctl"; x.textContent=txt; x.setAttribute("aria-label",lbl);
-      x.addEventListener("click",()=>{ bump(d);
-        jam.brk=jamBrkNorm(jam.brk,brkCycleBars()); paintBrk(); saveJamLS(); });
+      x.addEventListener("click",()=>{
+        /* IT CANNOT BE LONGER THAN THE TABLE, and it says so rather than just
+           refusing (David, 30 Aug: "it's not possible to set the break longer
+           than the current table length. Please put the appropriate message on
+           the screen if the user tries it"). The clamp already lived in
+           jamBrkNorm; what was missing was the sentence. */
+        const was=jam.brk.len;
+        bump(d);
+        const asked=jam.brk.len;
+        jam.brk=jamBrkNorm(jam.brk,brkCycleBars()); paintBrk(); saveJamLS();
+        if(cls==="brkLen"&&d>0&&asked>jam.brk.len&&jam.brk.len===was){
+          const N=brkCycleBars();
+          toast("A break can be at most the whole table — "+N+(N===1?" bar":" bars")+" here");
+        }
+      });
       return x; };
     g.appendChild(key("−",-1,"Less "+aria));
     g.appendChild(badge);
@@ -13540,7 +13691,7 @@ function paintBrk(root){
     const desc=document.getElementById("bkStepDesc");
     if(desc){
       const N=brkCycleBars();
-      desc.textContent="A cycle is one pass of the progression — "+N
+      desc.textContent="A table is "+N
         +(N===1?" bar":" bars")+" here. The break takes its last "
         +(jam.brk.len===1?"bar":jam.brk.len+" bars")+", "+brkEveryLabel()
         +", and ends on the first beat of the next.";
@@ -15043,7 +15194,13 @@ function updatePracticeBtn(){
   // a hook for anything that needs to know, now that the tint is gone
   document.body.classList.toggle("inpractice",on);
   // the phone's way out: a ✕ beside the title that already names the mode
-  const lv=$("leaveBtn"); if(lv) lv.classList.toggle("hidden",!(PHONE&&(on||editing)));
+  /* THE ✕ LEAVES THE EDITORS (David, 30 Aug: "we don't need the X button in
+     the editors any more, people can go back by clicking on the active edit
+     button"). It keeps the practice rooms, where he did not ask for it to go.
+     Safe only because Back now lives in #undoHost, which the phone shows in
+     its view row WHILE EDITING — verified, because `#editBtn` is
+     `display:none` on the phone and the ✕ was that build's only way out. */
+  const lv=$("leaveBtn"); if(lv) lv.classList.toggle("hidden",!(PHONE&&on&&!editing));
   // and the menu's two buttons say which room you are in
   const jb=$("jamModeBtn"), qb=$("quizModeBtn"), rb=$("rqModeBtn");
   if(jb) jb.classList.toggle("on",jamOn);
@@ -15053,9 +15210,44 @@ function updatePracticeBtn(){
   if(PHONE) placeJamPanel();
   saveRoom();          // this function IS "where am I"; the store follows it
 }
+/* ---------------- WHERE YOU WERE BEFORE (30 Aug, ABC'd) ----------------
+   David: a Back button "that navigates back to wherever you were before".
+   It is a stack of MOVES, not of states: each entry knows how to undo itself,
+   which is far safer than trying to restore a snapshot of the app. The moves
+   worth remembering are the big ones he confirmed — the rooms (jam, the two
+   quizzes) and entering an editor — never every table you clicked through.
+   Leaving a room by any other route drops its entry, so Back never tries to
+   leave something you have already left. */
+let navStack=[];
+function navPush(tag,label,undo){
+  if(navStack.length&&navStack[navStack.length-1].tag===tag) return;   // no double doors
+  navStack.push({tag,label,undo});
+  paintBack();
+}
+function navDrop(tag){
+  for(let i=navStack.length-1;i>=0;i--)
+    if(navStack[i].tag===tag){ navStack.splice(i,1); break; }
+  paintBack();
+}
+function navBack(){
+  const e=navStack.pop();
+  paintBack();
+  /* Leaving an EDITOR goes through the editor's own exit — which asks what to
+     do with the work — rather than around it. That is the whole of "if that
+     means leaving an editor, bring up the committing dialog": there is no
+     third dialog, Back knocks on the same door every other exit does. */
+  if(e&&typeof e.undo==="function") try{ e.undo(); }catch(err){}
+}
+function paintBack(){
+  const b=$("backBtn"); if(!b) return;
+  const can=navStack.length>0;
+  b.disabled=!can;
+  b.title=can?("Back to "+navStack[navStack.length-1].label):"Nothing to go back to";
+}
 function leavePractice(){ if(quizOn) leaveQuiz(); if(rqOn) leaveRhythmQuiz(); if(jamOn) leaveJam(); }
 function enterQuiz(){
   if(quizOn) return;
+  navPush("quiz","the arranger",()=>leaveQuiz());
   if(editing){ leaveEditingThen(enterQuiz); return; }
   if(jamOn) leaveJam();
   if(rqOn) leaveRhythmQuiz();
@@ -15081,6 +15273,7 @@ function enterQuiz(){
   if(PHONE){ setDrawer(false); placeDrawer(); }
 }
 function leaveQuiz(){
+  navDrop("quiz");
   if(!quizOn) return;
   qzStopClocks();
   quizOn=false; QZ=null;
@@ -16543,6 +16736,7 @@ function renderRQSum(complete){
 
 /* ---- entering and leaving, mirroring the chord quiz exactly -------------- */
 function enterRhythmQuiz(){
+  if(!rqOn) navPush("rquiz","the arranger",()=>leaveRhythmQuiz());
   if(rqOn) return;
   if(editing){ leaveEditingThen(enterRhythmQuiz); return; }
   if(jamOn) leaveJam();
@@ -16563,6 +16757,7 @@ function enterRhythmQuiz(){
   if(PHONE){ setDrawer(false); placeDrawer(); }
 }
 function leaveRhythmQuiz(){
+  navDrop("rquiz");
   if(!rqOn) return;
   rqLoopOn=false; rqStop();
   rqOn=false; RQ=null;
@@ -16895,6 +17090,10 @@ function grooveSig(){
 }
 function grooveDirty(){ return !!grooveEdit&&grooveSig()!==grooveEdit.sig0; }
 let grooveExitGo=null;      // "save" | "drop" while the dialog drives the exit
+/* The same guard for the PIECE editor's dialog, which now hangs off the Edit
+   button too — without it the dialog's own buttons, which leave by calling
+   `$("editBtn").click()`, would re-open the dialog they are closing. */
+let editExitGo=false;
 function openGrooveExitDlg(){
   const d=$("grooveExitDlg"); if(!d) return;
   $("geTitle").textContent=grooveEdit&&grooveEdit.wasJam
@@ -17924,6 +18123,16 @@ function boot(){
        exit. It has to happen BEFORE `editing` flips, or Cancel would have to
        climb back into the editor. */
     if(editing&&grooveEdit&&!grooveExitGo&&grooveDirty()){ openGrooveExitDlg(); return; }
+    /* THE ARRANGER EDITOR ASKS TOO (David, 30 Aug: "please add a similar
+       dialogue to the arranger editor"). The dialog already existed — it was
+       simply never raised from this button, only from the phone's ✕ and from
+       the leaving-the-room guard. With the ✕ retired from the editors and Back
+       arriving, this button is the way out, so the silent exit would have
+       become the only exit. Same shape as the groove branch above it, and the
+       same 27 Aug rule: nothing changed, nothing to ask. */
+    if(editing&&!grooveEdit&&!editExitGo&&pieceDirty()){ openDlg($("editExitDlg")); return; }
+    if(!editing) navPush("edit",jamOn?"the jam":"the arranger",()=>$("editBtn").click());
+    else navDrop("edit");
     editing=!editing; $("editBtn").classList.toggle("on",editing);
     if(editing) stampPieceSig();     // the piece as it was, for "did anything change"
     document.body.classList.toggle("editing",editing);
@@ -17972,6 +18181,8 @@ function boot(){
       e.preventDefault(); doRedo(); return; }
     editorKeys(e);
   });
+  $("backBtn").addEventListener("click",navBack);
+  paintBack();
   $("undoBtn").addEventListener("click",doUndo);
   $("redoBtn").addEventListener("click",doRedo);
   paintUndo();
@@ -18213,7 +18424,7 @@ function boot(){
          question is about keeping work; with no work to keep it is a step for
          its own sake. */
       if(!pieceDirty()){ $("editBtn").click(); return; }
-      openDlg($("editExitDlg")); return;
+      openDlg($("editExitDlg")); return;   // …and the Edit button would raise the same one
     }
     leavePractice();
   });
@@ -18443,14 +18654,17 @@ function boot(){
   paintPanPrefBtn();
   $("exStay").addEventListener("click",()=>{ afterEdit=null; $("editExitDlg").close(); });
   $("exNoSave").addEventListener("click",()=>{
-    $("editExitDlg").close(); if(editing) $("editBtn").click(); runAfterEdit(); });
+    $("editExitDlg").close();
+    editExitGo=true; try{ if(editing) $("editBtn").click(); } finally{ editExitGo=false; }
+    runAfterEdit(); });
   $("exSave").addEventListener("click",()=>{
     piece.title=$("title").value;
     const l=savedPieces();
     const i=l.findIndex(x=>x.id===piece.id&&x.title===piece.title);
     if(i>=0)l[i]=piece; else l.push(JSON.parse(JSON.stringify(piece)));
     setSaved(l);
-    $("editExitDlg").close(); if(editing) $("editBtn").click();
+    $("editExitDlg").close();
+    editExitGo=true; try{ if(editing) $("editBtn").click(); } finally{ editExitGo=false; }
     toast("Saved to library"); runAfterEdit(); });
   $("npClose").addEventListener("click",()=>$("panDlg").close());
   $("npSave").addEventListener("click",()=>{
