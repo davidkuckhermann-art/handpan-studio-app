@@ -3526,6 +3526,20 @@ if(new URLSearchParams(location.search).get("author")!=="1"
 if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has("phone")){
   document.body.classList.add("phone");
   document.documentElement.classList.add("phone");  // landscape locks scrolling on <html> too
+  /* AND A TABLET IS A PHONE WITH ROOM (David, 31 Aug: the iPad Pro's top row
+     was mostly empty while the four rooms sat hidden behind the menu).
+     THE SHORT EDGE, never the width: an iPhone Pro Max turned sideways is 932
+     wide — wider than an iPad mini standing up at 744 — so any width test gets
+     those two backwards. The short edge does not change when the phone is
+     turned, which is also why this can be decided once, here, like `phone`
+     itself.
+     IT REQUIRES `phone`, and that is the safety property David asked for: a
+     DESKTOP window can never match this rule (it has no `phone` class) and no
+     phone can either (the largest short edge in the world is ~440), so every
+     rule written for `body.tablet` is unreachable from both layouts that
+     already work. 600 sits in the empty gap between the two families —
+     phones end at ~440, tablets start at 744 (iPad mini). */
+  if(Math.min(innerWidth,innerHeight)>=600) document.body.classList.add("tablet");
   /* Safari has ignored user-scalable=no since iOS 10 — but a HOME-SCREEN web
      app still honours it, and that is how David runs this. Belt to the
      touchstart brace: the double-tap zoom keeps fighting the loop gesture. */
@@ -5332,6 +5346,12 @@ function setWet(p){ const w=p/100; wet.gain.value=w*1.1; dry.gain.value=1-w*.35;
 const IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
 const FRAMED_SAFARI=window!==window.top && /apple/i.test(navigator.vendor||"");
 const PHONE=document.body.classList.contains("phone");   // set at body-open
+/* …and TABLET is the roomy half of it — see the note at body-open. Read the
+   same way and at the same moment, because the boot-time layout moves below
+   branch on it and cannot be undone later: a window that CHANGES its short
+   edge mid-session (iPad Split View, Stage Manager) keeps the tier it opened
+   with rather than being left with tablet CSS over a phone-arranged DOM. */
+const TABLET=document.body.classList.contains("tablet");
 /* The swipe-up/down VOLUME control was built and then removed at David's word
    (26 Aug). Master gain is a constant again; the stored key goes too, so a
    quiet value left over from that build can't strand the phone with no way
@@ -9257,8 +9277,24 @@ function fitBeatGlyphs(root){
        slots either side of it are empty, so nothing collides — the only thing
        wrong was a faint slot line drawn through it. Shrinking a glyph that has
        room to answer a line that has no business being there is the wrong way
-       round, so the LINE gives way instead (see below), and the size question
-       is left to the neighbours alone. */
+       round, so the LINE gives way instead (see dropCrossedLines).
+       …BUT THE BEAT'S OWN BORDER IS NOT ONE OF THOSE LINES (David, again, on
+       the same T: "bar 4 the T still crosses"). What it was crossing the second
+       time is the CELL EDGE, not a slot line — and a cell edge is structure:
+       it says where the beat begins, it is one of the four strengths the
+       notation is built on, and it cannot be given up for a glyph. So a symbol
+       that would reach past its beat's content box is the one case where the
+       symbol yields. Scaling shrinks ink about its own centre, so a glyph
+       centred at c with half-width h clears an edge at L when g <= (c-L)/h. */
+    { const br=be.getBoundingClientRect(), cs=getComputedStyle(be);
+      const L=br.left+parseFloat(cs.borderLeftWidth||0)+parseFloat(cs.paddingLeft||0);
+      const R=br.right-parseFloat(cs.borderRightWidth||0)-parseFloat(cs.paddingRight||0);
+      for(const q of ink){
+        if(q.h<=0) continue;
+        const needL=(q.c-L)/q.h, needR=(R-q.c)/q.h;
+        if(needL<g) g=needL;
+        if(needR<g) g=needR;
+      } }
     for(let i=1;i<ink.length;i++){
       const hh=ink[i-1].h+ink[i].h;
       if(hh<=0) continue;
