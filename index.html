@@ -7256,12 +7256,22 @@ function flowDeskFit(){
   const sc=$("scorecard"), mus=$("score");
   if(!sc||!mus||!mus.offsetParent) return;
   mus.style.maxHeight="";
-  if(view!=="flow"||flowWin!=="fit"||editing) return;
+  if(view!=="flow"||editing) return;
+  /* FULLSCREEN ALWAYS FITS, whatever "Flow window" says: there is nothing
+     else on the screen to make room for, and a page that runs past the
+     bottom in fullscreen is just a card you cannot see the foot of (David,
+     30 Aug: "flow fullscreen has the same issue as tab"). Outside
+     fullscreen the setting still decides. */
+  if(!fsOn()&&flowWin!=="fit") return;
   const top=mus.getBoundingClientRect().top;
   let avail;
   if(fsOn()){
     const wrap=$("scorewrap");
-    avail=wrap.getBoundingClientRect().bottom-top-16;
+    /* the smaller of the two viewport measures, for the same reason the
+       zooming skins take it: a fullscreen element moved to another display
+       is resized in two steps, and one of the two is briefly the old screen */
+    const bottom=Math.min(wrap.getBoundingClientRect().bottom,innerHeight);
+    avail=bottom-top-16;
   }else{
     const under=el=>{ const e=$(el); return (e&&e.offsetParent)?e.getBoundingClientRect().height:0; };
     const foot=(()=>{ const f=$("scorefoot"); return (f&&f.offsetParent)?f.getBoundingClientRect().height+10:0; })();
@@ -7272,7 +7282,18 @@ function flowDeskFit(){
     const raw=innerHeight-top-foot-under("transport")-34;
     avail=raw-Math.min(under("belowrow"),raw*.34);
   }
-  mus.style.maxHeight=Math.max(260,avail)+"px";
+  mus.style.maxHeight=Math.max(fsOn()?120:260,avail)+"px";
+  /* …and the same hard clamp the zooming skins get: whatever the arithmetic
+     concluded, take any overflow back out of the window */
+  const limit=fsOn()?Math.min($("scorewrap").clientHeight,innerHeight)-32
+                    :innerHeight-sc.getBoundingClientRect().top-10;
+  for(let i=0;i<6;i++){
+    const over=sc.getBoundingClientRect().height-limit;
+    if(over<=1) break;
+    const h=parseFloat(mus.style.maxHeight)||mus.getBoundingClientRect().height;
+    if(h-over<100) break;
+    mus.style.maxHeight=(h-over)+"px";
+  }
 }
 /* Flow's phone window: the notation gets a HEIGHT, and scrolls inside it.
    Landscape hands it everything the transport leaves; portrait shares with
