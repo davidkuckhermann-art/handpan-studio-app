@@ -9108,9 +9108,42 @@ function reanchorLoop(){
     : lastPaint;
   if(at>=0) jumpTo(at);
 }
+/* A 16TH SITS IN THE MIDDLE OF ITS SLOT, NOT AT THE LEFT EDGE OF IT (David,
+   30 Aug, with a phone screenshot: "all normal 16th notes now sit at the very
+   left edge next to the slot line. Can we do it that in the player — not the
+   editor — 16th notes get centered in their slot, while 32nd notes share the
+   space when they appear?").
+   He is describing the cost of a fine STORED grid drawn literally. A section
+   holding one 32nd is stored at eight to the count, so a sixteenth lands in
+   slot 0, 2, 4 or 6 of eight — and a slot is a CELL whose note sits at its
+   centre, so those four centres are at 1/16, 5/16, 9/16, 13/16 of the beat
+   instead of 1/8, 3/8, 5/8, 7/8. Every one of them is half a slot left of
+   where it belongs, which is exactly what he can see.
+   So each beat is drawn at the resolution its own music needs — the Table and
+   Tab skins' version of what Flow already does — and the resolution is decided
+   PER BEAT INDEX ACROSS THE WHOLE SECTION, not per bar. That is what keeps one
+   count row honest for every bar under it: these two skins build the header
+   once for the section (see renderTableView), so beat 3 must be eight in every
+   bar or in none. Flow needs no such compromise because each of its cells
+   carries its own counts.
+   NOT WHILE EDITING, by David's word: a 32nd cannot be placed in a beat that
+   is not showing eight slots, so the editor keeps the full stored grid and the
+   player gets the reading. */
+function beatResRow(sec,m){
+  const res=[];
+  for(let b=0;b<m.beats;b++){
+    if(editing){ res[b]=m.sub; continue; }
+    const uni=new Map();
+    for(const bar of sec.bars)
+      for(const ev of bar)
+        if(Math.floor(ev.t/m.sub)===b) uni.set(ev.t,1);
+    res[b]=beatRes(uni,b,m.sub,m.base);
+  }
+  return res;
+}
 // One count line, shared by the Table and Tab skins; [data-ct] carries the
 // header-numbers marker (countMark) across the row's barsPerRow bars.
-function buildCountRow(m,cls){
+function buildCountRow(m,cls,bres){
   const cnt=document.createElement("div"); cnt.className="count"+(cls?" "+cls:"");
   cnt.style.gridTemplateColumns="repeat("+m.bpr+",minmax(0,1fr))"; cnt.style.gap="0 14px";
   for(let r=0;r<m.bpr;r++){
@@ -9120,7 +9153,8 @@ function buildCountRow(m,cls){
     cb.style.display="grid"; cb.style.gridTemplateColumns="repeat("+m.beats+",minmax(0,1fr))";
     for(let b=0;b<m.beats;b++){
       const cell=document.createElement("div"); cell.className="cbeat";
-      cell.style.gridTemplateColumns="repeat("+m.sub+",minmax(0,1fr))";
+      const cres=(bres&&bres[b])||m.sub, cstride=m.sub/cres;
+      cell.style.gridTemplateColumns="repeat("+cres+",minmax(0,1fr))";
       /* FOUR TICKS TO THE BEAT, NOT EIGHT (David, 30 Aug: "for the counting
          line we want to stick to 4 ticks/beat, not 8. Even if the composition
          has 8 at times"). The COLUMNS stay one per subdivision — that is what
@@ -9130,9 +9164,9 @@ function buildCountRow(m,cls){
          Same slotStep as the slot lines use, so the counts and the lines can
          never disagree about where the grid is; and with no base declared the
          step is 1, which is every column labelled, exactly as before. */
-      const cstep=slotStep(m.sub,m.base), cden=m.sub/cstep;
-      for(let k=0;k<m.sub;k++){
-        const t=b*m.sub+k;
+      const cstep=slotStep(cres,m.base), cden=cres/cstep;
+      for(let k=0;k<cres;k++){
+        const t=b*m.sub+k*cstride;
         const sp=document.createElement("span");
         if(k%cstep===0){
           const q=k/cstep;
@@ -9181,7 +9215,12 @@ function buildCountRow(m,cls){
    nothing else, since a 16th figure on this grid never fills two slots in a
    row. On a wide screen that trim is all that happens; on a phone the
    clearance rule asks for far more and wins. */
-const BEATGAP=6, RUNTRIM=.9, RUNLEN=3;
+/* LIFT is how far a smaller symbol comes up to meet the largest one beside it,
+   as a fraction of the difference in size. 0.515 is where a cap's centre sits
+   above the foot of its line box, measured against Inter's own metrics on
+   29 Aug — so at 0.515 the two cap centres land level. It is a dial because
+   "level" and "looks level" are not always the same thing to the eye. */
+const BEATGAP=6, RUNTRIM=.9, RUNLEN=3, LIFT=.515;
 function fitBeatGlyphs(root){
   for(const be of root.querySelectorAll(".beat")){
     if(be.children.length<=4) continue;      // four to the count is the norm
@@ -9226,7 +9265,7 @@ function fitBeatGlyphs(root){
     let big=0; for(const [,fs] of sized) if(fs>big) big=fs;
     for(const [el,fs] of sized){
       el.style.position="relative";
-      el.style.top=(-(0.515*(big-fs))).toFixed(2)+"px";
+      el.style.top=(-(LIFT*(big-fs))).toFixed(2)+"px";
     }
   }
 }
@@ -9249,7 +9288,8 @@ function renderTableView(sc){
   const sr=document.createElement("div"); sr.className="secrow";
   sr.innerHTML='<span class="secname">'+nm+'</span>';
   sc.appendChild(sr);
-  sc.appendChild(buildCountRow(m));
+  const bres=beatResRow(sec,m);
+  sc.appendChild(buildCountRow(m,null,bres));
   for(let b0=0;b0<sec.bars.length;b0+=m.bpr){
     const rowEl=document.createElement("div");
     // the row knows its own pulse span, so a double tap can loop it (David, 26 Aug)
@@ -9278,11 +9318,12 @@ function renderTableView(sc){
       bel.style.gridTemplateColumns="repeat("+m.beats+",minmax(0,1fr))";
       for(let b=0;b<m.beats;b++){
         const be=document.createElement("div"); be.className="beat";
-        be.style.gridTemplateColumns="repeat("+m.sub+",minmax(0,1fr))";
-        for(let sN=0;sN<m.sub;sN++){
-          const t=b*m.sub+sN, rel=bi*m.bp+t;
+        const res=bres[b], stride=m.sub/res;
+        be.style.gridTemplateColumns="repeat("+res+",minmax(0,1fr))";
+        for(let sN=0;sN<res;sN++){
+          const t=b*m.sub+sN*stride, rel=bi*m.bp+t;
           const sl=document.createElement("div"); sl.className="slot"; sl.dataset.rel=rel;
-          if(sN>0&&sN%slotStep(m.sub,m.base)===0) sl.classList.add("smark");
+          if(sN>0&&sN%slotStep(res,m.base)===0) sl.classList.add("smark");
           const _n=(byT.get(t)||[]).length;
           if(_n) sl.classList.add(_n===1?"n1":_n===2?"n2":"n3");
           const evs=sortStack((byT.get(t)||[]).slice(0,4),false);
@@ -10311,7 +10352,8 @@ function renderTabView(sc){
   const sr=document.createElement("div"); sr.className="secrow";
   sr.innerHTML='<span class="secname">'+nm+'</span>';
   sc.appendChild(sr);
-  sc.appendChild(buildCountRow(m,"tcount"));
+  const bres=beatResRow(sec,m);
+  sc.appendChild(buildCountRow(m,"tcount",bres));
   for(let b0=0;b0<sec.bars.length;b0+=m.bpr){
     const rowEl=document.createElement("div");
     // the row knows its own pulse span, so a double tap can loop it (David, 26 Aug)
@@ -10327,11 +10369,12 @@ function renderTabView(sc){
       bel.style.gridTemplateColumns="repeat("+m.beats+",minmax(0,1fr))";
       for(let b=0;b<m.beats;b++){
         const be=document.createElement("div"); be.className="beat tbeat";
-        be.style.gridTemplateColumns="repeat("+m.sub+",minmax(0,1fr))";
-        for(let sN=0;sN<m.sub;sN++){
-          const t=b*m.sub+sN, rel=bi*m.bp+t;
+        const res=bres[b], stride=m.sub/res;
+        be.style.gridTemplateColumns="repeat("+res+",minmax(0,1fr))";
+        for(let sN=0;sN<res;sN++){
+          const t=b*m.sub+sN*stride, rel=bi*m.bp+t;
           const col=document.createElement("div"); col.className="slot tcol"; col.dataset.rel=rel;
-          if(sN>0&&sN%slotStep(m.sub,m.base)===0) col.classList.add("smark");
+          if(sN>0&&sN%slotStep(res,m.base)===0) col.classList.add("smark");
           col.addEventListener("pointerdown",()=>seekToPulse(viewFromPulse()+rel));
           const evs=sortStack((byT.get(t)||[]).slice(0,4),true);
           const lane=(list,split)=>{
