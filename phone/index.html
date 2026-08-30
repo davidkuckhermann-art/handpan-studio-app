@@ -31,6 +31,16 @@
   --sc-bg:#FFFFFF; --sc-edge:#6B4A38; --sc-ink:#17150F; --sc-hand:#3F8C50;
   --hand-l:#17150F; --hand-r:#469957;   /* student-selectable; the green a tiny bit darker (David, 26 Aug) */
   --sc-rule:#D9D2C6; --sc-count:#C6BEB1; --sc-band:#FBE7C6;
+  /* THE PLAYING WASH IS TRANSLUCENT (David, 30 Aug, after four attempts at
+     out-stacking it: "the marker still blocks the lines"). Z-order could
+     never win this — a marked cell is its own stacking context, so its fill
+     covers the neighbouring cell's rules whatever their z-index, and in the
+     table the fill also had to be lifted above its neighbours to put the
+     amber edge on the gridlines. A wash you can see through needs none of
+     that: every line under it stays visible, and only the solid border sits
+     on top. Over the score's paper it comes out within a shade of the old
+     flat #FBE7C6. */
+  --sc-band-t:rgba(229,147,21,.22);
   /* the underside's ground: fill only, one step deeper than --dust so it
      holds its edge on the amber playing band without an outline (David,
      29 Aug — colour study C4-B, "low key") */
@@ -622,7 +632,7 @@ body.slotlines .beat>.slot+.slot::before{content:""; position:absolute; z-index:
    a border above them. Two elements, not one with a pseudo: an element with
    its own z-index traps its children in that layer. */
 .mkbox{position:absolute; top:-1px; bottom:-1px; pointer-events:none; z-index:-3;
-  background:var(--sc-band)}
+  background:var(--sc-band-t)}
 .mkbrd{position:absolute; top:-1px; bottom:-1px; pointer-events:none; z-index:-1;
   border-top:1px solid var(--dixie); border-bottom:1px solid var(--dixie)}
 /* the tab used to inset its marker by a pixel, which is exactly why its band
@@ -641,7 +651,7 @@ body.slotlines .beat>.slot+.slot::before{content:""; position:absolute; z-index:
 /* the cell-filling modes (subdivision · half · bar): the cell's own
    background is the fill — it paints beneath its negative-z children, so the
    lines cross it — and an overlay carries the amber edge above them */
-.beat.nowbeat{background:var(--sc-band); z-index:1}
+.beat.nowbeat{background:var(--sc-band-t); z-index:1}
 .beat.nowbeat::after{content:""; position:absolute; inset:-1px; z-index:-1;
   border:1px solid var(--dixie); pointer-events:none}
 /* …AND THE BAND/LINE SWITCH GOVERNS THESE MODES TOO (David, 30 Aug: "the
@@ -659,7 +669,7 @@ body.mkline .beat.nowbeat::after{border:none; top:auto; height:2px;
    with nothing beneath it, looked perfect. That is the "sometimes". The cell
    holding a marker is lifted for exactly as long as it holds one. */
 .beat.mkcell{z-index:2}
-.bar.nowbar{background:var(--sc-band); box-shadow:inset 0 0 0 1px rgba(229,147,21,.7)}
+.bar.nowbar{background:var(--sc-band-t); box-shadow:inset 0 0 0 1px rgba(229,147,21,.7)}
 .count span.cnow{color:var(--dixie)}
 .count span.cnow::after{content:""; position:absolute; left:1px; right:1px; bottom:-3px;
   height:2.5px; background:var(--dixie); border-radius:2px}
@@ -1625,7 +1635,10 @@ body.haspan:not(.phone):not(.editing) #panwrap{flex:0 1 auto; min-width:0}
    resolved differently at different window widths. They now share the SAME
    structure — the flanks are always there, merely invisible in the chord view
    — so whatever the row can spare, both views get the identical number. */
-.pvmid{display:flex; flex-direction:column; align-items:center; gap:8px;
+/* the name sits CLOSE to the instrument it names (David, 30 Aug) — the pan
+   drawing carries its own margin of empty canvas, so the gap between them
+   read as far wider than the 8px it was */
+.pvmid{display:flex; flex-direction:column; align-items:center; gap:0;
   min-width:0; flex:0 1 auto}
 #pvwrap.sides .pvmid #pvsvg{max-width:100%}
 .pvside{display:flex; flex-direction:column; align-items:center; gap:9px; flex:none}
@@ -1729,7 +1742,7 @@ body.phone #pcbar{font-size:11.5px}
 }
 /* the app's own face, not the handwritten one (David, 28 Aug) — this is the
    same label as the chord row's names above it and should read the same way */
-.pvchord{font-family:Figtree,sans-serif; font-size:36px; font-weight:800;  /* raised twice at David's word, 30 Aug */
+.pvchord{margin-top:-10px; font-family:Figtree,sans-serif; font-size:36px; font-weight:800;  /* raised twice at David's word, 30 Aug */
   letter-spacing:-.01em; color:var(--ink); line-height:1.15; min-height:28px}
 .pvchord.inf{color:var(--ink3); font-style:italic; font-weight:700}
 body.phone .pvchord{font-size:26px}
@@ -1837,7 +1850,7 @@ body.phone .pvchord{font-size:26px}
    context and everything inside it paints over the cell before it, z-index
    or no z-index. The border still reaches, and lands on that line. */
 .fcell.nowbeat::before{content:""; position:absolute; left:0; right:0;
-  top:var(--fMark); bottom:var(--fMarkB); background:var(--sc-band); z-index:-3}
+  top:var(--fMark); bottom:var(--fMarkB); background:var(--sc-band-t); z-index:-3}
 /* the border rides on .fprow, which is not positioned, so it lands against
    the cell — and being a separate layer it can sit above the lines */
 .fcell.nowbeat .fprow::before{content:""; position:absolute; left:-1px; right:0;
@@ -8152,7 +8165,14 @@ function renderPanPanelInner(){
     const nt=panLabels==="note";
     const lb=document.createElement("button");
     lb.id="panlabels"; lb.className="ib";
-    lb.textContent=nt?"A":"1";
+    /* the mark is a TONE FIELD (David, 30 Aug: "change the button label from
+       A/1 to a circle") — a dashed circle with what it would write inside it,
+       so the button shows the pan's own vocabulary rather than a bare glyph */
+    lb.innerHTML='<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">'
+      +'<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5"/>'
+      +'<text x="12" y="12" text-anchor="middle" dominant-baseline="central"'
+      +' font-family="'+(nt?"Figtree":"Inter")+'" font-size="'+(nt?10:11)+'" font-weight="800"'
+      +' fill="currentColor">'+(nt?"A":"1")+'</text></svg>';
     lb.title=nt?"Note names are big — tap for numbers":"Numbers are big — tap for note names";
     lb.setAttribute("aria-label",lb.title);
     lb.addEventListener("click",()=>{
