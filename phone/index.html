@@ -3757,8 +3757,30 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 
 <!-- Jam chord picker: only chords this pan can play. "Almost" chords (one
      tone missing) are offered too, marked — the missing tone plays the root. -->
+<dialog id="topChordsDlg">
+  <h3>Top notes only</h3>
+  <p class="hint" style="margin:8px 0 0; max-width:44ch">Chords will be built from
+    the notes on top of the pan alone — the underside is left out.</p>
+  <p class="hint" style="margin:10px 0 0; max-width:44ch; display:flex; align-items:center;
+     gap:7px; flex-wrap:wrap">This setting also affects
+    <span class="ctl" aria-hidden="true" style="pointer-events:none">🎲 Generate</span></p>
+  <div class="row" style="margin:14px 0 0">
+    <span class="spacer"></span>
+    <button class="ctl" id="topChordsOk">Got it</button>
+  </div>
+</dialog>
+
 <dialog id="jamDlg">
-  <h3 id="jamDlgTitle">Chord</h3>
+  <!-- THE SWITCH SITS WITH THE TITLE, TOP RIGHT (David, 30 Aug). It puts the
+       chord vocabulary back on the top shell alone — the behaviour before the
+       underside joined it — and because it governs Generate as well as this
+       grid, turning it ON says so. -->
+  <div class="row" style="margin:0 0 2px; align-items:flex-start">
+    <h3 id="jamDlgTitle" style="margin:0">Chord</h3>
+    <span class="spacer"></span>
+    <button class="ctl" id="topChordsBtn"
+      title="Build chords from the notes on top of the pan only, ignoring the underside">Top notes only</button>
+  </div>
   <p class="hint hidden" id="jamSugHint"></p>
   <div id="jamChordGrid"></div>
   <div class="row" style="margin:0">
@@ -11319,10 +11341,17 @@ function jcTemplateChance(v){ return jcLerp([[0,.22],[50,.16],[100,.10]],v)[0]; 
 function jcHomeFocus(v){ return jcLerp([[0,1.2],[50,1],[100,1]],v)[0]; }
 
 function jamChordDefs(){
-  const pcs=panScalePcs();
+  const pcs=panTonePcs();          // what a chord may be BUILT from
+  const roots=panRootPcs();        // …and what it may be ROOTED on
+  /* a chord that needs the underside is "nice, but less obvious" (David,
+     30 Aug, answering yes to marking them) — the picker already draws that
+     family lighter and dashed, and jamColour's spice decides how often
+     Generate reaches for one */
+  const topPcs=new Set([jpc(myPan.ding),...myPan.fields.map(f=>jpc(f.midi))]);
+  const needsUnder=(...t)=>t.some(x=>x!=null&&!topPcs.has(x));
   const d=jpc(myPan.ding), out=[];
   const has=(...t)=>t.every(x=>pcs.has(x));
-  for(const r of pcs){
+  for(const r of roots){
     const M3=(r+4)%12, m3=(r+3)%12, P5=(r+7)%12, d5=(r+6)%12,
           m7=(r+10)%12, M7=(r+11)%12, N9=(r+2)%12;
     for(const [q,t3,t5] of [["maj",M3,P5],["min",m3,P5],["dim",m3,d5]]){
@@ -11334,6 +11363,7 @@ function jamChordDefs(){
       // family is its full maj/min triads; dim, almosts and every extension
       // are drawn lighter in the picker
       out.push({name:PCN[r]+q,group:"Triads",root:r,
+        under:needsUnder(r,h3?t3:null,h5?t5:null),
         degs:{"1":r,"3":h3?t3:r,"5":h5?t5:r},
         // `pcs` = every tone of the chord the pan actually has. The grooves
         // only ever play three voices (`degs`), but the chord quiz lights and
@@ -11341,6 +11371,13 @@ function jamChordDefs(){
         // source of chord truth for both features.
         pcs:[r,t3,t5].filter(p=>pcs.has(p)),
         miss:h3&&h5?null:(h3?"5th":"3rd"),
+        /* NOT demoted for needing the underside (David, 30 Aug: "yes. BUT
+           let's give the chord picker an option…"). Offer them as freely as
+           any other — a complete triad is a complete triad wherever its notes
+           live, and on his pan the two this unlocks are the iv and the ♭VI.
+           The switch above is the opt-out; drawing them second-class as well
+           would half-reproduce the complaint that started this. `under` stays
+           on the def because the switch and any later rule want to know. */
         lt:q==="dim"||!(h3&&h5)});
     }
     /* A CHORD MAY NOT BE NAMED AFTER A NOTE THE PAN HAS NOT GOT (David, 30
@@ -11359,6 +11396,7 @@ function jamChordDefs(){
       if(gone.length>1) continue;
       if(q==="min7♭5"&&!pcs.has(t5)) continue;
       out.push({name:PCN[r]+q,group:"7th chords",root:r,
+        under:needsUnder(r,t3,t5,t7),
         degs:{"1":r,"3":pcs.has(t3)?t3:r,
               "5":pcs.has(t7)?t7:(pcs.has(t5)?t5:r)},
         pcs:[r,t3,t5,t7].filter(p=>pcs.has(p)),
@@ -11368,6 +11406,7 @@ function jamChordDefs(){
       const gone=[["3rd",t3],["5th",t5],["7th",t7],["9th",N9]].filter(([,p])=>!pcs.has(p));
       if(gone.length>1) continue;
       out.push({name:PCN[r]+q,group:"9th chords",root:r,
+        under:needsUnder(r,t3,t5,t7,N9),
         degs:{"1":r,"3":pcs.has(t3)?t3:r,
               "5":pcs.has(N9)?N9:(pcs.has(t7)?t7:(pcs.has(t5)?t5:r))},
         pcs:[r,t3,t5,t7,N9].filter(p=>pcs.has(p)),
@@ -11381,15 +11420,20 @@ function jamChordDefs(){
 }
 let JAMDEFC=null;
 function jamDefs(){
-  if(!JAMDEFC||JAMDEFC.panId!==myPanId){
+  if(!JAMDEFC||JAMDEFC.panId!==myPanId||JAMDEFC.topOnly!==topOnlyChords()){
     const list=jamChordDefs(), byName={};
     for(const c of list) byName[c.name]=c;
     const d=jpc(myPan.ding);
     // the pan's OWN scale as a ring, low degree first — root motion is counted
     // in ITS steps, which is what makes one rule fit every tuning (see jamFit)
-    const scale=[...new Set([d,...myPan.fields.map(f=>jpc(f.midi))])]
+    /* THE RING IS BUILT FROM THE SAME SETS AS THE VOCABULARY (30 Aug). This
+       is the half of the 28 Aug split that was missing: a root the chord list
+       knows about but the ring does not falls past every case in jamMotion and
+       comes back "far" — a leap off the scale. Roots, not tones, because the
+       ring counts ROOT motion. */
+    const scale=[...panRootPcs()]
       .sort((a,b)=>((a-d+12)%12)-((b-d+12)%12));
-    JAMDEFC={panId:myPanId,list,byName,scale,ding:d};
+    JAMDEFC={panId:myPanId,list,byName,scale,ding:d,topOnly:topOnlyChords()};
   }
   return JAMDEFC;
 }
@@ -11687,8 +11731,15 @@ function panHomes(pan){
   // works on a pan in either shape: cooked (midi numbers / {midi}) or raw off
   // BUILTIN_PANS (note names), so a pan can be measured without being loaded
   const pcOf=v=>jpc(typeof v==="number"?v:(v&&v.midi!=null?v.midi:(midiOf(v)||0)));
-  // the SCALE only — see panPcSet: the underside does not change the key
-  const pcs=new Set([pcOf(pan.ding),...pan.fields.map(pcOf)]);
+  /* HOME IS A CHORD, NOT A NOTE (David, 30 Aug, answering whether an
+     underside note may be home: "it can, if the root note of the relative
+     major/minor scale is present as underside low note. For example F3 on the
+     extended D Kurd can be the bass note of the Home chord of the alternative
+     major F Major"). So the CANDIDATE ROOTS include the low underside — that
+     is exactly what a bass root is — while the third and fifth that decide
+     whether the chord stands are looked for in the tone set. panHomes only
+     ever picks one minor and one major, which is the relative pair he means. */
+  const pcs=panTonePcs(pan), roots=panRootPcs(pan);
   const full=(r,third)=>pcs.has((r+third)%12)&&pcs.has((r+7)%12);
   const ding=pcOf(pan.ding);
   /* THE FALLBACK USED TO READ A SET IN INSERTION ORDER, which is the order the
@@ -11701,7 +11752,7 @@ function panHomes(pan){
      pans; it also steers defaultJam and the move between pans.) */
   const pick=third=>{
     if(full(ding,third)) return ding;              // the scale's own note first
-    const cands=[...pcs].filter(r=>full(r,third));
+    const cands=[...roots].filter(r=>full(r,third));
     if(!cands.length) return null;
     /* A ROOT WITHOUT A FOURTH IS NOT A HOME, which is the same argument the
        fifth already makes one line up in jamTonicLikeOn ("nothing to stand
@@ -11801,8 +11852,55 @@ function panMidis(P){ const p=P||myPan;
    is underside-only — and those roots are not in the scale ring jamMotion
    counts steps in, so every one of them scored as a leap off the scale. */
 function panPcSet(){ return new Set(panMidis().map(jpc)); }        // can sound
-function panScalePcs(P){ const p=P||myPan;
-  return new Set([jpc(p.ding),...p.fields.map(f=>jpc(f.midi))]); } // is in
+
+/* ───────── THE UNDERSIDE JOINS THE CHORD VOCABULARY (30 Aug) ─────────
+   David, with a screenshot of an extended pan: "the algorithm doesn't seem to
+   take bottom notes into account… all seven degrees are available on the
+   instrument, but the chord suggestions only suggest a few chords".
+   Measured on that pan: the top shell carries F G A♭ C E♭ — five degrees —
+   and the underside adds B♭ and D♭, which completes F natural minor. Triads
+   go 7 → 15, and the two it unlocks are B♭min and D♭maj: the iv and the ♭VI.
+   The E♭maj visible in his screenshot as "no 5th" gets its B♭.
+
+   THE 28 AUG SPLIT WAS NOT WRONG, IT WAS HALF-APPLIED. Feeding the underside
+   into the vocabulary then "invented chords rooted on notes that exist only
+   underneath… and those roots are not in the scale ring jamMotion counts
+   steps in, so every one of them scored as a leap off the scale". The ring
+   was the bug. It is built from these same sets now, so a root the vocabulary
+   knows is always a root the motion rules can count — the two cannot drift.
+
+   TWO SETS, BECAUSE A BASS NOTE IS NOT AN INNER VOICE (David, 30 Aug: "low
+   underside notes should only be used as roots", and "'low' means any note
+   below the lowest note of the circle"). A note under the ring is where a
+   root goes; it is not where you put a third. So:
+     panTonePcs()  what a chord may be BUILT from — top shell + the underside
+                   at or above the ring's lowest note
+     panRootPcs()  what a chord may be ROOTED on — that, plus the low ones */
+/* BOTH PAN SHAPES, because panHomes measures raw BUILTIN_PANS entries (note
+   names) as well as the cooked pan (midi numbers) — see its own note. */
+function panMidiOf(v){ return typeof v==="number"?v:(v&&v.midi!=null?v.midi:(midiOf(v)||0)); }
+function panLowCut(p){
+  const f=(p.fields||[]).map(panMidiOf);
+  return f.length?Math.min(...f):Infinity;
+}
+function panTonePcs(P){ const p=P||myPan;
+  const out=new Set([jpc(panMidiOf(p.ding)),...(p.fields||[]).map(f=>jpc(panMidiOf(f)))]);
+  if(topOnlyChords()) return out;
+  const cut=panLowCut(p);
+  for(const b of (p.bottom||[])){ const m=panMidiOf(b); if(m>=cut) out.add(jpc(m)); }
+  return out;
+}
+function panRootPcs(P){ const p=P||myPan;
+  const out=panTonePcs(p);
+  if(topOnlyChords()) return out;
+  const cut=panLowCut(p);
+  for(const b of (p.bottom||[])){ const m=panMidiOf(b); if(m<cut) out.add(jpc(m)); }
+  return out;
+}
+/* …and the student can put it back (David, 30 Aug). The switch lives in the
+   chord picker and governs Generate too, which is why turning it on says so. */
+function topOnlyChords(){ try{ return localStorage.getItem("hps.topchords")==="1"; }catch(e){ return false; } }
+function panScalePcs(P){ return panTonePcs(P); }                   // is in
 function chordFitOn(name){
   const t=chordPCs(name);
   if(!t||!t.length) return {have:0,total:0};
@@ -13798,8 +13896,15 @@ function jamPatLabel(p){
 function openJamSlot(i){
   jamEditSlot=i; renderJamPanel(); renderJamDlg(); openDlg($("jamDlg"));
 }
+function paintTopChords(){
+  const b=$("topChordsBtn"); if(!b) return;
+  const on=topOnlyChords();
+  b.classList.toggle("on",on);
+  b.setAttribute("aria-pressed",String(on));
+}
 function renderJamDlg(){
   const s=jam.slots[jamEditSlot]; if(!s) return;
+  paintTopChords();
   $("jamDlgTitle").textContent="Chord "+(jamEditSlot+1)+" of "+jam.slots.length;
   const g=$("jamChordGrid"); g.innerHTML="";
   /* Suggestions (David, 26 Aug — replaced Remove; the cards' ✕ deletes),
@@ -17627,6 +17732,17 @@ function boot(){
   const onColour=e=>{ setJamColour(+e.target.value); };
   const cs=$("jamColour"); if(cs) cs.addEventListener("input",onColour);
   document.addEventListener("input",e=>{ if(e.target&&e.target.id==="jamColourBar") onColour(e); });
+  /* ── top-notes-only, and the notice that it reaches Generate too ── */
+  $("topChordsBtn").addEventListener("click",()=>{
+    const on=!topOnlyChords();
+    try{ localStorage.setItem("hps.topchords",on?"1":"0"); }catch(e){}
+    JAMDEFC=null;                       // the vocabulary is a different one now
+    paintTopChords(); renderJamDlg(); renderJamPanel();
+    /* only when it is switched ON: turning it off restores the default and
+       needs no explaining */
+    if(on) openDlg($("topChordsDlg"));
+  });
+  $("topChordsOk").addEventListener("click",()=>$("topChordsDlg").close());
   $("jamSetBtn").addEventListener("click",openJamSet);
   $("jsPasses").addEventListener("click",e=>{
     const b=e.target.closest("button[data-passes]"); if(!b) return;
