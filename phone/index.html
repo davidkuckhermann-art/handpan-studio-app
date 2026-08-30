@@ -1587,8 +1587,8 @@ body.haspan:not(.phone):not(.editing) #panwrap{flex:0 1 auto; min-width:0}
    beside it would stay small. The phone keeps its own
    ceiling below: there the pan is already as wide as the strokes flanking it
    allow, and the lesson window now grows to whatever the card needs anyway. */
-#pvwrap.sides #pvsvg{flex:0 1 auto; min-width:0; width:430px; max-width:none}
-body.phone #pvwrap.sides #pvsvg{width:min(236px,calc(100vw - 150px))}
+#pvwrap.sides #pvsvg{flex:0 1 auto; min-width:0; width:calc(430px*var(--panzoom,1)); max-width:none}
+body.phone #pvwrap.sides #pvsvg{width:min(calc(236px*var(--panzoom,1)),calc(100vw - 150px))}
 /* an explicit width, not min(100%,…): the pan card shrinks to fit its
    contents, so a percentage there resolves against a box the pan itself is
    sizing and the drawing fell back to its intrinsic 300px — which is why it
@@ -1624,18 +1624,16 @@ body.phone #pvwrap.sides #pvsvg{width:min(236px,calc(100vw - 150px))}
 #panbox{position:relative}
 /* One .ib icon button in the corner gap the pan's circle leaves free — the
    text pill was wider than the gap and sat on the pan (David, 26 Aug). */
-#panmode{position:absolute; top:8px; right:8px; z-index:2; width:28px; height:28px}
-#panmode svg{width:15px; height:15px}
-/* the customiser's own button sits beside the mode switch, in the corner gap
-   the circle already leaves free; its instruction bar rides ABOVE the drawing,
-   where an instruction is read before the thing it is about */
-#pancustom{position:absolute; top:8px; right:42px; z-index:2; width:28px; height:28px}
+#panmenu,#pancustom{position:absolute; top:8px; right:8px; z-index:2; width:28px; height:28px}
+#panmenu svg{width:15px; height:15px}
 #pancustom svg{width:16px; height:16px}
+#panMenuDlg{min-width:280px}
+#panMenuDlg h3{margin:0 0 10px}
 /* the two corner buttons are absolutely positioned over this row's right end,
    so the bar reserves their width — without it the phone ran "Reset" straight
    under them and half the button was unreachable */
 #pcbar{display:flex; align-items:center; gap:10px; justify-content:center; flex-wrap:wrap;
-  margin-top:8px; padding-right:78px; font-size:12.5px; color:var(--ink2)}
+  margin-top:8px; padding-right:44px; font-size:12.5px; color:var(--ink2)}
 #pcbar .ctl{padding:5px 10px; font-size:12.5px}
 body.phone #pcbar{font-size:11.5px}
 /* customising: the fields are handles, so they say so and stop inviting a tap */
@@ -3204,6 +3202,26 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 
 <!-- CHANGING INSTRUMENT WITH A JAM DOWN (27 Aug, David): the progression can
      follow the new scale's home, or stay where it is. -->
+<dialog id="panMenuDlg" aria-label="Pan view settings">
+  <h3>Pan view</h3>
+  <div class="drow"><span>View</span>
+    <span class="pills" role="group" aria-label="Pan view mode">
+      <button id="pmStrokes" title="Every hit flashes on the pan">Strokes</button>
+      <button id="pmChords" title="The active chord's fields stay lit">Chords</button></span></div>
+  <div class="drow"><span>Fields</span>
+    <span class="pills" role="group" aria-label="Field labels">
+      <button id="pmNums" title="Position numbers big, note names small">Numbers</button>
+      <button id="pmNotes" title="Note names big, position numbers small">Note names</button></span></div>
+  <div class="drow"><span>Size</span>
+    <span style="display:flex;gap:9px;align-items:center">
+      <button class="ctl" id="pmZoomDn" title="Smaller pan">−</button>
+      <b id="pmZoomVal" style="font-size:13px;font-variant-numeric:tabular-nums"></b>
+      <button class="ctl" id="pmZoomUp" title="Bigger pan">＋</button></span></div>
+  <div class="drow"><span>Layout</span>
+    <button class="ctl" id="pmCustom" title="Drag the fields to match your instrument">Edit pan layout…</button></div>
+  <div class="row" style="justify-content:flex-end;margin:12px 0 0">
+    <button class="ctl" id="pmClose">Done</button></div>
+</dialog>
 <dialog id="panMoveDlg">
   <h3>Transpose the jam?</h3>
   <p class="hint" id="pmText"></p>
@@ -4580,6 +4598,12 @@ function layoutFor(id){ const l=panLayouts()[id]; return (l&&(l.f||l.b))?l:null;
 let panOn=(localStorage.getItem("hps.pan")||"0")==="1";       // the pan companion panel
 // pan view: strokes flash per hit | chords hold the active chord's fields lit
 let panMode=localStorage.getItem("hps.panmode")==="chords"?"chords":"strokes";
+/* the pan card's own settings, gathered behind ONE corner menu (David, 30 Aug):
+   which of the two faces it shows, which label writes big on the fields, the
+   drawing's size, and the way into the layout customiser */
+let panLabels=localStorage.getItem("hps.panlabels")==="note"?"note":"num";
+let panZoom=parseFloat(localStorage.getItem("hps.panzoom"))||1;
+if(!(panZoom>=0.7&&panZoom<=1.4)) panZoom=1;
 // tab notation rows: one | split (green/left-hand lane above, black/right-hand below)
 let tabRows=localStorage.getItem("hps.tabrows")||"split";   // two rows by default (David)
 if(!["one","split"].includes(tabRows)) tabRows="one";
@@ -7753,8 +7777,15 @@ function panViewSVG(pan,label,opts){
     +'<circle class="pvbase" cx="'+x+'" cy="'+y+'" r="'+r+'" fill="url(#pvgd)" stroke="'+(f===0?"var(--sc-edge)":"var(--sc-rule)")+'" stroke-width="'+(f===0?2:1.5)+'"/>'
     +'<circle class="pvtint" cx="'+x+'" cy="'+y+'" r="'+r+'"/>'
     +'<circle class="pvring" cx="'+x+'" cy="'+y+'" r="'+r+'" fill="none" stroke-width="3.5"/>'
-    +'<text x="'+x+'" y="'+(y+numSize*.32)+'" text-anchor="middle" font-family="Inter" font-size="'+numSize+'" font-weight="700" fill="var(--sc-ink)" pointer-events="none">'+num+'</text>'
-    +'<text class="pvnote" x="'+x+'" y="'+(y+noteDy)+'" text-anchor="middle" font-family="Figtree" font-size="11.5" font-weight="600" fill="var(--ink3)" pointer-events="none">'+note+'</text></g>';
+    /* which label writes BIG is the student's choice (David, 30 Aug): numbers
+       big with the note small under them, or the note big — a name is wider
+       than a digit, so it takes a smaller share of the same size ramp */
+    +(panLabels==="note"
+      ?'<text x="'+x+'" y="'+(y+numSize*.66*.32)+'" text-anchor="middle" font-family="Figtree" font-size="'+(numSize*.66).toFixed(1)+'" font-weight="800" fill="var(--sc-ink)" pointer-events="none">'+note+'</text>'
+       +'<text class="pvnote" x="'+x+'" y="'+(y+noteDy)+'" text-anchor="middle" font-family="Inter" font-size="11.5" font-weight="700" fill="var(--ink3)" pointer-events="none">'+num+'</text>'
+      :'<text x="'+x+'" y="'+(y+numSize*.32)+'" text-anchor="middle" font-family="Inter" font-size="'+numSize+'" font-weight="700" fill="var(--sc-ink)" pointer-events="none">'+num+'</text>'
+       +'<text class="pvnote" x="'+x+'" y="'+(y+noteDy)+'" text-anchor="middle" font-family="Figtree" font-size="11.5" font-weight="600" fill="var(--ink3)" pointer-events="none">'+note+'</text>')
+    +'</g>';
   /* ONE PLACEMENT, MEASURED AND DRAWN. This was worked out here twice — once
      for the touch boxes and once again in the drawing loop — and a third time,
      differently, nowhere at all: the underside could not ask where the fields
@@ -7788,10 +7819,16 @@ function panViewSVG(pan,label,opts){
       +' stroke="#B8AE9F" stroke-width="1.5" stroke-dasharray="5 3.5"/>'
       +'<circle class="pvtint" cx="'+pl.x+'" cy="'+pl.y+'" r="'+pl.r+'"/>'
       +'<circle class="pvring" cx="'+pl.x+'" cy="'+pl.y+'" r="'+pl.r+'" fill="none" stroke-width="3.5"/>'
-      +'<text x="'+pl.x+'" y="'+(pl.y+ns*.32)+'" text-anchor="middle" font-family="Inter" font-size="'+ns+'"'
-      +' font-weight="700" fill="var(--sc-ink)" pointer-events="none">'+(pl.i+1)+'</text>'
-      +'<text class="pvnote" x="'+pl.x+'" y="'+(pl.y+pl.r*.62+7)+'" text-anchor="middle" font-family="Figtree"'
-      +' font-size="9.5" font-weight="600" fill="var(--ink3)" pointer-events="none">'+pl.b.label+'</text></g>';
+      +(panLabels==="note"
+        ?'<text x="'+pl.x+'" y="'+(pl.y+ns*.62*.32)+'" text-anchor="middle" font-family="Figtree" font-size="'+(ns*.62).toFixed(1)+'"'
+         +' font-weight="800" fill="var(--sc-ink)" pointer-events="none">'+pl.b.label+'</text>'
+         +'<text class="pvnote" x="'+pl.x+'" y="'+(pl.y+pl.r*.62+7)+'" text-anchor="middle" font-family="Inter"'
+         +' font-size="9.5" font-weight="700" fill="var(--ink3)" pointer-events="none">'+(pl.i+1)+'</text>'
+        :'<text x="'+pl.x+'" y="'+(pl.y+ns*.32)+'" text-anchor="middle" font-family="Inter" font-size="'+ns+'"'
+         +' font-weight="700" fill="var(--sc-ink)" pointer-events="none">'+(pl.i+1)+'</text>'
+         +'<text class="pvnote" x="'+pl.x+'" y="'+(pl.y+pl.r*.62+7)+'" text-anchor="middle" font-family="Figtree"'
+         +' font-size="9.5" font-weight="600" fill="var(--ink3)" pointer-events="none">'+pl.b.label+'</text>')
+      +'</g>';
   });
   return h+(pad?'</g>':'')+'</svg>';
 }
@@ -7821,35 +7858,28 @@ function renderPanPanelInner(){
   if(editing){ if(PHONE){ paintEditDeck(); return; } renderEditbar(); return; }
   if(!panOn){ box.innerHTML=""; return; }
   box.innerHTML="";
-  // the card's own switch, top-right (David, 26 Aug)
-  const ch=panMode==="chords";
-  const sw=document.createElement("button");
-  sw.id="panmode"; sw.className="ib"+(ch?" on":"");
-  sw.title=ch?"Chords — the active chord's fields (click for strokes)"
-             :"Strokes — every hit flashes (click for chords)";
-  sw.setAttribute("aria-label",sw.title);
-  sw.setAttribute("aria-pressed",String(ch));
-  // three stacked dots: the chord chip's own shape
-  sw.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
-    +'<circle cx="12" cy="5" r="2.6"/><circle cx="12" cy="12" r="2.6"/><circle cx="12" cy="19" r="2.6"/></svg>';
-  sw.addEventListener("click",()=>setPanMode(ch?"strokes":"chords"));
-  box.appendChild(sw);
-  /* CUSTOMISE IS A MODE, not a gesture (David, 28 Aug: "free drag+drop, just
-     no overlapping tone fields"). It has to be: the fields are tap-to-hear, so
-     dragging and playing cannot share the same finger. */
-  const cz=document.createElement("button");
-  cz.id="pancustom"; cz.className="ib"+(panCustom?" on":"");
-  cz.title=panCustom?"Done — leave the fields where they are"
-                    :"Customise this pan's layout — drag the fields to match your instrument";
-  cz.setAttribute("aria-label",cz.title);
-  cz.setAttribute("aria-pressed",String(panCustom));
-  cz.innerHTML=panCustom?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"'
-      +' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>'
-    :'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"'
-      +' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-      +'<path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="12" cy="12" r="3.2"/></svg>';
-  cz.addEventListener("click",()=>setPanCustom(!panCustom));
-  box.appendChild(cz);
+  box.style.setProperty("--panzoom",panZoom);
+  /* ONE corner button (David, 30 Aug): a menu holding all of this card's
+     settings — view, labels, size, and the way into the customiser. While
+     CUSTOMISING the corner is the Done tick instead, because leaving that
+     mode must never be a menu away. */
+  if(panCustom){
+    const cz=document.createElement("button");
+    cz.id="pancustom"; cz.className="ib on";
+    cz.title="Done — leave the fields where they are";
+    cz.setAttribute("aria-label",cz.title);
+    cz.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"'
+      +' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
+    cz.addEventListener("click",()=>setPanCustom(false));
+    box.appendChild(cz);
+  }else{
+    const mn=document.createElement("button");
+    mn.id="panmenu"; mn.className="ib";
+    mn.title="Pan view settings"; mn.setAttribute("aria-label",mn.title);
+    mn.innerHTML='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><use href="#is-set"/></svg>';
+    mn.addEventListener("click",openPanMenu);
+    box.appendChild(mn);
+  }
   if(panCustom){
     const bar=document.createElement("div"); bar.id="pcbar";
     // the phone has 78px less to play with, and the toast already said it in full
@@ -8191,6 +8221,33 @@ function setPanMode(m){
   panMode=m==="chords"?"chords":"strokes";
   try{localStorage.setItem("hps.panmode",panMode)}catch(e){}
   renderPanPanel();
+}
+/* the pan card's menu — every control paints the card at once, so the sheet
+   can stay open while the student compares the two faces or sizes */
+function paintPanMenu(){
+  $("pmStrokes").setAttribute("aria-pressed",String(panMode!=="chords"));
+  $("pmChords").setAttribute("aria-pressed",String(panMode==="chords"));
+  $("pmNums").setAttribute("aria-pressed",String(panLabels!=="note"));
+  $("pmNotes").setAttribute("aria-pressed",String(panLabels==="note"));
+  $("pmZoomVal").textContent=Math.round(panZoom*100)+"%";
+}
+function openPanMenu(){ paintPanMenu(); openDlg($("panMenuDlg")); }
+{
+  const on=(id,fn)=>{ const b=$(id); if(b) b.addEventListener("click",fn); };
+  on("pmStrokes",()=>{ setPanMode("strokes"); paintPanMenu(); });
+  on("pmChords",()=>{ setPanMode("chords"); paintPanMenu(); });
+  const setLabels=v=>{ panLabels=v;
+    try{localStorage.setItem("hps.panlabels",v)}catch(e){}
+    renderPanPanel(); paintPanMenu(); };
+  on("pmNums",()=>setLabels("num"));
+  on("pmNotes",()=>setLabels("note"));
+  const zoomBy=d=>{ panZoom=Math.max(.7,Math.min(1.4,Math.round((panZoom+d)*10)/10));
+    try{localStorage.setItem("hps.panzoom",panZoom)}catch(e){}
+    renderPanPanel(); paintPanMenu(); };
+  on("pmZoomDn",()=>zoomBy(-.1));
+  on("pmZoomUp",()=>zoomBy(.1));
+  on("pmCustom",()=>{ $("panMenuDlg").close(); if(!panCustom) setPanCustom(true); });
+  on("pmClose",()=>$("panMenuDlg").close());
 }
 /* Which pulse the pan should describe when the music isn't moving: the
    playhead if it has one, else where Play would start (David, 26 Aug —
