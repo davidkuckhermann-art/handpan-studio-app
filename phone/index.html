@@ -2720,9 +2720,18 @@ body.phone #scorewrap>#playBtn::after{content:""; position:absolute; inset:-7px;
      the sections; hold one for its tables */
   body.phone #miniarr{display:inline-flex; gap:4px; margin-left:auto; align-items:center}
   body.phone .ctlgroup{display:none !important}
-  /* the generator joins the pills at the right end — see the markup */
+  /* the generator joins the pills at the right end — see the markup — with
+     clear air between the two (David, 30 Aug: "add a gap between jam button
+     and arrangement pills"), because they are different kinds of thing: the
+     pills say where you are, the dice changes what you are playing */
   body.phone.jam #landGenBtn{display:inline-flex; align-items:center;
-    font-size:15px; line-height:15px; padding:5px 10px}
+    font-size:15px; line-height:15px; padding:5px 10px; margin-left:16px}
+  /* AND WITH NO PILLS THERE IS NOTHING TO SHOW (David, 30 Aug: "when there are
+     no pills, the black pill 'jam' appeared again in landscape mode. We don't
+     need it"). `body.jamparts` is off exactly when the jam has one table, and
+     the single "Jam" chip renderArr then draws says nothing a student needs —
+     there is nowhere else to be. */
+  body.phone.jam:not(.jamparts) #miniarr{display:none !important}
 }
 </style>
 </head>
@@ -7483,13 +7492,41 @@ function fitPortraitStack(sc,z,designW){
 /* THE LANDSCAPE STAGE — the one rectangle every skin fills (David, 30 Aug).
    `LAND_TOP` is the air between the header and the notation: Flow used to
    start flush against it at 37px and he called that "too far up", Tab sat at
-   52 and could come "a tiny little bit further up". 6px lands the card at 43
-   in both. The bottom is the band's own end, which is where Tab already was
+   52 and could come "a tiny little bit further up". 6px landed the card at 43
+   in both — and that was a shade high (David, 30 Aug, seeing it on the phone:
+   "the tables start a bit too far up now and the top row looks cramped …
+   bring down a (tiny) little bit"), so 12 puts it at 49, between the two
+   places it started from.
+   The bottom is the band's own end, which is where Tab already was
    and which he approved ("bottom edge looks good"); the 6 that comes off it
    is the card's border and shadow, which #scorewrap clips. */
-var LAND_TOP=6;
+var LAND_TOP=12;
 function landStage(wrap){
   return Math.max(40,(wrap||$("scorewrap")).clientHeight-LAND_TOP-6);
+}
+/* THE CONTROLS THAT FLOAT OVER THE CARD are anchored to the CARD, never to
+   #scorewrap: when the card is narrower than the screen, or lower in it, the
+   two are far apart. Play has always been placed here; A−/A+ were left to
+   their CSS `top:6px`, which WAS the card's corner right up until the
+   landscape stage gave the wrap a padding-top — and then play came down with
+   the card while the pair stayed behind on the wrap's edge (David, 30 Aug,
+   with a screenshot of exactly that in Flow). Its own function because the
+   Flow branch of phoneFit returns before the rest of it ever runs, which is
+   why the pair had gone unanchored in the one skin that shows them. */
+function anchorWrapControls(wrap,sc){
+  const cr=sc.getBoundingClientRect(), wr=wrap.getBoundingClientRect();
+  const pb=$("playBtn");
+  if(pb&&pb.parentElement===wrap){
+    pb.style.right=Math.max(0,wr.right-cr.right+7)+"px";
+    pb.style.top=Math.max(0,cr.top-wr.top+7)+"px";
+  }
+  for(const [id,off] of [["fszUp",42],["fszDn",78]]){
+    const el=$(id);
+    if(!el||el.parentElement!==wrap) continue;
+    if(view!=="flow"){ el.style.right=""; el.style.top=""; continue; }
+    el.style.right=Math.max(0,wr.right-cr.right+off)+"px";
+    el.style.top=Math.max(0,cr.top-wr.top+7)+"px";
+  }
 }
 function phoneFit(){
   if(!PHONE) return;
@@ -7521,6 +7558,7 @@ function phoneFit(){
     sc.style.width=W+"px";
     flowFit();
     flowPhoneFit(wrap,land);
+    anchorWrapControls(wrap,sc);   // …which this branch used to skip entirely
     return;
   }
   let z=W/designW, landH=0;
@@ -7595,12 +7633,7 @@ function phoneFit(){
   if(land) wrap.style.paddingTop=LAND_TOP+"px";
   // anchor the play button to the CARD's top-right, not the wrapper's — when
   // the card is narrower than the screen the two are far apart
-  const pb=$("playBtn");
-  if(pb&&pb.parentElement===wrap){
-    const cr=sc.getBoundingClientRect(), wr=wrap.getBoundingClientRect();
-    pb.style.right=Math.max(0,wr.right-cr.right+7)+"px";
-    pb.style.top=Math.max(0,cr.top-wr.top+7)+"px";
-  }
+  anchorWrapControls(wrap,sc);
   const cw=$("chordwrap"), cb=$("chordbox");
   if(!cw.classList.contains("hidden")&&matchMedia("(orientation:landscape)").matches){
     cb.style.zoom="";
@@ -11479,8 +11512,14 @@ function jamRunFields(lad,pulses,rnd,longOk){
      four-bar form — three presses of Generate to hear one, if it fell in the
      part he was looking at. Short runs are still the commonest, but four,
      five and six now carry more than half the weight between them. */
+  /* …AND THEN LEANED BACK (David, 30 Aug: "long note runs (4 and more notes)
+     happen a bit too often now and short ones could happen a bit more"). The
+     weights above had been pushed long to make runs audible at all, and they
+     overshot: measured over 300 generations, 4+ was 49% of every run at one
+     pass. 2 · 3 · 4 · 5 · 6 now read 30 · 30 · 20 · 13 · 7, so four-and-over
+     is 40% of what this function offers rather than 55%. */
   const r=rnd();
-  let want=r<0.2?2:r<0.45?3:r<0.7?4:r<0.88?5:6;
+  let want=r<0.30?2:r<0.60?3:r<0.80?4:r<0.93?5:6;
   /* A LONG ROLL BELONGS AT A JOIN (David, 30 Aug: "for the long ones, 3 out of
      4 times, they should appear in the last bar of the sequence, or at the last
      bar of the 1st half of the sequence"). Those two bars are where the form
@@ -11538,11 +11577,23 @@ function jamRunFields(lad,pulses,rnd,longOk){
      two notes of preamble leave only two of approach, so the shape reads as a
      wobble rather than as a line arriving. Five and six have the room, and
      keep the shape he liked. */
-  if(fit>=4&&rnd()<(fit>=5?0.45:0.25)){
+  /* …AND AT FOUR NOTES, ONE OF THE TWO SHAPES IS EXACTLY WHAT HE KEEPS
+     HEARING (David, 30 Aug: "the phrases 1232 and D121 still happen too
+     often, especially in the last bar of a 4 bar table"). Traced, not
+     guessed: the walk-in head at fit 4 produces `li, li+1, li+2, li+1` —
+     which IS 1 2 3 2, and D 1 2 1 when the landing note is the lowest field.
+     It is the whole run, with no straight approach left over, so at four notes
+     it is RARE rather than absent — his correction the same day: "the figure
+     is allowed to appear, just not constantly". A four-note run turns half as
+     often as it did (0.25 → 0.12), and only a third of those turns walk in,
+     which puts 1232/D121 at about one four-note run in twenty-five. Five and
+     six keep the even split — there the walk-in is a preamble to a real
+     approach, which is the shape he asked for in the first place. */
+  if(fit>=4&&rnd()<(fit>=5?0.45:0.12)){
     const tailLen=fit-2, startI=endI-d*(tailLen-1);
-    const head=rnd()<0.5
-      ? [startI,startI-d]                        // 7 8 · 7 6 5 4
-      : [lim(startI+d*2),lim(startI+d)];         // 7 6 · 5 6 7 8
+    const head=rnd()<(fit>=5?0.5:0.33)
+      ? [lim(startI+d*2),lim(startI+d)]          // 7 6 · 5 6 7 8  (1232 at four)
+      : [startI,startI-d];                       // 7 8 · 7 6 5 4
     const notes=head.map(i=>all[lim(i)]);
     for(let k=0;k<tailLen;k++) notes.push(all[lim(startI+d*k)]);
     return {notes,land};
@@ -12256,8 +12307,20 @@ function buildJamPiece(){
       const lastOfForm=i===form.length-1;
       const lastOfHalf=i===Math.floor(form.length/2)-1;
       const join=lastOfForm||lastOfHalf;
+      /* A JOIN'S CHANCE IS PER FORM, NOT PER BAR (David, 30 Aug: "runs in
+         general seem to happen much more frequently when 'how far it travels'
+         is set to 1 … most of my generated sequences with that setting have a
+         long run at the end of the 2nd and 4th bar"). He had found a bug in
+         the arithmetic, not a taste: there are always exactly TWO joins, so on
+         a four-bar form they are HALF the bars and a flat 0.9 made them all
+         but certain — measured over 300 generations, bar 2 carried a run 77%
+         of the time and bar 4 86%, and a run fell in 48% of all bars against
+         30% at four passes. The chance now scales with the form, so the two
+         joins contribute the same amount to a generation however long it is:
+         0.45 on four bars, the full 0.9 from eight up. */
+      const joinP=Math.min(0.9,0.9*form.length/8);
       const wantRun=runs<2&&(runs===0||mrnd()<0.3)
-        &&(join?mrnd()<0.9:(!rest&&mrnd()<(evenBar?0.6:0.25)));
+        &&(join?mrnd()<joinP:(!rest&&mrnd()<(evenBar?0.6:0.25)));
       const longOk=join||mrnd()<0.08;
       const rf=wantRun&&ndef?jamRunFields(rqLadder(ndef),bp,mrnd,longOk):null;
       const run=rf?rf.notes:null;
