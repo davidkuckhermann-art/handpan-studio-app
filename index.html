@@ -9127,6 +9127,63 @@ function buildCountRow(m,cls){
   }
   return cnt;
 }
+/* MORE THAN FOUR TO THE COUNT MUST SHRINK (David, 30 Aug, with both screens:
+   "in the horizontal example they should shrink a tiny bit, so they have a few
+   more px of space between them. In the vertical example they should shrink
+   substantially, so they don't sit on top of each other").
+   TWO ASKS, ONE RULE. Glyph size in these two skins is absolute px keyed on how
+   many symbols are STACKED in a slot — never on how wide the slot is — so a
+   beat of eight collides on a phone and merely crowds on a desktop. Measured on
+   one beat of eight: a 1580px bar leaves 23.9px between neighbouring inks, a
+   540px bar leaves MINUS 8.6. So the scale is the smaller of
+     · a flat 0.85, which is the "tiny bit" a wide bar wants, and
+     · what actually fits — (slot − 4px) / the widest ink in the beat —
+   which on a wide bar is 1.66 and never binds, and on a phone is 0.48 and does.
+   Floored at .42 so the ink can never vanish.
+   AND THE SMALLER SYMBOLS ARE LEVELLED WITH THE LARGER ONES BESIDE THEM
+   (David: "center the smaller symbols vertically, so it looks more in line with
+   the larger symbols"). This is .sym.d2's 29 Aug rule generalised: these slots
+   align on the FOOT of the line box, not on a shared baseline, so ANY glyph
+   smaller than its neighbours — a ghost at 33 against a digit at 37, a
+   two-digit number at 27 — sits low by 0.515 of the difference in size.
+   Measured against the LARGEST glyph in the beat, not against the glyph's own
+   former size: lifting everything by its own shrink would float the whole row
+   off the cell's floor, since every beat in a section like this shrinks by the
+   same amount. So the biggest glyph moves not at all and the rest come up to
+   meet it. This REPLACES .sym.d2's own −.1em inside a scaled beat rather than
+   adding to it, which is why the top is written for every glyph.
+   FLOW IS NOT TOUCHED: it measures and packs, so its cells widen instead of its
+   glyphs shrinking. That is the whole difference between the skins. */
+function fitBeatGlyphs(root){
+  for(const be of root.querySelectorAll(".beat")){
+    const slots=be.children;
+    if(slots.length<=4) continue;                 // four to the count is the norm
+    const sw=slots[0].getBoundingClientRect().width;
+    let ink=0;
+    const syms=be.querySelectorAll(".sym");
+    for(const g of syms){ const w=g.getBoundingClientRect().width; if(w>ink) ink=w; }
+    if(!ink||!sw) continue;
+    const fit=(sw-4)/ink;
+    const g=Math.max(.42,Math.min(.85,fit));
+    if(g>=.999) continue;
+    /* size first, then level: the raise is measured against the largest glyph
+       AFTER the shrink, so the two passes cannot disagree about what "largest"
+       means */
+    const sized=[];
+    for(const el of syms){
+      const base=parseFloat(getComputedStyle(el).fontSize);
+      if(!(base>0)) continue;
+      const fs=base*g;
+      el.style.fontSize=fs.toFixed(2)+"px";
+      sized.push([el,fs]);
+    }
+    let big=0; for(const [,fs] of sized) if(fs>big) big=fs;
+    for(const [el,fs] of sized){
+      el.style.position="relative";
+      el.style.top=(-(0.515*(big-fs))).toFixed(2)+"px";
+    }
+  }
+}
 function renderTableView(sc){
   const nm=viewSec, sec=piece.sections[nm], m0=SM(piece,nm);
   // a section with fewer bars than its bars-per-row spreads them across the
@@ -9204,6 +9261,7 @@ function renderTableView(sc){
     }
     sc.appendChild(rowEl);
   }
+  fitBeatGlyphs(sc);
 }
 
 /* ---- Pan panel: the pan from above, a companion beside the chord row,
@@ -10258,6 +10316,7 @@ function renderTabView(sc){
     }
     sc.appendChild(rowEl);
   }
+  fitBeatGlyphs(sc);
 }
 
 /* ---------------- THE FLOW SKIN (30 Aug, David — mockups-flow-notation.html,
