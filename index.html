@@ -3261,6 +3261,10 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <span class="pgroup" id="practiceGroup" role="group" aria-label="Where you are">
     <button class="ctl" id="navArr" title="The piece — read, arrange and edit it">Arranger</button>
     <button class="ctl" id="navJam" title="Jam along to your own chord progression">Jam Mode</button>
+    <!-- THE EDITORS GET A DOOR IN THE BAY (David, 30 Aug), between Jam Mode
+         and Learn. It asks which one rather than being two buttons, because
+         the bay names rooms and the editors are one room with two shapes. -->
+    <button class="ctl" id="navEdit" title="Write an arrangement or a groove">Editor</button>
     <button class="ctl" id="navLearn" title="Quiz yourself on chords and rhythm">Learn</button>
   </span>
   <span class="hside hright">
@@ -3626,7 +3630,13 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
         <option value="9/8">9/8</option><option value="12/8">12/8</option></select>
       <select class="ctl" id="edSub" aria-label="Subdivision">
         <option value="1">No subdivision</option><option value="2">2 per count</option>
-        <option value="3">3 per count</option><option value="4">4 per count — 16ths</option></select>
+        <option value="3">3 per count</option><option value="4">4 per count</option></select>
+      <!-- WHICH CHORD THE GROOVE IS WRITTEN ON, on the bench itself (David,
+           30 Aug: "we need a button in the groove editor next to the 'per
+           count' selector. Here you choose the chord to work on"). It used to
+           be answerable only in the New groove dialog, so a bench opened
+           straight from the menu had no way to change it. -->
+      <select class="ctl" id="edRef" aria-label="Written on"></select>
     </div>
     <div class="lane">
       <div id="edLaneHead">
@@ -3796,6 +3806,46 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
      draw from panPositions() — "the underside among them", as jvChordPool's
      own comment puts it — and that is deliberate: a real low root under a
      chord is the freedom the 28 Aug split was made to keep. -->
+<!-- THE TWO DOORS INTO THE EDITORS (David, 30 Aug) — reached from the ⋮ sheet
+     on the phone and from the navigation bay on the desktop. The first asks
+     WHICH editor (desktop only: the phone's sheet has a row for each); the
+     second is the one that protects work — "if there is an existing piece in
+     the editors, unsaved or not, there should be a dialogue option: do you
+     want to open xxx or start a new arrangement/groove". -->
+<dialog id="edPickDlg">
+  <h3>Editor</h3>
+  <p class="hint" style="margin:8px 0 0; max-width:42ch">Which one do you want to
+    open?</p>
+  <div class="row" style="margin:14px 0 0">
+    <button class="ctl on" id="edPickArr">Arrangement editor</button>
+    <button class="ctl" id="edPickGrv">Groove editor</button>
+    <span class="spacer"></span>
+    <button class="ctl" id="edPickClose">Cancel</button>
+  </div>
+</dialog>
+
+<dialog id="edKeepDlg">
+  <h3 id="edKeepTitle">Open the editor</h3>
+  <p class="hint" style="margin:8px 0 0; max-width:44ch" id="edKeepWhat"></p>
+  <div class="row" style="margin:14px 0 0; flex-wrap:wrap">
+    <button class="ctl on" id="edKeepOpen">Open it</button>
+    <button class="ctl" id="edKeepNew">Start a new one</button>
+    <span class="spacer"></span>
+    <button class="ctl" id="edKeepClose">Cancel</button>
+  </div>
+</dialog>
+
+<dialog id="edSaveFirstDlg">
+  <h3>Save first?</h3>
+  <p class="hint" style="margin:8px 0 0; max-width:44ch" id="edSaveFirstWhat"></p>
+  <div class="row" style="margin:14px 0 0; flex-wrap:wrap">
+    <button class="ctl on" id="edSaveFirstYes">Save, then start new</button>
+    <button class="ctl" id="edSaveFirstNo">Start new without saving</button>
+    <span class="spacer"></span>
+    <button class="ctl" id="edSaveFirstClose">Cancel</button>
+  </div>
+</dialog>
+
 <dialog id="topChordsDlg">
   <h3>Top notes only</h3>
   <p class="hint" style="margin:8px 0 0; max-width:46ch"><b>Which chords your pan
@@ -3868,7 +3918,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
       <option value="1">None</option><option value="2">2 per count</option>
       <option value="3">3 per count</option>
       <!-- 16ths by default — grooves live on the 16th grid (David, 26 Aug) -->
-      <option value="4" selected>4 per count — 16ths</option></select></div>
+      <option value="4" selected>4 per count</option></select></div>
   <div class="row"><span class="lab">Written on</span>
     <select class="ctl" id="gnChord" aria-label="Reference chord"></select></div>
   <p class="hint">You write one bar on this chord's tones (plus ghosts, slaps, taks and knocks) — in a jam, the same shape plays on every chord of your progression.</p>
@@ -4030,6 +4080,16 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <button class="ctl" id="mNavArr">Arranger</button>
     <button class="ctl" id="jamModeBtn">Jam mode</button>
     <button class="ctl" id="mNavLearn">Learn <span class="dn">▾</span></button>
+  </div>
+  <!-- EDITORS, DIRECTLY UNDER THE THREE ROOMS (David, 30 Aug: "a row
+       'Editors' just below the top 3 navigation buttons… so there is a direct
+       path to those editors"). Two buttons rather than the desktop's one
+       question: the sheet has the width for both, so the question is answered
+       by which one you press. -->
+  <h4 class="mEdHead">Editors</h4>
+  <div class="drow drow-btns" id="mEdRow">
+    <button class="ctl" id="mEdArr">Arrangement editor</button>
+    <button class="ctl" id="mEdGrv">Groove editor</button>
   </div>
   <div class="drow drow-btns navsub hidden" id="mLearnSub">
     <button class="ctl" id="quizModeBtn">Chord quiz</button>
@@ -4311,8 +4371,11 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
       <option value="9/8">9/8</option><option value="12/8">12/8</option></select>
     <span class="lab">Subdivision</span>
     <select class="ctl" id="ndSub" aria-label="Subdivision">
-      <option value="1">None</option><option value="2" selected>2 per count</option>
-      <option value="3">3 per count</option><option value="4">4 per count</option></select></div>
+      <option value="1">None</option><option value="2">2 per count</option>
+      <option value="3">3 per count</option>
+      <!-- 16ths for a new arrangement too (David, 30 Aug: "both 16th") — the
+           groove bench has opened there since 26 Aug and the two now agree -->
+      <option value="4" selected>4 per count</option></select></div>
   <p class="hint">Starts with four empty bars, written for your pan — add or remove bars while editing.</p>
   <div class="row"><button class="ctl on" id="ndCreate">Create &amp; edit</button>
   <span class="spacer"></span><button class="ctl" id="ndClose">Cancel</button></div>
@@ -10657,6 +10720,97 @@ function editorKeys(e){
   else if(e.key==="Backspace"||e.key==="Delete"){ const loc=viewLoc();
     if(loc){ snapshot(); clearSlot(loc); refresh(); } e.preventDefault(); }
 }
+/* the pan's complete chords, as <option>s — the New groove dialog, the phone
+   bench and the desktop bench all offer the same list */
+/* ══════════ THE DOORS INTO THE EDITORS (30 Aug) ══════════
+   David wanted a direct path to both, opening on an empty table in 4/4 —
+   four bars for an arrangement, one for a groove — with no questions asked.
+   The only questions that remain are the two he asked for: which editor
+   (desktop), and what to do about work that is already open.
+
+   THESE SWAPS ARE UNDOABLE, which is the part that needed the undo system to
+   bend: "opening a new piece in an editor, closing an existing piece, etc.
+   should also all be part of the global undo/redo". loadPiece() clears the
+   piece history by design — that is right when a student loads a different
+   file, and wrong here, where the swap IS the edit being recorded. edSwap()
+   snapshots first and puts the history back afterwards, so ⌘Z walks out of a
+   freshly opened editor and back into what was there. */
+function edSwap(build){
+  const before=JSON.stringify(piece);
+  build();                       // loadPiece() inside here wipes the history…
+  HIST.piece.u.push(before);     // …so the step is re-planted on top of it
+  if(HIST.piece.u.length>HIST_CAP) HIST.piece.u.shift();
+  HIST.piece.r.length=0;
+  paintUndo();
+}
+/* the empty table he asked for: 4/4, 16ths, four bars — or one for a groove */
+function edBlankPiece(){
+  return { format:"hpd-1", id:"u-"+Date.now().toString(36), title:"Untitled",
+    writtenFor:myPanId, tempo:bpm||72, meter:[4,4], sub:4, barsPerRow:1,
+    sections:{A1:{bars:[[],[],[],[]]}}, arrangement:["A1"] };
+}
+function edNewArrangement(){
+  edSwap(()=>{
+    loadPiece(edBlankPiece());
+    if(!editing) $("editBtn").click();
+  });
+  toast("New arrangement — tap the pan to write");
+}
+function edNewGroove(){
+  const ref=grooveHomeRef();
+  if(!ref){ toast("This pan has no full chord to write on"); return; }
+  edSwap(()=>startGrooveEdit({ref,meter:[4,4],sub:4,name:"My groove",origin:"menu"}));
+}
+/* Is there work in an editor worth offering to keep? A groove bench always
+   counts — it is a document in its own right — and a piece counts when it has
+   a single note in it or a name of its own. */
+function edHasWork(){
+  if(grooveEdit) return true;
+  if(!piece) return false;
+  if(pieceDirty&&pieceDirty()) return true;
+  return Object.keys(piece.sections||{}).some(nm=>
+    (piece.sections[nm].bars||[]).some(b=>b&&b.length));
+}
+function edOpen(kind){          // "arr" | "grv"
+  const label=kind==="grv"?"groove":"arrangement";
+  const start=kind==="grv"?edNewGroove:edNewArrangement;
+  if(!edHasWork()){ start(); return; }
+  edPending={kind,label,start};
+  $("edKeepTitle").textContent="Open the "+label+" editor";
+  $("edKeepWhat").textContent=
+    "\u201c"+((piece&&piece.title)||"Untitled")+"\u201d is open. Carry on with it, "
+    +"or start a new "+label+"?";
+  openDlg($("edKeepDlg"));
+}
+let edPending=null;
+function grooveRefOpts(sel){
+  return jamDefs().list.filter(c=>!c.miss)
+    .map(c=>'<option value="'+c.name+'"'+(c.name===sel?" selected":"")+'>'+c.name+'</option>').join("");
+}
+/* THE HOME CHORD, for a bench opened without being asked (David, 30 Aug: "by
+   default, let's open the home chord"). panHomes' minor first, then its major,
+   then the ding — the same order every other part of the app reads home in. */
+function grooveHomeRef(){
+  const H=panHomes(myPan), list=jamDefs().list.filter(c=>!c.miss);
+  for(const pc of [H.minor,H.major,H.ding]){
+    if(pc==null) continue;
+    const hit=list.find(c=>c.root===pc);
+    if(hit) return hit.name;
+  }
+  return list.length?list[0].name:null;
+}
+/* CHANGING THE CHORD DOES NOT REBUILD THE BAR. What is written stays exactly
+   where it is — a groove is a SHAPE, and the shape is what gets replayed on
+   every chord of a progression. Only the reference it is described against
+   moves, so the pan relabels and the toast says the new one. */
+function grooveSetRef(name){
+  if(!grooveEdit||!name||name===grooveEdit.ref) return;
+  snapshot();                       // …and it is undoable, like every edit
+  grooveEdit.ref=name;
+  const def=jamDefs().byName[name];
+  refresh(); renderEditbar();
+  toast("Now written on "+name+(def?" — "+grooveNotes(def):""));
+}
 function renderEditbar(){
   // renders INTO the pan card: while editing, the animated pan becomes the
   // editor's input pan with the palettes beneath (no separate panel)
@@ -10674,8 +10828,16 @@ function renderEditbar(){
        +TSOPTS.map(o=>'<option value="'+o+'"'+(o===tsNow?" selected":"")+'>'+o+'</option>').join("")
        +(TSOPTS.includes(tsNow)?"":'<option value="'+tsNow+'" selected>'+tsNow+'</option>')+'</select>'
      +'<select class="ctl" id="gwSub" aria-label="Subdivision">'
-       +[["1","No subdivision"],["2","2 per count"],["3","3 per count"],["4","4 per count — 16ths"]]
+       +[["1","No subdivision"],["2","2 per count"],["3","3 per count"],["4","4 per count"]]
          .map(([v,l])=>'<option value="'+v+'"'+(+v===piece.sub?" selected":"")+'>'+l+'</option>').join("")
+     +'</select>'
+     /* …and WHICH CHORD it is written on, beside the per-count select (David,
+        30 Aug). Same list the New groove dialog offers — the pan's complete
+        chords — and changing it re-labels the bench rather than rebuilding the
+        bar: the notes you have written stay, they simply mean the new chord's
+        tones. */
+     +'<select class="ctl" id="gwRef" aria-label="Written on">'
+       +grooveRefOpts(grooveEdit&&grooveEdit.ref)
      +'</select></div>'
    : "";
   E.innerHTML=grooveEdit
@@ -10736,6 +10898,8 @@ function renderEditbar(){
     const set=()=>grooveSetTime($("gwTS").value,$("gwSub").value);
     $("gwTS").addEventListener("change",set);
     $("gwSub").addEventListener("change",set);
+    const gr=$("gwRef");
+    if(gr) gr.addEventListener("change",()=>grooveSetRef(gr.value));
   }
   updateHandInd();
 }
@@ -10798,6 +10962,9 @@ function paintEditDeck(){
   if(grooveEdit){
     $("edTS").value=piece.meter[0]+"/"+piece.meter[1];
     $("edSub").value=String(piece.sub);
+    const er=$("edRef");
+    if(er){ er.innerHTML=grooveRefOpts(grooveEdit&&grooveEdit.ref);
+            if(grooveEdit&&grooveEdit.ref) er.value=grooveEdit.ref; }
   }
   // pill faces — the tokens are COLOURS from the transcription era: R = green
   // = the LEFT hand (HANDOVER; same mapping as the desktop palette)
@@ -15194,6 +15361,20 @@ function saveRoom(){
   if(!roomOpen) return;
   try{ localStorage.setItem("hps.room",roomNow()); }catch(e){}
 }
+/* EVERY EDIT DOOR IS LIT WHILE ONE IS OPEN (David, 30 Aug: "the visible edit
+   buttons should all light up as long as we are in an editor"). Its own
+   function because it has TWO triggers and they are not the same event: the
+   practice painter runs when you change ROOM, and the Edit toggle runs when
+   you start or stop editing — which is the one that matters here and the one
+   that was missing when this first shipped (navEdit stayed dark on the bench).
+   The sheet's two rows say WHICH editor: a groove bench lights Groove, a piece
+   lights Arrangement, so the sheet never claims you are in both. */
+function paintEditDoors(){
+  const g=!!(typeof grooveEdit!=="undefined"&&grooveEdit);
+  [["editBtn",true],["navEdit",true],["mEdArr",!g],["mEdGrv",g]].forEach(([id,mine])=>{
+    const b=$(id); if(b) b.classList.toggle("on",!!editing&&mine);
+  });
+}
 function updatePracticeBtn(){
   const on=jamOn||quizOn||rqOn;
   /* ARRANGER IS LIT WHENEVER YOU ARE NOT IN ANOTHER ROOM — reading the piece
@@ -15209,18 +15390,20 @@ function updatePracticeBtn(){
   // a hook for anything that needs to know, now that the tint is gone
   document.body.classList.toggle("inpractice",on);
   // the phone's way out: a ✕ beside the title that already names the mode
-  /* THE ✕ LEAVES THE EDITORS (David, 30 Aug: "we don't need the X button in
-     the editors any more, people can go back by clicking on the active edit
-     button"). It keeps the practice rooms, where he did not ask for it to go.
-     Safe only because Back now lives in #undoHost, which the phone shows in
-     its view row WHILE EDITING — verified, because `#editBtn` is
-     `display:none` on the phone and the ✕ was that build's only way out. */
-  const lv=$("leaveBtn"); if(lv) lv.classList.toggle("hidden",!(PHONE&&on&&!editing));
+  /* THE ✕ IS GONE EVERYWHERE (David, 30 Aug — first from the editors, "people
+     can go back by clicking on the active edit button", then from jam and the
+     quizzes too). Back lives in #undoHost, which the phone shows in the header
+     on every page and in its view row while editing, so every room has a way
+     out that does not cost the title its width. The button stays in the DOM:
+     its listener still serves the editors' save-on-exit path, and hiding is
+     cheaper than unpicking that. */
+  const lv=$("leaveBtn"); if(lv) lv.classList.add("hidden");
   // and the menu's two buttons say which room you are in
   const jb=$("jamModeBtn"), qb=$("quizModeBtn"), rb=$("rqModeBtn");
   if(jb) jb.classList.toggle("on",jamOn);
   if(qb) qb.classList.toggle("on",quizOn);
   if(rb) rb.classList.toggle("on",rqOn);
+  paintEditDoors();
   // in jam the phone's Chords side shows the progression, not the chord card
   if(PHONE) placeJamPanel();
   saveRoom();          // this function IS "where am I"; the store follows it
@@ -17128,6 +17311,17 @@ function grooveExit(save){
    the exit is asked first, then the door opens on the answer. */
 let afterEdit=null;
 function runAfterEdit(){ const f=afterEdit; afterEdit=null; if(f) setTimeout(f,0); }
+/* SAVE THE PIECE AS IT STANDS, to the library. Lifted out of #exSave's own
+   listener on 30 Aug so the new-editor path can offer the same thing — one
+   saver, so the two doors cannot drift into saving differently. */
+function savePieceToLibrary(){
+  piece.title=$("title").value;
+  const l=savedPieces();
+  const i=l.findIndex(x=>x.id===piece.id&&x.title===piece.title);
+  if(i>=0) l[i]=piece; else l.push(JSON.parse(JSON.stringify(piece)));
+  setSaved(l);
+  toast("Saved to library");
+}
 function pieceDirty(){
   if(!editSig0) return false;
   return JSON.stringify([piece.sections,piece.arrangement,piece.meter,piece.sub,piece.title])!==editSig0;
@@ -17158,8 +17352,15 @@ function grooveEditFinish(save){
     enterJam();
     if(savedId){ jam.patternId=savedId; jamFitSlots(); applyJam(); }
     // came through "Open in editor": back to jam and nothing in the way
-    if(ge.origin!=="jam") openGrooveDlg();
-  } else if(ge.origin!=="jam") openGrooveDlg();   // the selector he came from
+    if(ge.origin!=="jam"&&ge.origin!=="menu") openGrooveDlg();
+  /* …AND A BENCH OPENED FROM THE MENU GOES NOWHERE ON THE WAY OUT (30 Aug).
+     Every previous door into the bench came through the jam's groove browser,
+     so "back to where you came from" meant that browser and `jam` was always
+     a real object. The Editors row is the first door with no jam behind it:
+     openGrooveDlg would have shown a browser the student never opened, and
+     renderGrooveDlg reads jam.slots[0] — which threw, because `jam` is null
+     until a jam is entered. Caught on the phone, on the first exit. */
+  } else if(ge.origin!=="jam"&&ge.origin!=="menu") openGrooveDlg();
   toast(save?(savedId?"Groove saved":"Nothing to save"):"Changes discarded");
   runAfterEdit();
 }
@@ -17407,7 +17608,9 @@ function openGrooveNewDlg(){
 }
 function openGrooveDlg(){ renderGrooveDlg(); openDlg($("grooveDlg")); }
 function renderGrooveDlg(){
-  const ch=jam.slots[0]&&jam.slots[0].chord;
+  // `jam` is null until a jam has been entered — the browser can be reached
+  // without one now, so the preview chord is optional rather than assumed
+  const ch=jam&&jam.slots[0]&&jam.slots[0].chord;
   $("grooveHint").textContent=(ch?"Previewed on "+ch+" at the current tempo — ":"")
     +"tap ▸ to loop a groove, tap the row to use it.";
   const L=$("grooveList"); L.innerHTML="";
@@ -17951,6 +18154,44 @@ function boot(){
     if(on) openDlg($("topChordsDlg"));
   });
   $("topChordsOk").addEventListener("click",()=>$("topChordsDlg").close());
+  /* ── the doors into the editors ── */
+  $("navEdit").addEventListener("click",()=>openDlg($("edPickDlg")));
+  $("edPickArr").addEventListener("click",()=>{ $("edPickDlg").close(); edOpen("arr"); });
+  $("edPickGrv").addEventListener("click",()=>{ $("edPickDlg").close(); edOpen("grv"); });
+  $("edPickClose").addEventListener("click",()=>$("edPickDlg").close());
+  $("mEdArr").addEventListener("click",()=>{ $("menuDlg").close(); edOpen("arr"); });
+  $("mEdGrv").addEventListener("click",()=>{ $("menuDlg").close(); edOpen("grv"); });
+  /* "Open it" carries on with what is already there — which for a piece means
+     simply entering the editor, and for a groove bench means staying put. */
+  $("edKeepOpen").addEventListener("click",()=>{
+    $("edKeepDlg").close();
+    if(!editing) $("editBtn").click();
+    edPending=null;
+  });
+  /* "Start a new one" — and only here does the second question appear, and
+     only when there is work that would actually be lost (David, 30 Aug). */
+  $("edKeepNew").addEventListener("click",()=>{
+    $("edKeepDlg").close();
+    if(!edPending) return;
+    const dirty=grooveEdit?grooveDirty():(pieceDirty&&pieceDirty());
+    if(!dirty){ const go=edPending.start; edPending=null; go(); return; }
+    $("edSaveFirstWhat").textContent=
+      "\u201c"+((piece&&piece.title)||"Untitled")+"\u201d has changes that are not saved.";
+    openDlg($("edSaveFirstDlg"));
+  });
+  $("edKeepClose").addEventListener("click",()=>{ $("edKeepDlg").close(); edPending=null; });
+  $("edSaveFirstYes").addEventListener("click",()=>{
+    $("edSaveFirstDlg").close();
+    if(!edPending) return;
+    if(grooveEdit) grooveSaveNow(); else savePieceToLibrary();
+    const go=edPending.start; edPending=null; go();
+  });
+  $("edSaveFirstNo").addEventListener("click",()=>{
+    $("edSaveFirstDlg").close();
+    if(!edPending) return;
+    const go=edPending.start; edPending=null; go();
+  });
+  $("edSaveFirstClose").addEventListener("click",()=>{ $("edSaveFirstDlg").close(); edPending=null; });
   $("jamSetBtn").addEventListener("click",openJamSet);
   $("jsPasses").addEventListener("click",e=>{
     const b=e.target.closest("button[data-passes]"); if(!b) return;
@@ -18148,7 +18389,7 @@ function boot(){
     if(editing&&!grooveEdit&&!editExitGo&&pieceDirty()){ openDlg($("editExitDlg")); return; }
     if(!editing) navPush("edit",jamOn?"the jam":"the arranger",()=>$("editBtn").click());
     else navDrop("edit");
-    editing=!editing; $("editBtn").classList.toggle("on",editing);
+    editing=!editing; $("editBtn").classList.toggle("on",editing); paintEditDoors();
     if(editing) stampPieceSig();     // the piece as it was, for "did anything change"
     document.body.classList.toggle("editing",editing);
     if(editing) fsLeave();      // the editors take no part in fullscreen
@@ -18673,14 +18914,10 @@ function boot(){
     editExitGo=true; try{ if(editing) $("editBtn").click(); } finally{ editExitGo=false; }
     runAfterEdit(); });
   $("exSave").addEventListener("click",()=>{
-    piece.title=$("title").value;
-    const l=savedPieces();
-    const i=l.findIndex(x=>x.id===piece.id&&x.title===piece.title);
-    if(i>=0)l[i]=piece; else l.push(JSON.parse(JSON.stringify(piece)));
-    setSaved(l);
+    savePieceToLibrary();
     $("editExitDlg").close();
     editExitGo=true; try{ if(editing) $("editBtn").click(); } finally{ editExitGo=false; }
-    toast("Saved to library"); runAfterEdit(); });
+    runAfterEdit(); });        // savePieceToLibrary already said so
   $("npClose").addEventListener("click",()=>$("panDlg").close());
   $("npSave").addEventListener("click",()=>{
     const name=$("npName").value.trim(), ding=$("npDing").value.trim();
@@ -19339,6 +19576,7 @@ else{
   const edSetTime=()=>grooveSetTime($("edTS").value,$("edSub").value);
   $("edTS").addEventListener("change",edSetTime);
   $("edSub").addEventListener("change",edSetTime);
+  $("edRef").addEventListener("change",()=>grooveSetRef($("edRef").value));
   // loop the bar the lane is showing (David, 27 Aug) — the same loopSec the
   // drag gesture drives, so playback and the frame need nothing new
   $("edLoopBar").innerHTML=ico("is-loop");
