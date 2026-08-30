@@ -538,6 +538,9 @@ input[type=text]{width:auto}
 body.editing #fsBtn,body.gedit #fsBtn{display:none}
 body.fs #scorewrap{background:var(--paper); overflow:auto; padding:16px;
   scrollbar-gutter:stable}
+/* in fullscreen the MUSIC scrolls inside the card, never the card past the
+   screen — Flow has always worked this way and Tab needed it too */
+body.fs #score{overflow-y:auto; scrollbar-gutter:stable}
 body.fsmax #scorewrap{position:fixed; inset:0; z-index:80}
 /* the scale selector rides in the head's top-left while fullscreen — next to
    the section name in the arranger, beside the groove chip in a jam — so a
@@ -18480,11 +18483,23 @@ function fsFit(){
      quite as the arithmetic assumes cannot leave the foot of the table below
      the fold. */
   for(let i=0;i<8;i++){
-    const over=sc.getBoundingClientRect().height-availH;
+    /* measured from the BOXES on screen, not from clientHeight or innerHeight
+       — on an external display those two disagreed, and this must not care */
+    const over=sc.getBoundingClientRect().bottom-(wrap.getBoundingClientRect().bottom-8);
     if(over<=1||z<=.35) break;
     const mh=mus.getBoundingClientRect().height;
     if(mh<=0) break;
     setZ(Math.max(.35,z*Math.max(.5,(mh-over)/mh)));
+  }
+  /* AND THE LAST RESORT IS FLOW'S: cap the music and let it scroll inside the
+     card, so the card can never exceed the screen whatever the zoom concluded
+     (David, 30 Aug — Tab kept overflowing on his external monitor while Flow,
+     which has always been capped this way, was fine). maxHeight is in the
+     element's own pixels, so the screen-space room is divided by the zoom. */
+  {
+    const chromeNow=sc.getBoundingClientRect().height-mus.getBoundingClientRect().height;
+    const roomNow=Math.min(wrap.clientHeight,innerHeight)-32-chromeNow;
+    mus.style.maxHeight=roomNow>40?((roomNow/(z||1))+"px"):"";
   }
   // centre a card shorter than the screen (the caps can leave height over)
   const h=sc.getBoundingClientRect().height;
@@ -18519,7 +18534,7 @@ function fsApply(on){
     // sweep home anything openDlg moved in (the shade and any flat dialog)
     const sh=$("dlgShade"); if(sh.parentElement===wrap) document.body.appendChild(sh);
     [...wrap.querySelectorAll("dialog")].forEach(d=>document.body.appendChild(d));
-    $("score").style.zoom="";
+    $("score").style.zoom=""; $("score").style.maxHeight="";
     wrap.style.paddingTop="";
     document.body.classList.remove("fsmax");
   }
