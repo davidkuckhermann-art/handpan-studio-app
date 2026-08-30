@@ -3374,6 +3374,18 @@ body.phone #scorewrap>#playBtn::after{content:""; position:absolute; inset:-7px;
      it from the MEASURED rendered height instead, via padding on this
      (unzoomed) wrapper, which behaves the same in every engine. */
   body.phone #scorewrap{flex:1 1 0; min-height:0; overflow:hidden}
+  /* THE STAGE IS A BOX, AND A SHORT SECTION SITS IN THE MIDDLE OF IT (David,
+     30 Aug: "Table and tab notations should behave the same way [as flow],
+     including icon rows"). phoneFit gives the card the stage as a min-height;
+     this is where the leftover air goes. Safe to flex-centre HERE, unlike the
+     wrapper above: the card carries the zoom, so the container and the item
+     are inside the SAME zoom context and no engine can lay one out at the
+     other's scale. #scorehead / #scorefoot are display:none on the phone, so
+     the music is the only item. `flex:none` because a box that is exactly the
+     content's height must never shrink it. */
+  body.phone #scorecard.landbox{display:flex; flex-direction:column;
+    justify-content:center}
+  body.phone #scorecard.landbox>#score{flex:0 0 auto}
   body.phone header{margin-bottom:2px}
   body.phone header .ctl{padding:4px 9px; font-size:12.5px}
   body.phone #title{font-size:16px}
@@ -8630,6 +8642,11 @@ function phoneFit(){
      and tab notations are messed up now"). Cleared before anything else, so
      no path can leave it behind. */
   if(view!=="flow"){ const m=$("score"); m.style.maxHeight=""; m.style.minHeight=""; }
+  /* AND THE LANDSCAPE BOX IS RELEASED BEFORE ANYTHING IS MEASURED. It is a
+     min-height on the CARD, and the natural height below is read off
+     `sc.scrollHeight` — a box left over from the last fit would be measured as
+     if it were content, and the zoom would shrink to fit the padding. */
+  sc.style.minHeight=""; sc.classList.remove("landbox");
   const designW=view==="tab"?700:540;
   const land=matchMedia("(orientation:landscape)").matches;
   const hdr=document.querySelector("header");
@@ -8717,6 +8734,29 @@ function phoneFit(){
     if(over<=0.5) break;
     z=Math.max(0.2,z*(landH/(landH+over)));
     sc.style.zoom=z;
+  }
+  /* THE STAGE IS A BOX, NOT A CEILING — the rule Flow has had since the stage
+     was built, now the rule for all three skins (David, 30 Aug: "mobile
+     landscape table and tab notation tables are not taking up the correct
+     space (again) … Flow has the correct dimensions … Table and tab should
+     behave the same way, including icon rows").
+     WHY IT KEPT COMING BACK. The zoom is shared across the piece — every table
+     is scaled by the TALLEST one so the glyphs do not change size between the
+     A and B sections (26 Aug) — so a section SHORTER than the tallest drew a
+     shorter card, and centreLandStage put LAND_AIR above it and let all the
+     slack fall out of the bottom. Measured at 812x375 on Composition 2, whose
+     A1/A2 rows are 65px against A3's 76 (no chord line): Table 253.7, Tab
+     272.8, Flow 285.9 against a 285.9 stage — exactly his screenshots. Every
+     earlier measurement was taken in a jam or on the tallest section, where
+     the two rules happen to agree, which is why "all three skins 285.8px" was
+     true and the fault survived it.
+     A min-height cannot drift again, because the card's height stops depending
+     on what is in it. It is divided by the zoom: the card's own box is in
+     unzoomed px and renders at x z. AFTER the clamp above, which needs to see
+     the real overflow of a table that genuinely is too tall. */
+  if(land&&landH>0){
+    sc.style.minHeight=(landH/(z||1))+"px";
+    sc.classList.add("landbox");     // …and the short section sits centred in it
   }
   /* Centre the notation vertically from what is ACTUALLY on screen: measure
      the rendered height (getBoundingClientRect honours the zoom in every
