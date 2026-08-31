@@ -3091,8 +3091,18 @@ body.phone.rquiz #sideDots, body.phone.learn #sideDots{ display:none }
 /* POCKET ZONES, David's same-day notes (31 Aug): */
 /* — the chord companion floats free on the phone, chips on the paper, no
      frame (his call against the earlier white-frame treatment: "chord tab
-     shouldn't have a frame — see your mockup") */
-body.phone #chordwrap .chordframe{border:none; background:transparent; box-shadow:none}
+     shouldn't have a frame — see your mockup")
+   — AND THE PAN COMPANION WITH IT (David, 31 Aug: "the pan tab in the mockup
+     of the zones theme had no frame. I have asked you several times to
+     implement it, but you somehow keep ignoring that. Is there a reason?").
+     There was one, and it was mine: this rule was written naming #chordwrap
+     alone the first time he asked about the chord tab, so every later "the
+     pan too" landed on a selector that could not reach the pan card — the
+     drawing kept the notation table's own heavy frame while the mockup
+     (mockups-zones.html, `.palette`) has it standing free on the paper.
+     One selector, both companions. */
+body.phone #chordwrap .chordframe,
+body.phone #panwrap .chordframe{border:none; background:transparent; box-shadow:none}
 /* — the table's own tiny section caption goes: the deck's navigator and the
      section chip already say it. Flow keeps its in-stream heads — they are
      the whole-piece map. */
@@ -3519,11 +3529,6 @@ body.phone .gmini i{font-size:10px}
   /* the labels switcher, top right of the pan — the reading pan's own toggle,
      here because the bench draws the same pan (David, 31 Aug) */
   #edPanLabels{position:absolute; top:0; right:12px; z-index:2}
-  /* the instrument door, top left, on the drawing's other dead corner. It
-     shrinks its name rather than the pan: the row is the pan's. */
-  #edPanSrc{position:absolute; top:0; left:2px; z-index:2; max-width:44%;
-    padding:5px 10px; font-size:12px; font-weight:700; white-space:nowrap;
-    overflow:hidden; text-overflow:ellipsis}
   .edside{justify-content:center}
   .edbadge{width:34px; height:34px; border-radius:50%; display:grid; place-items:center;
     font-family:Inter,sans-serif; font-size:15px; font-weight:700; flex:none;
@@ -4643,11 +4648,13 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
       <!-- the note-names ⇄ numbers flip, top right — the reading pan's toggle,
            because the bench draws the same pan (David, 31 Aug) -->
       <button class="ib" id="edPanLabels"></button>
-      <!-- …and top LEFT, the instrument this piece is written on: the bench
-           draws THAT pan, so this is the door to an extended one (David,
-           31 Aug: "I should be able to choose another instrument for a piece
-           I'm editing"). Its face is the pan's own name. -->
-      <button class="ctl" id="edPanSrc" title="The instrument this piece is written on"></button>
+      <!-- The instrument door was briefly a button here, and beside Sections
+           on the desktop. David withdrew both the same hour: "if the user
+           picks another pan from the normal pan selector while in edit mode,
+           there can be a dialog asking if the user wants to switch the
+           composition to a different instrument. That way we don't need
+           another button on an already very, very cramped interface." The
+           move lives in askPieceInstrument now — see choosePan. -->
     </div>
     <div id="edChips">
       <!-- groove workbench only (26 Aug, David: "save and load commands") -->
@@ -5089,6 +5096,19 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <div class="row" style="justify-content:flex-end;margin:12px 0 0">
     <button class="ctl" id="flowMenuClose">Done</button></div>
 </dialog>
+<!-- PICKING A PAN WHILE WRITING (David, 31 Aug): the composition may follow
+     you onto the new instrument, or stay on the one it was written for. The
+     jam's panMoveDlg above asks the same kind of question about a
+     progression; this is its sibling for a piece. -->
+<dialog id="pieceInstrDlg">
+  <h3>Write for this pan?</h3>
+  <p class="hint" id="piText"></p>
+  <div class="row" style="margin:8px 0 0">
+    <button class="ctl on" id="piYes">Write for it</button>
+    <button class="ctl" id="piNo">Keep the old one</button>
+  </div>
+</dialog>
+
 <dialog id="panMoveDlg">
   <h3>Transpose the jam?</h3>
   <p class="hint" id="pmText"></p>
@@ -5409,7 +5429,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 
 <dialog id="panPickDlg">
   <div class="pptop">
-    <h3 id="ppTitle">Choose a pan</h3>
+    <h3>Choose a pan</h3>
     <div class="pills" role="group" aria-label="Which pans">
       <button id="ppLib" aria-pressed="true">Library</button>
       <button id="ppMine" aria-pressed="false">My pans</button>
@@ -12988,10 +13008,7 @@ function renderEditbar(){
      +key("pg","Ghost •",false)+key("ps","Slap ^",false)+key("pt","Tak T",false)+key("pk","Tak K",false)+key("pn","Knock °",false)+'</div>'
    +'<div class="lab">Piece</div><div class="pal">'
      +key("b-","− Remove bar",false)+key("b+","＋ Add bar",false)
-     +key("sc","Sections…",false)
-     /* the instrument the piece is written on — the desktop's door to the
-        same move the phone's bench button makes (David, 31 Aug) */
-     +key("pi",srcPan.pan.name+" …",false)+'</div>'
+     +key("sc","Sections…",false)+'</div>'
    +'</div></div>'
    +'<p class="hint edhint">Click a slot, then: <b>1–9</b> fields · <b>D</b> doum · <b>T</b>/<b>K</b> tak · <b>S</b> slap · <b>N</b> knock · <b>.</b> ghost · <b>M</b>/<b>O</b> mute/overtone · <b>,</b> switch hand · <b>H</b> hand modes · arrows move · ⌫ clears · ⌘Z undo</p>'
    +'</div>';
@@ -13007,7 +13024,6 @@ function renderEditbar(){
       snapshot(); piece.sections[viewSec].bars.push([]); refresh(); return; }
     else if(k==="b-"){ edDropBar(); return; }
     else if(k==="sc"){ openPieceDlg(); return; }
-    else if(k==="pi"){ openPanPick("src"); return; }
     else if(k==="gsv"){ grooveSaveNow(); return; }
     else if(k==="gld"){ openGrooveLoadDlg(); return; }
     renderEditbar();
@@ -13107,9 +13123,6 @@ function paintEditDeck(){
   edPill("edArtO",selArt==="open"); edPill("edArtM",selArt==="mute"); edPill("edArtV",selArt==="overtone");
   // the input pan, drawn once per pan; its pv* ids are stripped so the reading
   // pan keeps sole ownership of them (the quiz's own trick)
-  { const b=$("edPanSrc");            // the door wears the instrument's name
-    if(b){ b.textContent=srcPan.pan.name;
-           b.style.display=grooveEdit?"none":""; } }   // a groove has no piece to re-home
   const host=$("edPanHost");
   if(edPanFor!==srcPan.pan.id||!host.firstChild){
     edPanFor=srcPan.pan.id;
@@ -20388,10 +20401,9 @@ function panPreview(p){
 }
 function ppRow(p,scaleKey){
   const row=document.createElement("button");
-  const tgt=panPickTarget();      // the tick follows what is being chosen
-  row.type="button"; row.className="pprow"+(p.id===tgt?" sel":"");
+  row.type="button"; row.className="pprow"+(p.id===myPanId?" sel":"");
   const chk=document.createElement("span");
-  chk.className="ppchk"+(p.id===tgt?"":" off"); chk.textContent="✓";
+  chk.className="ppchk"+(p.id===myPanId?"":" off"); chk.textContent="✓";
   const nm=document.createElement("span"); nm.className="ppnm";
   const b=document.createElement("b"); b.textContent=p.name;
   const sm=document.createElement("small"); sm.textContent=panNoteLine(p);
@@ -20434,12 +20446,29 @@ function ppRow(p,scaleKey){
   return row;
 }
 function choosePan(id){
-  if(panPickFor==="src"){ $("panPickDlg").close(); setPieceInstrument(id); return; }
   const wasPan=myPan, wasId=myPanId;
   myPanId=id;
   try{ localStorage.setItem("hps.panId",id); }catch(e){}
   $("panPickDlg").close(); refresh();
   if(jamOn&&jam&&jam.slots.length&&wasPan&&wasId!==myPanId) askPanMove(wasPan);
+  /* PICKING A PAN WHILE WRITING ASKS THE OBVIOUS QUESTION (David, 31 Aug:
+     "if the user picks another pan from the normal pan selector while in
+     edit mode, there can be a dialog asking if the user wants to switch the
+     composition to a different instrument. That way we don't need another
+     button on an already very, very cramped interface"). Same shape as the
+     jam's own askPanMove, which asks the same thing about a progression. */
+  else if(editing&&!grooveEdit&&wasId!==id&&id!==piece.writtenFor) askPieceInstrument(id);
+}
+let pieceInstrAsk=null;
+function askPieceInstrument(id){
+  const p=panById(id); if(!p) return;
+  pieceInstrAsk=p.id;
+  $("piText").textContent="You are writing “"+(piece.title||"Untitled")+"” for "
+    +srcPan.pan.name+". Write it for "+p.name+" instead? What you have written "
+    +"stays exactly where it is — only the instrument it is played on changes.";
+  $("piYes").textContent="Write for "+p.name;
+  $("piNo").textContent="Keep "+srcPan.pan.name;
+  openDlg($("pieceInstrDlg"));
 }
 /* THE PIECE MOVES HOUSE, AND WHAT IS WRITTEN STAYS EXACTLY WHERE IT IS —
    grooveSetRef's rule, for the whole composition (David, 31 Aug). The score
@@ -20525,27 +20554,16 @@ function renderPanPick(){
     for(const it of list) L.appendChild(ppRow(it.show,it.scale));
   }
 }
-/* WHICH PAN THE PICKER IS CHOOSING (David, 31 Aug: "even if a composition is
-   tied to a D Kurd 9, when I open it in the editor I should be able to access
-   an extended instrument, or somehow choose another instrument for a piece
-   I'm editing"). The bench draws the pan the PIECE is written for, so a D
-   Kurd composition offered ten fields however extended the pan he had chosen
-   — the answer is not to draw the wrong pan but to let the piece move house.
-   "my" is the pan he plays; "src" is the instrument the piece is written on. */
-let panPickFor="my";
-function panPickTarget(){ return panPickFor==="src"?piece.writtenFor:myPanId; }
-function openPanPick(target){
-  panPickFor=(target==="src")?"src":"my";
-  $("ppTitle").textContent=panPickFor==="src"?"Written for…":"Choose a pan";
+function openPanPick(){
   /* open on the pan you are actually holding — its scale's row shows the
      build you own, not the smallest one */
-  const cur=panById(panPickTarget());
+  const cur=panById(myPanId);
   if(cur&&cur.scale) ppPick[cur.scale]=cur.id;
   /* jumping the filter to the current pan's tier is a convenience, but it may
      not overrule a filter the student CHOSE — "All" was already exempt and
      Favourites is exempt for the same reason */
   if(cur&&cur.tier&&ppTier!=="all"&&ppTier!=="fav") ppTier=cur.tier===1?"common":"rare";
-  ppView=userPans().some(p=>p.id===panPickTarget())?"mine":"lib";
+  ppView=userPans().some(p=>p.id===myPanId)?"mine":"lib";
   renderPanPick(); openDlg($("panPickDlg"));
 }
 /* the own-pan dialog serves both new and edit; `npEditing` is the id it will
@@ -21370,6 +21388,9 @@ function boot(){
   $("csImp").addEventListener("click",()=>{
     if(ctxShareLoad($("csTxt").value)) $("ctxShareDlg").close();
     else toast("That code could not be read"); });
+  $("piYes").addEventListener("click",()=>{ $("pieceInstrDlg").close();
+    const id=pieceInstrAsk; pieceInstrAsk=null; if(id) setPieceInstrument(id); });
+  $("piNo").addEventListener("click",()=>{ $("pieceInstrDlg").close(); pieceInstrAsk=null; });
   $("pmYes").addEventListener("click",()=>{ $("panMoveDlg").close(); doPanMove(); });
   $("pmNo").addEventListener("click",()=>{ $("panMoveDlg").close(); panMove=null; renderJamPanel(); });
   $("geSave").addEventListener("click",()=>grooveExit(true));
@@ -22174,7 +22195,6 @@ if(PHONE){
     b.setAttribute("aria-label",b.title);
   }
   paintEdPanLabels();
-  $("edPanSrc").addEventListener("click",()=>openPanPick("src"));
   $("edPanLabels").addEventListener("click",()=>{
     panLabels=panLabels==="note"?"num":"note";
     try{localStorage.setItem("hps.panlabels",panLabels)}catch(e){}
