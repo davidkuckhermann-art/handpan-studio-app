@@ -9539,7 +9539,7 @@ function fitBeatGlyphs(root){
         const r=q.getBoundingClientRect();
         if(r.width>w){ w=r.width; c=(r.left+r.right)/2; el=q; }
       }
-      if(w>0) ink.push({el:el,c:c,h:w/2,slot:sl.getBoundingClientRect().width,g:1});
+      if(w>0) ink.push({el:el,sl:sl,c:c,h:w/2,slot:sl.getBoundingClientRect().width,g:1});
     }
     if(!ink.length) continue;
     const br=be.getBoundingClientRect(), cs=getComputedStyle(be);
@@ -9563,15 +9563,29 @@ function fitBeatGlyphs(root){
         for(let k=i;k<=j;k++) ink[k].g=mn;
         i=j+1;
       } }
-    let big=0;
-    for(const q of ink){ q.base=parseFloat(getComputedStyle(q.el).fontSize);
-      if(q.base>big) big=q.base; }
+    /* A SLOT THAT IS NOT SHRINKING IS NOT TOUCHED AT ALL (David, 31 Aug, with a
+       screenshot of ordinary chords: "the numbers sat nicely on top of each
+       other before, now they are bumping into each other").
+       Two faults, and both were in the line that wrote the lift.
+       ONE — it styled only the WIDEST glyph in a slot. A stack is two glyphs in
+       one slot, so one of them moved and the other did not, and they collided.
+       Every symbol in the slot is written now.
+       TWO — it lifted against the biggest glyph in the BEAT. A stacked note is
+       smaller BY DESIGN (.slot.n2/.n3 are the density ladder), not because
+       anything shrank it, so on a page with no fast notes at all every stack was
+       being hoisted 6.8px for nothing. The lift compensates for MY shrink and
+       nothing else: `base − fs`, which is zero when g is 1. Whatever size
+       relationship the CSS gives two glyphs, they keep. */
     for(const q of ink){
-      if(!(q.base>0)) continue;
-      const fs=q.base*q.g;
-      q.el.style.fontSize=fs.toFixed(2)+"px";
-      q.el.style.position="relative";
-      q.el.style.top=(-(LIFT*(big-fs))).toFixed(2)+"px";
+      if(q.g>=0.999) continue;               // nothing was taken, nothing to give back
+      for(const el of q.sl.querySelectorAll(".sym")){
+        const base=parseFloat(getComputedStyle(el).fontSize);
+        if(!(base>0)) continue;
+        const fs=base*q.g;
+        el.style.fontSize=fs.toFixed(2)+"px";
+        el.style.position="relative";
+        el.style.top=(-(LIFT*(base-fs))).toFixed(2)+"px";
+      }
     }
     dropCrossedLines(be);
   }
