@@ -9716,25 +9716,14 @@ function fitPortraitStack(sc,z,designW){
   const space=innerHeight-top-barH-10-sdH;
   if(space<=0) return;
   let h=sc.getBoundingClientRect().height;
-  /* THE EDITOR'S NOTATION GETS FIRST CALL ON THE HEIGHT (David, 31 Aug: "the
-     notation should always be full size in edit mode, like the main table,
-     and the pan should fit below", corrected the same minute: "the square
-     can't be full size when it's higher than four bars, but if it's four
-     bars, it should, when possible, be full size"). The deck lives INSIDE
-     #transport, so its height is part of barH — a big bench pan was eating
-     the room the music was fitted into and the score shrank under it. So the
-     editing budget is measured against the pan at its FLOOR: an ordinary
-     table keeps its practice size and fitEdPan() spends what is left on the
-     drawing; only a table too tall even then shrinks, and by the little it
-     actually needs. */
-  let budget=space;
-  if(editing){
-    const svg=$("edPanHost")&&$("edPanHost").querySelector("svg");
-    const drawn=svg?svg.getBoundingClientRect().height:0;
-    budget=space+Math.max(0,drawn-ED_PAN_MIN);
-  }
-  if(h>budget){                                 // the music alone is too tall
-    z=Math.max(0.3,z*(budget/h)); sc.style.zoom=z;
+  /* The editor's notation was briefly given first call on this height (31 Aug,
+     "full size in edit mode, like the main table") and David withdrew it the
+     same hour: "let's keep it as it is. We don't need the notation so large
+     because it's zoomed in in the editor window" — the lane below IS the
+     magnified view, so the card above may shrink for the deck like any other
+     bar content. The deck's height is part of barH, and that is correct. */
+  if(h>space){                                  // the music alone is too tall
+    z=Math.max(0.3,z*(space/h)); sc.style.zoom=z;
     h=sc.getBoundingClientRect().height;
   }
   const box=panOn?$("panbox"):(chordRowOn?$("chordbox"):null);
@@ -10110,9 +10099,6 @@ function phoneFit(){
     const w=cb.offsetWidth;
     if(w>cw.clientWidth) cb.style.zoom=cw.clientWidth/w;
   }
-  /* the bench pan takes the room the fitted notation leaves — LAST, because
-     it is the only thing here that gives (31 Aug) */
-  if(editing) try{ fitEdPan(); }catch(e){}
 }
 /* A notation row carries its own pulse span (section-relative, like data-rel)
    and paints itself when it IS the loop — the class is applied at render, so
@@ -13111,29 +13097,19 @@ function paintEditDeck(){
    224px is a floor; this measures how much empty page lies under the deck and
    gives exactly that to the pan — width-capped by the row, so a tall phone
    ends with the chips at the bottom and the pan as big as both axes allow. */
-/* the smallest the bench drawing may be squeezed to before the notation above
-   starts giving instead — an 18-field pan is still tappable at this size */
-const ED_PAN_MIN=150;
 function fitEdPan(){
   if(!PHONE||TABLET||!editing) return;
   if(document.body.classList.contains("drawer-open")) return;
   const host=$("edPanHost"), deck=$("editdeck");
   const svg=host&&host.querySelector("svg");
   if(!svg||!deck||!deck.offsetParent) return;     // hidden deck measures as nothing
-  /* THE PAN IS THE GIVE (31 Aug). It works from what the drawing currently
-     measures rather than from a fixed floor, so the same arithmetic grows it
-     into spare screen and shrinks it when the notation above wants the room —
-     the score is fitted first and never shrinks for the deck. Twice, because
-     the deck's own height moves with the drawing. */
-  for(let i=0;i<2;i++){
-    const cur=svg.getBoundingClientRect().width;
-    if(cur<=0) return;
-    const free=innerHeight-deck.getBoundingClientRect().bottom-8;
-    if(Math.abs(free)<1) break;
-    const want=Math.round(Math.max(ED_PAN_MIN,Math.min(host.clientWidth,cur+free)));
-    if(want===Math.round(cur)) break;
-    svg.style.maxWidth=want+"px";
-  }
+  /* measured from the CSS floor every time, never from the size it is already
+     wearing: growing from the current size would creep upward across repeated
+     fits, since each pass shrinks the notation above by what the last pass
+     gave the drawing */
+  svg.style.maxWidth="224px";                     // measure the slack from the floor
+  const free=Math.max(0, innerHeight-deck.getBoundingClientRect().bottom-10);
+  svg.style.maxWidth=Math.round(Math.min(host.clientWidth,224+free))+"px";
 }
 /* the lane's loop button is lit only while the loop IS the bar it shows, so
    a hand-drawn loop elsewhere turns it off by itself (David, 27 Aug) */
