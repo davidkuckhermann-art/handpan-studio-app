@@ -9083,8 +9083,17 @@ function flowFollow(){
 
    If everything fits, the ceiling is returned untouched (the box already
    hugs its content). If not even one block fits, the ceiling is returned
-   too — a mid-block cut beats a zero-height window. */
+   too — a mid-block cut beats a zero-height window.
+
+   NOT IN WHOLE-PIECE MODE (David, 31 Aug: "when 'whole piece' is selected
+   … the notation should take up all the free space there is"). A whole
+   piece is a page you scroll, so the window fills everything the chord
+   card leaves and a row cut at its bottom edge is the scroller saying
+   there is more; the leftover a whole-row trim hands back would only sit
+   as dead space above the deck. The trim is for the SECTION view, whose
+   stream is short enough that a cut row reads as a mistake. */
 function snapFlowWindow(mus,h){
+  if(flowAll&&!jamOn) return h;
   const origin=mus.getBoundingClientRect().top-mus.scrollTop;
   const stacked=el=>{
     let t=null;
@@ -9134,9 +9143,17 @@ function flowDeskFit(){
     /* the companion card may take at most a THIRD of what is left — a tall
        pan drawing was starving the notation down to its floor, and the
        notation is what the window is for. Anything past that simply scrolls
-       the page, which a desktop may do. */
+       the page, which a desktop may do.
+       EXCEPT IN WHOLE-PIECE MODE (David, 31 Aug): there the window "should
+       accommodate and make space for them … so all tabs fit into the
+       window, no matter the current size" — the cards get their full
+       height, the window takes every pixel they leave, and the 260px floor
+       below is what "no matter the current size" bottoms out on. Closing a
+       tab or growing the window re-runs this fit, so the space comes back
+       by itself. */
     const raw=innerHeight-top-foot-under("transport")-34;
-    avail=raw-Math.min(under("belowrow"),raw*.34);
+    const below=under("belowrow");
+    avail=raw-((flowAll&&!jamOn)?below:Math.min(below,raw*.34));
   }
   mus.style.maxHeight=Math.max(fsOn()?120:260,avail)+"px";
   /* …and the same hard clamp the zooming skins get: whatever the arithmetic
@@ -11617,7 +11634,12 @@ function setPan(v){ if(!v) panCustom=false; panOn=v;
   document.body.classList.toggle("haspan",v);   // the row aligns right while it shows
   if(v&&PHONE&&!TABLET&&chordRowOn) setChords(false);   // …and so does this one
   if(PHONE){ placeJamPanel(); paintSidePills(); }
-  renderPanPanel(); }
+  renderPanPanel();
+  /* the Flow window shares the height with this card, so it must re-fit on
+     BOTH edges of the toggle — setChords gets this through render(), and
+     this path never rendered (David, 31 Aug: the window should give the
+     tabs room and take the space back when they close) */
+  if(!PHONE&&view==="flow") requestAnimationFrame(flowDeskFit); }
 /* Notation is a panel toggle now (David, 26 Aug): Notation · Chords · Pan.
    It hides the MUSIC and keeps the frame's head and footer — hiding the whole
    card would take the play button and the tempo with it. */
