@@ -7541,14 +7541,70 @@ async function start(){
     : (pendingStart!=null ? pendingStart : tableTop));
   pendingStart=null; lastPaint=-1; fired=[]; jamRestartDue=null;
   playing=true; timer=setInterval(sched,60); sched();
+  startSchedClock();                 // …and the clock a hidden tab cannot throttle
+  watchAudioInterruption();          // …and the park when the audio is taken away
   raf=requestAnimationFrame(tick);
   updatePlayBtn();
+}
+/* ── PLAYING ON WHEN THE TAB IS HIDDEN (David, 31 Aug: "is there a way to keep
+   the player going properly when tabbed out? Both on phone and desktop?";
+   ABC'd 1 Sep: desktop and Android, iPhone pauses cleanly) ──────────────────
+   `setInterval(sched,60)` is throttled to about once a second in a background
+   tab — and once a minute in a deeply backgrounded one — while the scheduler
+   only writes 0.4s of music ahead. So the notes ran out, and sched()'s own
+   "more than half a second late, resync" line then SKIPPED the music that
+   should have played. A ScriptProcessorNode is the one clock a hidden tab does
+   not throttle — this file already relies on that for the video-follow carry,
+   and the same node drives the scheduler here. It only calls sched(); every
+   decision about what sounds stays where it was. */
+let schedNode=null, schedSink=null;
+function startSchedClock(){
+  if(schedNode||!ctx) return;
+  try{
+    schedNode=ctx.createScriptProcessor(4096,1,1);
+    schedSink=ctx.createGain(); schedSink.gain.value=0;   // silent: it is a clock
+    schedNode.connect(schedSink); schedSink.connect(ctx.destination);
+    schedNode.onaudioprocess=()=>{ if(playing) try{ sched(); }catch(e){} };
+  }catch(e){ schedNode=null; }      // no node, no harm: the interval still runs
+}
+function stopSchedClock(){
+  if(!schedNode) return;
+  try{ schedNode.onaudioprocess=null; schedNode.disconnect(); schedSink.disconnect(); }catch(e){}
+  schedNode=null; schedSink=null;
+}
+/* AND WHERE THE MUSIC CANNOT FOLLOW, IT PARKS (David's call, 1 Sep: pause and
+   resume where it stopped). iOS suspends the whole context when the app goes
+   to the background or the screen locks, and no scheduler trick reaches that:
+   the clock freezes mid-piece and the marker would come back stranded. So the
+   CONTEXT is asked rather than the platform — a state that leaves "running"
+   while playing means the audio has been taken away — and stop() is the
+   answer, which already parks `pendingStart` on the last pulse that sounded.
+   Pressing play then carries on from exactly there. A hidden desktop tab keeps
+   its context running and never reaches this. */
+function watchAudioInterruption(){
+  if(!ctx||ctx.__hpsWatch) return;
+  ctx.__hpsWatch=true;
+  ctx.addEventListener("statechange",()=>{
+    if(!playing||ctx.state==="running") return;
+    /* the marker is the honest resume point, but it is painted from rAF —
+       which is already frozen when the interruption arrives, and has never
+       run at all if the music was taken away in its first moments. The
+       scheduler's own pulse stands in then, so play always has somewhere to
+       come back to rather than starting the piece again. */
+    const at=(lastPaint>=0)?lastPaint:loopedPulse(nextPulse);
+    try{ stop(); }catch(e){}
+    if(pendingStart==null&&!loopSec&&at>=0){
+      pendingStart=at;
+      try{ if(!C) C=compile(piece); paintPulse(at); }catch(e){}
+    }
+  });
 }
 function stop(){
   // the transport's stop silences EVERYTHING — a looping groove preview too
   // (David, 26 Aug: "previewing a loop doesn't stop when I click stop")
   if(typeof jamPreviewStop==="function") jamPreviewStop();
   playing=false; clearInterval(timer); cancelAnimationFrame(raf);
+  stopSchedClock();
   if(!loopSec&&lastPaint>=0) pendingStart=lastPaint;  // play resumes where it stopped
   const now=ctx?ctx.currentTime:0;
   for(const g of live){ try{ g.gain.setValueAtTime(g.gain.value,now);
