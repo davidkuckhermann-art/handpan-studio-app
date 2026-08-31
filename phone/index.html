@@ -1243,8 +1243,14 @@ body.mkline .mkbox{top:auto; bottom:-1px; height:2px; background:var(--dixie);
    marker's BORDER is drawn on top of them all — "the marker itself should
    not sit on top of all the lines, but the marker's border should". So:
    fill −3 · lines −2 · border −1, in every skin. */
+/* IN THE MIDDLE OF THE GUTTER, DERIVED FROM THE GUTTER (31 Aug). It used to be
+   a bare -3px while the marker's edge aims at the middle of the gap between two
+   slots — with --subgap at 2px those are 1.5px apart and the line is 1px wide,
+   so the marker missed it every time. Both now name the same place, and the
+   place is computed from --subgap rather than typed twice. */
 body.slotlines .beat>.slot.smark::before{content:""; position:absolute; z-index:-2;
-  left:-3px; top:2px; bottom:2px; width:1px; background:var(--rule2); pointer-events:none}
+  left:calc(-1 * var(--subgap) / 2 - 0.5px); top:2px; bottom:2px; width:1px;
+  background:var(--rule2); pointer-events:none}
 /* …AND THEY GAIN CONTRAST UNDER THE WASH (David, 30 Aug: "in flow the marker
    is properly see-through, but in table and tab it is not"). They were
    already painting above it — proved by colouring them red — but #EFE9E0 over
@@ -2685,7 +2691,9 @@ body.phone .flow{--btpad:.12em}
    separator · bar line */
 .fcell.nowbeat::after{background:var(--sc-thru)}   /* the separator, through the wash */
 body.slotlines .fcell.nowbeat .flanes::before{background:var(--sc-thru2) !important}
-body.slotlines .fpos.smark .flanes::before{content:""; position:absolute; left:-.13em;
+body.slotlines .fpos.smark .flanes::before{content:""; position:absolute;
+  /* the middle of Flow's own gutter, for the same reason as the table's */
+  left:calc(-1 * var(--fGap) / 2 - 0.5px);
   /* MEASURED FROM THE LANES, not from the cell: top and bottom are one
      number, so the line cannot be off-centre however the template changes */
   top:calc(50% - .34em); bottom:calc(50% - .34em);
@@ -6587,15 +6595,57 @@ function clearSlotMarks(){
    midpoint fell inside it. The slots themselves always have a gap between
    them (.beat carries a column-gap), and it is empty by construction, so the
    boundary between two slots is the honest place for an edge. */
-function mkEdgePct(be,relA,relB,fallback){
+/* THE MARKER IS MEASURED FROM THE SLOTS IT COVERS, NEVER CALCULATED FROM THE
+   GRID (David, 31 Aug: "the marker sometimes doesn't sit directly on the slot
+   and separator lines… we've been fixing it many times already", and "when
+   marker is set to strokes, things don't work — I think it's because it is
+   still in 32nd mode").
+   BOTH FAULTS WERE ONE FAULT. The old edge placement asked for the slot at
+   pulse segS−1 and, when that pulse was not drawn, fell back to
+   (segS − cellS) / m.sub — an arithmetic share that assumes every column is
+   1/sub of the beat. Columns are not equal any more: a beat is divided by its
+   own music, so a sixteenth may be 2fr beside a 32nd's 1fr, and that fallback
+   lands nowhere in particular. Strokes suffered the same way from the other
+   end — it marks a span of ONE STORED PULSE, which at sub 8 is a 32nd, half of
+   the sixteenth slot it lives in, so the box came out narrow and adrift.
+   Measuring the slots removes both: whatever a slot's width happens to be, the
+   marker covers the slots the span really touches, and its edges land in the
+   gutters between them — which is where the slot lines are drawn too, so the
+   two agree by construction rather than by two numbers being kept in step.
+   Works for both skins: the Table's slots and Flow's positions both carry
+   [data-rel]. */
+function mkSpanBox(be,segS,segE){
+  /* COLLAPSE THE LANES FIRST. Four lanes share one beat and each draws the
+     same slot, so [data-rel] yields four elements per column. Without this
+     the neighbour at list[i-1] was the same slot's twin in another lane
+     rather than the PREVIOUS slot, and the "gutter midpoint" came out at the
+     column's own middle — a box starting mid-column and ending at the true
+     right gutter, i.e. half a slot wide (David, 31 Aug: "the marker is a 32nd
+     marker" over notes that are not 32nds). It is also why the misalignment
+     was intermittent: it depended on which lanes had drawn that slot. */
+  const by=new Map();
+  for(const el of be.querySelectorAll("[data-rel]")){
+    const r=el.getBoundingClientRect(); if(!(r.width>0)) continue;
+    const k=+el.dataset.rel, o=by.get(k);
+    if(o){ if(r.left<o.left) o.left=r.left; if(r.right>o.right) o.right=r.right; }
+    else by.set(k,{left:r.left,right:r.right});
+  }
+  const list=[...by.entries()].map(function(e){return {rel:e[0],r:e[1]}})
+    .sort((a,b)=>a.rel-b.rel);
+  if(!list.length) return null;
+  let i0=0, i1=0;
+  for(let k=0;k<list.length;k++){
+    if(list[k].rel<=segS) i0=k;
+    if(list[k].rel<segE) i1=k;
+  }
+  if(i1<i0) i1=i0;
   const box=be.getBoundingClientRect();
-  if(!box.width) return fallback;
-  const rect=rel=>{ const sl=be.querySelector('[data-rel="'+rel+'"]');
-    if(!sl) return null; const r=sl.getBoundingClientRect();
-    return r.width?r:null; };
-  const a=rect(relA), b=rect(relB);
-  if(!a||!b||b.left<a.right-0.5) return fallback;
-  return Math.max(0,Math.min(100,((a.right+b.left)/2-box.left)/box.width*100));
+  if(!box.width) return null;
+  /* an edge inside the cell sits in the GUTTER between two slots — empty by
+     construction, and the same place the slot line is drawn */
+  return {box:box,
+    L:(i0===0)?null:(list[i0-1].r.right+list[i0].r.left)/2,
+    R:(i1===list.length-1)?null:(list[i1].r.right+list[i1+1].r.left)/2};
 }
 function drawMarkBox(m,barI,s,e,scope){
   const barBase=barI*m.bp;
@@ -6603,25 +6653,26 @@ function drawMarkBox(m,barI,s,e,scope){
     const cellS=barBase+bt*m.sub, cellE=barBase+(bt+1)*m.sub;
     const segS=Math.max(s,cellS), segE=Math.min(e,cellE);
     const sl=document.querySelector('#score '+(scope||'')+'[data-rel="'+segS+'"]');
-    const be=sl&&sl.closest(".beat,.fcell"); if(!be) continue;
+    /* the pulse may not be drawn — a 32nd inside a sixteenth slot — so fall
+       back to the slot that CONTAINS it rather than giving up */
+    let be=sl&&sl.closest(".beat,.fcell");
+    if(!be){
+      const all=document.querySelectorAll('#score '+(scope||'')+'[data-rel]');
+      let best=null;
+      for(const el of all){ const r=+el.dataset.rel;
+        if(r<=segS&&(best===null||r>+best.dataset.rel)) best=el; }
+      be=best&&best.closest(".beat,.fcell");
+    }
+    if(!be) continue;
     const d=document.createElement("div");
     be.classList.add("mkcell");        // lift it above its neighbours' borders
     d.className="mkbox"+(segS===s?" mkbL":"")+(segE===e?" mkbR":"");
-    /* edges that coincide with the cell border sit ON the border (-1px);
-       an edge INSIDE the cell is placed in the gap between the glyphs it
-       separates, not on the slot's arithmetic boundary (David, 28 Aug: "the
-       marker goes through the slap sign"). A slot is a fixed share of the
-       cell, but a pair like ^12 is wider than its share and spills into the
-       neighbour — so the arithmetic edge can land in the middle of a glyph. */
-    const lEdge=mkEdgePct(be,segS-1,segS,(segS-cellS)/m.sub*100);
-    const rEdge=100-mkEdgePct(be,segE-1,segE,(segE-cellS)/m.sub*100);
-    /* the FILL stops at the cell's edge and the BORDER reaches a pixel past
-       it, so the lines show through the body while the edge lands on them
-       (David, 30 Aug). In the table the two have always shared -1px, and
-       there the cell's rules are borders rather than a neighbour's pseudo,
-       so nothing is hidden either way. */
-    d.style.left=segS===cellS?"-1px":(lEdge+"%");
-    d.style.right=segE===cellE?"-1px":(rEdge+"%");
+    /* the FILL stops at the cell's edge and the BORDER reaches a pixel past it,
+       so the lines show through the body while the edge lands on them (David,
+       30 Aug). A span that reaches the cell's own edge sits on it at −1px. */
+    const g=mkSpanBox(be,segS,segE);
+    d.style.left =(!g||g.L===null)?"-1px":(((g.L-g.box.left)/g.box.width*100)+"%");
+    d.style.right=(!g||g.R===null)?"-1px":(((g.box.right-g.R)/g.box.width*100)+"%");
     be.appendChild(d);
   }
 }
@@ -9605,10 +9656,11 @@ function refitScore(){
   if(view==="flow"||editing) return;
   const sc=$("score"); if(sc) fitBeatGlyphs(sc);
 }
-/* the slot line is drawn at left:-3px of its slot and is 1px wide, so it sits
-   three pixels BEFORE the edge, out in the gutter — testing the edge instead of
-   the line is why one kept crossing David's T */
-const SLOTLINE_DX=-3, SLOTLINE_W=1;
+/* THE LINE IS IN THE GUTTER, SO THAT IS WHERE IT IS TESTED. It used to be found
+   by a hardcoded −3px while the CSS drew it there and the marker aimed at the
+   middle of the gap — three places holding one number between them, and they
+   drifted. All three read the gutter itself now: the line is drawn at its
+   centre, the marker's edge lands there, and this measures it there. */
 function dropCrossedLines(be){
   const slots=[...be.children];
   const box=s=>{ let l=null,r=null;
@@ -9618,7 +9670,8 @@ function dropCrossedLines(be){
     return (l===null)?null:{l:l,r:r}; };
   for(let i=1;i<slots.length;i++){
     if(!slots[i].classList.contains("smark")) continue;
-    const x0=slots[i].getBoundingClientRect().left+SLOTLINE_DX, x1=x0+SLOTLINE_W;
+    const prev=slots[i-1].getBoundingClientRect(), cur=slots[i].getBoundingClientRect();
+    const mid=(prev.right+cur.left)/2, x0=mid-0.5, x1=mid+0.5;
     const a=box(slots[i-1]), b=box(slots[i]);
     if((a&&a.r>x0-.5)||(b&&b.l<x1+.5)) slots[i].classList.remove("smark");
   }
