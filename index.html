@@ -11227,7 +11227,12 @@ function setBare(v){
    editor's exit standing in Table with neither companion under the notation.
    The pill follows the skin either way; only the panels wait for a piece. */
 function syncBare(){
-  if(!PHONE) return;
+  /* THE THIRD SIDE BELONGS TO THE SWITCH. It exists because a phone that can
+     show only one card has no other way to show none — and it also forces a
+     side back on in Table and Tab. A tablet keeps both cards independently, so
+     "neither" is two taps there exactly as it is on the desktop, and neither
+     the ⊘ pill nor the forcing has any business running. */
+  if(!PHONE||TABLET) return;
   const b=$("bareBtn"); if(b) b.classList.toggle("hidden",view!=="flow");
   if(!(typeof piece!=="undefined"&&piece&&piece.sections)){ paintSidePills(); return; }
   if(view==="flow"){ if(bareSide&&(chordRowOn||panOn)) setBare(true); }
@@ -11252,7 +11257,7 @@ function setChords(v){ chordRowOn=v;
   if(sideSticks()&&!sideQuiet) try{localStorage.setItem("hps.chords",v?"1":"0")}catch(e){}
   $("chordBtn").classList.toggle("on",v);
   $("chordBtn").setAttribute("aria-pressed",v?"true":"false");
-  if(v&&PHONE&&panOn) setPan(false);
+  if(v&&PHONE&&!TABLET&&panOn) setPan(false);   // a tablet holds both, like the desktop
   if(PHONE){ placeJamPanel(); paintSidePills(); }
   render(); }
 function setPan(v){ if(!v) panCustom=false; panOn=v;
@@ -11260,7 +11265,7 @@ function setPan(v){ if(!v) panCustom=false; panOn=v;
   $("panBtn").classList.toggle("on",v);
   $("panBtn").setAttribute("aria-pressed",v?"true":"false");
   document.body.classList.toggle("haspan",v);   // the row aligns right while it shows
-  if(v&&PHONE&&chordRowOn) setChords(false);
+  if(v&&PHONE&&!TABLET&&chordRowOn) setChords(false);   // …and so does this one
   if(PHONE){ placeJamPanel(); paintSidePills(); }
   renderPanPanel(); }
 /* Notation is a panel toggle now (David, 26 Aug): Notation · Chords · Pan.
@@ -14864,7 +14869,7 @@ function leaveJam(){
      entering one drops it, but the PIECE's choice is still in storage. Read
      back after the side is restored (showSide would clear a flag set before
      it), then syncBare applies it if Flow is up. */
-  if(PHONE){ showSide(storedSide());
+  if(PHONE&&!TABLET){ showSide(storedSide());
     try{ bareSide=(localStorage.getItem("hps.bare")||"0")==="1"; }catch(e){}
     syncBare(); }
   if(PHONE){ setDrawer(false); placeDrawer(); phoneFit(); }   // …and a row shorter on the way out
@@ -19450,10 +19455,14 @@ function boot(){
   paintCountIn();
   $("halfBtn").addEventListener("click",()=>{ halfSpeed=!halfSpeed; $("halfBtn").classList.toggle("on",halfSpeed); });
   $("chordBtn").classList.toggle("on",chordRowOn);
-  $("chordBtn").addEventListener("click",()=>{ clearBare(); setChords(PHONE?true:!chordRowOn); });
+  /* ON A TABLET THEY ARE TWO TOGGLES, NOT A SWITCH (David, 31 Aug: "the
+     chord/pan buttons don't need to be a switch, both can be on the screen,
+     like on desktop"). The phone forces `true` because its one row can hold
+     only one card; a tablet has the width for both side by side. */
+  $("chordBtn").addEventListener("click",()=>{ clearBare(); setChords(PHONE&&!TABLET?true:!chordRowOn); });
   $("panBtn").classList.toggle("on",panOn);
   document.body.classList.toggle("haspan",panOn);
-  $("panBtn").addEventListener("click",()=>{ clearBare(); setPan(PHONE?true:!panOn); });
+  $("panBtn").addEventListener("click",()=>{ clearBare(); setPan(PHONE&&!TABLET?true:!panOn); });
   /* PHONE ONLY (the button is hidden everywhere else) — and it is a one-way
      press like its two siblings there: the pills are a switch, so the way out
      of "nothing" is to choose Chords or Pan. */
@@ -20740,7 +20749,7 @@ if(PHONE){
   /* PAN is the switch's default side (David, 26 Aug) — see storedSide(). This
      runs AFTER boot(), so a shared jam link that has already opened jam keeps
      the pan jam gave it rather than being pulled back to the stored side. */
-  if(!jamOn) showSide(storedSide());
+  if(!jamOn&&!TABLET) showSide(storedSide());   // a tablet restores the PAIR, not a side
   // boot painted the .on class but not the pressed state the pills read
   $("chordBtn").setAttribute("aria-pressed",chordRowOn?"true":"false");
   $("panBtn").setAttribute("aria-pressed",panOn?"true":"false");
