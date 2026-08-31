@@ -9416,38 +9416,49 @@ function reanchorLoop(){
     : lastPaint;
   if(at>=0) jumpTo(at);
 }
-/* A 16TH SITS IN THE MIDDLE OF ITS SLOT, NOT AT THE LEFT EDGE OF IT (David,
-   30 Aug, with a phone screenshot: "all normal 16th notes now sit at the very
-   left edge next to the slot line. Can we do it that in the player — not the
-   editor — 16th notes get centered in their slot, while 32nd notes share the
-   space when they appear?").
-   He is describing the cost of a fine STORED grid drawn literally. A section
-   holding one 32nd is stored at eight to the count, so a sixteenth lands in
-   slot 0, 2, 4 or 6 of eight — and a slot is a CELL whose note sits at its
-   centre, so those four centres are at 1/16, 5/16, 9/16, 13/16 of the beat
-   instead of 1/8, 3/8, 5/8, 7/8. Every one of them is half a slot left of
-   where it belongs, which is exactly what he can see.
-   So each beat is drawn at the resolution its own music needs — the Table and
-   Tab skins' version of what Flow already does — and the resolution is decided
-   PER BEAT INDEX ACROSS THE WHOLE SECTION, not per bar. That is what keeps one
-   count row honest for every bar under it: these two skins build the header
-   once for the section (see renderTableView), so beat 3 must be eight in every
-   bar or in none. Flow needs no such compromise because each of its cells
-   carries its own counts.
-   NOT WHILE EDITING, by David's word: a 32nd cannot be placed in a beat that
-   is not showing eight slots, so the editor keeps the full stored grid and the
-   player gets the reading. */
-function beatResRow(sec,m){
-  const res=[];
-  for(let b=0;b<m.beats;b++){
-    if(editing){ res[b]=m.sub; continue; }
-    const uni=new Map();
-    for(const bar of sec.bars)
-      for(const ev of bar)
-        if(Math.floor(ev.t/m.sub)===b) uni.set(ev.t,1);
-    res[b]=beatRes(uni,b,m.sub,m.base);
+/* A BEAT IS DIVIDED BY ITS OWN MUSIC, ONE SIXTEENTH AT A TIME (David, 30 Aug,
+   in two sentences that replaced three of my patches: "we can de-couple the
+   resolution of each bar anyway. The reference for all bars is the count row on
+   top. But musical time is relative — a bar of 8 32nd notes can relate to the
+   beats and 16th notes counted above just as well as a bar of 4 16th notes";
+   then "can we have beat resolution resolve per 8th/16th note? So the T on beat
+   4 of bar 1 stays full-sized, because there is no fast 32nd note that follows
+   it?").
+   THE COUNT ROW IS A RULER, NOT A COLUMN GRID. What has to line up between bars
+   is the BEATS, and a beat is the same width in every bar whatever it holds. So
+   the header is built once at the section's base and every bar divides its own
+   beats freely — 32nds sitting between the counted sixteenths is what 32nds are.
+   AND THE DIVISION GOES ONE LEVEL DEEPER: a beat splits into the sixteenths the
+   groove is written in, and each of THOSE splits again only if it holds
+   something faster. A lone symbol keeps its whole sixteenth and its full size
+   while the run beside it shares the sixteenths it actually occupies.
+   NO EXTRA NESTING — the slots stay one flat list and the beat's grid columns
+   carry the widths, so the marker, the slot lines and [data-rel] keep working on
+   the shape they already had. Beat 4 of Fast Arpeggios' B, bar 1, comes out
+   `2fr 2fr 1fr 1fr 1fr 1fr`: six slots, the T in a full sixteenth.
+   NOT WHILE EDITING, by David's word — a 32nd cannot be placed in a cell that is
+   not showing it, so the editor keeps the whole stored grid. */
+function beatSlots(byT,b,m){
+  const unit=m.sub/m.base, out=[];
+  if(editing||!(unit>=1)||unit%1){              // the editor sees every pulse
+    const u=Math.max(1,Math.round(unit)||1);
+    for(let k=0;k<m.sub;k++)
+      out.push({t:b*m.sub+k,span:1,first:k%u===0,cell:Math.floor(k/u)});
+    return out;
   }
-  return res;
+  for(let c=0;c<m.base;c++){
+    const t0=b*m.sub+c*unit, occ=[];
+    for(let k=0;k<unit;k++) if(byT.has(t0+k)) occ.push(k);
+    let n=unit;
+    for(let d=1;d<=unit;d++){
+      if(unit%d) continue;
+      const step=unit/d;
+      if(occ.every(k=>k%step===0)){ n=d; break; }
+    }
+    const step=unit/n;
+    for(let j=0;j<n;j++) out.push({t:t0+j*step,span:step,first:j===0,cell:c});
+  }
+  return out;
 }
 // One count line, shared by the Table and Tab skins; [data-ct] carries the
 // header-numbers marker (countMark) across the row's barsPerRow bars.
@@ -9461,7 +9472,9 @@ function buildCountRow(m,cls,bres){
     cb.style.display="grid"; cb.style.gridTemplateColumns="repeat("+m.beats+",minmax(0,1fr))";
     for(let b=0;b<m.beats;b++){
       const cell=document.createElement("div"); cell.className="cbeat";
-      const cres=(bres&&bres[b])||m.sub, cstride=m.sub/cres;
+      /* THE RULER: the section's base, evenly spaced, the same in every bar —
+         what the bars do inside a beat is their own business. */
+      const cres=(bres&&bres[b])||m.base, cstride=m.sub/cres;
       cell.style.gridTemplateColumns="repeat("+cres+",minmax(0,1fr))";
       /* FOUR TICKS TO THE BEAT, NOT EIGHT (David, 30 Aug: "for the counting
          line we want to stick to 4 ticks/beat, not 8. Even if the composition
@@ -9489,159 +9502,79 @@ function buildCountRow(m,cls,bres){
   }
   return cnt;
 }
-/* SYMBOLS SHRINK ONLY WHERE THEY CROWD (David, 30 Aug: "the shrinking should
-   only happen where necessary — where 32nds are played and getting too close to
-   each other. Where there are no 32nd notes, symbol size should be normal").
-   The first cut scaled a beat by how many SLOTS it drew, which shrank three
-   sparse beats for the sake of the fourth: a beat of eight holding `7 · 9 ·`
-   is not crowded at all, and it came out small anyway.
-   SO THE MEASURE IS THE INK, NOT THE GRID. For each beat, walk the slots that
-   actually hold a symbol and ask how close the neighbouring ones come. Scaling
-   does not move a slot's centre — the ink is centred in it — so for a pair of
-   half-widths h1,h2 whose centres are d apart, the clearance after scaling by g
-   is d − g(h1+h2). Solving for the clearance we want gives the g that pair can
-   bear, and the beat takes the smallest of them. A beat whose symbols are
-   already far enough apart yields g > 1 and is left alone entirely.
-   Glyph size in these two skins is absolute px keyed on how many symbols are
-   STACKED in a slot, never on how wide the slot is — mockups-flow-spacing.html
-   §4 — which is why one beat of eight collides on a phone and merely crowds on
-   a desktop. This is that missing axis, spent only where it is needed.
-   AND A SHRUNKEN SYMBOL COMES UP TO MEET ITS FULL-SIZE NEIGHBOURS (David,
-   30 Aug, correcting me: the lift is for "the symbols that get shrunk when
-   space is tight, like 32nds", not for two-digit numbers). These slots align
-   on the FOOT of the line box, not on a shared baseline, so shrinking a glyph
-   drops its cap centre by 0.515 of the size it lost — and since only the
-   crowded beat shrinks, it sits low against the untouched beats either side of
-   it in the same row.
-   SO THE LIFT IS MEASURED AGAINST THE GLYPH'S OWN FULL SIZE, not against the
-   largest glyph in the beat. That was my first reading of it and I talked
-   myself out of it for a reason that no longer holds: I thought lifting each
-   glyph by its own shrink would float the whole row, because back then EVERY
-   beat in such a section shrank by the same amount. Beats are drawn at their
-   own resolution now, so beats 1–3 keep full size and only beat 4 moves —
-   there is something to be level WITH.
-   Sizes inside the beat keep the relationship they have everywhere else: a
-   ghost at 33 against a digit at 37 stays its usual 2px low, exactly as in an
-   unscaled beat, because each is lifted by its own loss and not to a common
-   line.
+/* SIZE IS PER SYMBOL, NOT PER BEAT (David, 30 Aug: "the T on beat 4 of bar 1
+   stays full-sized, because there is no fast 32nd note that follows it").
+   Once a beat's sixteenths divide independently, scaling the whole beat by its
+   tightest pair punishes symbols that were never crowded — the T sits in a full
+   sixteenth with nothing beside it and was shrinking to keep the run company.
+   Each symbol takes the smallest of what its OWN slot can hold and what its
+   neighbours leave it, and WHERE TWO CROWD EACH OTHER THE NARROWER SLOT YIELDS:
+   that is the one genuinely short of room.
+   A RUN READS AS ONE GROUP. Solving every symbol alone gave a four-note run
+   four different sizes — 15.5, 15.5, 24.6, 18.4 — each taking whatever its
+   neighbour happened to leave. A fast group is one gesture and should be one
+   size, so consecutive symbols in SUBDIVIDED slots share the smallest scale
+   among them; symbols in full-width slots are not in the group.
+   A SYMBOL MAY SPILL INTO THE GUTTER — the faint slot line gives way for that,
+   see dropCrossedLines — BUT NEVER PAST THE BEAT'S BORDER, which is structure
+   and one of the four line strengths the notation is built on.
+   AND THE SMALLER SYMBOLS COME UP LEVEL with the biggest in their beat: these
+   slots align on the FOOT of the line box, not on a shared baseline, so a
+   smaller glyph hangs low by 0.515 of the difference — where a cap centre sits
+   above that foot. David reads it at .400.
    FLOW IS NOT TOUCHED: it measures and packs, so its cells widen instead of its
    glyphs shrinking. That is the whole difference between the skins. */
-/* Two dials, and they answer two different halves of what David asked for.
-   BEATGAP is the clearance neighbouring symbols must keep before anything is
-   done at all — set low, because a 16th figure on an eight-slot grid is tight
-   on a phone but perfectly readable, and he wants those left alone.
-   RUNTRIM is the "tiny bit" a genuine fast RUN gets even when it is not
-   colliding: three or more symbols in CONSECUTIVE slots is a 32nd run and
-   nothing else, since a 16th figure on this grid never fills two slots in a
-   row. On a wide screen that trim is all that happens; on a phone the
-   clearance rule asks for far more and wins. */
-/* LIFT is how far a smaller symbol comes up to meet the largest one beside it,
-   as a fraction of the difference in size. 0.515 is where a cap's centre sits
-   above the foot of its line box, measured against Inter's own metrics on
-   29 Aug — so at 0.515 the two cap centres land level. It is a dial because
-   "level" and "looks level" are not always the same thing to the eye. */
-/* DAVID'S NUMBERS, chosen on mockups-glyph-fit.html rather than argued for.
-   BEATGAP 0 — do nothing until symbols actually touch. RUNTRIM 1 — a run that
-   fits is left alone, so the cosmetic trim is off. LIFT .400 — his eye, a
-   little under the .515 that levels the cap centres exactly. */
-const BEATGAP=0, RUNTRIM=1, RUNLEN=3, LIFT=.4;
+const BEATGAP=0, LIFT=.4, FLOORG=.42;
 function fitBeatGlyphs(root){
   for(const be of root.querySelectorAll(".beat")){
-    if(be.children.length<=4) continue;      // four to the count is the norm
-    /* the widest ink in each occupied slot, with its centre and the slot's
-       own width */
     const ink=[];
     for(const sl of be.children){
-      let w=0,c=0;
+      let w=0,c=0,el=null;
       for(const q of sl.querySelectorAll(".sym")){
         const r=q.getBoundingClientRect();
-        if(r.width>w){ w=r.width; c=(r.left+r.right)/2; }
+        if(r.width>w){ w=r.width; c=(r.left+r.right)/2; el=q; }
       }
-      if(w>0) ink.push({c:c,h:w/2,w:w,slot:sl.getBoundingClientRect().width});
+      if(w>0) ink.push({el:el,c:c,h:w/2,slot:sl.getBoundingClientRect().width,g:1});
     }
-    let g=1;
-    /* A SYMBOL WITH ROOM BESIDE IT KEEPS ITS SIZE (David, 30 Aug: "technically,
-       the first T on the last beat doesn't have to shrink"). It does not: the
-       slots either side of it are empty, so nothing collides — the only thing
-       wrong was a faint slot line drawn through it. Shrinking a glyph that has
-       room to answer a line that has no business being there is the wrong way
-       round, so the LINE gives way instead (see dropCrossedLines).
-       …BUT THE BEAT'S OWN BORDER IS NOT ONE OF THOSE LINES (David, again, on
-       the same T: "bar 4 the T still crosses"). What it was crossing the second
-       time is the CELL EDGE, not a slot line — and a cell edge is structure:
-       it says where the beat begins, it is one of the four strengths the
-       notation is built on, and it cannot be given up for a glyph. So a symbol
-       that would reach past its beat's content box is the one case where the
-       symbol yields. Scaling shrinks ink about its own centre, so a glyph
-       centred at c with half-width h clears an edge at L when g <= (c-L)/h. */
-    { const br=be.getBoundingClientRect(), cs=getComputedStyle(be);
-      const L=br.left+parseFloat(cs.borderLeftWidth||0)+parseFloat(cs.paddingLeft||0);
-      const R=br.right-parseFloat(cs.borderRightWidth||0)-parseFloat(cs.paddingRight||0);
-      for(const q of ink){
-        if(q.h<=0) continue;
-        const needL=(q.c-L)/q.h, needR=(R-q.c)/q.h;
-        if(needL<g) g=needL;
-        if(needR<g) g=needR;
+    if(!ink.length) continue;
+    const br=be.getBoundingClientRect(), cs=getComputedStyle(be);
+    const L=br.left+parseFloat(cs.borderLeftWidth||0)+1;
+    const R=br.right-parseFloat(cs.borderRightWidth||0)-1;
+    for(const q of ink) if(q.h>0) q.g=Math.min(q.g,(q.c-L)/q.h,(R-q.c)/q.h,1);
+    for(let pass=0;pass<2;pass++)
+      for(let i=1;i<ink.length;i++){
+        const A=ink[i-1], B=ink[i], d=B.c-A.c;
+        if(d-(A.g*A.h+B.g*B.h)>=BEATGAP-0.01) continue;
+        const give=(A.slot<=B.slot)?A:B, keep=(give===A)?B:A;
+        if(give.h<=0) continue;
+        give.g=Math.max(FLOORG,Math.min(give.g,(d-BEATGAP-keep.g*keep.h)/give.h));
+      }
+    { const wide=Math.max.apply(null,ink.map(q=>q.slot));
+      let i=0;
+      while(i<ink.length){
+        if(ink[i].slot>=wide-0.5){ i++; continue; }
+        let j=i; while(j+1<ink.length&&ink[j+1].slot<wide-0.5) j++;
+        let mn=1; for(let k=i;k<=j;k++) mn=Math.min(mn,ink[k].g);
+        for(let k=i;k<=j;k++) ink[k].g=mn;
+        i=j+1;
       } }
-    for(let i=1;i<ink.length;i++){
-      const hh=ink[i-1].h+ink[i].h;
-      if(hh<=0) continue;
-      const need=(ink[i].c-ink[i-1].c-BEATGAP)/hh;
-      if(need<g) g=need;
-    }
-    /* …and a run of consecutive slots takes the trim whether it is crowded or
-       not, because that run IS the fast passage he is reading */
-    let run=1, longest=1;
-    for(let k=1;k<be.children.length;k++){
-      const a=be.children[k-1].querySelector(".sym"), b=be.children[k].querySelector(".sym");
-      run=(a&&b)?run+1:1;
-      if(run>longest) longest=run;
-    }
-    if(longest>=RUNLEN&&RUNTRIM<g) g=RUNTRIM;
-    g=Math.max(.42,Math.min(1,g));
-    if(g>=.999) continue;                    // nothing here is crowded
-    /* size first, then level: the raise is measured against the largest glyph
-       AFTER the shrink, so the two passes cannot disagree about "largest" */
-    /* MEASURED AGAINST THE BIGGEST GLYPH IN THE BEAT, AT FULL SIZE (David,
-       30 Aug: "the 11 is too low"). Lifting each glyph by its OWN loss restores
-       it to its own full-size height — but a two-digit number was already lower
-       than the digits beside it before anything shrank, by 0.515 of the
-       difference between 27px and 37px, so returning it to where it started
-       returns it to being low. Measured 3.56px below its neighbours that way.
-       The distance to cancel is therefore the whole gap between this glyph and
-       the LARGEST one at full size, which handles both drops at once: the
-       biggest glyph gets the full shrink correction, and everything smaller
-       gets that plus the amount it was already behind. It also subsumes
-       .sym.d2's own −.1em, so that is not added again. */
-    let baseMax=0;
-    const syms=[...be.querySelectorAll(".sym")].map(el=>{
-      const base=parseFloat(getComputedStyle(el).fontSize);
-      if(base>baseMax) baseMax=base;
-      return [el,base];
-    });
-    for(const [el,base] of syms){
-      if(!(base>0)) continue;
-      const fs=base*g;
-      el.style.fontSize=fs.toFixed(2)+"px";
-      el.style.position="relative";
-      el.style.top=(-(LIFT*(baseMax-fs))).toFixed(2)+"px";
+    let big=0;
+    for(const q of ink){ q.base=parseFloat(getComputedStyle(q.el).fontSize);
+      if(q.base>big) big=q.base; }
+    for(const q of ink){
+      if(!(q.base>0)) continue;
+      const fs=q.base*q.g;
+      q.el.style.fontSize=fs.toFixed(2)+"px";
+      q.el.style.position="relative";
+      q.el.style.top=(-(LIFT*(big-fs))).toFixed(2)+"px";
     }
     dropCrossedLines(be);
   }
   root.querySelectorAll(".beat").forEach(dropCrossedLines);
 }
-/* NO SLOT LINE UNDER A SYMBOL. The faint line between two positions is there to
-   say where the grid is; where a glyph lies across it, it says that badly and
-   the glyph is the thing worth reading. So a boundary whose neighbouring ink
-   reaches over it loses its line — and only the SLOT lines can be given up this
-   way. The beat's own border and the bar line are structure and stay put.
-   Run after the sizes are settled, and over every beat rather than only the
-   scaled ones, because a beat that needed no scaling is exactly where a
-   full-size symbol in a narrow slot turns up. */
-/* the slot line is drawn at left:-3px of its slot and is 1px wide, so it does
-   NOT sit on the slot's edge — it sits three pixels before it, out in the
-   gutter. Testing the edge instead of the line is why one still crossed David's
-   T: ink can reach past the line and stop short of the edge. */
+/* the slot line is drawn at left:-3px of its slot and is 1px wide, so it sits
+   three pixels BEFORE the edge, out in the gutter — testing the edge instead of
+   the line is why one kept crossing David's T */
 const SLOTLINE_DX=-3, SLOTLINE_W=1;
 function dropCrossedLines(be){
   const slots=[...be.children];
@@ -9676,8 +9609,7 @@ function renderTableView(sc){
   const sr=document.createElement("div"); sr.className="secrow";
   sr.innerHTML='<span class="secname">'+nm+'</span>';
   sc.appendChild(sr);
-  const bres=beatResRow(sec,m);
-  sc.appendChild(buildCountRow(m,null,bres));
+  sc.appendChild(buildCountRow(m));
   for(let b0=0;b0<sec.bars.length;b0+=m.bpr){
     const rowEl=document.createElement("div");
     // the row knows its own pulse span, so a double tap can loop it (David, 26 Aug)
@@ -9706,12 +9638,17 @@ function renderTableView(sc){
       bel.style.gridTemplateColumns="repeat("+m.beats+",minmax(0,1fr))";
       for(let b=0;b<m.beats;b++){
         const be=document.createElement("div"); be.className="beat";
-        const res=bres[b], stride=m.sub/res;
-        be.style.gridTemplateColumns="repeat("+res+",minmax(0,1fr))";
-        for(let sN=0;sN<res;sN++){
-          const t=b*m.sub+sN*stride, rel=bi*m.bp+t;
+        const slots=beatSlots(byT,b,m);
+        /* the widths ARE the resolution: an undivided sixteenth is one wide
+           column, a divided one two narrow ones, and every column is a whole
+           number of stored pulses, so the grid cannot drift off the music */
+        be.style.gridTemplateColumns=slots.map(o=>"minmax(0,"+o.span+"fr)").join(" ");
+        for(let sN=0;sN<slots.length;sN++){
+          const t=slots[sN].t, rel=bi*m.bp+t;
           const sl=document.createElement("div"); sl.className="slot"; sl.dataset.rel=rel;
-          if(sN>0&&sN%slotStep(res,m.base)===0) sl.classList.add("smark");
+          /* the slot line marks the GROOVE's grid — the start of each
+             sixteenth, never a division inside one */
+          if(slots[sN].first&&slots[sN].cell>0) sl.classList.add("smark");
           const _n=(byT.get(t)||[]).length;
           if(_n) sl.classList.add(_n===1?"n1":_n===2?"n2":"n3");
           const evs=sortStack((byT.get(t)||[]).slice(0,4),false);
@@ -10747,8 +10684,7 @@ function renderTabView(sc){
   const sr=document.createElement("div"); sr.className="secrow";
   sr.innerHTML='<span class="secname">'+nm+'</span>';
   sc.appendChild(sr);
-  const bres=beatResRow(sec,m);
-  sc.appendChild(buildCountRow(m,"tcount",bres));
+  sc.appendChild(buildCountRow(m,"tcount"));
   for(let b0=0;b0<sec.bars.length;b0+=m.bpr){
     const rowEl=document.createElement("div");
     // the row knows its own pulse span, so a double tap can loop it (David, 26 Aug)
@@ -10764,12 +10700,15 @@ function renderTabView(sc){
       bel.style.gridTemplateColumns="repeat("+m.beats+",minmax(0,1fr))";
       for(let b=0;b<m.beats;b++){
         const be=document.createElement("div"); be.className="beat tbeat";
-        const res=bres[b], stride=m.sub/res;
-        be.style.gridTemplateColumns="repeat("+res+",minmax(0,1fr))";
-        for(let sN=0;sN<res;sN++){
-          const t=b*m.sub+sN*stride, rel=bi*m.bp+t;
+        const slots=beatSlots(byT,b,m);
+        /* the widths ARE the resolution: an undivided sixteenth is one wide
+           column, a divided one two narrow ones, and every column is a whole
+           number of stored pulses, so the grid cannot drift off the music */
+        be.style.gridTemplateColumns=slots.map(o=>"minmax(0,"+o.span+"fr)").join(" ");
+        for(let sN=0;sN<slots.length;sN++){
+          const t=slots[sN].t, rel=bi*m.bp+t;
           const col=document.createElement("div"); col.className="slot tcol"; col.dataset.rel=rel;
-          if(sN>0&&sN%slotStep(res,m.base)===0) col.classList.add("smark");
+          if(slots[sN].first&&slots[sN].cell>0) col.classList.add("smark");
           col.addEventListener("pointerdown",()=>seekToPulse(viewFromPulse()+rel));
           const evs=sortStack((byT.get(t)||[]).slice(0,4),true);
           const lane=(list,split)=>{
