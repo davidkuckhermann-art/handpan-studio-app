@@ -6609,23 +6609,11 @@ function clearSlotMarks(){
    Works for both skins: the Table's slots and Flow's positions both carry
    [data-rel]. */
 function mkSpanBox(be,segS,segE){
-  /* COLLAPSE THE LANES FIRST. Four lanes share one beat and each draws the
-     same slot, so [data-rel] yields four elements per column. Without this
-     the neighbour at list[i-1] was the same slot's twin in another lane
-     rather than the PREVIOUS slot, and the "gutter midpoint" came out at the
-     column's own middle — a box starting mid-column and ending at the true
-     right gutter, i.e. half a slot wide (David, 31 Aug: "the marker is a 32nd
-     marker" over notes that are not 32nds). It is also why the misalignment
-     was intermittent: it depended on which lanes had drawn that slot. */
-  const by=new Map();
-  for(const el of be.querySelectorAll("[data-rel]")){
-    const r=el.getBoundingClientRect(); if(!(r.width>0)) continue;
-    const k=+el.dataset.rel, o=by.get(k);
-    if(o){ if(r.left<o.left) o.left=r.left; if(r.right>o.right) o.right=r.right; }
-    else by.set(k,{left:r.left,right:r.right});
-  }
-  const list=[...by.entries()].map(function(e){return {rel:e[0],r:e[1]}})
-    .sort((a,b)=>a.rel-b.rel);
+  /* one [data-rel] per column, a direct child of the beat, in all three skins
+     — a chord stack lives INSIDE its slot, so there are no twins to collapse */
+  const list=[...be.querySelectorAll("[data-rel]")]
+    .map(el=>({rel:+el.dataset.rel,r:el.getBoundingClientRect()}))
+    .filter(o=>o.r.width>0).sort((a,b)=>a.rel-b.rel);
   if(!list.length) return null;
   let i0=0, i1=0;
   for(let k=0;k<list.length;k++){
@@ -6633,8 +6621,20 @@ function mkSpanBox(be,segS,segE){
     if(list[k].rel<segE) i1=k;
   }
   if(i1<i0) i1=i0;
-  const box=be.getBoundingClientRect();
-  if(!box.width) return null;
+  /* THE PADDING BOX, NEVER THE BORDER BOX. `left`/`right` on an absolutely
+     positioned child resolve against the containing block, which is the
+     ancestor's PADDING edge — and .beat carries a 1px border, so measuring
+     getBoundingClientRect() put the origin a pixel out and made the width 2px
+     too wide. The marker then missed the hairline by a full pixel at the left
+     of a beat, fading to nothing at the right, which is exactly how it looked:
+     "sometimes the marker still misses the hairlines" (David, 31 Aug). The
+     midpoint itself was right all along — a slot's left minus half the gutter
+     is where the line's centre is, by construction. It was measured against
+     the wrong rectangle. */
+  const r=be.getBoundingClientRect(), cs=getComputedStyle(be);
+  const bl=parseFloat(cs.borderLeftWidth)||0, br=parseFloat(cs.borderRightWidth)||0;
+  const box={left:r.left+bl, right:r.right-br, width:r.width-bl-br};
+  if(!(box.width>0)) return null;
   /* an edge inside the cell sits in the GUTTER between two slots — empty by
      construction, and the same place the slot line is drawn */
   return {box:box,
@@ -6664,9 +6664,15 @@ function drawMarkBox(m,barI,s,e,scope){
     /* the FILL stops at the cell's edge and the BORDER reaches a pixel past it,
        so the lines show through the body while the edge lands on them (David,
        30 Aug). A span that reaches the cell's own edge sits on it at −1px. */
+    /* CENTRED ON THE MIDPOINT, exactly as the hairline is. The line carries a
+       "- 0.5px" in its own CSS because it is 1px wide and wants its CENTRE on
+       the gutter's middle; the marker's 1px border was being STARTED there
+       instead, so it sat half a pixel right of the line every time. Same
+       midpoint, same half-pixel, same result — the two are now the same
+       expression rather than two numbers kept in step. */
     const g=mkSpanBox(be,segS,segE);
-    d.style.left =(!g||g.L===null)?"-1px":(((g.L-g.box.left)/g.box.width*100)+"%");
-    d.style.right=(!g||g.R===null)?"-1px":(((g.box.right-g.R)/g.box.width*100)+"%");
+    d.style.left =(!g||g.L===null)?"-1px":(((g.L-0.5-g.box.left)/g.box.width*100)+"%");
+    d.style.right=(!g||g.R===null)?"-1px":(((g.box.right-g.R-0.5)/g.box.width*100)+"%");
     be.appendChild(d);
   }
 }
