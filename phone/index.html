@@ -1753,6 +1753,9 @@ body.tablet:not(.phone) .hside.hleft #backBtn{padding:3px 9px; font-size:13px;
 /* ---- the notation foot: arrangement left, Edit right ---- */
 body.tablet:not(.phone) #scorefoot{display:flex; align-items:center}
 body.tablet:not(.phone) #scorefoot #footL{display:none}
+/* …except in a jam, where it carries Chord settings and Breaks */
+body.tablet:not(.phone).jam #scorefoot #footL{display:flex; align-items:center;
+  gap:8px; margin-right:14px}
 body.tablet:not(.phone) #scorefoot #arrhost{margin-right:auto}
 body.tablet:not(.phone) #scorefoot #footEdit{margin-left:auto}
 /* ---- THE PLAYBACK DECK (David, 31 Aug): "the whole playback control button
@@ -10986,9 +10989,16 @@ function placeFlowStepper(){
      children of #scorewrap, which put them BELOW the card and hard left,
      because the absolute placement that saves them elsewhere is `body.phone`
      scoped and a tablet standing up wears no such class. */
-  const host=(PHONE&&!TABLET)?$("scorewrap"):(jamOn?$("footEdit"):$("scoreheadR"));
+  /* ON A TABLET THE CORNER IS THE CORNER, in every room (David, 31 Aug:
+     "let's stay consistent. A+/A- go to the top right next to generate, as
+     this is their position in the arranger as well"). The jam exception below
+     exists because on the DESKTOP the head is full in a jam — on a tablet it
+     is not any more, because the chord-settings and breaks doors have moved
+     down to the notation's foot. */
+  const jamFoot=jamOn&&!TABLET;
+  const host=(PHONE&&!TABLET)?$("scorewrap"):(jamFoot?$("footEdit"):$("scoreheadR"));
   if(!host||up.parentElement===host) return;
-  const ref=PHONE?null:(jamOn?host.firstChild:$("fsBtn"));
+  const ref=(PHONE&&!TABLET)?null:(jamFoot?host.firstChild:$("fsBtn"));
   host.insertBefore(dn,ref); host.insertBefore(up,ref);
 }
 function flowBump(d){
@@ -11046,6 +11056,18 @@ function placeJamPanel(){
      the extra chord tab… the chord selector shows the chords already"). Tie it
      to `chordRowOn` on a tablet and switching to Pan would take the selector
      away with no way back to it. Measured, by doing exactly that. */
+  /* THE JAM'S TWO DOORS SIT AT THE NOTATION'S BOTTOM LEFT ON A TABLET (David,
+     31 Aug), which is also what frees the head's corner for A−/A+. Outside a
+     jam they go home to the head, so nothing is left stranded in a foot that
+     the arranger fills with its arrangement. */
+  if(tabletPortrait()){
+    const fl=$("footL"), sb=$("jamSetBtn"), bb=$("brkBtn"), hr=$("scoreheadR");
+    if(fl&&sb&&bb){
+      if(jamOn){ fl.appendChild(sb); fl.appendChild(bb); }
+      else if(hr){ const g=$("genBtn"); hr.insertBefore(sb,g); hr.insertBefore(bb,g); }
+    }
+    try{ placeFlowStepper(); }catch(e){}
+  }
   const show=jamOn&&(tabletPortrait()||chordRowOn);
   jp.classList.toggle("hidden",!show);
   /* AND ON A TABLET THE CARD IS NOT THE SELECTOR'S TENANT EITHER (David, 31
@@ -15245,7 +15267,12 @@ function renderJamPanel(){
        was unreachable outside the phone. Inserted BEFORE #genBtn, which is
        static markup and keeps the corner. */
     const hr=$("scoreheadR");
-    if(hr){ hr.insertBefore(deep,$("jamSetBtn"));
+    /* ANCHORED ONLY IF THE ANCHOR IS STILL HERE. On a tablet the chord-settings
+       button has moved to the notation's foot by now (David, 31 Aug), and
+       insertBefore against a node that is not a child of `hr` THROWS — which
+       took the whole jam render down with it. */
+    if(hr){ const anch=$("jamSetBtn");
+      hr.insertBefore(deep,(anch&&anch.parentElement===hr)?anch:hr.firstChild);
       // the breaks group is never shown in the head — it lives in its sheet
       paintBrkBtn();
       if(brkRehome(deep.querySelector("#brkWrap"))) return;
@@ -18789,7 +18816,7 @@ function fitJamHead(){
      drops the setting it is stating, and only last does the generator give up
      its word. Every rung keeps its icon. */
   const bk=$("brkBtn"), gen=$("genBtn");
-  btn.innerHTML=face(TABLET?"Chords:":"Chord settings");   // the tablet starts short
+  btn.innerHTML=face("Chord settings");
   if(bk&&!bk.classList.contains("hidden")) bk.innerHTML=brkBtnFace(true);
   if(gen) gen.innerHTML="🎲 Generate";
   if(!tight()) return;
@@ -18830,11 +18857,12 @@ function paintJamSetBtn(){
      the voicings, the spice slider and Motion's own two controls, so the
      button now says what it opens rather than one of the things inside it.
      The short rung of fitJamHead's ladder stays "Chords". */
-  /* …and a TABLET says just "Chords:" (David, 31 Aug: "chord settings can be
-     shortened to just 'chords:' on tablet"). The head there already carries
-     the groove name, Breaks and Generate, so this is the label that can pay. */
+  /* The tablet said "Chords:" for an hour on 31 Aug, while these two buttons
+     were still crowding the head. They sit at the notation's foot now, where
+     there is room, so the full name is back — David: "can have full name
+     again". */
   b.innerHTML='<svg width="15" height="15"><use href="#is-chord"/></svg> '
-    +(TABLET?'Chords: ':'Chord settings ')+'<span class="dn">▾</span>';
+    +'Chord settings <span class="dn">▾</span>';
 }
 /* A RENDER WHILE THE SHEET IS OPEN hands it the NEW control and throws the
    stale one away — the same rule jamSetRehome follows, and for the same
