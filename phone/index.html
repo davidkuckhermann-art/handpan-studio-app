@@ -8483,7 +8483,12 @@ function render(){
   const sc=$("score"); sc.innerHTML="";
   // in jam the frame's label belongs to the groove selector beside it,
   // not to the one section the generated piece has (David, 26 Aug)
-  const sl=$("secLabel"); if(sl) sl.textContent=jamOn?"Groove browser:":(viewSec||"");
+  /* "Groove:" on a tablet (David, 31 Aug: "because we have a little less space
+     on tablets, let's shorten the label to simply 'groove:'") — the groove
+     button now sits beside it in the head, so the word "browser" was paying
+     for itself twice. */
+  const sl=$("secLabel");
+  if(sl) sl.textContent=jamOn?(TABLET?"Groove:":"Groove browser:"):(viewSec||"");
   if(view==="tab") renderTabView(sc);
   else if(view==="flow") renderFlowView(sc);
   else renderTableView(sc);
@@ -10972,8 +10977,16 @@ addEventListener("resize",()=>{ if(view==="flow"&&!PHONE){
    keeps the top-right corner, where fullscreen can always reach it */
 function placeFlowStepper(){
   const dn=$("fszDn"), up=$("fszUp"); if(!dn||!up) return;
-  // the phone hides head and foot both, so the pair rides the wrap's corner
-  const host=PHONE?$("scorewrap"):(jamOn?$("footEdit"):$("scoreheadR"));
+  /* the phone hides head and foot both, so the pair rides the wrap's corner —
+     a TABLET has both, so it takes the desktop's two homes (David, 31 Aug:
+     "A+/A- in flow notation should go top right of the notation table, next to
+     the edit button"). That is this function's existing rule, word for word:
+     the head's top-right corner, and in a jam — where the head is full — the
+     frame's foot beside Edit. On a tablet the pair had been left as static
+     children of #scorewrap, which put them BELOW the card and hard left,
+     because the absolute placement that saves them elsewhere is `body.phone`
+     scoped and a tablet standing up wears no such class. */
+  const host=(PHONE&&!TABLET)?$("scorewrap"):(jamOn?$("footEdit"):$("scoreheadR"));
   if(!host||up.parentElement===host) return;
   const ref=PHONE?null:(jamOn?host.firstChild:$("fsBtn"));
   host.insertBefore(dn,ref); host.insertBefore(up,ref);
@@ -15164,8 +15177,10 @@ function renderJamPanel(){
     try{ $("jamDlg").close(); }catch(e){}
     applyJam(); toast("Chords cleared — add or suggest to begin");
   });
-  // the desktop's copy lives in the notation head's right cell instead
-  if(PHONE) mk("🎲 Generate","Fill the whole progression with a fresh chord sequence",()=>jamGenerate());
+  // the desktop's copy lives in the notation head's right cell instead — and
+  // so does the tablet's (David, 31 Aug: "the generate button in this row can
+  // go, we have one in the notation table")
+  if(PHONE&&!TABLET) mk("🎲 Generate","Fill the whole progression with a fresh chord sequence",()=>jamGenerate());
   /* "Open in editor" LEFT THIS ROW on 28 Aug (David): both doors — the jam to
      the arrangement editor, the groove to the bench — are at the top of the
      share sheet now, where the jam's other whole-object actions live. */
@@ -15182,7 +15197,14 @@ function renderJamPanel(){
      the old one standing would stack a Narrow|Wide pair per repaint. */
   document.querySelectorAll(".jtoolbox,.jgroovebox,.jdeep").forEach(el=>el.remove());
   let jbox=null;
-  if(PHONE){
+  /* A TABLET TAKES THE DESKTOP'S ARRANGEMENT HERE (David, 31 Aug: "the
+     b/#/clear buttons should go into the chord selector row, like on
+     desktop"). It also repairs something the phone branch was quietly doing
+     wrong on a tablet: `deep` — the voicings and the breaks — was filed into
+     the DRAWER's "This jam" section, and a tablet has no drawer, so those
+     controls had no door at all. The desktop branch puts them in the notation
+     head instead, where a tablet can reach them. */
+  if(PHONE&&!TABLET){
     /* THE TWO KINDS OF CONTROL ARE SEPARATED (David, 27 Aug). The tools —
        ♭ ♯ Clear, Open in editor — ride their OWN line ABOVE the chord strip,
        pushed right, which puts them directly under the notation card (nothing
@@ -15247,7 +15269,7 @@ function renderJamPanel(){
   /* On the phone the button shares one line with ♭ ♯ Clear Generate, so it
      wears the groove's NAME only — no meter tag, no bar count (David, 28
      Aug). The browser behind it still shows both. */
-  cur.innerHTML=(PHONE?p.name:jamPatLabel(p))+" ▾";
+  cur.innerHTML=(PHONE&&!TABLET?p.name:jamPatLabel(p))+" ▾";
   cur.title="Choose a groove";
   cur.addEventListener("click",openGrooveDlg);
   /* the score frame's head is hidden on the phone, so the groove button rides
@@ -18745,7 +18767,10 @@ function fitJamHead(){
   /* …and the ladder can never un-hide it outside a jam either. `deep` is
      removed by leaveJam, so this returned early in practice — but the guard
      that matters is the state, not a side effect of another function. */
-  if(!deep||!btn||!hd||!hr||PHONE||!jamOn) return;
+  /* A TABLET RUNS THE LADDER TOO (David, 31 Aug). It takes the desktop's head
+     now, and without this the rung that UN-HIDES the button never ran — the
+     chord-settings door simply was not there. */
+  if(!deep||!btn||!hd||!hr||(PHONE&&!TABLET)||!jamOn) return;
   /* ONE BUTTON, ALWAYS (David, 29 Aug: "let's just go with the single button
      in general"). The measure-and-fold ladder is gone: the pair never sits in
      the head now, so the head cannot be crowded by it and the groove browser
@@ -18764,7 +18789,7 @@ function fitJamHead(){
      drops the setting it is stating, and only last does the generator give up
      its word. Every rung keeps its icon. */
   const bk=$("brkBtn"), gen=$("genBtn");
-  btn.innerHTML=face("Chord settings");
+  btn.innerHTML=face(TABLET?"Chords:":"Chord settings");   // the tablet starts short
   if(bk&&!bk.classList.contains("hidden")) bk.innerHTML=brkBtnFace(true);
   if(gen) gen.innerHTML="🎲 Generate";
   if(!tight()) return;
@@ -18805,8 +18830,11 @@ function paintJamSetBtn(){
      the voicings, the spice slider and Motion's own two controls, so the
      button now says what it opens rather than one of the things inside it.
      The short rung of fitJamHead's ladder stays "Chords". */
+  /* …and a TABLET says just "Chords:" (David, 31 Aug: "chord settings can be
+     shortened to just 'chords:' on tablet"). The head there already carries
+     the groove name, Breaks and Generate, so this is the label that can pay. */
   b.innerHTML='<svg width="15" height="15"><use href="#is-chord"/></svg> '
-    +'Chord settings <span class="dn">▾</span>';
+    +(TABLET?'Chords: ':'Chord settings ')+'<span class="dn">▾</span>';
 }
 /* A RENDER WHILE THE SHEET IS OPEN hands it the NEW control and throws the
    stale one away — the same rule jamSetRehome follows, and for the same
@@ -21153,6 +21181,8 @@ function placeTabletControls(){
     tl.append($("bpmCtl"),$("halfBtn"));          // tempo and rate
     tr.append($("countBtn"),$("metBtn"),$("markBtn"));   // pre-roll and click
   }
+  try{ placeFlowStepper(); }catch(e){}        // A−/A+ take their desktop homes
+  if(jamOn) try{ fitJamHead(); }catch(e){}   // the head carries the groove now
   setDrawer(false);                          // a tablet has no drawer
   fitTabletChip(); fitTabletArrLabel();      // …after every move above
 }
