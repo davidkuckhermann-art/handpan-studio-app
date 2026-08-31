@@ -9059,6 +9059,18 @@ function phoneFit(){
      zooming it down was never the point. The Flow window still wants sizing,
      and that is the desktop's own routine. */
   if(tabletPortrait()){
+    /* AND IT CLEARS UP AFTER LANDSCAPE FIRST (David, 31 Aug: "when I switch
+       from landscape back to vertical, the formatting of the notation table is
+       messed up"). This return stands BEFORE the lines that reset the card, so
+       a tablet turned upright kept the zoom, the design width, the box and the
+       wrap's padding that the landscape fit had left on it — measured after one
+       rotation: zoom 2.397, width 561px, minHeight 390px, landbox still on, and
+       a card 1346px wide in a 1024px window. */
+    const scT=$("scorecard"), wrapT=$("scorewrap"), musT=$("score");
+    if(scT){ scT.style.zoom=""; scT.style.width=""; scT.style.minHeight="";
+             scT.classList.remove("landbox"); }
+    if(wrapT) wrapT.style.paddingTop="";
+    if(musT){ musT.style.maxHeight=""; musT.style.minHeight=""; }
     try{ flowDeskFit(); }catch(e){}
     /* the two "does it still fit" rules live here because render() calls
        phoneFit, so they are re-asked whenever the content or the width
@@ -9150,6 +9162,15 @@ function phoneFit(){
          0.35, which is why it alone overflowed the band and slid 2px under
          the transport — an overflow is worse than a small glyph, and the
          floor is a guard against nothing, not a design size. */
+      /* THE CEILING IS NOT A GUESS — it is the design floor in disguise, and
+         raising it for the tablet was tried on 31 Aug and reverted the same
+         hour. `.score` carries `min-width:540px`, so once `W/z` falls under
+         540 the width clamps and the card renders 540×z wide: at z=6 that is
+         3240px of table on a 1366px screen, glyphs overlapping. The largest
+         honest zoom is W/540 — on a 1346px window, 2.49. So 2.4 already IS
+         the limit, and the air a tablet's landscape leaves above and below a
+         short table cannot be closed by zooming; it would take taller ROWS.
+         See HANDOVER. */
       z=Math.max(0.25,Math.min(2.4,availH/natH));
       sc.style.width=(W/z)+"px";
     }
@@ -10117,8 +10138,23 @@ function renderPanPanelInner(){
   const box=$("panbox");
   // the phone's editor lives in the pinned deck, not the pan card — the card
   // would render under a hidden #belowrow anyway (26 Aug, ABC'd)
-  $("panwrap").classList.toggle("hidden",(PHONE&&editing)||!(panOn||editing));
-  if(editing){ if(PHONE){ paintEditDeck(); return; } renderEditbar(); return; }
+  /* THE PAN CARD IS THE EDITOR'S KEYBOARD on the desktop — renderEditbar
+     draws the input pan and the palettes into #panbox — and the phone hides it
+     while editing because it has #editdeck instead. A TABLET STANDING UP HAS
+     NEITHER: the deck is `body.phone` scoped and it wears no such class, so
+     editing turned on with a cursor ring, a hand badge and no way whatsoever
+     to enter a note (David, 31 Aug: "the editors don't seem to work on
+     tablet"). It takes the desktop's side of this. */
+  $("panwrap").classList.toggle("hidden",
+    (PHONE&&!tabletPortrait()&&editing)||!(panOn||editing));
+  /* …and the same fork one line down: the tablet must draw the DESKTOP's
+     editor into this card, not paint a deck that is not on screen. Showing the
+     card without this drew the read-only player pan — the notes were there to
+     tap and tapping placed nothing. */
+  if(editing){
+    if(PHONE&&!tabletPortrait()){ paintEditDeck(); return; }
+    renderEditbar(); return;
+  }
   if(!panOn){ box.innerHTML=""; return; }
   box.innerHTML="";
   box.style.setProperty("--panzoom",panZoom);
@@ -12155,22 +12191,66 @@ function edPasteAt(rel0){
   const m=SM(piece,viewSec), sec=piece.sections[viewSec];
   const total=sec.bars.length*m.bp;
   if(rel0>=total){ toast("Nothing here to paste into"); return; }
+  /* CONVERT THE GRID FIRST, snapping to the nearest slot — David's call on 31
+     Aug, with the trade-off stated: a phrase that does not divide evenly comes
+     out moved rather than refused. So it is COUNTED and reported: silence is
+     the failure mode this check exists to prevent, and a toast that says how
+     many notes moved costs nothing. */
+  const fromSub=edClip.sub||m.sub, k=m.sub/fromSub;
+  let moved=0;
+  let evs=edClip.ev.map(e=>{
+    const exact=e.t*k, t=Math.round(exact);
+    if(Math.abs(exact-t)>1e-9) moved++;
+    return Object.assign({},e,{t});
+  });
+  let span=Math.max(1,Math.round(edClip.span*k));
+  let dropped=0;
+  if(grooveEdit){
+    /* A GROOVE IS AT MOST FOUR BARS, and paste may not quietly trim a phrase
+       to fit one (David, 31 Aug: "only be possible if the pasted sequence is
+       short enough … otherwise there can be an error message"). Everywhere
+       else the old clamp still applies. */
+    if(rel0+span>total){
+      toast("That phrase is longer than this groove — make room or shorten the loop");
+      return;
+    }
+    /* AND A GROOVE'S NOTES ARE CHORD DEGREES, not pitches — the same rule
+       placeField enforces for a note tapped by hand. David chose "paste what
+       fits, report the rest", so the tones land and the strangers are counted.
+       Percussion and ghosts are not chord tones and pass through untouched. */
+    const def=(jamDefs().byName||{})[grooveEdit.ref];
+    const pcs=(def&&def.pcs)||[];
+    if(pcs.length) evs=evs.filter(e=>{
+      if(e.v!=="field") return true;
+      const ok=pcs.includes(jpc(myPan.posMidi(e.f)));
+      if(!ok) dropped++;
+      return ok;
+    });
+    // grooves carry no articulation
+    evs=evs.map(e=>{ const c=Object.assign({},e); delete c.art; return c; });
+  }
   snapshot();
-  const span=Math.min(edClip.span,total-rel0);
+  let clipped=0;
+  if(span>total-rel0){ clipped=span-(total-rel0); span=total-rel0; }
   for(let bi=0;bi<sec.bars.length;bi++){            // clear the target span
     const b0=bi*m.bp;
     sec.bars[bi]=sec.bars[bi].filter(e=>{
       const r=b0+e.t; return r<rel0||r>=rel0+span; });
   }
   let wrote=0;
-  for(const ev of edClip.ev){
+  for(const ev of evs){
     const r=rel0+ev.t; if(r>=rel0+span) continue;
     const bi=Math.floor(r/m.bp); if(bi>=sec.bars.length) continue;
     sec.bars[bi].push(Object.assign({},ev,{t:r-bi*m.bp}));
     wrote++;
   }
   refresh();
-  toast(wrote?("Pasted "+wrote+(wrote===1?" note":" notes")):"Pasted an empty stretch");
+  const notes=wrote?("Pasted "+wrote+(wrote===1?" note":" notes")):"Pasted an empty stretch";
+  const said=[notes];
+  if(moved)   said.push(moved+" moved to fit this grid");
+  if(dropped) said.push(dropped+" not in "+grooveEdit.ref);
+  if(clipped) said.push("cut short at the end");
+  toast(said.join(" · "));
 }
 /* the loop as WHOLE BARS of the section on screen, or null if either end
    falls between barlines */
@@ -12202,7 +12282,12 @@ function edCopyLoop(){
     const r=bi*m.bp+e.t;
     if(r>=r0&&r<r1) ev.push(Object.assign({},e,{t:r-r0}));
   }});
-  edClip={span:r1-r0, ev};
+  /* THE GRID TRAVELS WITH THE NOTES (David, 31 Aug). `t` is in PULSES on the
+     SOURCE section's grid — bp = beats × sub — and paste re-divides by the
+     TARGET's. Same sub, faithful; different sub, every note silently lands on
+     the wrong beat. Copy is global now, so a jam groove and a written piece
+     routinely differ here. Recording the grid is what lets paste convert. */
+  edClip={span:r1-r0, ev, sub:m.sub, beats:m.beats};
   const bars=(r1-r0)/m.bp;
   toast("Copied "+(Number.isInteger(bars)&&bars>=1
     ?bars+(bars===1?" bar":" bars"):(r1-r0)+" slots")
@@ -12215,7 +12300,11 @@ function edPopAt(x,y){
   const c=cellAtPoint(x,y);
   if(!c){ return; }
   const inLoop=!!loopSec&&c.from>=loopSec.from&&c.to<loopSec.to;
-  const canCopy=inLoop, canPaste=!!edClip;
+  /* COPY ANYWHERE THERE IS NOTATION AND A LOOP (David, 31 Aug). It only reads,
+     so there is nothing to protect. PASTE stays in the editors, because it
+     writes — and a jam's table is rebuilt from the chord progression on every
+     change, so notes pasted into one would vanish at the next regeneration. */
+  const canCopy=inLoop, canPaste=!!edClip&&editing;
   /* THE MENU ALWAYS ANSWERS (David, 27 Aug — he reported copy/paste "not
      working" in the arrangement editor, and the truth was that with no loop
      and an empty clipboard the press showed NOTHING, which is indistinguishable
@@ -12229,7 +12318,8 @@ function edPopAt(x,y){
     pop.appendChild(b); };
   mk("Copy",edCopyLoop,canCopy,
     loopSec?"Press inside the loop to copy it":"Loop the bars you want to copy first");
-  mk("Paste",()=>edPasteAt(c.from-viewFromPulse()),canPaste,"Copy something first");
+  mk("Paste",()=>edPasteAt(c.from-viewFromPulse()),canPaste,
+    edClip?"Paste in the arrangement or groove editor":"Copy something first");
   // whole bars can be removed outright (David, 27 Aug) — only when the loop
   // sits ON the barlines, since half a bar is not a bar to delete
   const bars=edLoopBars();
@@ -20114,9 +20204,11 @@ function phoneTouchNav(){
         if(!clearIfNoDrag){ loopSec={from:c.from,to:c.to}; paintLoopFrame(); }
       }
     }
-    // a long press in the editor offers copy and paste (David, 27 Aug)
+    // a long press offers copy and paste — in EVERY room now (David, 31 Aug:
+    // "let's make copying available anywhere where there is notation and you
+    // can set a loop"). The menu itself greys what this room cannot do.
     clearTimeout(holdT);
-    if(editing&&!dbl){
+    if(!dbl){
       const hx=e.clientX, hy=e.clientY;
       holdT=setTimeout(()=>{ if(id!==null&&mode===null){ mode="held"; edPopAt(hx,hy); } },HOLD);
     }
@@ -20284,7 +20376,6 @@ function mouseLoopNav(){
   wrap.addEventListener("pointercancel",()=>{ id=null; blocked=false; refused=false; },true);
   // right-click in the editor is the mouse's long press: copy and paste
   wrap.addEventListener("contextmenu",e=>{
-    if(!editing) return;
     e.preventDefault(); edPopAt(e.clientX,e.clientY);
   });
   wrap.addEventListener("dblclick",e=>{
