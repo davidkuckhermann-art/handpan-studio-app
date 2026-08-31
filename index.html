@@ -9521,6 +9521,17 @@ function buildCountRow(m,cls,bres){
 const BEATGAP=0, LIFT=.4, FLOORG=.42;
 function fitBeatGlyphs(root){
   for(const be of root.querySelectorAll(".beat")){
+    /* START FROM NOTHING (David, 31 Aug: rotating landscape→portrait left the
+       notes at their landscape size). This writes inline sizes from measured
+       widths, so on a second run it would read its OWN last answer as the base
+       and shrink again — and the sizes it left behind were measured against a
+       screen that is no longer there. Clearing first makes the pass idempotent,
+       which is what lets it be called on rotation instead of only on render. */
+    for(const q of be.querySelectorAll(".sym")){
+      q.style.fontSize=""; q.style.top=""; q.style.position="";
+    }
+    for(const sl of be.children)
+      sl.classList.toggle("smark",sl.dataset.sm==="1");
     const ink=[];
     for(const sl of be.children){
       let w=0,c=0,el=null;
@@ -9565,6 +9576,14 @@ function fitBeatGlyphs(root){
     dropCrossedLines(be);
   }
   root.querySelectorAll(".beat").forEach(dropCrossedLines);
+}
+/* THE SIZES BELONG TO A WIDTH, SO THEY ARE RETAKEN WHEN THE WIDTH CHANGES.
+   The phone refits on rotation rather than re-rendering, so nothing rebuilt the
+   glyph sizes and a portrait screen wore the landscape ones. Flow is not here:
+   it re-renders through flowFit, which measures and packs from scratch. */
+function refitScore(){
+  if(view==="flow"||editing) return;
+  const sc=$("score"); if(sc) fitBeatGlyphs(sc);
 }
 /* the slot line is drawn at left:-3px of its slot and is 1px wide, so it sits
    three pixels BEFORE the edge, out in the gutter — testing the edge instead of
@@ -9641,8 +9660,10 @@ function renderTableView(sc){
           const t=slots[sN].t, rel=bi*m.bp+t;
           const sl=document.createElement("div"); sl.className="slot"; sl.dataset.rel=rel;
           /* the slot line marks the GROOVE's grid — the start of each
-             sixteenth, never a division inside one */
-          if(slots[sN].first&&slots[sN].cell>0) sl.classList.add("smark");
+             sixteenth, never a division inside one. Recorded on the element as
+             well as set, because dropCrossedLines takes some of them away and a
+             refit has to know which ones were there to begin with. */
+          if(slots[sN].first&&slots[sN].cell>0){ sl.classList.add("smark"); sl.dataset.sm="1"; }
           const _n=(byT.get(t)||[]).length;
           if(_n) sl.classList.add(_n===1?"n1":_n===2?"n2":"n3");
           const evs=sortStack((byT.get(t)||[]).slice(0,4),false);
@@ -10702,7 +10723,7 @@ function renderTabView(sc){
         for(let sN=0;sN<slots.length;sN++){
           const t=slots[sN].t, rel=bi*m.bp+t;
           const col=document.createElement("div"); col.className="slot tcol"; col.dataset.rel=rel;
-          if(slots[sN].first&&slots[sN].cell>0) col.classList.add("smark");
+          if(slots[sN].first&&slots[sN].cell>0){ col.classList.add("smark"); col.dataset.sm="1"; }
           col.addEventListener("pointerdown",()=>seekToPulse(viewFromPulse()+rel));
           const evs=sortStack((byT.get(t)||[]).slice(0,4),true);
           const lane=(list,split)=>{
@@ -19808,7 +19829,7 @@ function boot(){
       toast("Video size reset"); });
     // a height stored on a large window must not swallow a small one
     window.addEventListener("resize",applyVidH);
-  window.addEventListener("resize",()=>{ if(!PHONE){ fitFooter(); fitHeader(); } });
+  window.addEventListener("resize",()=>{ if(!PHONE){ fitFooter(); fitHeader(); refitScore(); } });
   /* The first fit runs before the webfonts land, so it measures a narrower
      footer than the one that ends up on screen and never sheds — the same trap
      fitTitle() has. Measure again once the real fonts are in, and once more on
@@ -21665,12 +21686,14 @@ if(PHONE){ // refit on rotation / viewport changes (debounced — zoom relayouts
        before the swap would be measuring the layout we are leaving. */
     syncTabletSkin();
     placePhoneControls(); phoneFit();
+    refitScore();           // the notes were sized for the screen we just left
     fitDrawerTopRow();      // "Count-in" ↔ "Count" follows the width, not just the open
     fitPanRow();            // …and so does "My pan" on the jam bar
   },80); };
   window.addEventListener("resize",pf);
   // iOS reports the OLD dimensions during orientationchange, so fit again after
-  window.addEventListener("orientationchange",()=>{ pf(); setTimeout(phoneFit,260); });
+  window.addEventListener("orientationchange",()=>{ pf();
+    setTimeout(()=>{ phoneFit(); refitScore(); },260); });
   // belt and braces: neither event is reliable in a standalone iOS web app, and
   // a missed one leaves the landscape sizing applied to a portrait screen
   const mq=matchMedia("(orientation:landscape)");
