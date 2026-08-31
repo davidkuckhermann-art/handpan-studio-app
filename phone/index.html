@@ -3125,13 +3125,30 @@ body.phone #report:not(.hidden){position:fixed; left:10px; right:10px;
   box-shadow:var(--shadow)}
 /* — the title is the door (his pick of the navigation ideas): a ▾ beside
      the name opens the room switcher */
-#roomBtn{display:none}
-/* a BUTTON, not a whisper (David, 31 Aug: "you can hardly see it, because
-   the only graphical element is a tiny arrow") — the chevron sits in a
-   small recessed circle, the Studio track's own material */
-body.phone #roomBtn{display:inline-grid; place-items:center; width:28px;
-  height:28px; border:none; border-radius:50%; background:var(--rule2);
-  color:var(--ink2); font-size:13px; flex:none; margin-left:2px}
+/* THE ROOM TRACK (David, 31 Aug, from mockups-roomtrack.html: "not a bad
+   idea, but there is no space with undo and back buttons" → undo/redo moved
+   to the bench, and the track fits). Where-am-I as a POSITION: four slots
+   in the desktop's order, the current room a raised pill wearing its name,
+   the rest dots. Replaces the chevron; the Learn slot opens the two-quiz
+   choice. */
+#roomTrack{display:none}
+body.phone #roomTrack{display:inline-flex; align-items:center; gap:5px;
+  background:var(--rule2); border-radius:999px; padding:4px 7px; flex:none;
+  margin-left:2px}
+#roomTrack .rslot{border:none; background:none; padding:0; position:relative;
+  display:inline-grid; place-items:center; width:10px; height:18px}
+#roomTrack .rslot::before{content:""; width:6px; height:6px; border-radius:50%;
+  background:var(--rule-strong)}
+#roomTrack .rslot .rname{display:none}
+#roomTrack .rslot.now{width:auto; background:var(--card); border-radius:999px;
+  padding:2px 9px; box-shadow:0 1px 2px rgba(var(--sh),.14)}
+#roomTrack .rslot.now::before{display:none}
+#roomTrack .rslot.now .rname{display:inline; font-size:11px; font-weight:700;
+  letter-spacing:.04em; color:var(--ink)}
+#roomTrack .rslot::after{content:""; position:absolute; inset:-9px}  /* a finger's hit */
+/* undo and redo are BENCH residents on the phone now — .ib faces beside ⌫ */
+body.phone #edLaneHead #undoBtn, body.phone #edLaneHead #redoBtn{
+  width:32px; height:32px; padding:0; justify-content:center; border-radius:9px}
 #roomDlg .rroom{display:flex; width:100%; justify-content:center;
   margin-bottom:8px}
 /* POCKET ZONES E: the section chip beside the view tabs — the arrangement
@@ -3180,8 +3197,12 @@ body.phone header #setBtn{display:none !important}
   body.phone #menuBtn{display:grid; width:52px; border-radius:11px}
   body.phone #menuBtn svg{width:21px; height:21px}
   body.phone .brand{display:none !important}
-  body.phone header{gap:8px; margin-bottom:4px}
-  body.phone #title{flex:1 1 auto; min-width:0; font-size:17px}
+  /* NOWRAP since the room track arrived (31 Aug): the header must SHRINK the
+     title, not fold the menu button onto a second line — fitTitle's pixel
+     width is a wish, the row's width is the law */
+  body.phone header{gap:8px; margin-bottom:4px; flex-wrap:nowrap}
+  body.phone #title{flex:1 1 auto; min-width:54px; font-size:17px;
+    overflow:hidden; text-overflow:ellipsis}
   body.phone #viewrow{margin:4px 0 6px}
   /* by id, not by adjacency: the mode bar now sits between the header and
      this row, and `header+.row` quietly stopped matching (26 Aug) */
@@ -12880,8 +12901,18 @@ function paintEditDeck(){
   const bar=Math.floor(cursor/m.bp), inBar=cursor-bar*m.bp;
   const winStart=bar*m.bp+Math.floor(inBar/winBP)*winBP;
   const b0=Math.floor((winStart-bar*m.bp)/m.sub);
-  $("edLaneLab").textContent=viewSec+" · Bar "+(bar+1)+" of "+sec.bars.length
-    +(winBP<m.bp?" · beats "+(b0+1)+"–"+Math.min(m.beats,b0+winBeats):"")+" ▾";
+  {
+    /* THE LABEL FOLDS (31 Aug): with undo/redo in this row, the words give
+       way rung by rung — beats first (the strip's cells already print their
+       beat numbers), then "Bar x of y" shrinks to x/y. The ▾ survives every
+       rung; it is the door to Sections. */
+    const lab=$("edLaneLab"), head=$("edLaneHead");
+    const beats=(winBP<m.bp?" · beats "+(b0+1)+"–"+Math.min(m.beats,b0+winBeats):"");
+    const tight=()=>head.scrollWidth>head.clientWidth+1;
+    lab.textContent=viewSec+" · Bar "+(bar+1)+" of "+sec.bars.length+beats+" ▾";
+    if(tight()) lab.textContent=viewSec+" · Bar "+(bar+1)+" of "+sec.bars.length+" ▾";
+    if(tight()) lab.textContent=viewSec+" · "+(bar+1)+"/"+sec.bars.length+" ▾";
+  }
   const box=$("edCells"); box.innerHTML="";
   box.style.gridTemplateColumns="repeat("+winBeats+",minmax(0,1fr))";
   const data=sec.bars[bar]||[], byT=new Map();
@@ -16235,18 +16266,24 @@ function renderJamPanel(){
        and Generate keep the chord band's right cluster. `tools` is rebuilt
        every render, so last render's copy leaves first (leaveJam sweeps the
        foot too), and the cluster's order is enforced here every render —
-       a restored jam renders before the boot block runs. */
-    const jtl=$("jamTools");
-    if(jtl){ jtl.querySelectorAll(".jtools").forEach(e=>e.remove());
-      const sb2=$("jamSetBtn"), gb2=$("genBtn");
-      if(sb2) jtl.appendChild(sb2);
-      if(gb2) jtl.appendChild(gb2); }
-    const fe=$("footEdit");
-    document.querySelectorAll("#scorefoot .jtools").forEach(e=>e.remove());
-    if(fe){ const eb=$("editBtn");
-      if(eb&&eb.parentElement===fe) fe.insertBefore(tools,eb);
-      else fe.appendChild(tools); }
-    else prog.appendChild(tools);
+       a restored jam renders before the boot block runs.
+       PURE DESKTOP ONLY: the TABLET reaches this same render branch (it has
+       no drawer) but keeps its own placements — adopting genBtn into
+       #jamTools here is what made the tablet's return-to-head
+       insertBefore(sb, genBtn) throw and take the jam render down. */
+    if(!PHONE){
+      const jtl=$("jamTools");
+      if(jtl){ jtl.querySelectorAll(".jtools").forEach(e=>e.remove());
+        const sb2=$("jamSetBtn"), gb2=$("genBtn");
+        if(sb2) jtl.appendChild(sb2);
+        if(gb2) jtl.appendChild(gb2); }
+      const fe=$("footEdit");
+      document.querySelectorAll("#scorefoot .jtools").forEach(e=>e.remove());
+      if(fe){ const eb=$("editBtn");
+        if(eb&&eb.parentElement===fe) fe.insertBefore(tools,eb);
+        else fe.appendChild(tools); }
+      else prog.appendChild(tools);
+    } else prog.appendChild(tools);   // the tablet's tools ride the chip row, as before
     /* THE VOICINGS GO TOP RIGHT, beside 🎲 Generate (David, 28 Aug) — the
        head's jam-only cell, level with the play button. Until now `deep` was
        built on every desktop render and attached to nothing, so Narrow|Wide
@@ -17470,6 +17507,7 @@ function paintEditDoors(){
   ["edSwLab","edSwitch","edDoneBtn"].forEach(id=>{
     const e=$(id); if(e) e.classList.toggle("hidden",!show);
   });
+  if(typeof paintRoomTrack==="function") paintRoomTrack();   // Edit lights its slot
   /* THE CHORDS TAB RESTS IN THE EDITORS (David, 31 Aug) — here rather than
      in the Edit toggle's handler, so the bench's own entry paths disable it
      too. The phone's editBtn branch still rests BOTH tabs, as before.
@@ -17508,6 +17546,7 @@ function updatePracticeBtn(){
   if(ml) ml.classList.toggle("on",quizOn||rqOn||learnOn);
   // a hook for anything that needs to know, now that the tint is gone
   document.body.classList.toggle("inpractice",on);
+  if(typeof paintRoomTrack==="function") paintRoomTrack();   // the pill walks
   // the phone's way out: a ✕ beside the title that already names the mode
   /* THE ✕ IS GONE EVERYWHERE (David, 30 Aug — first from the editors, "people
      can go back by clicking on the active edit button", then from jam and the
@@ -22818,24 +22857,47 @@ if(PHONE){
   }
   { const sc=$("secChip");
     if(sc) sc.addEventListener("click",()=>{ setDrawer(true); placeDrawer(); }); }
-  /* the title's ▾ and its room switcher (David's pick, 31 Aug) */
+  /* THE ROOM TRACK (31 Aug) — the ▾-and-sheet switcher's successor; the
+     sheet (roomDlg) stays in the DOM, unopened. Slots delegate to the same
+     hidden doors the ⋮ menu uses, so every exit guard holds. The Learn slot
+     opens the existing two-quiz chooser. */
   {
-    const rb=document.createElement("button");
-    rb.id="roomBtn"; rb.textContent="▾";
-    rb.title="Switch rooms"; rb.setAttribute("aria-haspopup","dialog");
+    const rt=document.createElement("span"); rt.id="roomTrack";
+    rt.setAttribute("role","group"); rt.setAttribute("aria-label","Rooms");
+    rt.innerHTML=["Practice","Jam","Edit","Learn"].map((n,i)=>
+      '<button class="rslot" data-r="'+i+'" aria-label="'+n+'">'
+      +'<span class="rname">'+n+'</span></button>').join("");
     const t=$("title");
-    if(t&&t.parentNode) t.parentNode.insertBefore(rb,t.nextSibling);
-    rb.addEventListener("click",()=>{
-      const lit={rmPractice:!jamOn&&!quizOn&&!rqOn&&!editing,
-        rmJam:jamOn, rmEdit:!!editing, rmQuiz:!!quizOn, rmRhythm:!!rqOn};
-      for(const id in lit){ const b=$(id); if(b) b.classList.toggle("on",lit[id]); }
-      openDlg($("roomDlg"));
+    if(t&&t.parentNode) t.parentNode.insertBefore(rt,t.nextSibling);
+    const roomNow2=()=>((typeof editing!=="undefined"&&editing)?2
+      :(jamOn?1:((quizOn||rqOn)?3:0)));
+    rt.addEventListener("click",e=>{
+      const b=e.target.closest(".rslot"); if(!b) return;
+      const i=+b.dataset.r;
+      if(i===roomNow2()&&i!==3) return;      // the cards always ENTER, never eject
+      if(i===0) $("navArr").click();
+      else if(i===1) $("jamModeBtn").click();
+      else if(i===2) $("navEdit").click();
+      else {
+        $("pcQuiz").classList.toggle("on",!!quizOn);
+        $("pcRhythm").classList.toggle("on",!!rqOn);
+        openDlg($("practiceDlg"));
+      }
     });
-    const go=(id,doorId)=>$(id).addEventListener("click",()=>{
-      $("roomDlg").close(); $(doorId).click(); });
-    go("rmPractice","navArr"); go("rmJam","jamModeBtn");
-    go("rmEdit","navEdit"); go("rmQuiz","quizModeBtn"); go("rmRhythm","rqModeBtn");
+    window.paintRoomTrack=function(){
+      const cur=roomNow2();
+      [...rt.children].forEach((el,i)=>el.classList.toggle("now",i===cur));
+    };
+    paintRoomTrack();
     $("roomClose").addEventListener("click",()=>$("roomDlg").close());
+  }
+  /* UNDO AND REDO MOVE TO THE BENCH (31 Aug: "there is no space with undo
+     and back buttons") — they are edit actions and sit beside ⌫, where the
+     writing thumb is; Back stays in the header as the way out. The tablet
+     keeps its desktop-style header pair. */
+  if(!TABLET){
+    const lh=$("edLaneHead"), lb=$("edLoopBar");
+    if(lh&&lb){ lh.insertBefore($("undoBtn"),lb); lh.insertBefore($("redoBtn"),lb); }
   }
   /* the phone's Library face is the mockups' card-index too (David, 31 Aug) */
   $("shareBtn").innerHTML='<span aria-hidden="true" style="font-size:16px">🗂</span>';
