@@ -1162,9 +1162,12 @@ body.editing #fsBtn,body.gedit #fsBtn{display:none}
 /* THE COURSE BULB (31 Aug, David) — shown only when the loaded piece carries
    an embedded link. The FRAME wears the marker's amber; the glyph's yellow
    head lives in the symbol itself (his design: amber frame, yellow-headed
-   bulb). Desktop only for now — the phone/tablet home is not decided — and
-   the editors hide it along with fullscreen: an editing session is not a
-   lesson. */
+   bulb). Desktop only for now — the phone/tablet home is not decided.
+   It does NOT hide in the editors (David, 31 Aug: "always active when a
+   piece with embedded link is open") — the edited piece is still that piece,
+   and the bulb lives in the header now, not the notation frame. A jam or
+   groove workbench hides it the honest way: those swap the piece for one
+   without a link. */
 /* the bulb stands FIRST IN THE RIGHT ZONE with an auto margin pushing the
    rest of the cluster away — so it hugs the bay's right side visually while
    living inside a zone. A sibling BETWEEN the zones was tried and rejected
@@ -1174,7 +1177,6 @@ body.editing #fsBtn,body.gedit #fsBtn{display:none}
    undo cluster at 1024 (measured). In the zone the bay stays dead centre and
    the bulb compresses and wraps with the header like every other control. */
 #linkBtn{border-color:var(--dixie); margin-right:auto}
-body.editing #linkBtn,body.gedit #linkBtn{display:none}
 body.phone #linkBtn,body.tablet #linkBtn{display:none !important}
 body.fs #scorewrap{background:var(--paper); overflow:auto; padding:16px;
   scrollbar-gutter:stable}
@@ -1602,7 +1604,10 @@ body.phone{--btpad:.12em}
 .slot.haschord{padding-top:12px}
 
 /* ---- chord row ---- */
-#chordwrap{overflow-x:auto; margin-top:10px; padding-bottom:4px; max-width:980px; text-align:center}
+/* no margin of its own: the distance to the notation frame is #belowrow's
+   alone, ONE number for every card under it (David, 31 Aug — the chord and
+   pan cards sat at different distances) */
+#chordwrap{overflow-x:auto; padding-bottom:4px; max-width:980px; text-align:center}
 .chordframe{min-width:0; display:inline-block; padding:12px 18px 14px}
 /* THE CHORD WINDOW: fields STACKED, each card as tall as its own chord
    (David, 26 Aug — stretching them to a common height left air above the
@@ -4331,7 +4336,12 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 <!-- what the bulb opens: the invitation, and the door to the course -->
 <dialog id="linkDlg">
   <h3><svg width="16" height="16" style="vertical-align:-2px"><use href="#is-bulb"/></svg> Course available</h3>
-  <p style="margin:0 0 14px">Learn to play this composition in your <b>Master the Handpan</b> course.</p>
+  <!-- THIS MARKUP IS THE DEFAULT TEXT (David, 31 Aug) — boot captures it
+       before any piece can repaint it, the Embed dialog's field prefills
+       from its textContent, and a piece with its own linkText replaces it
+       (as textContent, never markup: the snippet is the author's plain
+       words). One source, three readers. -->
+  <p style="margin:0 0 14px" id="linkMsg">Learn to play this composition in your <b>Master the Handpan</b> course.</p>
   <div class="row" style="margin:0">
     <button class="ctl on" id="linkGo">Open course</button>
     <span class="spacer"></span>
@@ -4347,6 +4357,10 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     link shows the bulb in the notation&#8217;s corner.</p>
   <div class="row"><span class="lab">Link</span>
     <input type="text" id="linkUrl" placeholder="https://…" style="flex:1"></div>
+  <!-- the SNIPPET the popup will say (David, 31 Aug) — prefilled with the
+       default sentence so what you read here is what students read there -->
+  <div class="row" style="align-items:flex-start"><span class="lab" style="padding-top:6px">Text</span>
+    <textarea id="linkTxt" style="flex:1;min-height:56px;font-family:inherit;font-size:13px"></textarea></div>
   <div class="row"><button class="ctl on" id="linkSave">Save</button>
     <button class="ctl" id="linkRemove">Remove link</button>
     <span class="spacer"></span><button class="ctl" id="linkEditClose">Cancel</button></div>
@@ -9053,6 +9067,53 @@ function flowFollow(){
    whatever stands under the card — its footer, the companion card, the
    transport — so the whole page still fits one screen and the music scrolls
    within it. "Full page" opts out, and fullscreen measures its own wrap. */
+/* THE WINDOW ENDS ON A WHOLE ROW (David, 31 Aug: "The chord tab should
+   always sit right below the notation table" — and, on robustness, "the
+   frame should be the relevant object, not the notation sitting inside
+   it"). A Flow window whose ceiling cuts through a row leaves a sliver —
+   a bar number with its music below the fold — and whatever sits under
+   the frame reads as floating far below the last drawn note.
+
+   So the FRAME trims itself to the last whole block that fits, and it is
+   deliberately notation-blind: it walks the scroller's element tree and
+   never names a Flow class. Rebuild the notation and this still holds —
+   any stacked layout has children with bottoms. Bottoms are read in
+   CONTENT coordinates, so a scrolled or clipped stream measures the same
+   as a fresh one.
+
+   The one structural rule it trusts: DESCEND THROUGH BLOCKS THAT STACK,
+   NEVER BREAK INSIDE A HORIZONTAL BAND. A child that overflows is asked
+   for its own children only if those children sit at different heights —
+   a band's cells all share a top, and a cut through a band is the sliver
+   this exists to remove, whatever the band contains.
+
+   If everything fits, the ceiling is returned untouched (the box already
+   hugs its content). If not even one block fits, the ceiling is returned
+   too — a mid-block cut beats a zero-height window. */
+function snapFlowWindow(mus,h){
+  const origin=mus.getBoundingClientRect().top-mus.scrollTop;
+  const stacked=el=>{
+    let t=null;
+    for(const k of el.children){
+      const r=k.getBoundingClientRect(); if(!r.height) continue;
+      if(t===null) t=r.top; else if(Math.abs(r.top-t)>1) return true;
+    }
+    return false;
+  };
+  let best=0, over=false;
+  const walk=(el,depth)=>{
+    for(const k of el.children){
+      const r=k.getBoundingClientRect(); if(!r.height) continue;
+      const top=r.top-origin, b=r.bottom-origin;
+      if(top>h+1) continue;                 // fully below the fold
+      if(b<=h+1){ best=Math.max(best,b); continue; }
+      over=true;
+      if(depth<4&&stacked(k)) walk(k,depth+1);
+    }
+  };
+  walk(mus,0);
+  return (over&&best>=90)?best:h;
+}
 function flowDeskFit(){
   const sc=$("scorecard"), mus=$("score");
   if(!sc||!mus||!mus.offsetParent) return;
@@ -9094,6 +9155,12 @@ function flowDeskFit(){
     const h=parseFloat(mus.style.maxHeight)||mus.getBoundingClientRect().height;
     if(h-over<100) break;
     mus.style.maxHeight=(h-over)+"px";
+  }
+  /* windowed mode trims to a whole row for the same reason the phone
+     does; fullscreen keeps the full box — nothing sits below it there */
+  if(!fsOn()){
+    const h=parseFloat(mus.style.maxHeight);
+    if(h) mus.style.maxHeight=snapFlowWindow(mus,h)+"px";
   }
 }
 /* Flow's phone window: the notation gets a HEIGHT, and scrolls inside it.
@@ -9140,7 +9207,9 @@ function flowPhoneFit(wrap,land){
   // the card's own chrome (border, padding) is not the music's to scroll
   const chrome=Math.max(0,sc.getBoundingClientRect().height-mus.getBoundingClientRect().height);
   const h=Math.max(90,avail-chrome);
-  mus.style.maxHeight=h+"px";
+  /* portrait trims to a whole row so the chord card sits right under the
+     music; landscape keeps the full box — there the stage IS the height */
+  mus.style.maxHeight=(land?h:snapFlowWindow(mus,h))+"px";
   if(land) mus.style.minHeight=h+"px";     // the box, not just its ceiling
 }
 function fitPortraitStack(sc,z,designW){
@@ -12891,6 +12960,17 @@ function loadPiece(p){
     try{ $("jamDlg").close(); }catch(e){}
   }
   piece=JSON.parse(JSON.stringify(p));
+  /* A BUILT-IN'S COURSE LINK IS THE APP'S, NOT THE COPY'S (David, 31 Aug:
+     "have the bulb always active when a piece with embedded link is open").
+     Copies of a demo circulate without it — hps.lastPiece and library saves
+     from before the link existed — and restoring one opened "Composition 2"
+     with no bulb until the piece was re-loaded from the library. The demo
+     with the same id is the source of truth, so the link is put back here,
+     whichever door the copy came in through. Only ADDED, never stripped:
+     a link embedded by hand on some other piece is that piece's own. */
+  const srcDemo=DEMOS.find(d=>d.id===piece.id);
+  if(srcDemo&&srcDemo.link){ piece.link=srcDemo.link;
+    if(srcDemo.linkText) piece.linkText=srcDemo.linkText; }
   C=compile(piece);
   if(!allPans().find(x=>x.id===piece.writtenFor)){ toast("Unknown pan '"+piece.writtenFor+"' — showing on D Kurd"); piece.writtenFor="d-kurd-9"; }
   bpm=piece.tempo||72; loopSec=null; cursor=0; histClear("piece"); viewSec=piece.arrangement[0]; selAi=0; viewPin=null; mapSel=null; mapHist=[];
@@ -20047,24 +20127,46 @@ function boot(){
   });
   $("syncX").addEventListener("click",()=>setSyncMode(false));
   /* ---- the course bulb and its two dialogs (David, 31 Aug) ---- */
-  $("linkBtn").addEventListener("click",()=>openDlg($("linkDlg")));
+  /* the default snippet lives in #linkMsg's own markup — captured HERE, at
+     boot, before any piece's linkText can repaint the element */
+  const linkMsgHTML=$("linkMsg").innerHTML, linkMsgText=$("linkMsg").textContent.trim();
+  $("linkBtn").addEventListener("click",()=>{
+    const m=$("linkMsg");
+    /* the author's snippet is PLAIN TEXT (textContent, never innerHTML — a
+       shared .hps file must not be able to inject markup); only the default
+       keeps its bold, because the default is ours */
+    if(piece&&piece.linkText) m.textContent=piece.linkText;
+    else m.innerHTML=linkMsgHTML;
+    openDlg($("linkDlg"));
+  });
   $("linkGo").addEventListener("click",()=>{
     if(piece&&piece.link) window.open(piece.link,"_blank","noopener");
     $("linkDlg").close();
   });
   $("linkDlgClose").addEventListener("click",()=>$("linkDlg").close());
   $("linkEmbed").addEventListener("click",()=>{
-    $("linkUrl").value=(piece&&piece.link)||""; openDlg($("linkEditDlg"));
+    $("linkUrl").value=(piece&&piece.link)||"";
+    $("linkTxt").value=(piece&&piece.linkText)||linkMsgText;
+    openDlg($("linkEditDlg"));
   });
   $("linkSave").addEventListener("click",()=>{
     let u=$("linkUrl").value.trim();
     if(u&&!/^https?:\/\//i.test(u)) u="https://"+u;   // a pasted bare domain still works
-    if(u){ piece.link=u; toast("Link embedded — share or save the piece to keep it"); }
-    else delete piece.link;                            // an emptied field removes it
+    if(u){
+      piece.link=u;
+      /* the untouched default is NOT stored — a piece only carries words of
+         its own, so improving the default sentence later reaches every piece
+         that never customised it. An emptied field falls back the same way. */
+      const tx=$("linkTxt").value.trim();
+      if(tx&&tx!==linkMsgText) piece.linkText=tx; else delete piece.linkText;
+      toast("Link embedded — share or save the piece to keep it");
+    }
+    else { delete piece.link; delete piece.linkText; } // an emptied link removes it all
     updateLinkBtn(); $("linkEditDlg").close();
   });
   $("linkRemove").addEventListener("click",()=>{
-    delete piece.link; updateLinkBtn(); $("linkEditDlg").close(); toast("Link removed");
+    delete piece.link; delete piece.linkText;
+    updateLinkBtn(); $("linkEditDlg").close(); toast("Link removed");
   });
   $("linkEditClose").addEventListener("click",()=>$("linkEditDlg").close());
   $("vidOpen").addEventListener("click",()=>$("vidFile").click());
