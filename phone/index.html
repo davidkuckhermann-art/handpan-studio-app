@@ -3142,7 +3142,16 @@ body.phone #roomSel{display:inline-flex; align-items:center; gap:5px;
   font-weight:700; color:var(--ink); box-shadow:0 1px 2px rgba(var(--sh),.14)}
 #roomSel .dn{font-size:10px; color:var(--ink3)}
 #roomSel::after{content:""; position:absolute; inset:-7px}  /* a finger's hit */
-#roomSel{position:relative}
+/* CENTRED ON THE HEADER, NOT BETWEEN ITS NEIGHBOURS (David, 31 Aug: "the
+   Navigator button should always be centered. If the title is too long, it
+   should cut off, but not push the Navigator button to the right"). Spacers
+   split the FREE width, so a long title moved the button; out of flow it is
+   pinned to the header's own middle whatever the title does, and the title
+   is capped short of it so the two can never meet. */
+body.phone header{position:relative}
+body.phone #roomSel{position:absolute; left:50%; transform:translateX(-50%);
+  top:50%; margin-top:-16px; z-index:2}
+body.phone #title{max-width:calc(50% - 64px)}
 #roomScrim{display:none; position:fixed; inset:0; z-index:69;
   background:rgba(var(--scrim),.10)}
 #roomDrop{display:none; position:fixed; z-index:70; width:238px;
@@ -5805,6 +5814,29 @@ const BUILTIN_PANS=[
 ];
 function userPans(){ try{return JSON.parse(localStorage.getItem("hps.pans")||"[]")}catch(e){return[]} }
 function allPans(){ return BUILTIN_PANS.concat(userPans()); }
+/* THE PIECE CARRIES ITS PAN (David, 31 Aug, from his phone: "in edit mode the
+   pan always shows a simple pan now: no bottom notes, no cyclopses, even
+   though the composition requires those"). User pans live in this device's
+   localStorage alone, so a piece written on the Mac for a hand-typed pan
+   arrived on the phone naming a pan that isn't there — loadPiece downgraded
+   it to D Kurd 10 and the bench offered nine plain fields to write music that
+   needs eighteen. The spec rides WITH the piece now (enc() is plain JSON, so
+   it travels through codes, files, the library and the restore alike) and the
+   phone adopts it on arrival. */
+function panSpecFor(id){
+  const p=userPans().find(x=>x.id===id);
+  return p?JSON.parse(JSON.stringify(p)):null;
+}
+function adoptPanSpec(spec){
+  if(!spec||!spec.id||!spec.name||!spec.ding||!Array.isArray(spec.fields)||!spec.fields.length)
+    return false;
+  if(allPans().some(p=>p.id===spec.id)) return true;      // already here
+  try{
+    const l=userPans(); l.push(JSON.parse(JSON.stringify(spec)));
+    localStorage.setItem("hps.pans",JSON.stringify(l));
+  }catch(e){ return false; }
+  return true;
+}
 /* the fallback is NAMED, not positional: the library is ordered by tier and
    scale now, so BUILTIN_PANS[0] is whatever happens to sort first — and the
    pan an unknown id falls back to is a documented promise (loadPiece says
@@ -9690,8 +9722,25 @@ function fitPortraitStack(sc,z,designW){
   const space=innerHeight-top-barH-10-sdH;
   if(space<=0) return;
   let h=sc.getBoundingClientRect().height;
-  if(h>space){                                  // the music alone is too tall
-    z=Math.max(0.3,z*(space/h)); sc.style.zoom=z;
+  /* THE EDITOR'S NOTATION GETS FIRST CALL ON THE HEIGHT (David, 31 Aug: "the
+     notation should always be full size in edit mode, like the main table,
+     and the pan should fit below", corrected the same minute: "the square
+     can't be full size when it's higher than four bars, but if it's four
+     bars, it should, when possible, be full size"). The deck lives INSIDE
+     #transport, so its height is part of barH — a big bench pan was eating
+     the room the music was fitted into and the score shrank under it. So the
+     editing budget is measured against the pan at its FLOOR: an ordinary
+     table keeps its practice size and fitEdPan() spends what is left on the
+     drawing; only a table too tall even then shrinks, and by the little it
+     actually needs. */
+  let budget=space;
+  if(editing){
+    const svg=$("edPanHost")&&$("edPanHost").querySelector("svg");
+    const drawn=svg?svg.getBoundingClientRect().height:0;
+    budget=space+Math.max(0,drawn-ED_PAN_MIN);
+  }
+  if(h>budget){                                 // the music alone is too tall
+    z=Math.max(0.3,z*(budget/h)); sc.style.zoom=z;
     h=sc.getBoundingClientRect().height;
   }
   const box=panOn?$("panbox"):(chordRowOn?$("chordbox"):null);
@@ -10067,6 +10116,9 @@ function phoneFit(){
     const w=cb.offsetWidth;
     if(w>cw.clientWidth) cb.style.zoom=cw.clientWidth/w;
   }
+  /* the bench pan takes the room the fitted notation leaves — LAST, because
+     it is the only thing here that gives (31 Aug) */
+  if(editing) try{ fitEdPan(); }catch(e){}
 }
 /* A notation row carries its own pulse span (section-relative, like data-rel)
    and paints itself when it IS the loop — the class is applied at render, so
@@ -12586,6 +12638,9 @@ function saveOv(){ try{localStorage.setItem("hps.ov."+piece.id,JSON.stringify(ov
 function loadOv(){ try{overrides=JSON.parse(localStorage.getItem("hps.ov."+piece.id)||"{}")}catch(e){overrides={}} }
 
 function refresh(){
+  /* stamped on every refresh, so the spec stays current through renames and
+     rides out through every save, code, file and restore (see panSpecFor) */
+  { const spec=panSpecFor(piece.writtenFor); if(spec) piece.panSpec=spec; }
   srcPan=derive(panById(piece.writtenFor));
   myPan=derive(panById(myPanId));
   paintPanSel();          // the closed chooser always says the pan you hold
@@ -13062,15 +13117,29 @@ function paintEditDeck(){
    224px is a floor; this measures how much empty page lies under the deck and
    gives exactly that to the pan — width-capped by the row, so a tall phone
    ends with the chips at the bottom and the pan as big as both axes allow. */
+/* the smallest the bench drawing may be squeezed to before the notation above
+   starts giving instead — an 18-field pan is still tappable at this size */
+const ED_PAN_MIN=150;
 function fitEdPan(){
   if(!PHONE||TABLET||!editing) return;
   if(document.body.classList.contains("drawer-open")) return;
   const host=$("edPanHost"), deck=$("editdeck");
   const svg=host&&host.querySelector("svg");
   if(!svg||!deck||!deck.offsetParent) return;     // hidden deck measures as nothing
-  svg.style.maxWidth="224px";                     // measure the slack from the floor
-  const free=Math.max(0, innerHeight-deck.getBoundingClientRect().bottom-10);
-  svg.style.maxWidth=Math.round(Math.min(host.clientWidth,224+free))+"px";
+  /* THE PAN IS THE GIVE (31 Aug). It works from what the drawing currently
+     measures rather than from a fixed floor, so the same arithmetic grows it
+     into spare screen and shrinks it when the notation above wants the room —
+     the score is fitted first and never shrinks for the deck. Twice, because
+     the deck's own height moves with the drawing. */
+  for(let i=0;i<2;i++){
+    const cur=svg.getBoundingClientRect().width;
+    if(cur<=0) return;
+    const free=innerHeight-deck.getBoundingClientRect().bottom-8;
+    if(Math.abs(free)<1) break;
+    const want=Math.round(Math.max(ED_PAN_MIN,Math.min(host.clientWidth,cur+free)));
+    if(want===Math.round(cur)) break;
+    svg.style.maxWidth=want+"px";
+  }
 }
 /* the lane's loop button is lit only while the loop IS the bar it shows, so
    a hand-drawn loop elsewhere turns it off by itself (David, 27 Aug) */
@@ -13560,7 +13629,16 @@ function loadPiece(p){
   if(srcDemo&&srcDemo.link){ piece.link=srcDemo.link;
     if(srcDemo.linkText) piece.linkText=srcDemo.linkText; }
   C=compile(piece);
-  if(!allPans().find(x=>x.id===piece.writtenFor)){ toast("Unknown pan '"+piece.writtenFor+"' — showing on D Kurd"); piece.writtenFor="d-kurd-9"; }
+  /* the piece's own pan spec is tried BEFORE the D Kurd downgrade (31 Aug) —
+     a hand-typed pan travels with the music now, so the phone gains the
+     instrument the composition was written on instead of nine plain fields */
+  if(!allPans().find(x=>x.id===piece.writtenFor)){
+    const spec=piece.panSpec;
+    if(spec&&spec.id===piece.writtenFor&&adoptPanSpec(spec))
+      toast("Added “"+spec.name+"” — the pan this piece was written for");
+    else { toast("Unknown pan '"+piece.writtenFor+"' — showing on D Kurd");
+           piece.writtenFor="d-kurd-9"; }
+  }
   bpm=piece.tempo||72; loopSec=null; cursor=0; histClear("piece"); viewSec=piece.arrangement[0]; selAi=0; viewPin=null; mapSel=null; mapHist=[];
   if((piece.syncMap||[]).length&&!videoSeen) setSyncMode(true);
   if(videoSeen)updateSyncUI(); loadOv();
