@@ -1727,8 +1727,13 @@ body.tablet:not(.phone) .hside.hleft .brand{display:none}
    title always took the slack, so the answer was always no, even at 1024 with
    room to spare. Held to its content and a sane ceiling, the chip then sits
    immediately after the title and the clearance below means what it says. */
-body.tablet:not(.phone) #title{min-width:0; flex:0 1 auto; max-width:14ch;
+body.tablet:not(.phone) #title{min-width:0; flex:0 0 auto; max-width:14ch;
   text-overflow:ellipsis}
+/* `flex:0 0 auto`, NOT `0 1 auto`: the title must never be the thing that
+   gives. It was shrinking to "Compos…" so the chip could fit beside it, which
+   is backwards — the piece's name is the one word on this row a student needs,
+   and the chip is the decoration David already said may vanish. Now the title
+   keeps its width and the chip alone gives way. */
 /* the sheet's door and the desktop's mouse-only hint have no place here */
 body.tablet:not(.phone) #menuBtn,
 body.tablet:not(.phone) #transport .hint{display:none !important}
@@ -1792,6 +1797,21 @@ body.tablet:not(.phone){padding-bottom:104px}
    the full width it had. ---- */
 body.tablet:not(.phone) #pvsvg{width:270px !important; max-width:100%; height:auto}
 body.tablet:not(.phone) #belowrow>#panwrap{margin-left:auto; margin-right:0}
+/* ---- JAM ON A TABLET (David, 31 Aug) ----
+   "give the chord selector its own row in jam mode", and then: "the chord tab
+   is allowed to stay on the left below the chord selector. If chords is
+   de-selected in the chords/pan/selector, the chords tab goes, but the chord
+   selector should stay."
+   So: the selector is a ROW, and the two cards share the row beneath it —
+   chord card left, pan right, which is the desktop's own arrangement.
+   `!important` earns its keep here: `body.haspan:not(.phone):not(.editing)
+   #belowrow` sets nowrap at EQUAL specificity and later in the file, so it
+   wins on source order alone. Measured — the pan overflowed the right edge
+   until this line. */
+body.tablet:not(.phone).jam #belowrow{flex-wrap:wrap !important;
+  justify-content:flex-start}
+body.tablet:not(.phone).jam #jampanel{flex:1 0 100%; width:100%}
+body.tablet:not(.phone).jam #chordwrap{flex:0 0 auto; margin-right:auto}
 /* THE PRACTICE ROOM was a page-wide dust tint and David turned it down
    (26 Aug: "I don't like the different skin") — the paper stays the paper in
    every mode. Practice is told by STRUCTURE instead: the mode bar names the
@@ -9030,7 +9050,14 @@ function phoneFit(){
      fixed design width becomes the screen; a tablet has the width already, and
      zooming it down was never the point. The Flow window still wants sizing,
      and that is the desktop's own routine. */
-  if(tabletPortrait()){ try{ flowDeskFit(); }catch(e){} return; }
+  if(tabletPortrait()){
+    try{ flowDeskFit(); }catch(e){}
+    /* the two "does it still fit" rules live here because render() calls
+       phoneFit, so they are re-asked whenever the content or the width
+       changes — a longer title, more sections, a rotation */
+    try{ fitTabletChip(); fitTabletArrLabel(); }catch(e){}
+    return;
+  }
   const wrap=$("scorewrap"), sc=$("scorecard");
   if(!wrap.clientWidth) return;
   /* FLOW'S WINDOW BELONGS TO FLOW ALONE. Its max-height sat on #score and
@@ -10999,9 +11026,21 @@ function placeJamPanel(){
   const jp=$("jampanel"), below=$("belowrow"), cw=$("chordwrap");
   if(!jp||!below) return;
   if(jamOn&&jp.parentNode!==below) below.insertBefore(jp,below.firstChild);
-  const show=jamOn&&chordRowOn;
+  /* ON A TABLET THE SELECTOR IS A ROW, NOT A SIDE (David, 31 Aug: "give the
+     chord selector its own row in jam mode"). It has the width to sit above
+     BOTH sides, so it is not the Chords slot's tenant any more — and it must
+     not be, because the Chords tab is hidden in a jam there ("we don't need
+     the extra chord tab… the chord selector shows the chords already"). Tie it
+     to `chordRowOn` on a tablet and switching to Pan would take the selector
+     away with no way back to it. Measured, by doing exactly that. */
+  const show=jamOn&&(tabletPortrait()||chordRowOn);
   jp.classList.toggle("hidden",!show);
-  if(cw) cw.classList.toggle("jamhide",show);
+  /* AND ON A TABLET THE CARD IS NOT THE SELECTOR'S TENANT EITHER (David, 31
+     Aug). `jamhide` exists because on a narrow screen the selector takes the
+     Chords slot, so the read-only card would only repeat it. A tablet has the
+     room for both, and he asked for both: the card follows the Chords toggle
+     exactly as it does everywhere else, and the selector stays either way. */
+  if(cw) cw.classList.toggle("jamhide",tabletPortrait()?false:show);
 }
 /* HOW MUCH SMALLER A CYCLOPS IS DRAWN, and it depends on HOW MANY. On a real
    mutant the extra fields shrink as more are squeezed in — which is also the
@@ -21054,6 +21093,25 @@ function fitTabletChip(){
   const wrapped=Math.abs(c.top-b.top)>6;
   if(c.width>0&&(wrapped||c.right>b.left-TABLET_CHIP_CLEAR)) chip.style.display="none";
 }
+/* AND THE WORD "ARRANGEMENT" GOES THE SAME WAY (David, 31 Aug: it "can go if
+   the area bumps into the edit button"). The pills are the control; the label
+   only names them, so it is the part that can be spent. Measured against the
+   Edit button rather than a width, because the number of pills is the piece's
+   business — an eight-section arrangement needs the room a two-section one
+   does not. */
+function fitTabletArrLabel(){
+  const box=document.getElementById("arrbox"), edit=document.getElementById("editBtn");
+  if(!box) return;
+  const lab=box.querySelector(".lab:not(#subLab)");
+  if(!lab) return;
+  if(!tabletPortrait()){ lab.style.display=""; return; }
+  lab.style.display="";                        // …show it, then ask
+  if(!edit||!edit.offsetParent||!box.offsetParent) return;
+  const b=box.getBoundingClientRect(), e=edit.getBoundingClientRect();
+  // not on Edit's line means the foot has already broken — same guard the chip needs
+  const wrapped=Math.abs(b.top-e.top)>e.height;
+  if(wrapped||b.right>e.left-TABLET_CHIP_CLEAR) lab.style.display="none";
+}
 var TABLET_HOME=null;
 function snapTabletHome(){
   if(!TABLET||TABLET_HOME) return;
@@ -21096,7 +21154,7 @@ function placeTabletControls(){
     tr.append($("countBtn"),$("metBtn"),$("markBtn"));   // pre-roll and click
   }
   setDrawer(false);                          // a tablet has no drawer
-  fitTabletChip();                           // …after every move above
+  fitTabletChip(); fitTabletArrLabel();      // …after every move above
 }
 function placePhoneControls(){
   if(!PHONE) return;
