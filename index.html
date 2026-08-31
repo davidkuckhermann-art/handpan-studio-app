@@ -3145,6 +3145,29 @@ body.phone.rquiz #sideDots, body.phone.learn #sideDots{ display:none }
 @media (orientation:landscape){
   body.phone:not(.editing):not(.gedit):not(.jam):not(.quiz):not(.rquiz) header{display:none}
 }
+/* POCKET ZONES, David's same-day notes (31 Aug): */
+/* — the chord companion floats free on the phone, chips on the paper, no
+     frame (his call against the earlier white-frame treatment: "chord tab
+     shouldn't have a frame — see your mockup") */
+body.phone #chordwrap .chordframe{border:none; background:transparent; box-shadow:none}
+/* — the table's own tiny section caption goes: the deck's navigator and the
+     section chip already say it. Flow keeps its in-stream heads — they are
+     the whole-piece map. */
+body.phone.design-table #score .secname,
+body.phone.design-tab #score .secname{display:none}
+/* — the transposition report becomes an overlay sheet: in the page flow it
+     sat half under the resting bar ("only half visible") */
+body.phone #report:not(.hidden){position:fixed; left:10px; right:10px;
+  top:64px; bottom:96px; overflow:auto; z-index:60; margin:0;
+  box-shadow:var(--shadow)}
+/* — the title is the door (his pick of the navigation ideas): a ▾ beside
+     the name opens the room switcher */
+#roomBtn{display:none}
+body.phone #roomBtn{display:inline-grid; place-items:center; width:30px;
+  height:30px; border:none; background:none; color:var(--ink3);
+  font-size:13px; flex:none; margin-left:-6px}
+#roomDlg .rroom{display:flex; width:100%; justify-content:center;
+  margin-bottom:8px}
 /* POCKET ZONES E: the section chip beside the view tabs — the arrangement
    navigator's door on the page itself (it lives in the drawer today). */
 #secChip{display:none}
@@ -4723,6 +4746,20 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
      second is the one that protects work — "if there is an existing piece in
      the editors, unsaved or not, there should be a dialogue option: do you
      want to open xxx or start a new arrangement/groove". -->
+<!-- THE TITLE IS THE DOOR (David, 31 Aug — his pick of the phone-navigation
+     ideas): the ▾ beside the name opens this, one tap to any room. The rows
+     delegate to the same hidden controls the ⋮ menu uses, so every exit
+     guard and carry rule holds. -->
+<dialog id="roomDlg">
+  <button class="ctl rroom" id="rmPractice">Practice</button>
+  <button class="ctl rroom" id="rmJam">Jam</button>
+  <button class="ctl rroom" id="rmEdit">Edit</button>
+  <button class="ctl rroom" id="rmQuiz">Chord quiz</button>
+  <button class="ctl rroom" id="rmRhythm">Rhythm quiz</button>
+  <div class="row" style="margin:4px 0 0"><span class="spacer"></span>
+    <button class="ctl" id="roomClose">Close</button></div>
+</dialog>
+
 <dialog id="edPickDlg">
   <h3>Editor</h3>
   <p class="hint" style="margin:8px 0 0; max-width:42ch">Which one do you want to
@@ -10969,8 +11006,24 @@ function renderPanPanelInner(){
   /* :not(.pvb) — the underside groups share .pvf so they inherit the whole
      flash machinery for free, but they carry data-b and would come through
      here as +undefined = NaN */
+  /* POCKET ZONES fix (David, 31 Aug: "the pan tab triggers tone fields when
+     I swipe sideways"): the companion card is a SWIPE surface on the phone
+     now, so the READING pan fires on pointerup with a move-cancel — a tap
+     still sounds, a swipe crossing fields stays silent. The desktop keeps
+     the down-fire (no swipe exists there), and the jam and editing pans are
+     built elsewhere and keep their latency. */
+  const tapWire=(g,go)=>{
+    if(PHONE&&!TABLET){
+      let x0=0,y0=0;
+      g.addEventListener("pointerdown",e=>{ x0=e.clientX; y0=e.clientY; });
+      g.addEventListener("pointerup",e=>{
+        if(Math.abs(e.clientX-x0)>10||Math.abs(e.clientY-y0)>10) return;
+        go();
+      });
+    } else g.addEventListener("pointerdown",go);
+  };
   box.querySelectorAll(".pvf:not(.pvb)").forEach(g=>{
-    g.addEventListener("pointerdown",()=>{ if(!panCustom) tapField(+g.dataset.f); });
+    tapWire(g,()=>{ if(!panCustom) tapField(+g.dataset.f); });
     g.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); tapField(+g.dataset.f); } });
   });
   // the underside sounds exactly as the top shell does, from the same bank
@@ -10981,7 +11034,7 @@ function renderPanPanelInner(){
     pvFlash($("pvb"+i),["hT"]);
   };
   box.querySelectorAll(".pvb").forEach(g=>{
-    g.addEventListener("pointerdown",()=>{ if(!panCustom) tapBottom(+g.dataset.b); });
+    tapWire(g,()=>{ if(!panCustom) tapBottom(+g.dataset.b); });
     g.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); tapBottom(+g.dataset.b); } });
   });
   const tapPerc=(s,id)=>{ // the badges sound like the fields do (David, 26 Aug)
@@ -11958,6 +12011,11 @@ function sideGo(i){
   i=Math.max(0,Math.min(max,i));
   const now=chordRowOn?0:(panOn?1:2);
   if(i===now) return;
+  /* LEAVING BARE CLEARS THE FLAG FIRST (David, 31 Aug: "once I swiped to
+     'none', I can't get back") — syncBare re-forces bare whenever bareSide
+     stands, so a dot tap that only turned a companion on was snapped
+     straight back to nothing. */
+  if(now===2&&i!==2) setBare(false);
   if(i===0) setChords(true); else if(i===1) setPan(true); else setBare(true);
   paintSideDots();
 }
@@ -22781,7 +22839,27 @@ if(PHONE){
   }
   { const sc=$("secChip");
     if(sc) sc.addEventListener("click",()=>{ setDrawer(true); placeDrawer(); }); }
-  $("shareBtn").innerHTML='<svg aria-hidden="true"><use href="#is-share"/></svg>';
+  /* the title's ▾ and its room switcher (David's pick, 31 Aug) */
+  {
+    const rb=document.createElement("button");
+    rb.id="roomBtn"; rb.textContent="▾";
+    rb.title="Switch rooms"; rb.setAttribute("aria-haspopup","dialog");
+    const t=$("title");
+    if(t&&t.parentNode) t.parentNode.insertBefore(rb,t.nextSibling);
+    rb.addEventListener("click",()=>{
+      const lit={rmPractice:!jamOn&&!quizOn&&!rqOn&&!editing,
+        rmJam:jamOn, rmEdit:!!editing, rmQuiz:!!quizOn, rmRhythm:!!rqOn};
+      for(const id in lit){ const b=$(id); if(b) b.classList.toggle("on",lit[id]); }
+      openDlg($("roomDlg"));
+    });
+    const go=(id,doorId)=>$(id).addEventListener("click",()=>{
+      $("roomDlg").close(); $(doorId).click(); });
+    go("rmPractice","navArr"); go("rmJam","jamModeBtn");
+    go("rmEdit","navEdit"); go("rmQuiz","quizModeBtn"); go("rmRhythm","rqModeBtn");
+    $("roomClose").addEventListener("click",()=>$("roomDlg").close());
+  }
+  /* the phone's Library face is the mockups' card-index too (David, 31 Aug) */
+  $("shareBtn").innerHTML='<span aria-hidden="true" style="font-size:16px">🗂</span>';
   setTimeout(()=>{ placeDrawer(); drawerGesture(); },0);
   $("shareBtn").setAttribute("aria-label","Library");
   $("shareBtn").title="Library — save, load and share this piece, this jam, or this groove";
