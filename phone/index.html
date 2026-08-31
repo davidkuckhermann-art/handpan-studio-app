@@ -1130,18 +1130,27 @@ body.phone #panPickDlg{width:100%; max-height:82vh}
 .row{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:10px 0}
 .lab{font-size:11px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--ink3); margin-right:2px}
 .chip{font-size:12.5px; font-weight:600; color:var(--ink2); background:var(--card);
-  border:1px solid var(--rule); border-radius:999px; padding:4px 12px}
+  border:1px solid var(--rule); border-radius:999px; padding:4px 12px; position:relative}
 .chip.on{background:var(--ink); color:var(--paper); border-color:var(--ink)}
-.chip.playing{background:var(--dixie-soft); border-color:var(--dixie); color:var(--ink)}
-/* BLACK WINS WHEN THEY ARE THE SAME PART (David, 30 Aug: "the arrangement
-   pills sometimes revert to orange"). The amber says "the music is here" and
-   the black says "this is what you are looking at" — and the sounding chip is
-   given .playing on every paint, so any time the view was on the part being
-   played the amber simply covered the black, which is the one case where it
-   tells you nothing you cannot already see. Amber is left to do the job it is
-   actually for: pointing at the part sounding somewhere OTHER than the table
-   in front of you. */
-.chip.on.playing{background:var(--ink); color:var(--paper); border-color:var(--ink)}
+/* THE SOUNDING PART WEARS A DOT, NOT A COLOUR (David, 31 Aug: "instead of the
+   orange pill, can we place a small black dot under the pill that is currently
+   being played, without having to extend the size of that row"). The amber
+   fill it replaces was the only place in the app where a colour tracked the
+   arrangement — "I was confused because we don't have an orange pill tracking
+   the arrangement in the other areas of the app" — and it cost a second rule
+   (.chip.on.playing) whose whole job was stopping the amber from covering the
+   black of the selected pill. Both are gone: the dot and the black say
+   different things and can be worn at once, so nothing has to win.
+   THREE PROPERTIES MAKE IT STICK. It is drawn INSIDE the pill's own bottom
+   padding, so it adds no height and cannot be clipped by the rows that scroll
+   sideways on the phone. It is `currentColor`, so it contrasts with its pill
+   by construction — ink on a plain pill, paper on the selected black one, and
+   correct in all five brand schemes with no second rule to keep in step. And
+   it is sized from --dot/--dotb, so the big arrangement pills can carry a
+   bigger dot without a separate selector. */
+.chip.playing::after{content:""; position:absolute; left:50%; bottom:var(--dotb,2px);
+  width:var(--dot,3px); height:var(--dot,3px); margin-left:calc(var(--dot,3px) / -2);
+  border-radius:50%; background:currentColor; pointer-events:none}
 .chip.loop{box-shadow:0 0 0 2px var(--dixie)}
 input[type=number], input[type=text]{font:inherit; font-size:13px; border:1px solid var(--rule);
   border-radius:8px; padding:6px 9px; background:var(--card); color:var(--ink); width:64px}
@@ -2383,7 +2392,8 @@ body.haspan:not(.phone):not(.editing) #chordwrap{flex:0 0 auto}
 body.haspan:not(.phone):not(.editing) #panwrap{flex:0 1 auto; min-width:0}
 #arrbox{flex:0 1 auto; padding:14px 18px 16px}
 .arrline{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:5px 0}
-#arrbox .chip{font-size:15.5px; padding:7px 17px}      /* the arrangement reads at a glance (David, 26 Aug) */
+#arrbox .chip{font-size:15.5px; padding:7px 17px;      /* the arrangement reads at a glance (David, 26 Aug) */
+  --dot:4px; --dotb:3px}                                /* …and a pill that big carries a bigger dot */
 #arrbox .lab{font-size:12.5px}
 #chordwrap{flex:0 1 auto; overflow-x:auto; text-align:center; padding-bottom:4px}
 #panwrap{flex:0 0 auto; text-align:center}
@@ -6687,6 +6697,21 @@ function clearMarks(){
   document.querySelectorAll(".cnow").forEach(el=>el.classList.remove("cnow"));
   if(typeof clearBrkDim==="function") clearBrkDim();   // the break's grey goes with them
 }
+/* EVERY NAVIGATOR THAT SHOWS THE ARRANGEMENT MARKS THE SOUNDING PART, and all
+   of them mark it the same way (David, 31 Aug: "if we find a good solution, we
+   should make it consistent everywhere"). This used to be a single
+   querySelector, which returns the FIRST match only — so where two rows draw
+   the same arrangement (the phone carries #miniarr beside #arrChips, and the
+   Table row stands under both) whichever came first in the document got the
+   mark and the others stayed blank. `.chip` is named in the selector because
+   [data-ai] is not the pills' alone: Flow's sections carry it too, and the bare
+   attribute could match a section instead of a chip. */
+function markPlayingChips(ai){
+  document.querySelectorAll(".chip.playing").forEach(el=>el.classList.remove("playing"));
+  if(ai==null) return;
+  document.querySelectorAll('.chip[data-ai="'+ai+'"],.chip[data-ai-'+ai+']')
+    .forEach(el=>el.classList.add("playing"));
+}
 /* `seek` = the student moved the playhead by hand. The pan shows what SOUNDS,
    so a mere navigation must leave it dark (David, 28 Aug: "pan animation fires
    when I navigate the notation … neither of that should be there"). The
@@ -6714,8 +6739,7 @@ function paintPulse(pi,seek){
   if(cur&&viewPin&&cur.name!==viewSec&&!(view==="flow"&&flowAll&&!jamOn)){
     clearSlotMarks();
     document.querySelectorAll(".cnow").forEach(el=>el.classList.remove("cnow"));
-    const ch=document.querySelector('[data-ai="'+cur.ai+'"]')||document.querySelector('[data-ai-'+cur.ai+']');
-    if(ch) ch.classList.add("playing");
+    markPlayingChips(cur.ai);
     // a held chord follows the cursor here too — see the note below
     if(panOn&&(panMode==="chords"||(!seek&&(playing||follow)))) paintPan(pi);
     return;
@@ -6792,8 +6816,7 @@ function paintPulse(pi,seek){
        all. The pan switch only made it visible: the rebuild repaints from
        panCursor(), so the two agreed again until the next navigation. */
     if(panOn&&(panMode==="chords"||(!seek&&(playing||follow)))) paintPan(pi);
-    const chip=document.querySelector('[data-ai="'+cur.ai+'"]')||document.querySelector('[data-ai-'+cur.ai+']');
-    if(chip) chip.classList.add("playing");
+    markPlayingChips(cur.ai);
     document.querySelectorAll(".cchip.playing").forEach(el=>el.classList.remove("playing"));
     const bar=Math.floor(rel/SM(piece,cur.name).bp);
     const cc=document.querySelector('.cchip[data-cbar="'+bar+'"]');
@@ -11670,6 +11693,9 @@ function renderArr(){
     }
     const c=document.createElement("button"); c.className="chip"+(nm===viewSec?" on":"");
     c.textContent=baseOf(nm).num||nm;
+    /* the same marks the arrangement pills carry, so the sounding dot finds
+       this row too — a table can stand at several places in the arrangement */
+    piece.arrangement.forEach((n,ai)=>{ if(n===nm) c.setAttribute("data-ai-"+ai,""); });
     c.title=nm===viewSec?"Click again: play from here":"Show "+nm;
     c.addEventListener("click",()=>{
       const inRun=selRun.ais.find(ai=>piece.arrangement[ai]===nm);
@@ -15079,10 +15105,27 @@ function applyJam(){
 function jamPaintChord(pi){
   const pat=allPats().find(p=>p.id===jam.patternId)||JAMPATS[0];
   const bp=pat.meter[0]*pat.sub;
+  /* THE CARDS FOLLOW THE MUSIC INTO THE OTHER TABLES (David, 31 Aug: "the
+     chord row should always show the current chord, also [when] the table
+     [that] is playing [is] currently not selected/on screen… currently they
+     don't follow the arrangement when the page currently being played is not
+     the one displayed"). A Motion jam is ONE TABLE PER PASS — buildJamPiece
+     splits the form into sections "1","2",… of jamBarCount() bars each — but
+     the cards are one pass, and this walk started from the piece's own pulse
+     0. Anything after the first table therefore fell past the last slot, idx
+     stayed −1, and no card lit at all.
+     Measured inside the table that is SOUNDING, not from the piece's start,
+     so a repeated table lands on the same cards as its first appearance; and
+     wrapped on the progression's own length, so a section holding more than
+     one cycle keeps working too. */
+  const total=jam.slots.reduce((n,sl)=>n+Math.max(1,sl.bars||1),0)*bp;
+  const sc=secOfPulse(pi);
+  let rel=sc?pi-sc.pulse:pi;
+  if(total>0) rel=((rel%total)+total)%total;
   let from=0, idx=-1;
   for(let i=0;i<jam.slots.length;i++){
-    const to=from+(jam.slots[i].bars||1)*bp;
-    if(pi>=from&&pi<to){ idx=i; break; }
+    const to=from+Math.max(1,jam.slots[i].bars||1)*bp;
+    if(rel>=from&&rel<to){ idx=i; break; }
     from=to;
   }
   document.querySelectorAll("#jamProg .jslot.playing").forEach(el=>{
@@ -20744,6 +20787,7 @@ function renderMiniArr(){
     const c=document.createElement("button");
     c.className="chip"+(r===selRun?" here":"");
     c.textContent=r.base;
+    r.ais.forEach(ai=>c.setAttribute("data-ai-"+ai,""));   // it wears the dot too
     let held=false,timer=null;
     // same rule as the desktop chips: first tap shows it, second tap goes there
     const goto=()=>{
