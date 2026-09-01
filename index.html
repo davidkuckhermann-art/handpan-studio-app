@@ -5361,7 +5361,43 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <span id="feelWrap"><span class="vlab" id="feelLab">Groove map:</span>
     <button class="ib" id="feelBtn" aria-pressed="false"
       title="Play on David's own timing, measured from his recordings — this switches swing off"></button></span></div>
+  <div class="dsep"></div>
+  <!-- EXPORT IS AN ACTION, NOT A SETTING, so it sits at the very foot of the
+       sheet under a heading of its own rather than among the switches (David,
+       1 Sep: "accessible through the settings menu"). One door: what it offers
+       is decided behind it by the room you are in. -->
+  <h4>Export</h4>
+  <div class="drow"><span>Audio file</span>
+    <button class="ctl" id="setExpBtn"
+      title="Save what you hear as an MP3 or a WAV file">Export audio…</button></div>
   <div class="row"><span class="spacer"></span><button class="ctl" id="setClose">Close</button></div>
+</dialog>
+
+<!-- WHAT THE EXPORT DOOR OPENS (David, 1 Sep). The dialog asks only what it
+     cannot know: how many cycles, when there is no last bar to stop at, and
+     whether the ending fades. Everything else — tempo, groove map, breaks,
+     your pan — is already answered by the app you are looking at, and asking
+     twice is how an export dialog turns into a mixing desk. -->
+<dialog id="expDlg">
+  <h3>Export audio</h3>
+  <p class="hint" id="expWhat"></p>
+  <!-- shown in Jam only: a jam has no ending, so it needs a length -->
+  <div class="drow" id="expCycRow"><span>Cycles of the jam</span>
+    <input class="ctl" type="number" id="expCycles" min="1" max="64" step="1" value="4"
+      inputmode="numeric" style="width:84px; text-align:right"
+      aria-label="How many times the progression plays"></div>
+  <div class="drow"><span>Fade out at the end</span>
+    <button class="ctl on" id="expFade" aria-pressed="true">On</button></div>
+  <p class="hint" id="expSize"></p>
+  <p class="hint" id="expProg" style="display:none"></p>
+  <p class="hint">MP3 is small enough to send; WAV is lossless, and about eight
+    times the size — take it when the file is going into a video edit.
+    MP3 encoding by <a href="https://lame.sourceforge.net" target="_blank"
+    rel="noopener noreferrer">LAME</a>.</p>
+  <div class="row"><span class="spacer"></span>
+    <button class="ctl" id="expClose">Close</button>
+    <button class="ctl" id="expWav">Save WAV</button>
+    <button class="ctl on" id="expMp3">Save MP3</button></div>
 </dialog>
 
 <!-- THE PAN PICKER (David, 28 Aug — mockups-scale-picker.html, live variant C).
@@ -5386,7 +5422,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
        chords, since the shape is drawn from a stored seed. Shown only while
        Motion is the chosen voicing. -->
   <div class="jsopt hidden" id="jsMotionRow">
-    <div class="jshead"><span class="jsname">How far it travels</span>
+    <div class="jshead"><span class="jsname">Melody cycles</span>
       <span style="display:flex;align-items:center;gap:8px">
         <span class="pills" id="jsPasses" role="group" aria-label="Length of the form">
           <button data-passes="1" title="One pass of the chords — a swell">1×</button>
@@ -5396,6 +5432,15 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
         <button class="ctl" id="jsReline" title="Another line over the same chords">New line</button>
       </span></div>
     <p class="jsdesc" id="jsMotionDesc"></p>
+  </div>
+  <!-- TRANSITIONS, its own section (David, 1 Sep) — not a fourth voicing but a
+       separate question, which is why he asked for it to come out of Motion.
+       Choosing a voicing resets it: on for Motion, off for Narrow and Wide. -->
+  <div class="jsopt">
+    <div class="jshead"><span class="jsname">Transitions</span><span id="jsTransHost"></span></div>
+    <p class="jsdesc">A row can end with a run of single notes that leads into the next
+      chord — the groove stands aside while it plays. On by default with Motion,
+      off with Narrow and Wide; either way this switch decides.</p>
   </div>
   <div class="jsopt">
     <div class="jshead"><span class="jsname">Chord suggestions</span><span id="jsColourHost"></span></div>
@@ -7683,6 +7728,389 @@ function stop(){
      owned — but a break set to every cycle is a fact about the SETTING, not
      about the playhead, so it comes straight back. */
   if(typeof paintBrkStill==="function") paintBrkStill();
+}
+
+/* ══════════════════ AUDIO EXPORT (1 Sep 2026) ═══════════════════════════════
+   David: "let's start with mp3 export … accessible through the settings menu.
+   If you're in practice mode, it should export the complete arrangement. If
+   you're in jam mode, it should ask you how many cycles of the jam you want to
+   export. In the end, there should be a fade-out, or let's say the fade-out
+   should be an option, the default option."
+
+   IT IS A RENDER, NOT A RECORDING. MediaRecorder would have to run the piece
+   in real time through the same speakers the student is listening on — five
+   minutes to save five minutes of music, and every stutter of a busy phone
+   baked into the file. An OfflineAudioContext runs the SAME graph as the live
+   one (same decoded samples, same soft clipper, same impulse response) as fast
+   as the machine can manage, and the result is sample-accurate every time.
+
+   THE SCHEDULER IS NOT REUSED, and that is the one design decision here worth
+   defending. sched() is wound around the transport — `live` gains, the paint
+   clock, the interruption watch, the preview mute, the 0.4 s look-ahead — none
+   of which mean anything to a file. Reaching into it would have put export
+   bugs inside playback, which is the one part of this app a student cannot
+   work around. So the walk below is its own, and what it SHARES is every
+   decision that shapes the sound: feelShift and swing, jamBreakInfo, the
+   transposition map, evGain, ghost silence, the bank-then-synth fallback.
+   The rule that keeps them honest: if playback learns something new about how
+   a pulse sounds, exportVoice/exportPlan must learn it in the same commit.
+
+   WHAT IS DELIBERATELY LEFT OUT. The metronome (you export music, not a
+   click), the count-in (it is a run-up, not part of the piece), and the
+   volume slider — a file rendered at whatever the student happened to leave
+   the knob on is a file they have to export twice. A loop is ignored too:
+   "the complete arrangement" is complete.
+   WHAT IS DELIBERATELY LEFT IN: the tempo as it stands, half-speed included.
+   That is what the transport says and what the ear expects.
+
+   MP3 comes from lamejs (lame.min.js beside bank.js — LGPL, unmodified, see
+   LICENSE-lamejs.txt), fetched the first time someone exports one and never
+   otherwise, so nobody pays 156 KB for a feature they don't use. WAV needs
+   nothing at all: the header is 44 bytes and written here. */
+const EXP_TAIL=4.0;        // seconds of ring-out written after the last stroke
+const EXP_KBPS=192;        // ~1.4 MB per minute, stereo
+let expFade=true, expBusy=false;
+
+/* The encoder sits beside bank.js, and finds itself by ASKING THE BANK where
+   it lives. make_phone.py rewrites `src="bank.js?v="` to `../bank.js?v=` for
+   the page one level down; hard-coding "lame.min.js" here would have 404'd on
+   the phone until someone taught that script a second pattern. This way the
+   encoder simply follows the samples, wherever the build puts them. */
+let lamePend=null;
+function lameURL(){
+  const b=document.querySelector('script[src*="bank.js"]');
+  const src=b?b.getAttribute("src"):"bank.js";
+  return src.replace(/bank\.js(\?.*)?$/,"lame.min.js?v=1");
+}
+function loadLame(){
+  if(window.lamejs&&window.lamejs.Mp3Encoder) return Promise.resolve();
+  if(lamePend) return lamePend;
+  lamePend=new Promise((res,rej)=>{
+    const s=document.createElement("script");
+    s.src=lameURL();
+    s.onload=()=>(window.lamejs&&window.lamejs.Mp3Encoder)?res()
+      :rej(new Error("the MP3 encoder loaded but was empty"));
+    s.onerror=()=>rej(new Error("the MP3 encoder could not be loaded"));
+    document.head.appendChild(s);
+  });
+  lamePend.catch(()=>{ lamePend=null; });   // a failed load may be retried
+  return lamePend;
+}
+
+/* ONE EVENT → THE BUFFERS IT SOUNDS. fireEvent's twin, with the context taken
+   out: it decides, this returns. `off` carries the roll's grace stroke, which
+   lands 45 ms EARLY — so the very first stroke of a piece can want a negative
+   time, and exportPlan clamps rather than dropping it. */
+function exportVoice(ev,trans){
+  if(ev.v==="ghost") return null;          // notated, not sounded — as in playback
+  const g=evGain(ev), pair=(buf)=>!buf?null
+    :(ev.roll?[{buf,off:-0.045,gain:g*0.45},{buf,off:0,gain:g}]:[{buf,off:0,gain:g}]);
+  if(ev.v==="perc"){
+    const hand=ev.hand==="L"?"L":"R";
+    return pair(bankBuf("p_"+ev.s+hand)||percBuf(ev.s==="tak"?"tak":ev.s));
+  }
+  let f=ev.f;
+  if(trans){ f=MAP[f]; if(f===null||f===undefined) return null; }
+  const midi=myPan.posMidi(f);
+  if(midi===null||midi===undefined) return null;    // field missing on this pan
+  const art=ev.art||"open";
+  return pair((art==="open"?bankBuf("o"+midi):art==="mute"?bankBuf("m"+midi):null)
+    ||synthBuf(midi,art));
+}
+/* Every stroke of `pulses` pulses, with the time each one falls at. The pulse
+   counter is absolute (breaks count cycles) while the score is read folded, so
+   a jam repeats its form and the breaks still know which pass they are on.
+   `loopSec` is put aside for the walk — synchronously, so nothing can observe
+   it half-done — because a loop is a practice tool and this exports the piece. */
+function exportPlan(pulses){
+  const out=[]; const trans=!!(mode==="trans"&&MAP);
+  const savedLoop=loopSec; loopSec=null;
+  let t=0;
+  try{
+    for(let ab=0;ab<pulses;ab++){
+      const pi=((ab%C.total)+C.total)%C.total;
+      let dur=0; try{ dur=pulseDurOf(pi); }catch(e){}
+      if(!(dur>0.0005)) dur=0.12;                  // sched()'s own floor
+      try{
+        const sec=secOfPulse(pi), rel=pi-sec.pulse, m=SM(piece,sec.name);
+        let at=t;
+        if(feelOn) at+=feelShift(rel,m,dur);
+        else if(swing>0&&m.sub%2===0&&(rel%2)===1) at+=swing/100*dur/3;
+        const bk=jamOn?jamBreakInfo(ab):null;
+        if(!(bk&&bk.inBreak&&!bk.first))
+          for(const ev of (C.byPulse.get(pi)||[])){
+            const vs=exportVoice(ev,trans);
+            if(vs) for(const v of vs) out.push({buf:v.buf,at:Math.max(0,at+v.off),gain:v.gain});
+          }
+      }catch(e){ /* one bad pulse is skipped, never repeated — sched()'s rule */ }
+      t+=dur;
+    }
+  }finally{ loopSec=savedLoop; }
+  return {evs:out,end:t};
+}
+/* How long the file will be, without building it — the dialog quotes this
+   before you commit to a five-minute render. */
+function expSeconds(pulses){
+  let t=0;
+  for(let ab=0;ab<pulses;ab++){
+    let d=0; try{ d=pulseDurOf(((ab%C.total)+C.total)%C.total); }catch(e){}
+    t+=(d>0.0005?d:0.12);
+  }
+  return t+EXP_TAIL;
+}
+
+/* THE LIVE GRAPH, REBUILT OFFLINE. Node for node: master ← limiter ← dry|wet,
+   wet ← convolver ← send. Two things are copied rather than recomputed —
+   `conv.buffer`, so the file gets the very reverb that is in the room (an
+   impulse response is random noise, and a fresh one would be a different
+   room), and the dry/wet gains setWet last left. An AudioBuffer belongs to no
+   context, which is what makes both possible.
+   MASTER STAYS AT 1. The volume slider is for listening. */
+async function exportRender(pulses,fade,onStage){
+  const OC=window.OfflineAudioContext||window.webkitOfflineAudioContext;
+  if(!OC) throw new Error("this browser cannot render audio offline");
+  const plan=exportPlan(pulses);
+  if(!plan.evs.length) throw new Error("there is nothing to export");
+  const sr=ctx.sampleRate, total=plan.end+EXP_TAIL;
+  const oc=new OC(2,Math.max(1,Math.ceil(total*sr)),sr);
+  const om=oc.createGain(); om.gain.value=1; om.connect(oc.destination);
+  const ol=oc.createWaveShaper(); ol.curve=softClipCurve(); ol.oversample="2x";
+  ol.connect(om);
+  const od=oc.createGain(), ow=oc.createGain(); od.connect(ol); ow.connect(ol);
+  od.gain.value=dry.gain.value; ow.gain.value=wet.gain.value;
+  const os=oc.createGain();
+  if(conv&&conv.buffer){
+    const ocv=oc.createConvolver(); ocv.normalize=conv.normalize;
+    ocv.buffer=conv.buffer; ocv.connect(ow); os.connect(ocv);
+  }
+  /* THE FADE TAKES IN THE LAST OF THE MUSIC, NOT ONLY THE RING (David: "in the
+     end there should be a fade-out"). Fading the tail alone would fade a piece
+     that had already stopped — which is not a fade-out, it is a quiet ending
+     with a slope on it. So it starts a few seconds BEFORE the last stroke and
+     runs to the end of the file, and it is short enough on a short export not
+     to swallow the thing it is ending: at most a third of the music. */
+  if(fade){
+    const from=Math.max(0,plan.end-Math.min(4,plan.end/3));
+    om.gain.setValueAtTime(1,from);
+    om.gain.linearRampToValueAtTime(0,total);
+  }
+  for(const e of plan.evs){
+    const s=oc.createBufferSource(); s.buffer=e.buf;
+    const g=oc.createGain(); g.gain.value=e.gain;
+    s.connect(g); g.connect(od); g.connect(os);
+    s.start(e.at);
+  }
+  if(onStage) onStage("Rendering "+fmtDur(total)+" of audio…");
+  await new Promise(r=>setTimeout(r,0));      // let that message paint
+  return oc.startRendering();
+}
+
+/* ---- the two files ---------------------------------------------------- */
+const clamp16=x=>x<-1?-32768:x>=1?32767:Math.round(x*32767);
+function wavBlob(ab){
+  const ch=Math.min(2,ab.numberOfChannels), n=ab.length, sr=ab.sampleRate;
+  const bytes=44+n*ch*2, out=new ArrayBuffer(bytes), v=new DataView(out);
+  const tag=(o,s)=>{ for(let i=0;i<s.length;i++) v.setUint8(o+i,s.charCodeAt(i)); };
+  tag(0,"RIFF");  v.setUint32(4,bytes-8,true);   tag(8,"WAVE");
+  tag(12,"fmt "); v.setUint32(16,16,true);       v.setUint16(20,1,true);   // PCM
+  v.setUint16(22,ch,true);     v.setUint32(24,sr,true);
+  v.setUint32(28,sr*ch*2,true);v.setUint16(32,ch*2,true); v.setUint16(34,16,true);
+  tag(36,"data"); v.setUint32(40,n*ch*2,true);
+  const cd=[]; for(let c=0;c<ch;c++) cd.push(ab.getChannelData(c));
+  let o=44;
+  for(let i=0;i<n;i++) for(let c=0;c<ch;c++){ v.setInt16(o,clamp16(cd[c][i]),true); o+=2; }
+  return new Blob([out],{type:"audio/wav"});
+}
+/* lamejs speaks the MPEG sample rates and nothing else. Every context this app
+   has been seen on runs at 44.1k or 48k, so the resample below is insurance
+   rather than a code path — but a wrong rate does not fail loudly, it writes a
+   file that plays at the wrong speed, and that is the kind of bug a student
+   reports as "the export sounds weird". */
+const MP3_RATES=[48000,44100,32000,24000,22050,16000,12000,11025,8000];
+function resampleTo(data,from,to){
+  if(from===to) return data;
+  const n=Math.round(data.length*to/from), out=new Float32Array(n), r=from/to;
+  for(let i=0;i<n;i++){
+    const x=i*r, j=Math.floor(x), f=x-j;
+    const a=data[j]||0, b=(j+1<data.length?data[j+1]:a);
+    out[i]=a+(b-a)*f;
+  }
+  return out;
+}
+/* ---- MP3, IN A WORKER, AND WHY ─────────────────────────────────────────────
+   The encoder itself is fast: measured at 26× real time, so a three-and-a-half
+   minute piece is under eight seconds of work. The first build spent EIGHTEEN
+   MINUTES on it, and the encoder was never the reason — it yielded to the page
+   once per second of audio so the progress line could paint, and a hidden tab
+   throttles setTimeout to once a SECOND. Two hundred yields, two hundred
+   seconds, and a student who tabbed away to wait (which is what you do while a
+   file exports) would have watched it crawl.
+   This is the same lesson the scheduler learned on 31 Aug in a different key:
+   nothing that has to keep moving may hang off a timer the page can throttle.
+   A worker has its own thread — it neither blocks the progress line nor gets
+   slowed for being out of sight — and the PCM goes over as transferables, so
+   handing it across costs nothing. If a Worker cannot be built at all the
+   inline path below still runs; it yields once per ten seconds of audio rather
+   than once per second, which is slow-but-honest instead of broken. */
+function mp3PCM(ab,sr){
+  const srIn=ab.sampleRate, ch=Math.min(2,ab.numberOfChannels), out=[];
+  for(let c=0;c<ch;c++){
+    const f=resampleTo(ab.getChannelData(c),srIn,sr), a=new Int16Array(f.length);
+    for(let i=0;i<f.length;i++) a[i]=clamp16(f[i]);
+    out.push(a);
+  }
+  return out;
+}
+function mp3Worker(pcm,ch,sr,onProg){
+  const url=new URL(lameURL(),location.href).href;
+  const src="importScripts("+JSON.stringify(url)+");\n"+
+    "onmessage=function(e){var d=e.data,ch=d.ch,L=d.L,R=d.R;"+
+    "var enc=new lamejs.Mp3Encoder(ch,d.sr,d.kbps),parts=[],n=L.length,B=1152*40;"+
+    "for(var i=0;i<n;i+=B){var b=ch>1?enc.encodeBuffer(L.subarray(i,i+B),R.subarray(i,i+B))"+
+    ":enc.encodeBuffer(L.subarray(i,i+B));"+
+    "if(b.length)parts.push(new Uint8Array(b));"+
+    "postMessage({p:Math.min(1,(i+B)/n)});}"+
+    "var f=enc.flush();if(f.length)parts.push(new Uint8Array(f));"+
+    "postMessage({done:true,parts:parts});};";
+  const burl=URL.createObjectURL(new Blob([src],{type:"text/javascript"}));
+  const w=new Worker(burl);
+  return new Promise((res,rej)=>{
+    w.onmessage=e=>{
+      if(e.data.done){ res(e.data.parts); w.terminate(); URL.revokeObjectURL(burl); }
+      else if(onProg) onProg(e.data.p);
+    };
+    w.onerror=e=>{ w.terminate(); URL.revokeObjectURL(burl);
+      rej(new Error(e.message||"the MP3 worker failed")); };
+    const move=[pcm[0].buffer]; if(pcm[1]) move.push(pcm[1].buffer);
+    w.postMessage({ch,sr,kbps:EXP_KBPS,L:pcm[0],R:pcm[1]||null},move);
+  });
+}
+async function mp3Inline(pcm,ch,sr,onProg){
+  const enc=new lamejs.Mp3Encoder(ch,sr,EXP_KBPS), parts=[];
+  const n=pcm[0].length, BLOCK=1152*400;          // ~10 s of audio between yields
+  for(let i=0;i<n;i+=BLOCK){
+    const b=ch>1?enc.encodeBuffer(pcm[0].subarray(i,i+BLOCK),pcm[1].subarray(i,i+BLOCK))
+                :enc.encodeBuffer(pcm[0].subarray(i,i+BLOCK));
+    // the encoder hands back a view on a buffer it reuses — copy, never keep
+    if(b.length) parts.push(new Uint8Array(b));
+    if(onProg) onProg(Math.min(1,(i+BLOCK)/n));
+    await new Promise(r=>setTimeout(r,0));
+  }
+  const end=enc.flush(); if(end.length) parts.push(new Uint8Array(end));
+  return parts;
+}
+async function mp3Blob(ab,onProg){
+  await loadLame();
+  const sr=MP3_RATES.includes(ab.sampleRate)?ab.sampleRate:48000;
+  const ch=Math.min(2,ab.numberOfChannels);
+  const pcm=mp3PCM(ab,sr);
+  let parts=null;
+  if(window.Worker){
+    try{ parts=await mp3Worker(pcm,ch,sr,onProg); }
+    catch(e){ parts=null; }      // …and the inline path picks it up below
+  }
+  /* the worker took the PCM's memory with it when it went, so a fallback after
+     a FAILED transfer has to build it again — cheap, and only ever on the path
+     nobody takes */
+  if(!parts) parts=await mp3Inline(pcm[0].length?pcm:mp3PCM(ab,sr),ch,sr,onProg);
+  return new Blob(parts,{type:"audio/mpeg"});
+}
+
+/* ---- the dialog ------------------------------------------------------- */
+/* A FLAT MUST NOT BECOME A NATURAL ON THE WAY TO THE FILE SYSTEM. The .hps
+   saver's `[^\w -]+` → "" is fine for a title someone typed, and quietly wrong
+   for a jam: `jamDefaultName()` returns "Dmin · B♭maj · Fmaj +1", and stripping
+   what it cannot spell turned B♭maj into Bmaj — a different chord, in the one
+   place a student would look to tell two exports apart. So the accidentals are
+   TRANSLITERATED before anything is dropped, the middle dot becomes a dash it
+   can survive as, and the run of spaces that used to be left behind is closed
+   up. (Left alone deliberately: the .hps saver. It names a file the student
+   typed the title of, and changing it would rename their saved pieces.) */
+function expFileName(raw){
+  return (String(raw)
+    .replace(/♭/g,"b").replace(/♯/g,"#")
+    .replace(/[·•|/\\]/g,"-")
+    .replace(/[^\w #()+.\-]+/g," ")
+    .replace(/\s+/g," ")
+    .replace(/(^[\s.\-]+|[\s.\-]+$)/g,"")
+    .slice(0,80)) || "Handpan";
+}
+function fmtDur(s){ const m=Math.floor(s/60); return m+":"+String(Math.round(s%60)).padStart(2,"0"); }
+function expCycles(){ return Math.max(1,Math.min(64,Math.round(+$("expCycles").value||1))); }
+function expPulses(){
+  if(!C) C=compile(piece);
+  return C.total*(jamOn?expCycles():1);
+}
+function paintExpFade(){
+  const b=$("expFade");
+  b.classList.toggle("on",expFade);
+  b.setAttribute("aria-pressed",expFade?"true":"false");
+  b.textContent=expFade?"On":"Off";
+}
+function paintExpSize(){
+  let s=0; try{ s=expSeconds(expPulses()); }catch(e){}
+  const sr=ctx?ctx.sampleRate:48000;
+  const mp3=s*EXP_KBPS/8/1024, wav=s*sr*4/1048576;
+  $("expSize").textContent=s?("About "+fmtDur(s)+" long — roughly "
+    +(mp3<10?mp3.toFixed(1):Math.round(mp3))+" MB as MP3, "
+    +Math.round(wav)+" MB as WAV."):"";
+}
+function openExport(){
+  if(!piece){ toast("There is nothing to export yet"); return; }
+  if(!C) C=compile(piece);
+  const jam=!!jamOn;
+  $("expCycRow").style.display=jam?"":"none";
+  /* THE ROOM DECIDES WHAT "ALL OF IT" MEANS. In Practice that is the whole
+     arrangement, first bar to last. In Jam there is no last bar — the form
+     comes round for as long as you play it — so the file needs a length, and
+     the only person who knows it is the one exporting. */
+  $("expWhat").textContent=jam
+    ? "The jam as it plays — chords, groove, breaks and the tempo you have set."
+    : "The complete arrangement, first bar to last, at the tempo you have set.";
+  paintExpFade(); paintExpSize();
+  $("expProg").style.display="none";
+  openDlg($("expDlg"));
+}
+async function doExport(fmt){
+  if(expBusy) return;
+  expBusy=true;
+  const prog=$("expProg"), btns=[$("expMp3"),$("expWav")];
+  btns.forEach(b=>b.disabled=true);
+  prog.style.display=""; prog.textContent="Getting the samples ready…";
+  const say=t=>{ prog.textContent=t; };
+  try{
+    ensureCtx();
+    if(ctx.state!=="running"){ try{ await ctx.resume(); }catch(e){} }
+    /* EVERY SAMPLE, DECODED, BEFORE A NOTE IS PLACED. bankBuf() answers null
+       while a decode is in flight and playback quietly falls through to the
+       synth voice — which nobody notices in a bar and everybody notices in a
+       file that is half recorded pan and half sine wave. */
+    await preloadBank();
+    const buf=await exportRender(expPulses(),expFade,say);
+    let blob,ext;
+    if(fmt==="mp3"){
+      say("Encoding MP3…");
+      blob=await mp3Blob(buf,p=>say("Encoding MP3… "+Math.round(p*100)+"%"));
+      ext="mp3";
+    }else{
+      say("Writing the WAV…");
+      await new Promise(r=>setTimeout(r,0));
+      blob=wavBlob(buf); ext="wav";
+    }
+    const raw=jamOn?(typeof jamDefaultName==="function"?jamDefaultName():"Jam")
+                   :(piece.title||"Handpan");
+    const name=expFileName(raw)+(jamOn?" ("+expCycles()+"x)":"");
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download=name+"."+ext; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),8000);
+    say("Saved "+name+"."+ext+" — "+(blob.size/1048576).toFixed(1)+" MB");
+    toast("Exported "+name+"."+ext);
+  }catch(e){
+    say("Export failed — "+((e&&e.message)||"unknown"));
+  }finally{
+    expBusy=false; btns.forEach(b=>b.disabled=false);
+  }
 }
 
 /* ---------------- transposition ----------------
@@ -13894,7 +14322,7 @@ const JAMPATS=[
  {id:"mg9",name:"Malfuf",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"3","L"],[1,"g","R"],[2,"g","L"],[3,"5","R"],[4,"g","L"],[5,"g","R"],[6,"7","L"],[7,"g","R"],[8,"1","L"],[9,"g","R"],[10,"g","L"],[11,"3","R"],[12,"g","L"],[13,"g","R"],[14,"5","L"],[15,"g","R"]]},
  {id:"mg10",name:"Another backbeat",coll:"Another backbeat",meter:[4,4],sub:4,bpr:1,ev:[
-   [0,"5","R"],[0,"3","L"],[0,"1","L"],[2,"g","L"],[4,"^","L"],[5,"g","R"],[6,"g","L"],[7,"5","R"],[8,"g","L"],[9,"3","R"],[10,"1","L"],[11,"g","R"],[12,"^","L"],[14,"7","R"]]},
+   [0,"5","R"],[0,"3","L"],[0,"1","L"],[2,"g","L"],[4,"^","L"],[5,"g","R"],[6,"g","L"],[7,"5","R"],[8,"g","L"],[9,"3","R"],[10,"1","L"],[11,"g","R"],[12,"^","L"],[14,"5","R"]]},
  {id:"mg11",name:"Another backbeat 2",coll:"Another backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"5","R"],[0,"3","L"],[0,"1","L"],[2,"5","R"],[2,"3","L"],[2,"1","L"],[4,"^","L"],[5,"g","R"],[6,"g","L"],[7,"5","R"],[8,"g","L"],[9,"3","R"],[10,"1","L"],[12,"^","L"],[14,"g","L"]]},
  {id:"mg12",name:"Another backbeat 3",coll:"Another backbeat",meter:[4,4],sub:4,bpr:1,ev:[
@@ -13904,11 +14332,11 @@ const JAMPATS=[
  {id:"mg14",name:"Backbeat arpeggio 2",coll:"Backbeat arpeggio",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"1","L"],[4,"^","R"],[5,"g","R"],[6,"1","L"],[7,"5","R"],[8,"g","R"],[9,"3","L"],[10,"g","R"],[11,"1","L"],[12,"7","R"],[13,"1","L"],[14,"3","L"],[15,"9","R"]]},
  {id:"mg15",name:"Busy backbeat",meter:[4,4],sub:4,bpr:1,ev:[
-   [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"1","L"],[4,"^","R"],[5,"3","L"],[6,"5","R"],[7,"1","L"],[8,"g","R"],[9,"3","L"],[10,"5","R"],[11,"1","L"],[12,"^","R"],[13,"3","L"],[14,"7","R"],[15,"g","R"]]},
+   [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"1","L"],[4,"^","R"],[5,"3","L"],[6,"5","R"],[7,"1","L"],[8,"g","R"],[9,"3","L"],[10,"5","R"],[11,"1","L"],[12,"^","R"],[13,"3","L"],[14,"5","R"],[15,"g","R"]]},
  {id:"mg16",name:"Downwards is also nice",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"5","L"],[2,"3","L"],[4,"^","L"],[5,"g","R"],[6,"1","L"],[7,"5","R"],[8,"g","L"],[9,"3","R"],[10,"1","L"],[11,"g","R"],[12,"^","L"],[13,"g","R"],[14,"g","L"],[15,"1","R"]]},
  {id:"mg17",name:"Funky backbeat",coll:"Funky backbeat",meter:[4,4],sub:4,bpr:1,ev:[
-   [0,"5","R"],[0,"3","L"],[0,"1","L"],[2,"g","R"],[3,"1","L"],[4,"^","R"],[5,"g","R"],[6,"1","L"],[7,"5","R"],[8,"g","R"],[9,"^","L"],[10,"g","L"],[11,"3","R"],[12,"^","L"],[13,"g","L"],[14,"7","R"]]},
+   [0,"5","R"],[0,"3","L"],[0,"1","L"],[2,"g","R"],[3,"1","L"],[4,"^","R"],[5,"g","R"],[6,"1","L"],[7,"5","R"],[8,"g","R"],[9,"^","L"],[10,"g","L"],[11,"3","R"],[12,"^","L"],[13,"g","L"],[14,"5","R"]]},
  {id:"mg18",name:"Funky backbeat 2",coll:"Funky backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[1,"^","R"],[2,"3","L"],[3,"5","R"],[4,"^","L"],[5,"g","R"],[6,"g","L"],[7,"5","R"],[8,"g","L"],[9,"3","R"],[10,"1","L"],[11,"g","R"],[12,"^","L"],[13,"g","R"],[14,"g","L"],[15,"^","R"]]},
  {id:"mg19",name:"Groovy arpeggio",meter:[4,4],sub:4,bpr:1,ev:[
@@ -13916,19 +14344,19 @@ const JAMPATS=[
  {id:"mg20",name:"Groovy steps",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[2,"5","R"],[4,"3","L"],[6,"5","R"],[7,"1","L"],[9,"1","L"],[10,"5","R"],[12,"3","L"],[14,"5","R"]]},
  {id:"mg21",name:"Just nice",coll:"Just nice",meter:[4,4],sub:4,bpr:1,ev:[
-   [0,"1","L"],[2,"5","R"],[4,"3","L"],[5,"5","R"],[6,"g","R"],[7,"1","L"],[8,"g","L"],[9,"5","R"],[10,"g","L"],[11,"5","R"],[12,"3","L"],[14,"7","R"]]},
+   [0,"1","L"],[2,"5","R"],[4,"3","L"],[5,"5","R"],[6,"g","R"],[7,"1","L"],[8,"g","L"],[9,"5","R"],[10,"g","L"],[11,"5","R"],[12,"3","L"],[14,"5","R"]]},
  {id:"mg22",name:"Just nice 2",coll:"Just nice",meter:[4,4],sub:4,bpr:1,ev:[
-   [0,"3","L"],[0,"1","L"],[2,"5","R"],[4,"3","L"],[4,"1","L"],[5,"5","R"],[6,"g","R"],[7,"3","L"],[7,"1","L"],[9,"5","R"],[10,"g","L"],[11,"5","R"],[12,"3","L"],[12,"1","L"],[14,"7","R"]]},
+   [0,"3","L"],[0,"1","L"],[2,"5","R"],[4,"3","L"],[4,"1","L"],[5,"5","R"],[6,"g","R"],[7,"3","L"],[7,"1","L"],[9,"5","R"],[10,"g","L"],[11,"5","R"],[12,"3","L"],[12,"1","L"],[14,"5","R"]]},
  {id:"mg23",name:"Ramp",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"3","L"],[0,"1","L"],[1,"g","L"],[2,"5","R"],[3,"3","L"],[3,"1","L"],[4,"g","L"],[5,"5","R"],[6,"3","L"],[6,"1","L"],[7,"g","L"],[8,"5","R"],[9,"g","R"],[10,"g","L"],[11,"5","R"],[12,"3","L"],[12,"1","L"],[14,"5","R"]]},
  {id:"mg24",name:"Relaxed backbeat 4",coll:"Relaxed backbeat",meter:[4,4],sub:4,bpr:1,ev:[
-   [0,"1","L"],[0,"3","L"],[2,"g","R"],[3,"1","L"],[4,"^","R"],[5,"1","L"],[6,"3","L"],[7,"5","R"],[8,"g","L"],[9,"g","R"],[10,"g","L"],[11,"g","L"],[12,"^","R"],[13,"1","L"],[14,"g","L"],[15,"7","R"]]},
+   [0,"1","L"],[0,"3","L"],[2,"g","R"],[3,"1","L"],[4,"^","R"],[5,"1","L"],[6,"3","L"],[7,"5","R"],[8,"g","L"],[9,"g","R"],[10,"g","L"],[11,"g","L"],[12,"^","R"],[13,"1","L"],[14,"g","L"],[15,"5","R"]]},
  {id:"mg25",name:"Relaxed backbeat 2",coll:"Relaxed backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"5","R"],[0,"3","L"],[0,"1","L"],[2,"g","R"],[3,"1","L"],[4,"^","R"],[5,"g","R"],[6,"1","L"],[7,"5","R"],[8,"g","R"],[9,"3","L"],[10,"g","R"],[11,"1","L"],[12,"^","R"],[13,"g","R"],[14,"3","L"]]},
  {id:"mg26",name:"Relaxed backbeat 3",coll:"Relaxed backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"5","R"],[0,"3","L"],[0,"1","L"],[2,"g","R"],[3,"1","L"],[4,"^","R"],[5,"1","L"],[6,"3","L"],[7,"5","R"],[8,"g","R"],[9,"3","L"],[10,"g","R"],[11,"1","L"],[12,"^","R"],[13,"1","L"],[14,"3","L"]]},
  {id:"mg27",name:"Relaxed backbeat 5",coll:"Relaxed backbeat",meter:[4,4],sub:4,bpr:1,ev:[
-   [0,"3","L"],[0,"1","L"],[2,"g","R"],[3,"1","L"],[4,"^","R"],[5,"1","L"],[6,"3","L"],[7,"5","R"],[8,"g","R"],[9,"3","L"],[10,"g","R"],[11,"1","L"],[12,"^","R"],[13,"1","L"],[14,"g","L"],[15,"7","R"]]},
+   [0,"3","L"],[0,"1","L"],[2,"g","R"],[3,"1","L"],[4,"^","R"],[5,"1","L"],[6,"3","L"],[7,"5","R"],[8,"g","R"],[9,"3","L"],[10,"g","R"],[11,"1","L"],[12,"^","R"],[13,"1","L"],[14,"g","L"],[15,"5","R"]]},
  {id:"mg28",name:"Up and down backbeat",coll:"Up and down backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[1,"g","R"],[2,"3","L"],[3,"5","R"],[4,"^","L"],[5,"g","R"],[6,"g","L"],[7,"5","R"],[8,"g","L"],[9,"3","R"],[10,"1","L"],[11,"g","R"],[12,"^","L"],[13,"g","R"],[14,"g","L"],[15,"g","R"]]},
  {id:"mg29",name:"Up and down backbeat 2",coll:"Up and down backbeat",meter:[4,4],sub:4,bpr:1,ev:[
@@ -15007,6 +15435,30 @@ function jamMotifVary(m,rnd){
    into that note is deliberate and unbounded. Everywhere else in Motion a step
    is capped; here it is not, because the ear hears a run arriving, not
    departing. */
+/* ---- WHETHER THIS BAR CARRIES A RUN ----
+   Lifted out of the Motion branch whole, expression for expression, when
+   Transitions became a setting of their own (David, 1 Sep) — because his
+   answer to "should the frequency rules be the same in Narrow and Wide" was
+   yes, and the only way to be sure of that is for there to be ONE copy.
+   THE ORDER OF THE `rnd()` CALLS IS THE CONTRACT. Motion's output is a
+   function of its seed, so a reordering here would silently rewrite every
+   existing Motion jam; the short-circuits in `longOk` are load-bearing for
+   the same reason. Verified byte-identical after the extraction. */
+function jamRunPlan(i,nBars,pat,mrnd,runs,rest,ends){
+  const bpr=Math.max(1,pat.bpr||1);
+  const rowEnd=((i+1)%bpr)===0;          // this bar closes a row
+  const ri=Math.floor(i/bpr);            // which row
+  const nRows=Math.max(1,Math.ceil(nBars/bpr));
+  const evenBar=((ri+1)%2)===0;          // …the even ROW
+  const lastOfForm=ri===nRows-1;
+  const lastOfHalf=ri===Math.floor(nRows/2)-1;
+  const join=rowEnd&&(lastOfForm||lastOfHalf);
+  const joinP=Math.min(0.9,1.15*nRows/8);
+  const pend=rowEnd&&ends&&!join;
+  const want=rowEnd&&runs<2&&(runs===0||mrnd()<0.3)
+    &&(join?mrnd()<joinP:(pend?mrnd()<0.85:(!rest&&mrnd()<(evenBar?0.6:0.25))));
+  return {want,longOk:join||pend||mrnd()<0.08};
+}
 function jamRunFields(lad,pulses,rnd,longOk){
   if(!lad||!lad.length||pulses<2) return null;
   /* A run aims at the next chord's lowest or highest note. On an extreme pan
@@ -15557,7 +16009,16 @@ function jamProgTemplate(n){
    is exactly why he said eight "looks fine".
    `#jsReline` keeps its own meaning, which is now the case Generate no longer
    covers: a new line over the SAME chords. */
-function jamReline(){ if(jam.motion) jam.mseed=jamNewSeed(); }
+function jamReline(){ if(jam.motion||jam.trans) jam.mseed=jamNewSeed(); }
+/* TRANSITIONS ARE THEIR OWN SETTING (David, 1 Sep): "the note runs option can
+   also be activated with the narrow or wide settings … the motion setting can
+   also exist without them. In wide and narrow, note runs should be off by
+   default, and in motion, note runs should be on by default."
+   His answer on what "by default" means was (a): CHANGING THE VOICING ALWAYS
+   RESETS IT. Predictable beats clever — the switch is right beside the pills,
+   so a student who wants runs in Wide is one tap away and never has to wonder
+   what the app is remembering for them. */
+function jamTransFor(mode){ return mode==="motion"; }
 function jamGenerate(bars){
   const n=Math.max(1,Math.min(JAM_MAX,bars||jamBarCount()||4));
   jamPreviewStop();
@@ -15879,56 +16340,18 @@ function buildJamPiece(){
          A groove with one bar to the row (every 4/4 in the library) has
          `rows === bars`, so it takes the identical path and generates
          identical bars. */
-      const bpr=Math.max(1,pat.bpr||1);
-      const rowEnd=((i+1)%bpr)===0;          // this bar closes a row
-      const ri=Math.floor(i/bpr);            // which row
-      const nRows=Math.max(1,Math.ceil(form.length/bpr));
-      const evenBar=((ri+1)%2)===0;          // …the even ROW now
-      /* AND THEY ARE RARE (David: "overall, they shouldn't happen all the
-         time. Not every bar, not every second or every third bar. But just
-         from time to time for musical variety and for a break from the
-         pattern"). About one bar in seven carries one — three times likelier
-         on an even bar than an odd one, so the figure keeps its place in the
-         phrase without becoming the phrase. */
       /* the run needs the next CHORD, not just its melody note — it lands on
          that chord's lowest or highest note on this pan */
       const nf=form[(i+1)%form.length];
       const ndef=nf&&jamDefs().list.find(c=>c.name===nf.chord);
-      /* THE TWO JOINS OF THE FORM: its last bar, and the last bar of its
-         first half. A run may take one of those even though it would
-         otherwise have rested there — a roll into the turn IS the full stop,
-         and it is the one place a rest can be spent better. */
-      /* the two joins are the last ROW of the form and the last row of its
-         first half — the same two places, counted in the same unit */
-      const lastOfForm=ri===nRows-1;
-      const lastOfHalf=ri===Math.floor(nRows/2)-1;
-      const join=rowEnd&&(lastOfForm||lastOfHalf);
-      /* A JOIN'S CHANCE IS PER FORM, NOT PER BAR (David, 30 Aug: "runs in
-         general seem to happen much more frequently when 'how far it travels'
-         is set to 1 … most of my generated sequences with that setting have a
-         long run at the end of the 2nd and 4th bar"). He had found a bug in
-         the arithmetic, not a taste: there are always exactly TWO joins, so on
-         a four-bar form they are HALF the bars and a flat 0.9 made them all
-         but certain — measured over 300 generations, bar 2 carried a run 77%
-         of the time and bar 4 86%, and a run fell in 48% of all bars against
-         30% at four passes. The chance now scales with the form, so the two
-         joins contribute the same amount to a generation however long it is:
-         0.45 on four bars, the full 0.9 from eight up. */
-      const joinP=Math.min(0.9,1.15*nRows/8);
-      /* A 4-BAR PHRASE END THAT IS NOT ONE OF THE FORM'S TWO JOINS. Long runs
-         were 99% at the joins, and a sixteen-bar form still has only two of
-         them spread over four phrases — which is why four passes sat at 19%
-         of phrases against one pass's 28%, and why no weighting could have
-         fixed it. It is structural, so the structure gained a rung: a phrase
-         end leads somewhere too. It bites only from four passes up, because at
-         one and two passes the phrase ends ALREADY are the joins. */
-      const pend=rowEnd&&ends&&!join;
-      /* …and a run is only ever offered where a row ends. That is the whole of
-         the density fix: a two-bars-to-the-row groove is asked half as often
-         as it was, which is exactly how much more often its bars go by. */
-      const wantRun=rowEnd&&runs<2&&(runs===0||mrnd()<0.3)
-        &&(join?mrnd()<joinP:(pend?mrnd()<0.85:(!rest&&mrnd()<(evenBar?0.6:0.25))));
-      const longOk=join||pend||mrnd()<0.08;
+      /* THE RULES LIVE IN ONE PLACE NOW (see jamRunPlan): the row is the unit,
+         the form's two joins and a four-bar phrase end are the strong places,
+         an even row beats an odd one, and a long run is only allowed where the
+         music is turning. Narrow and Wide call the very same function, which
+         is what makes "the same rules" true rather than intended. */
+      const plan=jam.trans?jamRunPlan(i,form.length,pat,mrnd,runs,rest,ends)
+                          :{want:false,longOk:false};
+      const wantRun=plan.want, longOk=plan.longOk;
       const rf=wantRun&&ndef?jamRunFields(rqLadder(ndef),bp,mrnd,longOk):null;
       const run=rf?rf.notes:null;
       runs=run?runs+1:0;
@@ -16019,6 +16442,22 @@ function buildJamPiece(){
   // what decides wide against narrow (David, 27 Aug)
   const vs=jamProgVoices(jam.slots.map(s=>s.chord),VV,jamNarrowNow());
   const bars=[];
+  /* TRANSITIONS IN NARROW AND WIDE (David, 1 Sep). Motion had the runs to
+     itself because it was the only path that walked bar by bar; this one
+     voices the progression once and lays the groove over it. So the bars are
+     numbered here too, and the SAME `jamRunPlan` decides — his answer to
+     whether the rules should match was yes, and one shared function is the
+     only way to mean it. There is no travelling line here, so nothing is
+     re-aimed afterwards: the run is a lead-in, not a change of register. */
+  const nBarsAll=jam.slots.reduce((n,sl)=>n+Math.max(1,sl.bars||1),0);
+  const trnd=jamRnd(((jam.mseed||1)^0x9E3779B9)>>>0);
+  const topTokN=JV_TOK[Math.max(0,VV-1)];
+  const phraseN=Math.max(4,Math.round(nBarsAll/4));
+  let runsN=0;
+  /* which chord the bar AFTER this one plays — what a run lands on */
+  const chordAtBar=[];
+  jam.slots.forEach(sl=>{ const n=Math.max(1,sl.bars||1);
+    for(let k=0;k<n;k++) chordAtBar.push(sl.chord); });
   jam.slots.forEach((slot,si)=>{
     const v=vs[si];
     const gb=patBars(pat), bp=pat.meter[0]*pat.sub;
@@ -16034,9 +16473,28 @@ function buildJamPiece(){
          chord 2 its second. Forcing each chord to a whole groove was the
          earlier reading and it is what he was correcting. */
       const gi=bars.length%gb;
+      const bi2=bars.length;
+      let run=null;
+      if(jam.trans){
+        const ends=(bi2+1)%phraseN===0;
+        const plan=jamRunPlan(bi2,nBarsAll,pat,trnd,runsN,false,ends);
+        if(plan.want){
+          const nc=chordAtBar[(bi2+1)%chordAtBar.length];
+          const nd=nc&&jamDefs().list.find(c=>c.name===nc);
+          const rf=nd?jamRunFields(rqLadder(nd),bp,trnd,plan.longOk):null;
+          run=rf?rf.notes:null;
+        }
+        runsN=run?runsN+1:0;
+      }
+      /* the run takes the bar's last pulses and the pattern stops for it —
+         the same rule Motion follows, so the two paths sound like one app */
+      const from=run?bp-run.length:bp;
       const bar=pat.ev.filter(([t])=>Math.floor(t/bp)===gi)
+        .filter(([t])=>!(run&&(t-gi*bp)>=from))
         .map(([t,k,h])=>{ const tt=t-gi*bp;
           return patEv(tt,k,h,v); });
+      if(run){ run.forEach((fl,x)=>bar.push(F(from+x,fl,x%2?"R":"L")));
+        bar.sort((a,b)=>a.t-b.t); }
       if(b===0&&bar.length) bar[0]=Object.assign({},bar[0],{chord:slot.chord});
       bars.push(bar);
     }
@@ -16090,7 +16548,7 @@ function jamToPiece(){
 }
 function saveJamLS(){ try{localStorage.setItem("hps.jam",JSON.stringify(
   {slots:jam.slots,patternId:jam.patternId,bpm:bpm,narrow:!!jam.narrow,
-   motion:!!jam.motion,mpasses:jamPasses(),mseed:jam.mseed||1,
+   motion:!!jam.motion,trans:!!jam.trans,mpasses:jamPasses(),mseed:jam.mseed||1,
    brk:jam.brk}))}catch(e){} }
 /* THE PROGRESSION A STUDENT MEETS FIRST (David, 27 Aug): Dmin · B♭maj · Fmaj
    · Cmaj on a D-minor pan — i · VI · III · VII — and "the equivalent on the
@@ -16134,7 +16592,7 @@ function defaultJam(){
   let slots=names.slice(0,4).map(chord=>({chord,bars:1}));
   if(!slots.length) slots=full.slice(0,4).map(c=>({chord:c.name,bars:1}));
   return {slots:slots.length?slots:[{chord:full[0]&&full[0].name||"Cmaj",bars:1}],
-    patternId:JAMPATS[0].id,bpm:72,narrow:false,brk:jamBrkNorm(null,4)};
+    patternId:JAMPATS[0].id,bpm:72,narrow:false,trans:false,brk:jamBrkNorm(null,4)};
 }
 function enterJam(){
   if(jamOn) return;
@@ -16160,6 +16618,8 @@ function enterJam(){
   jamLast=JSON.stringify(jam); histClear("jam");   // a jam opens its own history
   if(!allPats().some(p=>p.id===jam.patternId)) jam.patternId=JAMPATS[0].id;
   jam.brk=jamBrkNorm(jam.brk,4);      // a stored jam from before breaks existed
+  // a jam stored before Transitions existed: runs were a Motion-only thing
+  if(typeof jam.trans!=="boolean") jam.trans=!!jam.motion;
   if(jam.bpm) bpm=jam.bpm;
   navPush("jam","Practice",()=>leaveJam());
   jamOn=true; document.body.classList.add("jam");
@@ -16332,6 +16792,20 @@ function brkEveryLabel(){ return jam.brk.every===1?"every table":"every "+jam.br
    two options read as instructions ("Click during break") rather than as
    switches, so tapping one told you nothing. A caption plus a pair of pills
    says what the control IS and which way it is set, in the app's own idiom. */
+/* the same captioned row the breaks and voicings use, for a group that has
+   no wrap of its own to live in */
+function brkRow0(el){
+  const r=document.createElement("span"); r.className="brkrow";
+  const lab=document.createElement("span"); lab.className="lab vlab";
+  lab.textContent="Transitions:"; r.appendChild(lab); r.appendChild(el);
+  return r;
+}
+/* ONE PAINTER, so the sheet, the drawer and a voicing switch cannot disagree */
+function paintTrans(){
+  const g=document.querySelector('.pills[aria-label="Transitions"]');
+  if(g) g.querySelectorAll("button").forEach((x,i)=>
+    x.setAttribute("aria-pressed",String(!!jam.trans===(i===1))));
+}
 function brkRow(w,caption){
   const r=document.createElement("span"); r.className="brkrow";
   const lab=document.createElement("span"); lab.className="lab vlab";
@@ -16648,6 +17122,11 @@ function renderJamPanel(){
         x.setAttribute("aria-pressed",String(x===b)));
       jam.motion=mode==="motion";
       if(mode!=="motion") jam.narrow=mode==="narrow";
+      /* CHANGING THE VOICING RESETS TRANSITIONS (his answer (a)): on for
+         Motion, off for Narrow and Wide. The pills below say so immediately,
+         so nothing is hidden. */
+      jam.trans=jamTransFor(mode);
+      if(typeof paintTrans==="function") paintTrans();
       // a first turn to Motion needs a line to sing; later turns keep theirs
       if(jam.motion&&!jam.mseed) jam.mseed=jamNewSeed();
       applyJam(); saveJamLS();
@@ -16660,6 +17139,33 @@ function renderJamPanel(){
     vpills.appendChild(b);
   });
   deep.appendChild(vpills);
+  /* TRANSITIONS, its own switch beside the voicings (David, 1 Sep). It is not
+     a fourth voicing — it answers a different question, "does the bar lead
+     into the next one" — which is exactly why he asked for it to come out of
+     Motion and stand on its own. */
+  const tpills=document.createElement("span");
+  tpills.className="pills"; tpills.id="jamTrans";
+  tpills.title="A run of single notes at the end of a row, leading into the next chord";
+  tpills.setAttribute("role","group"); tpills.setAttribute("aria-label","Transitions");
+  [["Off",false],["On",true]].forEach(([label,val])=>{
+    const b=document.createElement("button");
+    b.textContent=label;
+    b.setAttribute("aria-pressed",String(!!jam.trans===val));
+    b.title=val?"End a row with a run that leads into the next chord"
+               :"The groove plays through, with no run";
+    b.addEventListener("click",()=>{
+      if(!!jam.trans===val) return;
+      /* the pressed state moves HERE, not on a re-render — this group is
+         often on loan to the sheet or the drawer, the trap the voicing pills
+         hit first */
+      tpills.querySelectorAll("button").forEach(x=>
+        x.setAttribute("aria-pressed",String(x===b)));
+      jam.trans=val; applyJam(); saveJamLS();
+      toast(val?"Transitions on — rows lead into the next chord":"Transitions off");
+    });
+    tpills.appendChild(b);
+  });
+  deep.appendChild(brkRow0(tpills));
   deep.appendChild(cwrap);
   /* THE BREAKS GROUP travels the same way the voicings and the spice slider
      do — ONE element, moved between the sheet (desktop) and the drawer's
@@ -20153,7 +20659,7 @@ function jamRecipe(){
   const pat=allPats().find(p=>p.id===jam.patternId);
   const r={v:1, slots:jam.slots.map(s=>({chord:s.chord,bars:s.bars||1})), brk:jam.brk,
     patternId:jam.patternId, bpm:bpm, narrow:!!jam.narrow,
-    motion:!!jam.motion, mpasses:jamPasses(), mseed:jam.mseed||1};
+    motion:!!jam.motion, trans:!!jam.trans, mpasses:jamPasses(), mseed:jam.mseed||1};
   if(pat&&pat.user) r.groove=pat;      // travels with it
   return r;
 }
@@ -20190,6 +20696,8 @@ function importJam(r){
   /* the line travels with the jam, seed and all — a shared Motion jam must
      sing the same tune at the other end, not merely the same chords */
   jam.motion=!!r.motion; jam.mpasses=r.mpasses||2; jam.mseed=r.mseed||1;
+  // a shared jam from before Transitions: runs were Motion's alone
+  jam.trans=(typeof r.trans==="boolean")?r.trans:!!r.motion;
   jam.brk=jamBrkNorm(r.brk,4);        // a shared jam from before breaks existed
   if(r.bpm){ bpm=r.bpm; $("bpm").value=bpm; }
   jamEditSlot=-1; jamFitSlots(); applyJam(); saveJamLS();
@@ -20571,7 +21079,13 @@ function jamSetRehome(vp,cw){
   const d=$("jamSetDlg"); if(!d||!d.open) return false;
   $("jsVoicingHost").innerHTML=""; $("jsColourHost").innerHTML="";
   $("jsVoicingHost").appendChild(vp); $("jsColourHost").appendChild(cw);
-  paintColour(); paintVoicingDesc();
+  /* AND TRANSITIONS TRAVELS TOO. It was left behind in the notation head the
+     first time — the group existed, painted correctly and could not be seen,
+     which is the same trap the voicing pills and the spice slider each hit
+     when they were added. Anything built into `deep` must be rehomed here. */
+  const th=$("jsTransHost"), tp=document.querySelector('.pills[aria-label="Transitions"]');
+  if(th&&tp){ th.innerHTML=""; th.appendChild(tp); }
+  paintColour(); paintVoicingDesc(); paintTrans();
   return true;
 }
 function jamNewSeed(){ return 1+Math.floor(Math.random()*4294967294); }
@@ -20614,11 +21128,18 @@ function openJamSet(){
   const deep=document.querySelector(".jdeep"); if(!deep) return;
   $("jsVoicingHost").appendChild($("jamVoicing"));
   $("jsColourHost").appendChild($("jamColourWrap"));
-  paintColour(); paintVoicingDesc(); openDlg($("jamSetDlg"));
+  /* Transitions comes with them. THIS is the door the sheet actually uses —
+     `jamSetRehome` only fires when the panel re-renders while the sheet is
+     already open, which is why adding it there alone left the group sitting
+     in the notation head, correct and invisible. */
+  { const t=$("jamTrans"); if(t) $("jsTransHost").appendChild(t); }
+  paintColour(); paintVoicingDesc(); paintTrans(); openDlg($("jamSetDlg"));
 }
 function closeJamSet(){
   const deep=document.querySelector(".jdeep");
-  if(deep){ deep.appendChild($("jamVoicing")); deep.appendChild($("jamColourWrap")); }
+  if(deep){ deep.appendChild($("jamVoicing")); deep.appendChild($("jamColourWrap"));
+    // …and home again, or the next render would build a second copy
+    const t=$("jamTrans"); if(t) deep.appendChild(t); }
   $("jamSetDlg").close();
 }
 
@@ -21542,6 +22063,14 @@ function boot(){
     if(document.visibilityState==="hidden") saveRoom(); });
   $("setBtn").addEventListener("click",()=>openDlg($("setDlg")));
   $("setClose").addEventListener("click",()=>$("setDlg").close());
+  /* the Settings sheet steps aside for the export dialog — two modal sheets
+     stacked is a phone with nowhere to tap */
+  $("setExpBtn").addEventListener("click",()=>{ $("setDlg").close(); openExport(); });
+  $("expClose").addEventListener("click",()=>$("expDlg").close());
+  $("expFade").addEventListener("click",()=>{ expFade=!expFade; paintExpFade(); });
+  $("expCycles").addEventListener("input",paintExpSize);
+  $("expMp3").addEventListener("click",()=>doExport("mp3"));
+  $("expWav").addEventListener("click",()=>doExport("wav"));
   $("libBtn").addEventListener("click",()=>{ renderLib(); openDlg($("libDlg")); });
   /* ARRANGER IS THE WAY HOME as well as a room (David, 29 Aug): from a quiz
      or a jam it leaves the mode; standing in it already, it does nothing —
