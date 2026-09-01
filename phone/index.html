@@ -1002,7 +1002,20 @@ body.design-flow .flowonly{display:flex !important}
 #vidGrip:hover>div{background:var(--ink3)}
 #vidbar{margin:4px 0 0}
 #vidName{font-weight:600; color:var(--ink2)}
-:focus-visible{outline:2px solid var(--steel); outline-offset:2px; border-radius:4px}
+/* THE FOCUS RING MAY NOT CUT THE CORNER OF A ROUNDED PANEL (David, 1 Sep:
+   "please check that in the menus there is a gap between the blue frame and
+   the white background of the menu. This, I think, goes for maybe all the
+   menus"). The ring squares every focused element to 4px, which is right for
+   a small control — but a dialog is 14px round (18px and open-bottomed as a
+   phone sheet), so squaring it drags the steel ring THROUGH its own white
+   corners: at the corner the gap is not small, it is negative. Dialogs are
+   excluded from the squaring and keep whatever radius their own rule gives
+   them, and the ring stands 4px out so there is daylight on every edge.
+   Kept as ONE pair of rules rather than a radius per dialog, because the
+   phone's sheets and the desktop's panels round differently and a list of
+   exceptions is a list to forget to add to. */
+:focus-visible:not(dialog){outline:2px solid var(--steel); outline-offset:2px; border-radius:4px}
+dialog:focus-visible{outline:2px solid var(--steel); outline-offset:4px}
 .hidden{display:none !important}
 
 /* ---- header ---- */
@@ -1079,12 +1092,29 @@ select.ctl{appearance:auto; padding:6px 8px}
    the pan card's buttons (David, 28 Aug: "fragments of it sit over the screen
    so I can't operate the screen"). Every other dialog here inherits the plain
    `dialog` rule and is display:none when shut; this one has to opt back in. */
-#panPickDlg{width:min(420px,94vw); padding:0; max-height:min(78vh,640px); overflow:hidden}
-#panPickDlg[open]{display:flex; flex-direction:column}
-#panPickDlg .pptop{display:flex; align-items:center; justify-content:space-between;
+/* THE GROOVE BROWSER WEARS THIS FRAME TOO (David, 1 Sep: "let's use the
+   layout of the scale selector. I quite like it"). Not decorated toward it —
+   the same rules, with #grooveDlg added to each selector, so the two can
+   never drift. The picker had already solved the browsing problem the groove
+   library now has: one scale is one row with build chips, so one groove
+   family is one row with variation chips. */
+#panPickDlg,#grooveDlg{width:min(420px,94vw); padding:0; max-height:min(78vh,640px); overflow:hidden}
+#panPickDlg[open],#grooveDlg[open]{display:flex; flex-direction:column}
+#panPickDlg .pptop,#grooveDlg .pptop{display:flex; align-items:center; justify-content:space-between;
   gap:8px; padding:14px 14px 8px}
-#panPickDlg .pptop h3{margin:0}
-#panPickDlg .pptop .pills button{font-size:12.5px; padding:5px 9px}
+#panPickDlg .pptop h3,#grooveDlg .pptop h3{margin:0}
+#panPickDlg .pptop .pills button,#grooveDlg .pptop .pills button{font-size:12.5px; padding:5px 9px}
+/* SEVEN PILLS WHERE THE PICKER HAS FOUR. They fit at 420px, but only just,
+   and a scheme with a wider font or a narrower phone would cut the heart off
+   the end — so the row may scroll sideways, without a scrollbar to look at. */
+#grooveDlg .ppfilters{overflow-x:auto; scrollbar-width:none}
+#grooveDlg .ppfilters::-webkit-scrollbar{display:none}
+#grooveDlg .ppfilters .pills{flex:none}
+#grooveDlg .ppfilters .pills button{padding:5px 8px}
+#gbHint{margin:0; padding:8px 14px 0; font-size:11.5px}
+/* the student's own grooves keep their three actions; they sit where the
+   heart and the ▸ sit on a library row, so the row's shape does not change */
+#grooveDlg .ppib.gbdel{color:var(--clay)}
 .ppfilters{display:flex; gap:8px; align-items:center; padding:0 14px 10px;
   border-bottom:1px solid var(--rule)}
 .pplist{flex:1 1 auto; overflow:auto; -webkit-overflow-scrolling:touch}
@@ -3268,10 +3298,18 @@ body.phone header #setBtn{display:none !important}
    contain` is the load-bearing line — without it a finger that reaches the
    end of a sheet hands the scroll to the page, and the page is meant to be
    locked. */
-body.phone #practiceDlg,body.phone #jamDlg,body.phone #grooveDlg,body.phone #pieceDlg{
+body.phone #practiceDlg,body.phone #jamDlg,body.phone #pieceDlg{
   border:none; border-radius:18px 18px 0 0; padding:14px 16px 26px;
   width:100%; max-width:none; margin:auto auto 0; background:var(--card);
   max-height:82vh; overflow-y:auto; overscroll-behavior:contain;
+  box-shadow:0 -12px 40px -14px rgba(var(--sh),.55)}
+/* THE BROWSER IS STILL A BOTTOM SHEET on the phone — it is what David has
+   been looking at in the mockup — but it keeps the picker's insides, so the
+   sheet's own padding goes: rows are full-bleed and pay for their own. */
+body.phone #grooveDlg{
+  border:none; border-radius:18px 18px 0 0; padding:0;
+  width:100%; max-width:none; margin:auto auto 0; background:var(--card);
+  max-height:82vh; overflow:hidden; overscroll-behavior:contain;
   box-shadow:0 -12px 40px -14px rgba(var(--sh),.55)}
 body.phone #practiceDlg::backdrop,body.phone #jamDlg::backdrop,
 body.phone #grooveDlg::backdrop,body.phone #pieceDlg::backdrop{background:rgba(var(--scrim),.34)}
@@ -4965,11 +5003,35 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 <!-- The groove browser: every groove as a real one-bar miniature, previewed
      on the jam's first chord as a loop (David, 26 Aug — the pill row would
      not survive a growing library). -->
+<!-- ALL SITS FIRST (David, 1 Sep: "let's place the All category at the left
+     of the menu bar, left of Simple"), which the pan picker does not do —
+     there Common is the useful default and All is the escape hatch. Here the
+     whole library IS the default view, so the pill that means "everything"
+     is the one you come back to, and it stands where the eye starts. The
+     heart stays LAST, as it is in the picker. -->
 <dialog id="grooveDlg">
-  <h3>Grooves</h3>
-  <p class="hint" id="grooveHint"></p>
-  <div id="grooveList"></div>
-  <div class="row" style="margin:0">
+  <div class="pptop">
+    <h3>Grooves</h3>
+    <div class="pills" role="group" aria-label="Which grooves">
+      <button id="gbLib" aria-pressed="true">Built-in</button>
+      <button id="gbMine" aria-pressed="false">My grooves</button>
+    </div>
+  </div>
+  <div class="ppfilters" id="gbFilters">
+    <div class="pills" role="group" aria-label="Category">
+      <button data-cat="all" aria-pressed="true">All</button>
+      <button data-cat="simple" aria-pressed="false">Simple</button>
+      <button data-cat="back" aria-pressed="false">Backbeat</button>
+      <button data-cat="arp" aria-pressed="false">Arpeggio</button>
+      <button data-cat="odd" aria-pressed="false">Odd</button>
+      <button data-cat="world" aria-pressed="false">World</button>
+      <button data-cat="fav" class="ppfavpill" aria-pressed="false"
+              aria-label="Favourites" title="Favourites">♥</button>
+    </div>
+  </div>
+  <p class="hint" id="gbHint"></p>
+  <div id="grooveList" class="pplist"></div>
+  <div class="row ppfoot">
     <button class="ctl" id="grooveNewBtn">＋ New groove…</button>
     <span class="spacer"></span>
     <button class="ctl" id="grooveClose">Close</button></div>
@@ -14300,9 +14362,9 @@ function renderLib(){
 const JAMPATS=[
  // David, 26 Aug: "the 3/4 is actually not labelled correctly" — no meter
  // tag; counts settled on 8th-note timing (was quarters, then 16ths)
- {id:"cg1",name:"Classical 3 pulse",tag:"",meter:[3,4],sub:1,unit:8,bpr:4,ev:[
+ {id:"cg1",name:"Classical 3 pulse",cats:["simple"],tag:"",meter:[3,4],sub:1,unit:8,bpr:4,ev:[
    [0,"5","R"],[0,"1","L"],[1,"3","L"],[2,"3","L"]]},
- {id:"cg2",name:"Fast arpeggio 1",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"cg2",name:"Fast arpeggio 1",cats:["arp"],meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"1","L"],[4,"3","L"],[5,"5","R"],[6,"1","L"],[7,"3","L"],
    [8,"5","R"],[9,"1","L"],[10,"3","L"],[11,"5","R"],[12,"1","L"],[14,"g","L"],[15,"g","R"]]},
  /* WRITTEN AS WHAT IT IS (David, 29 Aug). This was "Fast arpeggio 2" in 4/4,
@@ -14311,30 +14373,30 @@ const JAMPATS=[
     which is a 3-3-2 and now says so. The id is unchanged, so a saved jam
     still finds its groove. Same rule he set for the rhythm quiz on 28 Aug:
     eight sixteenths is two quarters however they are cut. */
- {id:"cg3",name:"3-3-2 arpeggio",meter:[2,4],sub:4,bpr:2,ev:[
+ {id:"cg3",name:"3-3-2 arpeggio",cats:["arp"],meter:[2,4],sub:4,bpr:2,ev:[
    [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"1","L"],[4,"3","L"],[5,"5","R"],[6,"1","L"],[7,"5","R"]]},
- {id:"cg4",name:"Backbeat arpeggio",coll:"Backbeat arpeggio",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"cg4",name:"Backbeat arpeggio",cats:["back","arp"],coll:"Backbeat arpeggio",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"1","L"],[4,"^","L"],[5,"1","L"],[6,"3","L"],[7,"5","R"],
    [8,"1","L"],[9,"3","L"],[10,"5","R"],[11,"1","L"],[12,"^","L"],[13,"1","L"],[14,"3","L"],[15,"5","R"]]},
  // the comp-2 A-cell shape: stack(1) · pickup(a-of-1) · accent ON 2 · offbeat
- {id:"cg5",name:"2/4 polyrhythm",meter:[2,4],sub:4,bpr:2,ev:[
+ {id:"cg5",name:"2/4 polyrhythm",cats:["odd"],meter:[2,4],sub:4,bpr:2,ev:[
    [0,"5","R"],[0,"1","L"],[3,"3","L"],[4,"5","R"],[6,"1","L"]]},
- {id:"cg6",name:"Relaxed backbeat",coll:"Relaxed backbeat",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"cg6",name:"Relaxed backbeat",cats:["back"],coll:"Relaxed backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"5","R"],[0,"3","L"],[0,"1","L"],[2,"g","R"],[3,"1","L"],[4,"^","L"],[5,"1","L"],[6,"3","L"],[7,"5","R"],
    [8,"g","L"],[9,"g","R"],[10,"g","L"],[11,"g","R"],[12,"^","L"],[13,"1","L"],[14,"5","R"]]},
  // Bembé per David's own sticking (26 Aug): "right on 1 and 2, left on 3,
  // right on 4, both hands on 5, left on 6 — a fast 6/8, no +s in the count"
- {id:"cg7",name:"Bembé",meter:[6,8],sub:1,unit:16,bpr:2,ev:[
+ {id:"cg7",name:"Bembé",cats:["odd","world"],meter:[6,8],sub:1,unit:16,bpr:2,ev:[
    [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"1","L"],[4,"3","L"],[4,"5","R"],[5,"5","R"]]},
- {id:"cg8",name:"7/8 rhythm",meter:[7,8],sub:1,unit:16,bpr:2,ev:[
+ {id:"cg8",name:"7/8 rhythm",cats:["odd"],meter:[7,8],sub:1,unit:16,bpr:2,ev:[
    [0,"5","R"],[0,"1","L"],[1,"g","R"],[2,"3","L"],[3,"5","R"],[3,"1","L"],[4,"g","R"],[5,"3","L"],[6,"g","R"]]},
  /* the same story as the 3-3-2 arpeggio (David, 29 Aug): slots 8–15 repeated
     slots 0–7 note for note, so this was one 2/4 bar written twice. Two bars to
     a row, as the other 2/4 groove already does. The id is unchanged, so a
     saved jam still finds it. */
- {id:"cg9",name:"2-step",meter:[2,4],sub:4,bpr:2,ev:[
+ {id:"cg9",name:"2-step",cats:["simple"],meter:[2,4],sub:4,bpr:2,ev:[
    [0,"1","L"],[2,"5","R"],[3,"3","L"],[4,"g","R"],[5,"3","L"],[6,"5","R"],[7,"g","R"]]},
- {id:"cg10",name:"Uptempo backbeat",coll:"Uptempo backbeat",meter:[2,4],sub:4,bpr:2,ev:[
+ {id:"cg10",name:"Uptempo backbeat",cats:["back"],coll:"Uptempo backbeat",meter:[2,4],sub:4,bpr:2,ev:[
    [0,"3","L"],[0,"1","L"],[1,"g","L"],[2,"^","R"],[3,"1","L"],[4,"g","L"],[5,"3","R"],[6,"^","L"],[7,"5","R"]]},
 
  /* ── MORE GROOVES (David, 1 Sep 2026) ────────────────────────────────────
@@ -14352,71 +14414,71 @@ const JAMPATS=[
     the one Bembé and the 7/8 rhythm already use, and their rows in the
     screenshots show TWO bars — a groove is one bar, so the first is taken.
     `coll` gathers the numbered variations into collections. */
- {id:"mg1",name:"2 pulse",meter:[4,4],sub:2,bpr:1,ev:[
+ {id:"mg1",name:"2 pulse",cats:["simple"],meter:[4,4],sub:2,bpr:1,ev:[
    [0,"9","R"],[0,"1","L"],[1,"5","L"],[2,"9","R"],[2,"1","L"],[3,"5","L"],[4,"11","R"],[4,"3","L"],[5,"7","L"],[6,"11","R"],[6,"3","L"],[7,"7","L"]]},
- {id:"mg2",name:"4 vs 3",meter:[3,4],sub:4,bpr:2,ev:[
+ {id:"mg2",name:"4 vs 3",cats:["odd"],meter:[3,4],sub:4,bpr:2,ev:[
    [0,"5","R"],[0,"3","L"],[0,"1","L"],[2,"g","R"],[3,"3","L"],[3,"1","L"],[4,"5","R"],[6,"3","L"],[6,"1","L"],[8,"5","R"],[9,"3","L"],[9,"1","L"]]},
- {id:"mg3",name:"5 vs 4",meter:[5,4],sub:4,bpr:1,ev:[
+ {id:"mg3",name:"5 vs 4",cats:["odd"],meter:[5,4],sub:4,bpr:1,ev:[
    [0,"5","R"],[0,"1","L"],[2,"g","L"],[3,"g","R"],[4,"3","L"],[5,"5","R"],[6,"g","L"],[7,"g","R"],[8,"1","L"],[10,"5","R"],[12,"3","L"],[14,"g","L"],[15,"7","R"],[16,"1","L"],[18,"9","R"]]},
- {id:"mg4",name:"7 flow",meter:[7,8],sub:1,unit:16,bpr:2,ev:[
+ {id:"mg4",name:"7 flow",cats:["odd"],meter:[7,8],sub:1,unit:16,bpr:2,ev:[
    [0,"5","R"],[0,"3","L"],[1,"g","R"],[2,"1","L"],[3,"g","L"],[4,"5","R"],[5,"3","L"],[6,"g","R"]]},
- {id:"mg5",name:"7/8 arpeggio",meter:[7,8],sub:1,unit:16,bpr:2,ev:[
+ {id:"mg5",name:"7/8 arpeggio",cats:["odd","arp"],meter:[7,8],sub:1,unit:16,bpr:2,ev:[
    [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"1","L"],[4,"g","R"],[5,"3","L"],[6,"5","R"]]},
- {id:"mg6",name:"Bossa",coll:"Bossa",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg6",name:"Bossa",cats:["world"],coll:"Bossa",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"5","R"],[0,"3","L"],[2,"5","R"],[3,"1","L"],[4,"1","L"],[5,"5","R"],[7,"5","R"],[7,"3","L"],[8,"3","L"],[9,"5","R"],[11,"1","L"],[12,"5","R"],[12,"1","L"],[14,"5","R"]]},
- {id:"mg7",name:"Bossa 2",coll:"Bossa",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg7",name:"Bossa 2",cats:["world"],coll:"Bossa",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"5","R"],[0,"3","L"],[0,"1","L"],[2,"5","R"],[3,"3","L"],[3,"1","L"],[4,"3","L"],[4,"1","L"],[5,"5","R"],[7,"5","R"],[7,"3","L"],[7,"1","L"],[8,"3","L"],[8,"1","L"],[9,"5","R"],[10,"g","R"],[11,"3","L"],[11,"1","L"],[12,"5","R"],[12,"3","L"],[12,"1","L"],[14,"5","R"]]},
- {id:"mg8",name:"Curcuna 10/8",meter:[10,8],sub:1,unit:16,bpr:1,ev:[
+ {id:"mg8",name:"Curcuna 10/8",cats:["odd","world"],meter:[10,8],sub:1,unit:16,bpr:1,ev:[
    [0,"1","L"],[2,"g","L"],[3,"5","R"],[5,"3","L"],[7,"5","R"],[9,"g","R"]]},
- {id:"mg9",name:"Malfuf",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg9",name:"Malfuf",cats:["world"],meter:[4,4],sub:4,bpr:1,ev:[
    [0,"3","L"],[1,"g","R"],[2,"g","L"],[3,"5","R"],[4,"g","L"],[5,"g","R"],[6,"7","L"],[7,"g","R"],[8,"1","L"],[9,"g","R"],[10,"g","L"],[11,"3","R"],[12,"g","L"],[13,"g","R"],[14,"5","L"],[15,"g","R"]]},
- {id:"mg10",name:"Another backbeat",coll:"Another backbeat",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg10",name:"Another backbeat",cats:["back"],coll:"Another backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"5","R"],[0,"3","L"],[0,"1","L"],[2,"g","L"],[4,"^","L"],[5,"g","R"],[6,"g","L"],[7,"5","R"],[8,"g","L"],[9,"3","R"],[10,"1","L"],[11,"g","R"],[12,"^","L"],[14,"5","R"]]},
- {id:"mg11",name:"Another backbeat 2",coll:"Another backbeat",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg11",name:"Another backbeat 2",cats:["back"],coll:"Another backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"5","R"],[0,"3","L"],[0,"1","L"],[2,"5","R"],[2,"3","L"],[2,"1","L"],[4,"^","L"],[5,"g","R"],[6,"g","L"],[7,"5","R"],[8,"g","L"],[9,"3","R"],[10,"1","L"],[12,"^","L"],[14,"g","L"]]},
- {id:"mg12",name:"Another backbeat 3",coll:"Another backbeat",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg12",name:"Another backbeat 3",cats:["back"],coll:"Another backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"5","R"],[0,"3","L"],[0,"1","L"],[2,"g","L"],[3,"1","R"],[4,"^","L"],[5,"g","R"],[6,"g","L"],[7,"5","R"],[8,"g","L"],[9,"3","R"],[10,"1","L"],[12,"^","L"],[14,"g","L"]]},
- {id:"mg13",name:"Arpeggio in 5",meter:[5,8],sub:1,unit:16,bpr:2,ev:[
+ {id:"mg13",name:"Arpeggio in 5",cats:["odd","arp"],meter:[5,8],sub:1,unit:16,bpr:2,ev:[
    [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"3","L"],[4,"5","R"]]},
- {id:"mg14",name:"Backbeat arpeggio 2",coll:"Backbeat arpeggio",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg14",name:"Backbeat arpeggio 2",cats:["back","arp"],coll:"Backbeat arpeggio",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"1","L"],[4,"^","R"],[5,"g","R"],[6,"1","L"],[7,"5","R"],[8,"g","R"],[9,"3","L"],[10,"g","R"],[11,"1","L"],[12,"7","R"],[13,"1","L"],[14,"3","L"],[15,"9","R"]]},
- {id:"mg15",name:"Busy backbeat",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg15",name:"Busy backbeat",cats:["back"],meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"1","L"],[4,"^","R"],[5,"3","L"],[6,"5","R"],[7,"1","L"],[8,"g","R"],[9,"3","L"],[10,"5","R"],[11,"1","L"],[12,"^","R"],[13,"3","L"],[14,"5","R"],[15,"g","R"]]},
- {id:"mg16",name:"Downwards is also nice",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg16",name:"Downwards is also nice",cats:["simple"],meter:[4,4],sub:4,bpr:1,ev:[
    [0,"5","L"],[2,"3","L"],[4,"^","L"],[5,"g","R"],[6,"1","L"],[7,"5","R"],[8,"g","L"],[9,"3","R"],[10,"1","L"],[11,"g","R"],[12,"^","L"],[13,"g","R"],[14,"g","L"],[15,"1","R"]]},
- {id:"mg17",name:"Funky backbeat",coll:"Funky backbeat",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg17",name:"Funky backbeat",cats:["back"],coll:"Funky backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"5","R"],[0,"3","L"],[0,"1","L"],[2,"g","R"],[3,"1","L"],[4,"^","R"],[5,"g","R"],[6,"1","L"],[7,"5","R"],[8,"g","R"],[9,"^","L"],[10,"g","L"],[11,"3","R"],[12,"^","L"],[13,"g","L"],[14,"5","R"]]},
- {id:"mg18",name:"Funky backbeat 2",coll:"Funky backbeat",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg18",name:"Funky backbeat 2",cats:["back"],coll:"Funky backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[1,"^","R"],[2,"3","L"],[3,"5","R"],[4,"^","L"],[5,"g","R"],[6,"g","L"],[7,"5","R"],[8,"g","L"],[9,"3","R"],[10,"1","L"],[11,"g","R"],[12,"^","L"],[13,"g","R"],[14,"g","L"],[15,"^","R"]]},
- {id:"mg19",name:"Groovy arpeggio",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg19",name:"Groovy arpeggio",cats:["arp"],meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[2,"3","L"],[4,"5","R"],[6,"3","L"],[8,"1","L"],[10,"3","L"],[11,"5","R"],[13,"5","R"],[14,"3","L"]]},
- {id:"mg20",name:"Groovy steps",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg20",name:"Groovy steps",cats:["back"],meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[2,"5","R"],[4,"3","L"],[6,"5","R"],[7,"1","L"],[9,"1","L"],[10,"5","R"],[12,"3","L"],[14,"5","R"]]},
- {id:"mg21",name:"Just nice",coll:"Just nice",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg21",name:"Just nice",cats:["simple"],coll:"Just nice",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[2,"5","R"],[4,"3","L"],[5,"5","R"],[6,"g","R"],[7,"1","L"],[8,"g","L"],[9,"5","R"],[10,"g","L"],[11,"5","R"],[12,"3","L"],[14,"5","R"]]},
- {id:"mg22",name:"Just nice 2",coll:"Just nice",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg22",name:"Just nice 2",cats:["simple"],coll:"Just nice",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"3","L"],[0,"1","L"],[2,"5","R"],[4,"3","L"],[4,"1","L"],[5,"5","R"],[6,"g","R"],[7,"3","L"],[7,"1","L"],[9,"5","R"],[10,"g","L"],[11,"5","R"],[12,"3","L"],[12,"1","L"],[14,"5","R"]]},
- {id:"mg23",name:"Ramp",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg23",name:"Ramp",cats:["simple"],meter:[4,4],sub:4,bpr:1,ev:[
    [0,"3","L"],[0,"1","L"],[1,"g","L"],[2,"5","R"],[3,"3","L"],[3,"1","L"],[4,"g","L"],[5,"5","R"],[6,"3","L"],[6,"1","L"],[7,"g","L"],[8,"5","R"],[9,"g","R"],[10,"g","L"],[11,"5","R"],[12,"3","L"],[12,"1","L"],[14,"5","R"]]},
- {id:"mg24",name:"Relaxed backbeat 4",coll:"Relaxed backbeat",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg24",name:"Relaxed backbeat 4",cats:["back"],coll:"Relaxed backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[0,"3","L"],[2,"g","R"],[3,"1","L"],[4,"^","R"],[5,"1","L"],[6,"3","L"],[7,"5","R"],[8,"g","L"],[9,"g","R"],[10,"g","L"],[11,"g","L"],[12,"^","R"],[13,"1","L"],[14,"g","L"],[15,"5","R"]]},
- {id:"mg25",name:"Relaxed backbeat 2",coll:"Relaxed backbeat",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg25",name:"Relaxed backbeat 2",cats:["back"],coll:"Relaxed backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"5","R"],[0,"3","L"],[0,"1","L"],[2,"g","R"],[3,"1","L"],[4,"^","R"],[5,"g","R"],[6,"1","L"],[7,"5","R"],[8,"g","R"],[9,"3","L"],[10,"g","R"],[11,"1","L"],[12,"^","R"],[13,"g","R"],[14,"3","L"]]},
- {id:"mg26",name:"Relaxed backbeat 3",coll:"Relaxed backbeat",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg26",name:"Relaxed backbeat 3",cats:["back"],coll:"Relaxed backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"5","R"],[0,"3","L"],[0,"1","L"],[2,"g","R"],[3,"1","L"],[4,"^","R"],[5,"1","L"],[6,"3","L"],[7,"5","R"],[8,"g","R"],[9,"3","L"],[10,"g","R"],[11,"1","L"],[12,"^","R"],[13,"1","L"],[14,"3","L"]]},
- {id:"mg27",name:"Relaxed backbeat 5",coll:"Relaxed backbeat",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg27",name:"Relaxed backbeat 5",cats:["back"],coll:"Relaxed backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"3","L"],[0,"1","L"],[2,"g","R"],[3,"1","L"],[4,"^","R"],[5,"1","L"],[6,"3","L"],[7,"5","R"],[8,"g","R"],[9,"3","L"],[10,"g","R"],[11,"1","L"],[12,"^","R"],[13,"1","L"],[14,"g","L"],[15,"5","R"]]},
- {id:"mg28",name:"Up and down backbeat",coll:"Up and down backbeat",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg28",name:"Up and down backbeat",cats:["back"],coll:"Up and down backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[1,"g","R"],[2,"3","L"],[3,"5","R"],[4,"^","L"],[5,"g","R"],[6,"g","L"],[7,"5","R"],[8,"g","L"],[9,"3","R"],[10,"1","L"],[11,"g","R"],[12,"^","L"],[13,"g","R"],[14,"g","L"],[15,"g","R"]]},
- {id:"mg29",name:"Up and down backbeat 2",coll:"Up and down backbeat",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg29",name:"Up and down backbeat 2",cats:["back"],coll:"Up and down backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"g","R"],[4,"^","L"],[5,"g","R"],[6,"g","L"],[7,"5","R"],[8,"g","L"],[9,"3","R"],[10,"1","L"],[11,"g","R"],[12,"^","L"],[13,"g","R"],[14,"g","L"],[15,"g","R"]]},
- {id:"mg30",name:"Up and down backbeat 3",coll:"Up and down backbeat",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg30",name:"Up and down backbeat 3",cats:["back"],coll:"Up and down backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[1,"g","R"],[2,"3","L"],[3,"5","R"],[4,"^","L"],[5,"g","R"],[6,"g","L"],[7,"5","R"],[8,"1","L"],[9,"3","R"],[10,"g","L"],[11,"g","R"],[12,"^","L"],[13,"g","R"],[14,"g","L"],[15,"g","R"]]},
- {id:"mg31",name:"Uptempo backbeat 2",coll:"Uptempo backbeat",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg31",name:"Uptempo backbeat 2",cats:["back"],coll:"Uptempo backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"9","R"],[0,"3","L"],[0,"1","L"],[2,"^","R"],[4,"g","R"],[5,"3","L"],[5,"1","L"],[6,"11","R"],[8,"9","R"],[8,"7","L"],[8,"5","L"],[10,"^","R"],[12,"g","R"],[13,"7","L"],[13,"5","L"],[14,"^","R"]]},
- {id:"mg32",name:"Uptempo backbeat 3",coll:"Uptempo backbeat",meter:[2,4],sub:4,bpr:2,ev:[
+ {id:"mg32",name:"Uptempo backbeat 3",cats:["back"],coll:"Uptempo backbeat",meter:[2,4],sub:4,bpr:2,ev:[
    [0,"3","L"],[0,"1","L"],[1,"g","L"],[2,"^","R"],[3,"1","L"],[4,"g","L"],[5,"3","R"],[6,"^","L"],[7,"5","R"]]},
- {id:"mg33",name:"Upwards motion",meter:[4,4],sub:4,bpr:1,ev:[
+ {id:"mg33",name:"Upwards motion",cats:["arp"],meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[1,"g","R"],[2,"3","L"],[3,"5","R"],[4,"1","L"],[5,"g","R"],[6,"3","L"],[7,"7","R"],[8,"3","L"],[9,"g","R"],[10,"5","L"],[11,"9","R"],[12,"3","L"],[13,"g","R"],[14,"5","L"],[15,"11","R"]]},
 ];
 
@@ -20905,69 +20967,199 @@ function openGrooveNewDlg(){
   if(!sel.options.length){ toast("This pan has no full chord to write on"); return; }
   openDlg($("grooveNewDlg"));
 }
-function openGrooveDlg(){ renderGrooveDlg(); openDlg($("grooveDlg")); }
+/* ---------------- the groove browser ----------------
+   THE SCALE SELECTOR'S DESIGN WITH THE CONTENT SWAPPED (David, 1 Sep). The
+   library reached 43 grooves and a single scrolling list stopped being
+   browsable; he asked for categories, favourites and a heart tab, then for
+   the pan picker's layout. Three ideas come across with the CSS:
+
+   · A FAMILY IS ONE ROW. One scale is one row with build chips (9 · 10 · 17),
+     so "Relaxed backbeat 1–5" is one row with variation chips. 43 grooves
+     become 29 rows, and nothing is hidden — the chips are the whole family.
+   · CATEGORIES ARE TAGS, NOT DRAWERS. A groove carries `cats:[…]` and may
+     carry several: "Backbeat arpeggio" is genuinely both, and filing it once
+     means whoever looks under the other name never finds it.
+   · THE HEART IS THE PICKER'S HEART, in `hps.favs` beside the scales under a
+     "groove:" prefix — one store, one idiom, and a key that no longer exists
+     simply never matches. It marks the FAMILY, as the picker's marks the
+     scale rather than the build. */
+const GBCATS=["all","simple","back","arp","odd","world","fav"];
+let gbView="lib", gbCat="all";
+const gbPick={};                       // family key -> the groove id its row shows
+
+function gbFamKey(p){ return p.coll||p.id; }
+/* A CHIP CARRIES THE GROOVE'S OWN NUMBER, NOT ITS POSITION. The picker's
+   chips read 9 · 10 · 17 — real properties of the build — and a position
+   would have been a lie here for the same reason: `JAMPATS` holds Relaxed
+   backbeat as 1, 4, 2, 3, 5, in the order they were imported, so the fourth
+   chip in the row was labelled "4" and handed you "Relaxed backbeat 3".
+   The number in the groove's own name is the truth; a variation whose name
+   carries none falls back to where it sits, which is all there is to say. */
+function gbVarNo(fam,p){
+  const n=fam.length;
+  if(p.name.length>n&&p.name.slice(0,n)===fam){
+    const m=p.name.slice(n).trim().match(/^(\d+)$/);
+    if(m) return +m[1];
+  }
+  return p.name===fam?1:null;
+}
+function gbFamilies(list){
+  const out=[], by=new Map();
+  for(const p of list){
+    const k=gbFamKey(p);
+    if(!by.has(k)){ const f={key:k,name:p.coll||p.name,items:[]}; by.set(k,f); out.push(f); }
+    by.get(k).items.push(p);
+  }
+  for(const f of out){
+    f.no=new Map();
+    f.items.forEach((p,i)=>{ const v=gbVarNo(f.name,p); f.no.set(p.id,v==null?i+1:v); });
+    /* and they READ in that order, so 1 2 3 4 5 runs left to right */
+    f.items.sort((a,b)=>f.no.get(a.id)-f.no.get(b.id));
+  }
+  return out;
+}
+function gbMeter(p){ return p.tag!==undefined&&p.tag!==""?p.tag:p.meter[0]+"/"+p.meter[1]; }
+function gbFamCats(f){
+  const s=new Set();
+  for(const p of f.items) for(const c of (p.cats||[])) s.add(c);
+  return s;
+}
+function gbShown(f){
+  if(gbCat==="all") return true;
+  if(gbCat==="fav") return isFav("groove:"+f.key);
+  return gbFamCats(f).has(gbCat);
+}
+/* the row opens on the groove you are actually PLAYING, the way the picker
+   opens on the build you own — otherwise a five-strong family shows you
+   variation 1 while variation 4 is what is sounding */
+function gbSyncPick(){
+  const id=jam&&jam.patternId; if(!id) return;
+  const p=JAMPATS.concat(userGrooves()).find(x=>x.id===id);
+  if(p) gbPick[gbFamKey(p)]=id;
+}
+function gbPaintPills(){
+  const f=$("gbFilters"); if(!f) return;
+  f.querySelectorAll("button[data-cat]").forEach(b=>{
+    const on=b.dataset.cat===gbCat;
+    b.setAttribute("aria-pressed",on?"true":"false");
+    b.classList.toggle("on",on);
+  });
+  const L=$("gbLib"), M=$("gbMine");
+  if(L){ L.setAttribute("aria-pressed",gbView==="lib"?"true":"false"); L.classList.toggle("on",gbView==="lib"); }
+  if(M){ M.setAttribute("aria-pressed",gbView==="mine"?"true":"false"); M.classList.toggle("on",gbView==="mine"); }
+  /* the categories describe the built-in library; the student's own grooves
+     carry none, so the row of them has nothing to say about My grooves */
+  $("gbFilters").classList.toggle("hidden",gbView==="mine");
+}
+function gbUse(p){
+  jamPreviewStop();
+  if(!jam){ $("grooveDlg").close(); return; }
+  jam.patternId=p.id; jamFitSlots(); applyJam(); $("grooveDlg").close();
+}
+function gbIconBtn(txt,title,cls,fn){
+  const b=document.createElement("button");
+  b.type="button"; b.className="ppv ppib"+(cls?" "+cls:""); b.textContent=txt;
+  b.title=title; b.setAttribute("aria-label",title);
+  b.addEventListener("click",e=>{ e.stopPropagation(); fn(); });
+  return b;
+}
+function gbRow(f,mine){
+  const cur=f.items.find(x=>x.id===gbPick[f.key])||f.items[0];
+  const sel=!!(jam&&jam.patternId===cur.id);
+  const row=document.createElement("button");
+  row.type="button"; row.className="pprow"+(sel?" sel":"");
+  const chk=document.createElement("span");
+  chk.className="ppchk"+(sel?"":" off"); chk.textContent="✓";
+  const nm=document.createElement("span"); nm.className="ppnm";
+  const b=document.createElement("b");
+  /* textContent, never innerHTML: a family's name can be a title the student
+     typed into the groove editor. The list this replaces built its rows with
+     innerHTML, and did it for the student's own grooves in particular. */
+  b.textContent=f.name;
+  const bars=patBars(cur);
+  const sm=document.createElement("small");
+  sm.textContent=gbMeter(cur)
+    +(bars>1?" · "+bars+" bars":"")
+    +(f.items.length>1?" · "+f.items.length+" variations":"");
+  nm.append(b,sm);
+  if(f.items.length>1){
+    const bl=document.createElement("span"); bl.className="ppbuilds";
+    f.items.forEach((q,i)=>{
+      const c=document.createElement("button");
+      c.type="button"; c.textContent=String(f.no.get(q.id));
+      c.className=q.id===cur.id?"lit":"";
+      c.setAttribute("aria-label",q.name);
+      c.addEventListener("click",e=>{ e.stopPropagation();
+        gbPick[f.key]=q.id; renderGrooveDlg(); });
+      bl.appendChild(c);
+    });
+    nm.appendChild(bl);
+  }
+  row.append(chk,nm);
+  if(!mine){
+    const on=isFav("groove:"+f.key);
+    const fv=document.createElement("button");
+    fv.type="button"; fv.className="ppv ppfav"+(on?" on":""); fv.textContent=on?"♥":"♡";
+    fv.setAttribute("aria-pressed",on?"true":"false");
+    fv.setAttribute("aria-label",(on?"Remove ":"Add ")+f.name+(on?" from":" to")+" favourites");
+    fv.addEventListener("click",e=>{ e.stopPropagation();
+      toggleFav("groove:"+f.key); renderGrooveDlg(); });
+    row.appendChild(fv);
+  } else {
+    row.appendChild(gbIconBtn("✎","Edit this groove","",()=>{ jamPreviewStop();
+      startGrooveEdit(Object.assign({},cur,{ref:grooveRefFor(cur)})); }));
+    row.appendChild(gbIconBtn("⤓","Save as an .hpg file","",()=>{
+      const a=document.createElement("a");
+      a.href=URL.createObjectURL(new Blob(["HPG1:"+enc(cur)+"\n"],{type:"text/plain"}));
+      a.download=(cur.name||"groove").replace(/[^\w -]+/g,"")+".hpg"; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),4000); }));
+    row.appendChild(gbIconBtn("✕","Delete this groove","gbdel",()=>{
+      jamPreviewStop();
+      setUserGrooves(userGrooves().filter(x=>x.id!==cur.id));
+      if(jam&&jam.patternId===cur.id){ jam.patternId=JAMPATS[0].id; applyJam(); }
+      renderGrooveDlg(); toast("Groove deleted"); }));
+  }
+  const pv=document.createElement("button");
+  pv.type="button"; pv.className="ppv gplay"; pv.textContent="▸";
+  pv.title="Loop this groove — tap again to stop";
+  pv.setAttribute("aria-label","Hear "+f.name);
+  pv.addEventListener("click",e=>{ e.stopPropagation(); jamPreviewToggle(cur.id,pv); });
+  row.appendChild(pv);
+  row.addEventListener("click",()=>gbUse(cur));
+  return row;
+}
+function gbEmpty(){
+  const e=document.createElement("div"); e.className="ppempty";
+  const b=document.createElement("b");
+  const p=document.createElement("span");
+  if(gbView==="mine"){
+    b.textContent="No grooves of your own yet";
+    p.textContent="Write one with ＋ New groove, or open an .hpg someone sent you.";
+  } else if(gbCat==="fav"){
+    b.textContent="No favourites yet";
+    p.textContent="Tap the ♡ on any groove to keep it here.";
+  } else {
+    b.textContent="Nothing in this category";
+    p.textContent="Try All.";
+  }
+  e.append(b,p); return e;
+}
+function openGrooveDlg(){ gbSyncPick(); renderGrooveDlg(); openDlg($("grooveDlg")); }
 function renderGrooveDlg(){
   // `jam` is null until a jam has been entered — the browser can be reached
   // without one now, so the preview chord is optional rather than assumed
   const ch=jam&&jam.slots[0]&&jam.slots[0].chord;
-  $("grooveHint").textContent=(ch?"Previewed on "+ch+" at the current tempo — ":"")
+  $("gbHint").textContent=(ch?"Previewed on "+ch+" at the current tempo — ":"")
     +"tap ▸ to loop a groove, tap the row to use it.";
+  gbPaintPills();
   const L=$("grooveList"); L.innerHTML="";
-  const gRow=p=>{
-    const row=document.createElement("div");
-    row.className="jgrow"+(p.id===jam.patternId?" sel":"");
-    const play=document.createElement("button");
-    play.className="ctl gplay"; play.textContent="▸";
-    play.title="Loop this groove — tap again to stop";
-    play.addEventListener("click",e=>{ e.stopPropagation(); jamPreviewToggle(p.id,play); });
-    const nm=document.createElement("div"); nm.className="gname";
-    nm.innerHTML=jamPatLabel(p);
-    row.appendChild(play); row.appendChild(nm); row.appendChild(grooveMini(p));
-    row.addEventListener("click",()=>{ jamPreviewStop();
-      jam.patternId=p.id; jamFitSlots(); applyJam(); $("grooveDlg").close(); });
-    L.appendChild(row);
-  };
-  for(const g of patGroups(JAMPATS)){
-    if(g.title){ const h=document.createElement("div"); h.className="lab";
-      h.style.margin="10px 0 4px"; h.textContent=g.title; L.appendChild(h); }
-    for(const p of g.items) gRow(p);
-  }
-  /* the student's own grooves, under the built-in ten (26 Aug, David's yes) */
-  const ug=userGrooves();
-  if(ug.length){
-    const h=document.createElement("div"); h.className="lab";
-    h.style.margin="10px 0 4px"; h.textContent="Your grooves";
-    L.appendChild(h);
-  }
-  for(const p of ug){
-    const row=document.createElement("div");
-    row.className="jgrow"+(p.id===jam.patternId?" sel":"");
-    const play=document.createElement("button");
-    play.className="ctl gplay"; play.textContent="▸";
-    play.title="Loop this groove — tap again to stop";
-    play.addEventListener("click",e=>{ e.stopPropagation(); jamPreviewToggle(p.id,play); });
-    const nm=document.createElement("div"); nm.className="gname";
-    nm.innerHTML=jamPatLabel(p);
-    row.appendChild(play); row.appendChild(nm); row.appendChild(grooveMini(p));
-    const mk=(txt,title,fn)=>{ const b=document.createElement("button");
-      b.className="ctl"; b.textContent=txt; b.title=title;
-      b.addEventListener("click",e=>{ e.stopPropagation(); fn(); }); return b; };
-    row.appendChild(mk("✎","Edit this groove",()=>{ jamPreviewStop();
-      startGrooveEdit(Object.assign({},p,{ref:grooveRefFor(p)})); }));
-    row.appendChild(mk("⤓","Save as an .hpg file",()=>{
-      const a=document.createElement("a");
-      a.href=URL.createObjectURL(new Blob(["HPG1:"+enc(p)+"\n"],{type:"text/plain"}));
-      a.download=(p.name||"groove").replace(/[^\w -]+/g,"")+".hpg"; a.click();
-      setTimeout(()=>URL.revokeObjectURL(a.href),4000); }));
-    row.appendChild(mk("✕","Delete this groove",()=>{
-      jamPreviewStop();
-      setUserGrooves(userGrooves().filter(x=>x.id!==p.id));
-      if(jam.patternId===p.id){ jam.patternId=JAMPATS[0].id; applyJam(); }
-      renderGrooveDlg(); toast("Groove deleted"); }));
-    row.addEventListener("click",()=>{ jamPreviewStop();
-      jam.patternId=p.id; jamFitSlots(); applyJam(); $("grooveDlg").close(); });
-    L.appendChild(row);
-  }
+  const mine=gbView==="mine";
+  const fams=gbFamilies(mine?userGrooves():JAMPATS).filter(f=>mine||gbShown(f));
+  if(!fams.length){ L.appendChild(gbEmpty()); return; }
+  /* ONE LIST — no Families / Single grooves divide (David, 1 Sep). A groove
+     with variations and a groove without are the same kind of thing to
+     someone looking for a groove; the chips already say which is which. */
+  for(const f of fams) L.appendChild(gbRow(f,mine));
 }
 
 /* ---------------- how adventurous the suggestions are ----------------
@@ -22238,6 +22430,11 @@ function boot(){
   $("jamHear").addEventListener("click",jamHear);
   $("jamDlgClose").addEventListener("click",()=>$("jamDlg").close());
   $("grooveClose").addEventListener("click",()=>$("grooveDlg").close());
+  /* the two switches of the browser: which library, and which category */
+  $("gbLib").addEventListener("click",()=>{ gbView="lib"; renderGrooveDlg(); });
+  $("gbMine").addEventListener("click",()=>{ gbView="mine"; renderGrooveDlg(); });
+  $("gbFilters").querySelectorAll("button[data-cat]").forEach(b=>{
+    b.addEventListener("click",()=>{ gbCat=b.dataset.cat; renderGrooveDlg(); }); });
   $("grooveDlg").addEventListener("close",jamPreviewStop);
   /* new groove: setup sheet → the editor as a one-bar workbench */
   $("grooveNewBtn").addEventListener("click",()=>{ jamPreviewStop(); openGrooveNewDlg(); });
