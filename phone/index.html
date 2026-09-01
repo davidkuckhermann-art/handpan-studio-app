@@ -3517,8 +3517,23 @@ body.phone .gmini i{font-size:10px}
   body.phone .pvside .pvperc{width:32px; height:32px; font-size:13px}
   /* ---- jam on the phone: the track in the Chords slot ---- */
   body.phone #jampanel{margin:0; width:100%}
-  body.phone #jamtrack{padding:7px 9px; gap:7px; align-items:flex-start;
-    flex-direction:column}
+  body.phone #jamtrack{padding:7px 8px; gap:7px; align-items:flex-start;
+    flex-direction:column}   /* 8 at the sides, not 9: the settings row needs the 2px (2 Sep) */
+  /* THE CARD'S SECOND ROW (David, 2 Sep): Chord settings left, flat sharp Clear
+     Generate right, under a rule -- the desktop card's shape. 4px gaps, which
+     with the 8px card padding is what lets "Generate" keep its word at 393pt
+     (measured in the mockup: 326 of 339). Nothing here scrolls. */
+  body.phone .jsetrow{display:flex; align-items:center; gap:4px; width:100%;
+    margin-top:2px; padding-top:8px; border-top:1px solid var(--rule)}
+  body.phone .jsetrow #jamSetBtn{flex:none; font-size:12px; padding:6px 9px; white-space:nowrap}
+  /* no icon on the phone (David, 2 Sep: "I don't understand why Chord
+     settings need the three lines. None of the other selector pills have
+     them") -- the face is painted by the shared paintJamSetBtn, so the
+     desktop keeps its glyph and the phone simply does not draw it */
+  body.phone .jsetrow #jamSetBtn svg{display:none}
+  body.phone .jsetrow .jtools{width:auto; flex:none; margin-left:auto; gap:4px; overflow:visible}
+  /* the word from 380pt up, the dice below (SE, 12/13 mini) */
+  @media (max-width:379px){ body.phone .jsetrow .gw{display:none} }
   body.phone #jamtrack>.lab{display:none}
   /* the strip scrolls SIDEWAYS — the page never does */
   body.phone #jamProg{display:flex; flex-wrap:nowrap; width:100%;
@@ -3537,8 +3552,14 @@ body.phone .gmini i{font-size:10px}
      ellipsises rather than pushing the tools off the screen. The gap below is
      bigger than the one above, so the line reads as the notation's, and the
      chord strip has room to breathe. */
+  /* THE GROOVE ROW SITS UNDER THE CARD NOW, LABELLED (David, 2 Sep): the
+     10px above is the gap he saw missing ("the groove selector row touches
+     the row above"); the 26px that used to sit below it belonged to an older
+     order and is gone. */
   body.phone .jtoolbox{display:flex; align-items:center; gap:8px;
-    justify-content:flex-start; margin:0 0 26px}
+    justify-content:flex-start; margin:10px 0 0}
+  body.phone .jtoolbox .glab{flex:none; font-size:10.5px; letter-spacing:.12em; margin:0}
+  body.phone .jtoolbox #brkBtn{flex:none; font-size:12px; padding:6px 9px}
   body.phone .jtoolbox>.ctl{flex:0 1 auto; min-width:0; white-space:nowrap;
     overflow:hidden; text-overflow:ellipsis; font-size:12px; padding:6px 9px}
   body.phone .jtoolbox .jtools{width:auto; flex:none; margin-left:auto}
@@ -18317,7 +18338,12 @@ function renderJamPanel(){
   // the desktop's copy lives in the notation head's right cell instead — and
   // so does the tablet's (David, 31 Aug: "the generate button in this row can
   // go, we have one in the notation table")
-  if(PHONE&&!TABLET) mk("🎲 Generate","Fill the whole progression with a fresh chord sequence",()=>jamGenerate());
+  if(PHONE&&!TABLET){ mk("🎲 Generate","Fill the whole progression with a fresh chord sequence",()=>jamGenerate());
+    /* the WORD is a span so a narrow phone can drop it and keep the dice
+       (David, 2 Sep: "on smaller phones we can switch to the dice, but on this
+       phone size I still would like to keep the word") -- measured in the
+       mockup: the row fits the word from 380pt up, and is over by 1 at 375 */
+    tools.lastChild.innerHTML='🎲 <span class="gw">Generate</span>'; }
   /* "Open in editor" LEFT THIS ROW on 28 Aug (David): both doors — the jam to
      the arrangement editor, the groove to the bench — are at the top of the
      share sheet now, where the jam's other whole-object actions live. */
@@ -18332,7 +18358,14 @@ function renderJamPanel(){
   /* .jdeep is searched from the DOCUMENT, not from #jampanel: on the desktop
      it lives in the notation head, outside this panel, and a render that left
      the old one standing would stack a Narrow|Wide pair per repaint. */
-  document.querySelectorAll(".jtoolbox,.jgroovebox,.jdeep").forEach(el=>el.remove());
+  /* THE TWO SHEET BUTTONS LIVE IN THESE ROWS ON THE PHONE NOW (David, 2 Sep),
+     so they are rescued to the head before last render's rows are swept —
+     the same move dwModeReset makes for the drawer. Phone only: the desktop
+     re-adopts them into #jamTools below and the tablet homes them itself. */
+  if(PHONE&&!TABLET){ const hr=$("scoreheadR"), gen=$("genBtn");
+    ["jamSetBtn","brkBtn"].forEach(id=>{ const el=$(id);
+      if(el&&hr&&el.parentElement!==hr) hr.insertBefore(el,(gen&&gen.parentElement===hr)?gen:null); }); }
+  document.querySelectorAll(".jtoolbox,.jgroovebox,.jdeep,.jsetrow").forEach(el=>el.remove());
   let jbox=null;
   /* A TABLET TAKES THE DESKTOP'S ARRANGEMENT HERE (David, 31 Aug: "the
      b/#/clear buttons should go into the chord selector row, like on
@@ -18352,13 +18385,30 @@ function renderJamPanel(){
        under the chords. */
     /* the tools moved INTO THE DRAWER (David, 27 Aug, ABC'd) — the groove
        selector stays on screen, because it names what is playing */
-    // the everyday tools go back under the notation, the settings to the drawer
-    jbox=document.createElement("div"); jbox.className="jtoolbox";
-    jbox.appendChild(tools);
-    /* chips ABOVE, groove line BELOW (Pocket Zones, 31 Aug — the desktop's
-       order): the progression is the material, the groove the setting */
+    /* THE CHORD CARD GROWS A SECOND ROW (David, 2 Sep — mockups-jam-rows-phone.html,
+       three passes): "move the chord settings and modifiers together with the
+       chords and extend the chords tab in a similar way as we did on the
+       desktop … everything related to the chords in there: Chord settings,
+       flat/sharp, Clear, Generate." Chord settings hard left, the tools hard
+       right, under the chips inside #jamtrack — the desktop card's shape. */
     const jt0=$("jamtrack");
+    const srow=document.createElement("div"); srow.className="jsetrow";
+    const sb=$("jamSetBtn"); if(sb){ sb.classList.remove("hidden"); srow.appendChild(sb); }
+    srow.appendChild(tools);
+    if(jt0) jt0.appendChild(srow);
+    /* ...AND THE GROOVE ROW BELOW THE CARD, LABELLED, WITH BREAKS ("below this
+       double bar, the groove selector, which needs a label, and the breaks
+       pill"). The groove button itself is inserted after the label further
+       down, where it is built. */
+    jbox=document.createElement("div"); jbox.className="jtoolbox";
+    const glab=document.createElement("span"); glab.className="lab glab"; glab.textContent="Groove:";
+    jbox.appendChild(glab);
+    const bb=$("brkBtn"); if(bb){ bb.classList.remove("hidden"); jbox.appendChild(bb); }
     $("jampanel").insertBefore(jbox,jt0?jt0.nextSibling:null);
+    /* THE DRAWER LOSES BOTH PILLS (David: "they can be deleted from the drawer
+       once we move them up"). `deep` still parks there, hidden -- it holds the
+       live controls while a sheet is shut -- but nothing in the section shows
+       any more, so its "This jam" head goes with it (placeDrawer agrees). */
     const host=$("dwMode");
     /* the phone puts it in the drawer's "This jam" section, which already sits
        ABOVE Feel (David, 29 Aug) — the order is transport, arrangement, this
@@ -18373,11 +18423,11 @@ function renderJamPanel(){
        drift apart. */
     if(host){ dwModeReset(); host.appendChild(deep);
       deep.classList.add("hidden");
-      host.appendChild($("jamSetBtn")); host.appendChild($("brkBtn"));
-      paintJamSetBtn();
+      paintJamSetBtn(); paintBrkBtn();
       if(!jamSetRehome(vpills,cwrap)) paintColour();
       if(!brkRehome(deep.querySelector("#brkWrap")))
         paintBrk(deep.querySelector("#brkWrap")); }
+    { const h=$("dsMode"); if(h) h.classList.add("hidden"); }
   } else {
     /* ZONES STAGE 2, re-placed at David's word (31 Aug): ♭ ♯ Clear act on
        the EXISTING sequence, not on chord generation — so they sit in the
@@ -18452,7 +18502,8 @@ function renderJamPanel(){
   /* THE GROOVE IS BACK ON THE TOOLS LINE (David, 28 Aug), hard left, with
      ♭ ♯ Clear Generate still pushed right — one line under the notation
      instead of two around the chords. */
-  if(PHONE&&jbox) jbox.insertBefore(cur,jbox.firstChild);
+  if(PHONE&&jbox){ const gl=jbox.querySelector(".glab");      // after the Groove: label
+    jbox.insertBefore(cur,gl?gl.nextSibling:jbox.firstChild); }
   else host.appendChild(cur);
   /* THE PANEL JUST CHANGED HEIGHT, so the stack has to be measured again —
      the same rule renderPanPanel follows. Without it a jam re-rendered from
@@ -24939,7 +24990,9 @@ function placeDrawer(){
      is decided by the meter — one bar, or two when the meter is as short as
      2/4 — so ＋/− Bar is gone from the bench, and there was never anything to
      arrange. The section simply does not appear there. */
-  const modeRoom=jamOn||(editing&&!grooveEdit);
+  // the phone's jam keeps nothing visible in this section since 2 Sep -- its
+  // two buttons stand under the chords now -- so the head stays down there
+  const modeRoom=(jamOn&&!(PHONE&&!TABLET))||(editing&&!grooveEdit);
   head.textContent=jamOn?"This jam":(editing&&!grooveEdit?"This piece":"");
   head.classList.toggle("hidden",!modeRoom);
   if(editing&&!grooveEdit){
