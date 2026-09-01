@@ -3117,6 +3117,19 @@ body.phone.rquiz #sideDots, body.phone.learn #sideDots{ display:none }
 #sideDots i.on{ background:var(--dixie); width:18px; border-radius:4px }
 #sideDots i.na{ display:none }
 #sideDots i::after{ content:""; position:absolute; inset:-13px }  /* a finger's hit */
+/* THE WAY BACK OUT OF BARE HAS TO BE FINDABLE (David, 1 Sep: "I still can't
+   recover any of the tabs in Flow after I once swiped to the third option …
+   Now I have no area to swipe on to bring those back"). With both companions
+   off, #belowrow collapses to a ~29px band — so the one surface that answers
+   a swipe all but disappears exactly where it is the only way out. The dots
+   row becomes the strip: it is a swipe surface as well as three targets, and
+   in bare it stands taller and reads darker, so there is something to aim at
+   rather than three 7px dots against the page.
+   It is not a fourth control — it is the control that was always there,
+   given the room it needs when nothing else is on screen. */
+body.phone.bare #sideDots{ padding:20px 0 14px }
+body.phone.bare #sideDots i{ background:var(--ink3) }
+body.phone.bare #sideDots i.on{ background:var(--dixie) }
 /* POCKET ZONES D: sideways is the music stand. In landscape PRACTICE the
    header goes and the stage takes its height — the way out is rotating
    back, which is where everything else already waits. The editors, jam and
@@ -13212,6 +13225,11 @@ let sideQuiet=false;
 function clearBare(){ if(!bareSide) return; bareSide=false;
   if(sideSticks()) try{localStorage.setItem("hps.bare","0")}catch(e){} }
 function paintSidePills(){
+  /* the body carries the bare reading so the CSS can widen the way back —
+     see body.phone.bare #sideDots. Toggled before the early return, because
+     a build without the ⊘ pill still has the state and still needs the exit. */
+  if(typeof document!=="undefined")
+    document.body.classList.toggle("bare",!!(PHONE&&bareSide&&view==="flow"));
   const b=$("bareBtn"); if(!b) return;
   const on=PHONE&&bareSide&&view==="flow";
   b.classList.toggle("on",on);
@@ -24716,16 +24734,48 @@ if(PHONE){
       const t=e.target.closest("i"); if(!t) return;
       sideGo(["chords","pan","bare"].indexOf(t.dataset.s));
     });
-    let swX=null,swY=null;
-    if(br){
-      br.addEventListener("pointerdown",e=>{ swX=e.clientX; swY=e.clientY; },{passive:true});
-      br.addEventListener("pointerup",e=>{
-        if(swX==null) return;
-        const dx=e.clientX-swX, dy=e.clientY-swY; swX=null; swY=null;
-        if(Math.abs(dx)<48||Math.abs(dy)>40) return;
-        if(editing||grooveEdit||jamOn||quizOn||rqOn) return;
-        sideGo((chordRowOn?0:(panOn?1:2))+(dx<0?1:-1));
-      },{passive:true});
+    /* THE SWIPE COMMITS ON THE MOVE, NOT ON THE LIFT (David, 1 Sep: "swiping
+       left and right to change between pan and notation tab is unreliable.
+       Sometimes it works, sometimes it doesn't").
+
+       It used to measure the gesture at `pointerup` ON #belowrow, which asks
+       two things to go right that a thumb does not promise. The finger has to
+       LIFT inside that row — drift up into the notation or down onto the
+       dots and the pointerup belongs to another element, so the swipe simply
+       never happened. And a touch the browser decides to treat as a scroll
+       ends in `pointercancel`, which is not a pointerup at all.
+
+       So the decision moves to `pointermove`: the moment the gesture is
+       unmistakably horizontal it fires, wherever the finger goes afterwards
+       and whether or not it is ever lifted. The pointer is captured too, so
+       every later event comes back here regardless of what is underneath.
+
+       And the veto is a DIRECTION rather than a ceiling. `|dy|>40` cancelled
+       a swipe that travelled 200px sideways and 45 down, which is an ordinary
+       thumb arc — what matters is that sideways beat downwards, not that
+       downwards stayed small. */
+    let swX=null,swY=null,swId=null,swSpent=false;
+    const swSurfaces=[br,dots].filter(Boolean);
+    const swStart=e=>{
+      if(!e.isPrimary) return;
+      swX=e.clientX; swY=e.clientY; swId=e.pointerId; swSpent=false;
+      try{ e.currentTarget.setPointerCapture(e.pointerId); }catch(x){}
+    };
+    const swMove=e=>{
+      if(swX==null||swSpent||e.pointerId!==swId) return;
+      const dx=e.clientX-swX, dy=e.clientY-swY;
+      if(Math.abs(dx)<44||Math.abs(dx)<Math.abs(dy)*1.3) return;
+      swSpent=true; swX=null;
+      if(editing||grooveEdit||jamOn||quizOn||rqOn) return;
+      if(document.querySelector("dialog[open]")) return;
+      sideGo((chordRowOn?0:(panOn?1:2))+(dx<0?1:-1));
+    };
+    const swEnd=()=>{ swX=null; swY=null; swId=null; };
+    for(const el of swSurfaces){
+      el.addEventListener("pointerdown",swStart,{passive:true});
+      el.addEventListener("pointermove",swMove,{passive:true});
+      el.addEventListener("pointerup",swEnd,{passive:true});
+      el.addEventListener("pointercancel",swEnd,{passive:true});
     }
     paintSideDots();
   }
