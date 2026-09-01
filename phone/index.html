@@ -6335,6 +6335,11 @@ function tabletPortrait(){ return TABLET&&!matchMedia("(orientation:landscape)")
 const vol=.9;
 try{ localStorage.removeItem("hps.vol"); }catch(e){}
 let iosSink=null;
+/* OUR OWN play() MUST NOT LOOK LIKE THE USER'S. ensureSink and the
+   statechange nudge both call el.play(), and the listener below turns a play
+   event into togglePlay() — which calls ensureSink() again. This flag is what
+   keeps that from being a loop. */
+let sinkSelf=false;
 /* iOS audio, the whole trap in one place (David's phone, 26 Aug 2026):
    - Plain WebAudio obeys the hardware RINGER SWITCH — silent phone, silent app.
      That was "the app loads but no sound".
@@ -6352,17 +6357,60 @@ function setAudioSession(){
   catch(e){}
 }
 function haveAudioSession(){ try{ return !!navigator.audioSession; }catch(e){ return false; } }
+/* ── THE PHONE GETS A REAL MEDIA ELEMENT AFTER ALL (experiment, 1 Sep) ─────
+   The early return below was right on its own terms: on a modern iOS the
+   audioSession type alone carries background playback, cleanly, with no
+   MediaStream in the path. But it leaves the page with NO <audio> element at
+   all — and every account of iOS lock-screen controls, including the one
+   David found, starts with "an active <audio> element ... that begins playing
+   via a direct user gesture". Metadata reaches the lock screen without one
+   (his title, artist and artwork prove it); the BUTTONS appear to want a
+   media element to attach to, which is the one part of the recipe this build
+   has never had.
+   So it is tried, deliberately and reversibly. FLIP THIS BACK TO true IF
+   BACKGROUND PLAYBACK REGRESSES — that is the thing being risked, it is worth
+   more than the buttons, and this constant is the whole revert. */
+const PHONE_SINK_OFF=false;
 function ensureSink(){
   setAudioSession();
   // top-level phone app on a modern iOS: the session type does it, cleanly
-  if(PHONE&&!FRAMED_SAFARI&&haveAudioSession()) return;
+  if(PHONE_SINK_OFF&&PHONE&&!FRAMED_SAFARI&&haveAudioSession()) return;
   if((!IOS&&!FRAMED_SAFARI)||!ctx) return;
-  if(iosSink&&iosSink!=="failed"){ if(iosSink.paused) iosSink.play().catch(()=>{}); return; }
+  if(iosSink&&iosSink!=="failed"){
+    if(iosSink.paused){ sinkSelf=true; iosSink.play().catch(()=>{})
+      .finally(()=>{ setTimeout(()=>{ sinkSelf=false; },400); }); }
+    return; }
   if(iosSink==="failed") iosSink=null;
   try{ const dest=ctx.createMediaStreamDestination(); const el=new Audio();
     el.setAttribute("playsinline",""); el.srcObject=dest.stream;
+    /* WITH A MEDIA ELEMENT IN THE PATH, THE LOCK SCREEN PAUSES THE ELEMENT —
+       not the context. Option A's rule has to be stated again in the element's
+       own terms, or pause would quietly stop working the moment this sink
+       exists: iOS pauses the <audio>, the context keeps running, no
+       statechange fires, and the music plays on exactly as it did before.
+       And the same hook is the first thing in this whole hunt that could make
+       lock-screen PLAY work: an element the user un-pauses tells us so.
+       Both are guarded so our OWN calls cannot fire them — ensureSink and the
+       statechange nudge both call play(), and a resume must never restart
+       music the student stopped on purpose. */
+    el.addEventListener("pause",()=>{
+      if(!playing||document.visibilityState!=="hidden") return;
+      try{ mediaSeen.push("sink-pause"); }catch(e){}
+      const at=(lastPaint>=0)?lastPaint:loopedPulse(nextPulse);
+      try{ stop(); }catch(e){}
+      if(pendingStart==null&&!loopSec&&at>=0) pendingStart=at;
+    });
+    el.addEventListener("play",()=>{
+      if(sinkSelf) return;                       // that play() was ours
+      if(playing||document.visibilityState!=="hidden") return;
+      if(pendingStart==null) return;              // nothing was parked
+      try{ mediaSeen.push("sink-play"); }catch(e){}
+      try{ togglePlay(); }catch(e){}
+    });
+    sinkSelf=true;
     el.play().then(()=>{ master.disconnect(); master.connect(dest); iosSink=el; })
-      .catch(()=>{ iosSink="failed"; });
+      .catch(()=>{ iosSink="failed"; })
+      .finally(()=>{ setTimeout(()=>{ sinkSelf=false; },400); });
   }catch(e){ iosSink="failed"; }
 }
 function ensureCtx(){
@@ -6385,7 +6433,9 @@ function ensureCtx(){
      The sink is still nudged: an <audio> element that iOS paused is not the
      same event, and leaving it paused would silence a context that is running. */
   ctx.onstatechange=()=>{
-    if(playing&&iosSink&&iosSink!=="failed"&&iosSink.paused) iosSink.play().catch(()=>{}); };
+    if(playing&&iosSink&&iosSink!=="failed"&&iosSink.paused){
+      sinkSelf=true; iosSink.play().catch(()=>{})
+        .finally(()=>{ setTimeout(()=>{ sinkSelf=false; },400); }); } };
 }
 let live=[];
 /* ── TWO THINGS THE PAN MAY NOT DO, WHATEVER ASKS IT TO ─────────────────────
