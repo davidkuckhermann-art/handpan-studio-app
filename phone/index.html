@@ -9068,18 +9068,37 @@ function mediaSessionWire(){
       seekToPulse(i+1<es.length?es[i+1].from:0);
     }catch(e){}
   });
-  set("seekto",d=>{ try{ if(d&&d.seekTime!=null) seekToPulse(pulseAtSeconds(d.seekTime)); }catch(e){} });
-  /* THE GREY BUTTONS IN DAVID'S SCREENSHOT WERE ⏪ AND ⏩, NOT ⏮ AND ⏭.
-     iOS drew seek controls and disabled them, because only previoustrack and
-     nexttrack had handlers. A control with no handler is drawn dead — which
-     looks exactly like a control that is broken. Ten seconds is the step every
-     player uses, and it is roughly a bar at these tempi. */
-  const nudge=(dir,secs)=>()=>{ try{
-    const at=timeOfPulse(nowPulse())+dir*(secs||10);
-    seekToPulse(pulseAtSeconds(Math.max(0,at)));
-  }catch(e){} };
-  set("seekbackward",d=>nudge(-1,d&&d.seekOffset)());
-  set("seekforward",d=>nudge(1,d&&d.seekOffset)());
+  /* ── WHY SEEK IS NOT OFFERED (1 Sep, after three rounds on David's phone) ──
+     The handlers here DO reach the page: he pressed pause on the lock screen
+     and the app reported "Lock screen sent: pause", which is the action
+     handler, not the media element. So registration works and iOS calls us.
+     And yet ⏪ ⏩ stayed grey WITH seekbackward and seekforward registered.
+     That is iOS saying this session cannot seek, and the reason is almost
+     certainly the media element: it carries a MediaStream, a LIVE stream,
+     and live media has no timeline to seek within. Registering a handler
+     cannot argue with that.
+     So seek is no longer offered at all. iOS draws ONE pair of buttons, and
+     while seek was on the table it drew the pair it then had to disable;
+     with only skip registered it may draw skip instead — which it CAN do,
+     and which is the better control here anyway: a piece is practised by
+     TABLE, not by ten-second jumps.
+     `MS_SEEK` puts it back in one line if this turns out to be wrong. */
+  const MS_SEEK=false;
+  if(MS_SEEK){
+    set("seekto",d=>{ try{ if(d&&d.seekTime!=null) seekToPulse(pulseAtSeconds(d.seekTime)); }catch(e){} });
+    const nudge=(dir,secs)=>()=>{ try{
+      const at=timeOfPulse(nowPulse())+dir*(secs||10);
+      seekToPulse(pulseAtSeconds(Math.max(0,at)));
+    }catch(e){} };
+    set("seekbackward",d=>nudge(-1,d&&d.seekOffset)());
+    set("seekforward",d=>nudge(1,d&&d.seekOffset)());
+  }else{
+    /* explicitly withdrawn, not merely absent: a handler set earlier in the
+       session would otherwise still stand, and this runs once per page */
+    ["seekto","seekbackward","seekforward"].forEach(a=>{
+      try{ navigator.mediaSession.setActionHandler(a,null); }catch(e){}
+    });
+  }
 }
 /* seconds ↔ pulses, walked rather than divided, because the grid is not even:
    sections carry their own metre and subdivision, and unit 16 halves the count */
