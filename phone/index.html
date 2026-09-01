@@ -15849,7 +15849,26 @@ function buildJamPiece(){
          still happen in those bars, but not as often"). Three times as likely
          on an even bar as on an odd one — the run then leads into the strong
          bar rather than out of it. */
-      const evenBar=((i+1)%2)===0;
+      /* ---- THE UNIT IS THE ROW, NOT THE BAR (David, 1 Sep) ----
+         "Whatever shows up in the notation as one row is calculated as one
+         unit. In longer time signatures one bar would be one unit, and in the
+         short time signatures two bars would be one unit."
+         He is right, and the library says so: pulses per BAR run 3·5·6·7·8·
+         10·12·16·20 — a 6.7× spread — while pulses per ROW land on 16 for 33
+         of the 43 grooves. The run decision was made once per bar at a fixed
+         chance, so it had no idea how much music a bar held: measured, runs
+         per bar sat at 0.37–0.40 for EVERY groove, which made runs per minute
+         five times commoner on a 3-pulse bar than on a 4/4. Counting rows
+         fixes the density and, his own point, keeps the run's landing in one
+         consistent place — the end of a row, wherever that falls.
+         A groove with one bar to the row (every 4/4 in the library) has
+         `rows === bars`, so it takes the identical path and generates
+         identical bars. */
+      const bpr=Math.max(1,pat.bpr||1);
+      const rowEnd=((i+1)%bpr)===0;          // this bar closes a row
+      const ri=Math.floor(i/bpr);            // which row
+      const nRows=Math.max(1,Math.ceil(form.length/bpr));
+      const evenBar=((ri+1)%2)===0;          // …the even ROW now
       /* AND THEY ARE RARE (David: "overall, they shouldn't happen all the
          time. Not every bar, not every second or every third bar. But just
          from time to time for musical variety and for a break from the
@@ -15864,9 +15883,11 @@ function buildJamPiece(){
          first half. A run may take one of those even though it would
          otherwise have rested there — a roll into the turn IS the full stop,
          and it is the one place a rest can be spent better. */
-      const lastOfForm=i===form.length-1;
-      const lastOfHalf=i===Math.floor(form.length/2)-1;
-      const join=lastOfForm||lastOfHalf;
+      /* the two joins are the last ROW of the form and the last row of its
+         first half — the same two places, counted in the same unit */
+      const lastOfForm=ri===nRows-1;
+      const lastOfHalf=ri===Math.floor(nRows/2)-1;
+      const join=rowEnd&&(lastOfForm||lastOfHalf);
       /* A JOIN'S CHANCE IS PER FORM, NOT PER BAR (David, 30 Aug: "runs in
          general seem to happen much more frequently when 'how far it travels'
          is set to 1 … most of my generated sequences with that setting have a
@@ -15878,7 +15899,7 @@ function buildJamPiece(){
          30% at four passes. The chance now scales with the form, so the two
          joins contribute the same amount to a generation however long it is:
          0.45 on four bars, the full 0.9 from eight up. */
-      const joinP=Math.min(0.9,1.15*form.length/8);
+      const joinP=Math.min(0.9,1.15*nRows/8);
       /* A 4-BAR PHRASE END THAT IS NOT ONE OF THE FORM'S TWO JOINS. Long runs
          were 99% at the joins, and a sixteen-bar form still has only two of
          them spread over four phrases — which is why four passes sat at 19%
@@ -15886,8 +15907,11 @@ function buildJamPiece(){
          fixed it. It is structural, so the structure gained a rung: a phrase
          end leads somewhere too. It bites only from four passes up, because at
          one and two passes the phrase ends ALREADY are the joins. */
-      const pend=ends&&!join;
-      const wantRun=runs<2&&(runs===0||mrnd()<0.3)
+      const pend=rowEnd&&ends&&!join;
+      /* …and a run is only ever offered where a row ends. That is the whole of
+         the density fix: a two-bars-to-the-row groove is asked half as often
+         as it was, which is exactly how much more often its bars go by. */
+      const wantRun=rowEnd&&runs<2&&(runs===0||mrnd()<0.3)
         &&(join?mrnd()<joinP:(pend?mrnd()<0.85:(!rest&&mrnd()<(evenBar?0.6:0.25))));
       const longOk=join||pend||mrnd()<0.08;
       const rf=wantRun&&ndef?jamRunFields(rqLadder(ndef),bp,mrnd,longOk):null;
