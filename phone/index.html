@@ -946,6 +946,9 @@ button{font:inherit; cursor:pointer}
 #setDlg .drow{display:flex; align-items:center; justify-content:space-between; gap:14px;
   padding:7px 2px}
 #setDlg .drow>span:first-child{font-size:13.5px; font-weight:600; color:var(--ink2)}
+/* the build stamp: present, and asking for nothing */
+#setVer{font-size:11px; letter-spacing:.02em; color:var(--ink3);
+  font-variant-numeric:tabular-nums; align-self:center}
 #setDlg h4{font-size:10.5px; font-weight:800; letter-spacing:.12em; text-transform:uppercase;
   color:var(--ink3); margin:15px 0 2px}
 #setDlg h4:first-of-type{margin-top:4px}
@@ -5505,9 +5508,12 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
        timestamp, so there is no version constant anyone can forget to bump —
        it is right by construction, and on a stale service-worker copy it
        reports the OLD time, which is exactly the fault it exists to reveal. -->
-  <div class="drow"><span>Version</span>
-    <b id="setVer" style="font-size:13px;font-variant-numeric:tabular-nums">&mdash;</b></div>
-  <div class="row"><span class="spacer"></span><button class="ctl" id="setClose">Close</button></div>
+  <!-- THE BUILD STAMP RIDES ON THE CLOSE LINE, hard left (David, 1 Sep: "just
+       display the version number at the very bottom left ... the menu is
+       already crowded"). No label, no row of its own — it costs the sheet no
+       height at all, because the Close line was already there. The phone's
+       boot moves it onto ITS close line for the same reason. -->
+  <div class="row"><small id="setVer"></small><span class="spacer"></span><button class="ctl" id="setClose">Close</button></div>
 </dialog>
 
 <!-- WHAT THE EXPORT DOOR OPENS (David, 1 Sep). The dialog asks only what it
@@ -7207,8 +7213,8 @@ function paintVersion(){
   let out=document.lastModified;
   try{
     const d=new Date(document.lastModified);
-    if(!isNaN(d)) out=d.toLocaleString(undefined,
-      {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
+    if(!isNaN(d)) out=d.toLocaleDateString(undefined,{day:"numeric",month:"short"})
+      +" "+d.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});
   }catch(e){}
   el.textContent=out||"unknown";
 }
@@ -23048,7 +23054,12 @@ function boot(){
   window.addEventListener("pagehide",saveRoom);
   document.addEventListener("visibilitychange",()=>{
     if(document.visibilityState==="hidden") saveRoom(); });
-  $("setBtn").addEventListener("click",()=>{ paintVersion(); openDlg($("setDlg")); });
+  /* PAINTED ONCE AT BOOT, not on the button. Hooking it to #setBtn left the
+     phone showing a dash forever: its sweep lifts these rows into the menu
+     sheet, which opens by another door entirely. document.lastModified cannot
+     change while the page is loaded, so once is also enough. */
+  paintVersion();
+  $("setBtn").addEventListener("click",()=>openDlg($("setDlg")));
   $("setClose").addEventListener("click",()=>$("setDlg").close());
   /* the Settings sheet steps aside for the export dialog — two modal sheets
      stacked is a phone with nowhere to tap */
@@ -24623,6 +24634,10 @@ function placePhoneControls(){
       if(r.querySelector("#setTutBtn")) return;        // the sheet has its own tutorial row
       host.appendChild(r);
     });
+    /* the build stamp moves onto the SHEET'S close line, so it sits at the
+       very bottom left here too rather than above the tutorial row */
+    const mrow=[...$("menuDlg").querySelectorAll(":scope > .row")].pop();
+    if(mrow&&$("setVer")) mrow.insertBefore($("setVer"),mrow.firstChild);
     // Share rides the header on every page — piece, jam or groove (27 Aug)
     document.querySelector("header").insertBefore($("shareBtn"),$("leaveBtn"));
     /* UNDO/REDO RIDES WITH SAVE-LOAD ON THE PHONE (30 Aug). David asked for it
