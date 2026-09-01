@@ -9177,6 +9177,59 @@ function mediaSessionPos(){
    it answered its question (the handlers do fire; the fix was registering
    them after the element plays) and students should never have seen it. The
    whole hunt is written up in HANDOVER.md under THE LOCK SCREEN RECIPE. */
+/* STOP, AND REMEMBER WHERE. `stop()` alone parks on `lastPaint`, which is set
+   only inside the rAF tick — and a locked phone runs no rAF, so it is -1 and
+   the park is empty. start() then falls back to the top of the table, which is
+   exactly what David saw: "on a restart, it does start from the beginning of
+   the table though, not from where it stopped."
+   nowPulse() asks the scheduler, which a locked phone DOES keep running. */
+function parkHere(){
+  /* THE POSITION IS RECORDED BEFORE stop(), NOT AFTER (1 Sep, second pass).
+     stop() repaints the lock screen on its way out — and it used to do that
+     while `playing` was already false and `pendingStart` still null, so
+     nowPulse() fell through to 0 and iOS was told the piece was at the
+     beginning. The next one-second update then corrected it, which is exactly
+     what David saw: "the timer jumps to zero ... and then it would jump
+     forward to wherever it was."
+     stop()'s own park line cannot clobber this: it only fires when lastPaint
+     is >= 0, and on a locked phone lastPaint is -1. */
+  const at=nowPulse();
+  if(pendingStart==null&&!loopSec&&at>=0) pendingStart=at;
+  try{ stop(); }catch(e){}
+  try{ if(!C) C=compile(piece); paintPulse(pendingStart); }catch(e){}
+  mediaSessionState();
+  mediaSessionPos();                 // …and the scrubber lands where it stopped
+}
+/* THE GLYPH, ON ITS OWN AND FIRST. This used to be one line inside the same
+   try as the metadata, after it — so anything MediaMetadata threw took the
+   play/pause glyph down with it and left iOS showing whatever it had last.
+   That is David's "it shows the triangle symbol, so it doesn't really pick up
+   that playback is running", and the press that follows is then spent
+   correcting the icon instead of pausing. It is the cheapest call here and the
+   one that must never be skipped, so it stands alone. */
+/* THE ELEMENT IS THE TRANSPORT'S TRUTH, NOT playbackState (1 Sep, after the
+   glyph drifted a second time). Asserting `playbackState` is telling iOS what
+   we think; iOS draws its button from the MEDIA ELEMENT, which is a fact it
+   can check. So the element is kept in lockstep with `playing` and the drift
+   becomes impossible rather than corrected — David's "first it went well,
+   then the lock screen didn't pick up the play state again" is what arguing
+   with it looks like.
+   A paused element KEEPS the Now Playing card — that is how every player
+   offers you a play button on the lock screen — so this does not cost the
+   resume that now works; the element's own play event is still what carries
+   it. sinkArm/sinkOurs keep our sync from reading as the student's press. */
+function sinkSync(){
+  if(!iosSink||iosSink==="failed") return;
+  try{
+    if(playing&&iosSink.paused){ sinkArm("play"); iosSink.play().catch(()=>{}); }
+    else if(!playing&&!iosSink.paused){ sinkArm("pause"); iosSink.pause(); }
+  }catch(e){}
+}
+function mediaSessionState(){
+  sinkSync();                   // the fact first, then what we say about it
+  if(!mediaOK()) return;
+  try{ navigator.mediaSession.playbackState=playing?"playing":"paused"; }catch(e){}
+}
 function mediaSessionPaint(){
   if(!mediaOK()) return;
   mediaSessionWire();
