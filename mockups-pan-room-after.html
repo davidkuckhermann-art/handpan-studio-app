@@ -947,6 +947,13 @@ button{font:inherit; cursor:pointer}
   color:var(--ink3); margin:15px 0 2px}
 #setDlg h4:first-of-type{margin-top:4px}
 #setDlg .dsep{height:1px; background:var(--rule2); margin:9px 0 0}
+/* A ROW FENCED BY TWO SEPARATORS SITS BETWEEN THEM (David, 1 Sep: "the export
+   row seems to sit too low between the separator lines"). The separator
+   carries its 9px on TOP only — right for a rule that closes a group, wrong
+   for a row that has one above AND below: measured, the button stood 7px
+   under the upper line and 16px over the lower. The rule below a fenced row
+   gives its margin back to the row, so the two gaps match. */
+#setDlg .dsep+.drow{margin-top:9px}
 /* THE EDIT BLOCK'S OWN RULE (David, 28 Aug: "a visible separator between the
    edit section and the rest of the menu"). The settings sheet's .dsep is
    scoped to #setDlg, so a copy of it in the share sheet drew nothing at all. */
@@ -2039,8 +2046,14 @@ body.jam #srcBadge{display:none !important}
 #quizsetup{max-width:720px; margin:8px auto 0; background:var(--card);
   border:1px solid var(--rule); border-radius:14px; padding:20px 22px 18px;
   box-shadow:var(--shadow)}
-#quizsetup .qrow{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px}
-#quizsetup .qlab{font-size:11px; font-weight:700; letter-spacing:.09em;
+/* BOTH QUIZZES, ONE ROW (David, 1 Sep: "the layout of the rhythm quiz
+   selector is messed up, everything is pushed together"). qzChipRow builds
+   the rhythm quiz's rows too, and they arrived in #rqsetup — where these
+   rules, scoped to #quizsetup alone, never reached them: no flex, no gap, no
+   label width, so the chips ran into their labels. The selector names both
+   hosts; nothing about the rows themselves changes. */
+#quizsetup .qrow,#rqsetup .qrow{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px}
+#quizsetup .qlab,#rqsetup .qlab{font-size:11px; font-weight:700; letter-spacing:.09em;
   text-transform:uppercase; color:var(--ink3); min-width:112px}
 /* the fundamental choice, as two cards that say what they are */
 .qkinds{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:4px}
@@ -2099,7 +2112,14 @@ body.jam #srcBadge{display:none !important}
 .qsp span{font-size:11.5px; font-weight:700; color:var(--ink3);
   font-variant-numeric:tabular-nums}
 .qring{position:relative; width:70px; height:70px; margin-top:6px}
-.qring svg{transform:rotate(-90deg)}
+.qring svg{transform:rotate(-90deg);
+  /* THE RING MUST BE THE SIZE OF ITS BOX (David, 1 Sep, with a screenshot:
+     "the timer is not centred in its circle"). The phone shrinks .qring to
+     56px, but the SVG was drawn at a fixed 70×70 and kept it — so the ring's
+     centre sat 7px down and right of the box's, while the number, laid out
+     against the BOX, stayed put. 100% ties the drawing to whatever the box is,
+     on every platform; the rhythm quiz draws the same ring and is cured with it. */
+  width:100%; height:100%; display:block}
 .qring .num{position:absolute; inset:0; display:grid; place-items:center;
   font-size:22px; font-weight:800; color:var(--ink); font-variant-numeric:tabular-nums}
 .qbtns{display:flex; gap:9px; flex-wrap:wrap; justify-content:center; margin-top:10px}
@@ -2613,8 +2633,11 @@ body.phone #pvwrap.sides #pvsvg{width:min(calc(236px*var(--panzoom,1)*var(--panf
    underneath and white-on-dark reads in both, which is one less thing to get
    wrong in the theme that is not being looked at. */
 #panZoom{position:fixed; inset:0; z-index:99999; display:none;
-  flex-direction:column; align-items:center; justify-content:center; gap:12px;
-  padding:18px; background:rgba(14,12,10,.86);
+  /* TOP, NOT MIDDLE (David, 1 Sep: "show on the top part of the screen so my
+     thumb doesn't block it"). Held open with the thumb that pressed the
+     switcher, so the lower half of the screen is under a hand. */
+  flex-direction:column; align-items:center; justify-content:flex-start; gap:12px;
+  padding:calc(18px + env(safe-area-inset-top)) 12px 18px; background:rgba(14,12,10,.86);
   -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px)}
 #panZoom.on{display:flex}
 #panZoomInner{width:min(94vw,86vh,780px); height:min(94vw,86vh,780px);
@@ -3152,8 +3175,10 @@ body.phone #sideDots{ display:flex; gap:8px; justify-content:center;
   align-items:center;
   /* the slack Flow's snap gives back is spent here (see flowPhoneFit) —
      centred, so the dots sit in the middle of whatever strip they get */
-  /* 9 → 5 above (David, 1 Sep, the pan-gap note): the strip is 15px now */
-  padding:calc(5px + var(--sdslack,0px)/2) 0 calc(3px + var(--sdslack,0px)/2) }
+  /* 9/3 → 5/3 → 2/1 (David, 1–2 Sep: "can we bring the dot strip down to
+     10 px?"): 7px of dot in a 10px strip. The finger's target is the ::after
+     inset below, not the padding, so nothing is lost to the tap. */
+  padding:calc(2px + var(--sdslack,0px)/2) 0 calc(1px + var(--sdslack,0px)/2) }
 body.phone.editing #sideDots, body.phone.gedit #sideDots,
 body.phone.jam #sideDots, body.phone.quiz #sideDots,
 body.phone.rquiz #sideDots, body.phone.learn #sideDots{ display:none }
@@ -12552,6 +12577,15 @@ function openPanZoom(){
   const c=src.cloneNode(true);
   c.removeAttribute("id");
   c.querySelectorAll("[id]").forEach(el=>el.removeAttribute("id"));
+  /* THE COPY MUST NOT BRING THE CARD'S SIZE WITH IT (David, 1 Sep: "the
+     pan shows in the middle of the screen, but it doesn't grow"). The phone's
+     fitter writes the drawing's width onto the source as an INLINE style —
+     281px on his phone — and cloneNode copies inline styles faithfully, so
+     the overlay's `svg{width:100%}` lost to it every time and the "full
+     screen" pan was the card's pan on a dark background. The clone is
+     stripped of the sizing before it is placed; the stylesheet then has it. */
+  c.style.removeProperty("width"); c.style.removeProperty("height");
+  c.style.removeProperty("max-width"); c.style.removeProperty("max-height");
   host.appendChild(c);
   const nm=(myPan&&myPan.pan)?myPan.pan.name:"";
   $("panZoomCap").innerHTML=(nm?"<b>"+nm.replace(/[<&]/g,"")+"</b> &middot; ":"")
@@ -18379,7 +18413,34 @@ const QTIMES=[5,10,20,0];      // 0 = no timer: the student reveals by hand
    chord and the student names it. Everything else — the pool, the chord
    types, the clock, the round length, the summary — is shared. */
 let qcfg={src:"pan",level:"triads",time:10,len:10,mode:"tap",
-          kind:"find",opts:4,voicing:"full",play:"arp"};
+          kind:"find",opts:4,voicing:"full",play:"arp",preset:"normal",ding:true};
+/* PRESETS, AND A DOOR TO THE REST (David, 1 Sep: "the user should not be
+   greeted by a wall of parameters" — a Normal preset, a Challenging one, and
+   Customise, "only when that is selected should all the settings come onto
+   the screen"). His own numbers, from the screenshots he sent: Normal is the
+   whole pan, triads, ten questions, twenty seconds, as an arpeggio — Find on
+   the pan, Name with four answers. Challenging adds the seventh and ninth
+   chords and offers six answers instead of four; everything else stands.
+   A preset is APPLIED on every paint rather than copied once, so a stored
+   value from an old Customise cannot leak into it; what the student set in
+   Customise is kept aside in `custom` and comes back when they return. */
+const QPRESETS={
+  normal:   {src:"pan",level:"triads",voicing:"full",opts:4,len:10,time:20,play:"arp",mode:"tap",ding:true},
+  challenge:{src:"pan",level:"9th",   voicing:"full",opts:6,len:10,time:20,play:"arp",mode:"tap",ding:true}};
+const QPRESET_KEYS=Object.keys(QPRESETS.normal);
+function qzApplyPreset(){
+  const P=QPRESETS[qcfg.preset]; if(!P) return;
+  for(const k of QPRESET_KEYS) qcfg[k]=P[k];
+}
+function qzSetPreset(v){
+  if(v===qcfg.preset) return;
+  if(qcfg.preset==="custom"){           // leaving Customise: keep what was set
+    qcfg.custom={}; for(const k of QPRESET_KEYS) qcfg.custom[k]=qcfg[k];
+  }
+  qcfg.preset=v;
+  if(v==="custom"&&qcfg.custom) for(const k of QPRESET_KEYS) if(k in qcfg.custom) qcfg[k]=qcfg.custom[k];
+  qzApplyPreset(); qzSaveCfg(); renderQuizSetup();
+}
 const QOPTS=[3,4,5,6];         // how many answers to choose between
 function qzLoadCfg(){
   try{ const s=JSON.parse(localStorage.getItem("hps.quiz")||"null");
@@ -18390,6 +18451,9 @@ function qzLoadCfg(){
   if(!QOPTS.includes(qcfg.opts)) qcfg.opts=4;
   if(qcfg.voicing!=="full"&&qcfg.voicing!=="varied") qcfg.voicing="full";
   if(qcfg.play!=="arp"&&qcfg.play!=="block") qcfg.play="arp";
+  if(!["normal","challenge","custom"].includes(qcfg.preset)) qcfg.preset="normal";
+  qcfg.ding=qcfg.ding!==false;
+  qzApplyPreset();
 }
 const qzKind=()=>qcfg.kind==="name"?"name":"find";
 function qzSaveCfg(){ try{ localStorage.setItem("hps.quiz",JSON.stringify(qcfg)); }catch(e){} }
@@ -18655,8 +18719,21 @@ function qzNext(){
     QZ.voice=qzVoiceFields(QZ.cur,QZ.options);
   } else { QZ.options=null; QZ.voice=null; }
   renderQuiz();
-  if(qzKind()==="name") qzHearChord(QZ.voice);   // the question IS the sound
+  if(qzKind()==="name") qzAskSound();            // the question IS the sound
   if(qcfg.time) qzRunClock(qcfg.time,qzReveal);
+}
+/* THE QUESTION, WITH ITS REFERENCE (David, 1 Sep). The ding sounds, two
+   seconds pass, the chord comes — and the same on "hear it again", never on
+   the reveal, which is an answer and needs no reference before it. The two
+   seconds are his; the ding is field 0, the note the pan is named for. */
+const QDING_GAP=2.0;
+function qzAskSound(){
+  if(!QZ||!QZ.cur||qzKind()!=="name") return;
+  if(!qcfg.ding){ qzHearChord(QZ.voice); return; }
+  ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
+  const m=myPan.midiFor(0);
+  if(m!=null) fire(bankBuf("o"+m)||synthBuf(m,"open"),ctx.currentTime+.06,.85);
+  qzHearChord(QZ.voice,QDING_GAP);
 }
 // One clock for both counts: the search, and (hands-free) the look at the
 // answer. Wall-clock driven, so a throttled tab can't stretch the round.
@@ -18838,6 +18915,13 @@ function qzHearChord(only,delay){
 }
 
 /* ---- painting ---- */
+const QPRESET_OPTS=[
+  {id:"normal",label:"Normal",why:"A good round to start with"},
+  {id:"challenge",label:"Challenging",why:"Harder material, more to choose between"},
+  {id:"custom",label:"Customise",why:"Every setting, yours to set"}];
+function qzPresetRow(box,cur,pick){
+  return qzChipRow(box,"Preset",QPRESET_OPTS,cur,pick);
+}
 function qzChipRow(box,label,opts,cur,pick,dis){
   const row=document.createElement("div"); row.className="qrow";
   const l=document.createElement("span"); l.className="qlab"; l.textContent=label;
@@ -18890,12 +18974,21 @@ function renderQuizSetup(){
   mkKind("find","Find the chord","The app names a chord — you find it on your pan.");
   mkKind("name","Name the chord","The app plays a chord — you say which one it was.");
   box.appendChild(kinds);
+  /* THE PRESET DECIDES WHETHER THE SETTINGS ARE ON SCREEN AT ALL (David, 1
+     Sep). Normal and Challenging apply their values and show nothing else —
+     the bank below still says what the round holds, and Start is where it
+     was. Customise is the one door to the rows. */
+  qzApplyPreset();
+  const custom=qcfg.preset==="custom";
+  const pr=qzPresetRow(box,qcfg.preset,qzSetPreset);
+  pr.style.marginTop="10px";
 
   const sect=title=>{
     const s=document.createElement("div"); s.className="qsect";
     const h=document.createElement("h4"); h.className="jgroup"; h.textContent=title;
     s.appendChild(h); box.appendChild(s); return s;
   };
+  if(custom){
   const chords=sect("The chords");
   qzChipRow(chords,"Which chords",srcOpts,qcfg.src,v=>set("src",v));
   qzChipRow(chords,"Chord types",QLEVELS.map(l=>({id:l.id,label:l.label})),
@@ -18937,6 +19030,18 @@ function renderQuizSetup(){
   qzChipRow(round,"How it sounds",[
     {id:"arp",label:"As an arpeggio"},{id:"block",label:"Block chord only"}
   ],qcfg.play,v=>set("play",v));
+  /* THE CENTRAL NOTE FIRST (David, 1 Sep: "before a chord is played, the
+     central note of the selected pan should be played. Then a pause and then
+     the chord"). Name quiz only — Find has no question sound — and on by
+     default, because the ding is the reference every other note is heard
+     against: hearing it first turns "which chord was that" from absolute
+     pitch into a relative question, which is the one a player can answer. */
+  if(naming)
+    qzChipRow(round,"Before the chord",[
+      {id:true,label:"Central note first",why:"The pan's ding, a pause, then the chord — so you hear the chord against the note you know"},
+      {id:false,label:"Just the chord"}
+    ],qcfg.ding,v=>set("ding",v));
+  }
   // the bank — seeing the family before the round is itself the lesson
   const pool=qzPool();
   const h=document.createElement("h4"); h.className="jgroup";
@@ -19094,7 +19199,7 @@ function renderQuiz(){
   }
   if(searching&&naming){
     const hb=$("qzHearBtn");
-    if(hb) hb.addEventListener("click",()=>qzHearChord(QZ.voice));
+    if(hb) hb.addEventListener("click",qzAskSound);   // again WITH the ding (David, 2 Sep)
     const box=$("qzOpts");
     for(const o of (QZ.options||[])){
       const b=document.createElement("button");
@@ -19953,7 +20058,27 @@ function rqPattern(grid,dens,withChord){
    Totals are the metres in the round; note is what one slot is worth, so 7 in
    eighths is 7/8 and 15 in sixteenths is 15/16. */
 let rqcfg={range:"normal",note:8,voice:"dingtak",dens:2,bpm:84,
-           plays:4,pulse:"in",mode:"choose",opts:4,len:10};
+           plays:4,pulse:"in",mode:"choose",opts:4,len:10,preset:"normal"};
+/* the rhythm quiz's two presets, from David's screenshot (1 Sep): Normal
+   metres, mixed feel, mixed voice, medium, pick the answer from four, heard
+   four times, count-in only, 84 bpm, ten questions. Challenging is the same
+   round over the Challenge metres — 9/8, 11/16, 13/8, 15/16. See QPRESETS
+   for how a preset is applied and how Customise keeps its own values. */
+const RQPRESETS={
+  normal:   {range:"normal",   note:"mix",voice:"mix",dens:2,mode:"choose",opts:4,plays:4,pulse:"in",bpm:84,len:10},
+  challenge:{range:"challenge",note:"mix",voice:"mix",dens:2,mode:"choose",opts:4,plays:4,pulse:"in",bpm:84,len:10}};
+const RQPRESET_KEYS=Object.keys(RQPRESETS.normal);
+function rqApplyPreset(){
+  const P=RQPRESETS[rqcfg.preset]; if(!P) return;
+  for(const k of RQPRESET_KEYS) rqcfg[k]=P[k];
+}
+function rqSetPreset(v){
+  if(v===rqcfg.preset) return;
+  if(rqcfg.preset==="custom"){ rqcfg.custom={}; for(const k of RQPRESET_KEYS) rqcfg.custom[k]=rqcfg[k]; }
+  rqcfg.preset=v;
+  if(v==="custom"&&rqcfg.custom) for(const k of RQPRESET_KEYS) if(k in rqcfg.custom) rqcfg[k]=rqcfg.custom[k];
+  rqApplyPreset(); rqSaveCfg(); renderRQSetup();
+}
 /* NORMAL AND CHALLENGE, not a chip per metre (David, 28 Aug). Normal stops at
    eight pulses — 2/4, 3/4, 4/4, 5/8, 7/8 and their kin; Challenge runs to
    sixteen, which is where 11/16, 13/8 and 15/16 live. */
@@ -19991,6 +20116,8 @@ function rqLoadCfg(){
   if(rqcfg.mode!=="choose"&&rqcfg.mode!=="free") rqcfg.mode="choose";
   if(["dingtak","groove","mix"].indexOf(rqcfg.voice)<0) rqcfg.voice="dingtak";
   if(![3,4,5,6].includes(rqcfg.opts)) rqcfg.opts=4;
+  if(!["normal","challenge","custom"].includes(rqcfg.preset)) rqcfg.preset="normal";
+  rqApplyPreset();
 }
 function rqSaveCfg(){ try{ localStorage.setItem("hps.rquiz",JSON.stringify(rqcfg)); }catch(e){} }
 
@@ -20679,7 +20806,12 @@ function renderRQSetup(){
   const set=(k,v)=>{ rqcfg[k]=v; rqSaveCfg(); renderRQSetup(); };
   const sect=t=>{ const h=document.createElement("h4"); h.className="jgroup"; h.textContent=t;
     box.appendChild(h); };
+  // the same three-way door the chord quiz has — see QPRESETS
+  rqApplyPreset();
+  const custom=rqcfg.preset==="custom";
+  qzPresetRow(box,rqcfg.preset,rqSetPreset);
 
+  if(custom){
   sect("The rhythms");
   /* TWO CHIPS WHERE TWELVE USED TO BE (David, 28 Aug): "instead of selecting
      every metre individually, let's give the students options". */
@@ -20714,6 +20846,7 @@ function renderRQSetup(){
       why:"Beats per minute — what the count-in ticks"})),rqcfg.bpm,v=>set("bpm",v));
   qzChipRow(box,"Length",[{id:10,label:"10 questions"},{id:20,label:"20 questions"},
     {id:"endless",label:"Endless"}],rqcfg.len,v=>set("len",v));
+  }
 
   // what a round of these metres actually contains
   const h=document.createElement("h4"); h.className="jgroup"; h.style.margin="14px 0 0";
