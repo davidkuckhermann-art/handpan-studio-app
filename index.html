@@ -3967,7 +3967,16 @@ body.phone #scorewrap>#playBtn::after{content:""; position:absolute; inset:-7px;
   html.phone{height:100%; overflow:hidden; overscroll-behavior:none}
   body.phone{position:fixed; inset:0; width:100%; height:100%;
     overflow:hidden; overscroll-behavior:none}
-  body.phone #viewrow,body.phone #belowrow,body.phone #srcBadge{display:none}
+  /* THE DOTS GO WITH THE ROW THEY POINT AT (David, 1 Sep: "we don't need the
+     dots below because there is no pan/chord tab"). #belowrow has been hidden
+     in landscape since 26 Aug; #sideDots was added later, as its swipe
+     indicator, and was never added to this line — so the one row of the three
+     that survived sideways was the one that only makes sense when the other
+     two are there. Nothing to point at, nothing to swipe to. Both fitters ask
+     `offsetParent` before reserving its height, so hiding it hands those 19px
+     straight back to the notation. */
+  body.phone #viewrow,body.phone #belowrow,body.phone #srcBadge,
+  body.phone #sideDots{display:none}
   body.phone header{margin-bottom:6px}
   body.phone #transport{margin:6px 0 0}
   /* landscape is for playing along, so the transport keeps only what you
@@ -6410,6 +6419,12 @@ function ensureSink(){
       const at=(lastPaint>=0)?lastPaint:loopedPulse(nextPulse);
       try{ stop(); }catch(e){}
       if(pendingStart==null&&!loopSec&&at>=0) pendingStart=at;
+    });
+    /* `playing`, not `play`: playing means audio is actually flowing, which
+       is when iOS has a session to attach to. Fires on every resume too. */
+    el.addEventListener("playing",()=>{
+      try{ mediaSeen.push("rewire"); }catch(e){}
+      try{ mediaSessionWire(true); mediaSessionPaint(); }catch(e){}
     });
     el.addEventListener("play",()=>{
       if(sinkOurs("play")) return;               // that play() was ours
@@ -9038,12 +9053,32 @@ function nowPulse(){
   if(playing&&ctx&&fired.length){
     const now=ctx.currentTime;
     for(let i=fired.length-1;i>=0;i--) if(fired[i].at<=now) return fired[i].pi;
+    /* EVERYTHING COMMITTED IS STILL IN THE FUTURE — the first moments of a
+       fresh start, where the scheduler has written ahead but nothing has
+       sounded yet. The oldest one is where the music is about to be. */
+    return fired[0].pi;
   }
+  /* …and before even that, `fired` is empty: start() clears it, and clears
+     pendingStart too, so this used to fall all the way through to 0 and tell
+     the lock screen the piece was at the beginning. One second later the
+     scheduler corrected it, which is David's "starts at 0:00 and then jumps
+     directly back to the correct timing". The scheduler's own counter knows
+     where play is about to begin. */
+  if(playing&&C){ try{ return loopedPulse(nextPulse); }catch(e){} }
   if(pendingStart!=null) return pendingStart;
   return lastPaint>=0?lastPaint:0;
 }
-function mediaSessionWire(){
-  if(mediaWired||!mediaOK()) return;
+/* ── REGISTERED AGAIN EVERY TIME THE ELEMENT STARTS PLAYING (1 Sep, from
+   David's research; ABC'd). The handlers used to be registered ONCE, at boot
+   — updatePlayBtn() runs during the first paint — before any media element
+   existed. Play and pause survived that ordering; on iOS, previoustrack and
+   nexttrack are reported not to: the OS creates its Now Playing session when
+   the element actually plays, and a skip handler registered earlier never
+   attaches to it. That is the fingerprint here — ⏮ ⏭ drawn, and grey.
+   So the sink's `playing` event re-runs this, every time, with skip first.
+   setActionHandler replaces, so re-running is safe; `force` is what lets it. */
+function mediaSessionWire(force){
+  if((mediaWired&&!force)||!mediaOK()) return;
   mediaWired=true;
   /* DIAGNOSTIC, and it should come out once this is settled. David reports the
      controls were on his lock screen BEFORE any of this code existed — so iOS
@@ -9061,9 +9096,7 @@ function mediaSessionWire(){
      no-op: it means iOS's idea of the state has drifted from ours, and the
      press was spent correcting a glyph. Re-assert instead, so the NEXT press
      is the one the student expects rather than the second of two. */
-  set("play",()=>{ if(playing) mediaSessionState(); else togglePlay(); });
-  set("pause",()=>{ if(playing) parkHere(); else mediaSessionState(); });
-  set("stop",()=>{ if(playing) parkHere(); });
+  /* skip FIRST — the order is part of the experiment, and costs nothing */
   /* the top of this table, or the previous one if we are already at the top */
   set("previoustrack",()=>{
     try{
@@ -9081,6 +9114,9 @@ function mediaSessionWire(){
       seekToPulse(i+1<es.length?es[i+1].from:0);
     }catch(e){}
   });
+  set("play",()=>{ if(playing) mediaSessionState(); else togglePlay(); });
+  set("pause",()=>{ if(playing) parkHere(); else mediaSessionState(); });
+  set("stop",()=>{ if(playing) parkHere(); });
   /* ── WHY SEEK IS NOT OFFERED (1 Sep, after three rounds on David's phone) ──
      The handlers here DO reach the page: he pressed pause on the lock screen
      and the app reported "Lock screen sent: pause", which is the action
@@ -11250,8 +11286,7 @@ function landSymmetry(hdr){
      ours to draw in, and the app settled on giving it half back on 28 Aug — so
      where the floor is the larger, BOTH rows take the floor and stay equal,
      which is the rule he set before he chose the number. */
-  const floor=safeInsets().b/2;
-  const target=Math.max(LAND_EDGE,floor);
+  const target=landEdge();
   /* The bottom row is moved by the BODY's padding, which is what actually
      holds it off the edge — the bar itself carries none in landscape. Measured
      and corrected by the difference, so it lands on the target whatever the
@@ -11269,12 +11304,31 @@ function landSymmetry(hdr){
   const d=target-topInset;
   hdr.style.marginTop=d>0.5?d.toFixed(1)+"px":"";
 }
+/* HIS NUMBER FOR "HOW FAR A ROW STANDS FROM THE SCREEN'S EDGE", in one place.
+   It was written inline in landSymmetry and nowhere else, which is how the
+   top of the screen came to keep a different distance from the bottom. The
+   home indicator is the floor: that strip is not ours to draw in, and the app
+   gives it half back. */
+function landEdge(){ return Math.max(LAND_EDGE,safeInsets().b/2); }
 function landRefs(){
   const hdr=document.querySelector("header");
   let low=0;
   if(hdr) for(const el of hdr.children)
     if(el.offsetParent) low=Math.max(low,el.getBoundingClientRect().bottom);
-  const top=low||(hdr?hdr.getBoundingClientRect().bottom:0);
+  /* NO HEADER IS NOT ZERO (David, 1 Sep: "landscape is currently broken for
+     all 3 notation tables … the table is too far up"). Pocket Zones D hides
+     the header in landscape Practice — "sideways is the music stand" — and
+     this function then returned 0, so the stage began at the screen's own
+     edge and the notation ran up under the bezel while the transport went on
+     keeping its 8px at the bottom. The card was not mis-fitted; it was fitted
+     to a band that started in the wrong place, which is why all three skins
+     showed it. With no row above to measure against, the top reference is the
+     distance the BOTTOM row keeps — the symmetry David set on 30 Aug
+     ("buttons should have equal distance to top and bottom edge of the
+     screen"), floored by a top inset where a device has one. */
+  const hdrH=hdr?hdr.getBoundingClientRect().height:0;
+  const top=low||(hdrH?hdr.getBoundingClientRect().bottom
+                      :Math.max(landEdge(),safeInsets().t));
   const row=$("prow1");
   const bot=(row&&row.offsetParent)?row.getBoundingClientRect().top
            :$("transport").getBoundingClientRect().top;
