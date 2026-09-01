@@ -6196,6 +6196,12 @@ const LATE_DROP=0.25, BURST_WIN=0.025, BURST_MAX=12;
 let burstAt=-1, burstN=0;
 function fire(buf,at,gain){
   if(!buf) return;
+  /* a TAP after an interruption never passes through start(), so it would
+     hit a suspended context and vanish (1 Sep). The nudge is free — one
+     property read — and only outside playback, where the scheduler's own
+     revive already stands. A context too wedged for this comes back on the
+     next press of play, which is where reviveAudio lives. */
+  if(!playing&&ctx.state!=="running"){ try{ ctx.resume(); }catch(e){} }
   if(at<ctx.currentTime-LATE_DROP) return;
   const src=ctx.createBufferSource(); src.buffer=buf;
   const g=ctx.createGain(); g.gain.value=gain;
@@ -7501,6 +7507,40 @@ async function togglePlay(){
    fire()'s own `Math.max(at,ctx.currentTime)` could not save it: it read the
    same frozen clock. So: wait for the context to be RUNNING, then build the
    schedule against a live clock. */
+/* ── WHEN THE AUDIO NEVER COMES BACK (David, 1 Sep: "often, after tabbing out
+   or after something else stopped audio playback because another audio source
+   started playing on my phone, the app loses audio. It won't start playback
+   again") ────────────────────────────────────────────────────────────────────
+   An interruption can leave the context permanently wedged, and it lies while
+   it is: `state` reads "suspended" — or Safari's own "interrupted" — resume()
+   settles without throwing, and the clock still never moves. Every note is
+   then scheduled against a dead `currentTime`, so nothing sounds while the
+   transport sits there lit, which is exactly "it won't start again".
+   So the clock is ASKED rather than the state, and a context that cannot
+   prove it is running is replaced. Decoded buffers are not bound to a
+   context, so the 7 MB bank survives the swap — only the graph is rebuilt. */
+async function clockAlive(ms){
+  if(!ctx||ctx.state!=="running") return false;
+  const t=ctx.currentTime;
+  for(let i=0;i<Math.ceil(ms/10)&&ctx.currentTime===t;i++)
+    await new Promise(r=>setTimeout(r,10));
+  return ctx.currentTime>t;
+}
+async function reviveAudio(){
+  const old=ctx;
+  stopSchedClock(); stopFollowCarry();     // both hold nodes of the dying context
+  live=[];
+  ctx=null; master=dry=wet=send=conv=limiter=null;
+  /* the iOS sink is a MediaStreamDestination of the OLD context: kept, it
+     would route the new graph into a stream nothing is listening to */
+  try{ if(iosSink&&iosSink!=="failed"){ iosSink.pause(); iosSink.srcObject=null; } }catch(e){}
+  iosSink=null;
+  try{ if(old&&old.state!=="closed") await old.close(); }catch(e){}
+  ensureCtx(); ensureSink();
+  try{ await ctx.resume(); }catch(e){}
+  preloadBank();
+  return clockAlive(300);
+}
 async function start(){
   if(typeof jamPreviewStop==="function") jamPreviewStop();  // play takes the ears back
   ensureCtx(); ensureSink();
@@ -7510,6 +7550,10 @@ async function start(){
     const t=ctx.currentTime;
     for(let i=0;i<10&&ctx.currentTime===t;i++) await new Promise(r=>setTimeout(r,10));
   }
+  /* …and if it still cannot prove the clock is moving, this press of play is
+     the gesture that rebuilds it. Pressing play is what a student does when
+     the sound has gone, so the cure sits exactly where they already reach. */
+  if(!await clockAlive(120)) await reviveAudio();
   preloadBank();
   C=compile(piece);
   const beat=60/effBpm(); let t0=ctx.currentTime+0.12;
@@ -14649,6 +14693,32 @@ function jamRnd(a){                 // mulberry32 — small, and repeatable
    twins, one turn gives the plain arch, and the last point returns to the
    first so the form closes. Bars are sampled up to (N−1)/N rather than 1, so
    the last bar sits NEAR the start rather than thudding onto it. */
+/* ---- THE HABITUAL CEILING (David, 1 Sep) ----
+   "I think it's a good idea, but only for handpans with this kind of high
+   register. I really like how the algorithm works for all other instruments."
+   So the ceiling is an ABSOLUTE PITCH, never a fraction of the instrument —
+   that is the whole point. Measured across the 115 pans in the library: the
+   median pan's HIGHEST note is C5, the 75th percentile E5, the 90th A♭5.
+   Only SIX pans own anything above A5 at all, and only TWO anything above C6
+   — his A Minor 25 (top E6, a 43-semitone span) and an F♯ Kurd 23. So a
+   ceiling at A5 is provably a no-op on 109 of 115 instruments, and touches
+   exactly the outliers he noticed.
+   It bounds where the line HABITUALLY sits, not what the pan may play: the
+   notes above stay in the vocabulary, and a run may still land on one — he
+   asked for those jumps and they are the one place a leap is wanted. */
+const MEL_CEIL=81;                 // A5, in MIDI
+/* The highest ladder index at or below the ceiling. Never below the note the
+   bar's own chord is already sitting on: if the DP has put a voicing up there
+   the melody may stay with it — the ceiling stops the line CLIMBING, it does
+   not drag a chord down. */
+function melCeilIdx(all,floorIdx){
+  let k=0;
+  for(let i=0;i<all.length;i++){
+    const m=(myPan&&myPan.posMidi)?myPan.posMidi(all[i]):null;
+    if(m==null||m<=MEL_CEIL) k=i;
+  }
+  return Math.max(k,floorIdx||0);
+}
 function jamMotionLine(N,lo,hi,seed){
   const rnd=jamRnd(seed||1), span=Math.max(1,hi-lo);
   /* MOST LINES SET OFF FROM BELOW (David, 29 Aug: "it seems that all melodies
@@ -14727,7 +14797,9 @@ function jamMelodyBar(n,curTop,nextTop,motif,rnd,last){
   const all=rqFieldsLowHigh(), ci=all.indexOf(curTop);
   if(ci<0) return out;
   const ni=all.indexOf(nextTop);
-  const lim=i=>Math.max(0,Math.min(all.length-1,i));
+  /* the ceiling, or this bar's own chord if it already stands above it */
+  const cap=melCeilIdx(all,Math.max(ci,ni>=0?ni:0));
+  const lim=i=>Math.max(0,Math.min(cap,i));
   /* WHICH WAY THE MOTIF LEANS comes from the next chord, not from the shape:
      towards the note the next bar will open on, so every move is a move
      towards the change. With nowhere to go — the next bar sits on this very
