@@ -92,7 +92,19 @@ h2.sec{font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:upperca
 .pprow.sel .ppnm b{color:var(--amber-ink)}
 .ppnm small{display:block;font-size:11.5px;color:var(--ink3);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ppbuilds{display:flex;gap:5px;margin-top:3px;flex-wrap:wrap}
+/* THE GROOVE'S OWN SHAPE, as the picker's row carries the scale's note line.
+   Lifted from .gmini in the old browser: one cell per pulse, a rule at each
+   count, the strokes drawn in hand colour. It is what a groove looks like,
+   and the row was the poorer for losing it. */
+.gline{display:flex;align-items:center;gap:7px;margin-top:4px}
+.gmini{display:grid;gap:0;background:var(--sc-bg);border:1px solid var(--sc-rule);
+  border-radius:6px;padding:2px 5px 1px;flex:1 1 auto;min-width:0}
+.gmini span{display:flex;align-items:flex-end;justify-content:center;min-height:14px;line-height:1}
+.gmini span.gb{border-left:1px solid var(--sc-rule)}
+.gmini i{font-style:normal;font-weight:700;font-size:10.5px;color:var(--sc-ink)}
+.gmini i.r{color:var(--hand-r)}
+.gmini i.g{font-size:8px;color:var(--sc-count)}
+.ppbuilds{display:flex;gap:4px;flex:none;flex-wrap:nowrap}
 .ppbuilds button{font-size:10.5px;font-weight:700;color:var(--ink2);background:var(--dust);
   border:1px solid var(--rule);border-radius:999px;padding:1px 8px;line-height:1.5;
   cursor:pointer;font-family:inherit}
@@ -367,6 +379,52 @@ var G=[
 var FILTERS=[["simple","Simple"],["back","Backbeat"],["arp","Arpeggio"],
              ["odd","Odd"],["world","World"],["all","All"]];
 
+/* A STAND-IN FOR THE REAL PATTERN DATA. The app draws this from the groove's
+   own events; here each groove carries a stroke map so the strip is honest
+   about density and accent placement without shipping the whole library.
+   L / R are the hands, g a ghost, · silence. */
+var SHAPES={
+ "3/4":"L·R L·R L·g",
+ "2/4":"L·R·g·R·",
+ "4/4":"L·R·g·R· L·R·g·L·",
+ "6/8":"L·R L·R",
+ "7/8":"L·R·L·R",
+ "5/4":"L·R·g·R·L·",
+ "5/8":"L·R·L",
+ "10/8":"L·R·L·R·g·"
+};
+function shapeFor(meter,name){
+  var base=SHAPES[meter]||SHAPES["4/4"];
+  var out=base.replace(/ /g,"");
+  /* a little variety per groove, so no two rows look identical */
+  var h=0; for(var i=0;i<name.length;i++) h=(h*31+name.charCodeAt(i))>>>0;
+  var a=out.split("");
+  for(var k=0;k<a.length;k++){
+    if(a[k]==="·"&&((h>>(k%16))&1)&&k%3===2) a[k]=(h>>k)&1?"g":"R";
+    if(a[k]==="R"&&((h>>(k%13))&1)&&k%5===4) a[k]="·";
+  }
+  return a.join("");
+}
+function mini(g){
+  var cells=shapeFor(g[1],g[0]);
+  var box=document.createElement("span"); box.className="gmini";
+  box.style.gridTemplateColumns="repeat("+cells.length+",minmax(0,1fr))";
+  for(var i=0;i<cells.length;i++){
+    var d=document.createElement("span");
+    d.style.display="flex"; d.style.alignItems="flex-end";
+    d.style.justifyContent="center"; d.style.minHeight="15px";
+    if(i&&i%4===0) d.className="gb";
+    var c=cells[i];
+    if(c!=="·"){
+      var t=document.createElement("i");
+      t.textContent=c==="g"?"·":(c==="R"?"5":"1");
+      if(c==="R") t.className="r"; if(c==="g") t.className="g";
+      d.appendChild(t);
+    }
+    box.appendChild(d);
+  }
+  return box;
+}
 function families(){
   var out=[],by={};
   G.forEach(function(g){
@@ -435,6 +493,12 @@ document.querySelectorAll("[data-browser]").forEach(function(root){
       var sm=document.createElement("small");
       sm.textContent=fam.meter+(fam.items.length>1?" · "+fam.items.length+" variations":"");
       nm.append(b,sm);
+      /* THE STRIP AND THE CHIPS SHARE A LINE. Stacked, they made every row
+         two lines taller and the list showed four grooves at a time; side by
+         side the row stays close to the picker's own height. */
+      var strip=document.createElement("span"); strip.className="gline";
+      strip.appendChild(mini(fam.items[st.vars[fam.key]||0]));
+      nm.appendChild(strip);
       if(fam.items.length>1){
         var bl=document.createElement("span"); bl.className="ppbuilds";
         fam.items.forEach(function(it,i){
@@ -446,7 +510,7 @@ document.querySelectorAll("[data-browser]").forEach(function(root){
             st.vars[fam.key]=i; st.picked=fam.key; draw(); });
           bl.appendChild(c);
         });
-        nm.appendChild(bl);
+        strip.appendChild(bl);
       }
       r.append(chk,nm);
       var on=fv.indexOf(fam.key)>=0;
@@ -489,18 +553,11 @@ document.querySelectorAll("[data-browser]").forEach(function(root){
           : "<b>Nothing in this category</b>";
         list.appendChild(e);
       }
-      var multi=fams.filter(function(f){ return f.items.length>1; });
-      var solo=fams.filter(function(f){ return f.items.length===1; });
-      if(multi.length){
-        var g1=document.createElement("div"); g1.className="ppgroup";
-        g1.textContent="Families"; list.appendChild(g1);
-        multi.forEach(function(f){ list.appendChild(row(f)); });
-      }
-      if(solo.length){
-        if(multi.length){ var g2=document.createElement("div"); g2.className="ppgroup";
-          g2.textContent="Single grooves"; list.appendChild(g2); }
-        solo.forEach(function(f){ list.appendChild(row(f)); });
-      }
+      /* ONE LIST, no Families / Single grooves divide (David, 1 Sep). A groove
+         with variations and a groove without are the same kind of thing to
+         someone looking for a groove — the chips already say which is which,
+         and a heading that splits them makes you look in two places. */
+      fams.forEach(function(f){ list.appendChild(row(f)); });
     }
     root.appendChild(list);
     var foot=document.createElement("div"); foot.className="ppfoot";
