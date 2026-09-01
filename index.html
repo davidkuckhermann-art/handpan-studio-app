@@ -5388,6 +5388,15 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
       aria-label="How many times the progression plays"></div>
   <div class="drow"><span>Fade out at the end</span>
     <button class="ctl on" id="expFade" aria-pressed="true">On</button></div>
+  <!-- THE NAME, BEFORE YOU COMMIT TO IT (David, 1 Sep: "please show the
+       filename in the export window"). It follows the piece or the jam and
+       carries the cycle count, so it changes as you change them — and with the
+       save dialog gone this line is the only place you can see what you are
+       about to get. The stem is shown rather than one extension, because the
+       two buttons below write two different ones.
+       Set as textContent on its own element, never as markup: the stem comes
+       from a title a student typed. -->
+  <p class="hint" id="expName">Saves to your downloads as <b id="expNameVal"></b><span id="expNameExt"></span></p>
   <p class="hint" id="expSize"></p>
   <p class="hint" id="expProg" style="display:none"></p>
   <p class="hint">MP3 is small enough to send; WAV is lossless, and about eight
@@ -5404,8 +5413,6 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
        hint below, and by sitting where the eye ends. -->
   <div class="row"><span class="spacer"></span>
     <button class="ctl" id="expClose">Close</button>
-    <!-- appears only once a file exists: the share sheet needs its own tap -->
-    <button class="ctl" id="expSend" style="display:none">Save to Files…</button>
     <button class="ctl" id="expWav">Save WAV</button>
     <button class="ctl" id="expMp3">Save MP3</button></div>
 </dialog>
@@ -8057,7 +8064,13 @@ function paintExpFade(){
   b.setAttribute("aria-pressed",expFade?"true":"false");
   b.textContent=expFade?"On":"Off";
 }
+function paintExpName(){
+  let nm=""; try{ nm=expTargetName(); }catch(e){}
+  $("expNameVal").textContent=nm;
+  $("expNameExt").textContent=nm?" — .mp3 or .wav":"";
+}
 function paintExpSize(){
+  paintExpName();
   let s=0; try{ s=expSeconds(expPulses()); }catch(e){}
   const sr=ctx?ctx.sampleRate:48000;
   const mp3=s*EXP_KBPS/8/1024, wav=s*sr*4/1048576;
@@ -8079,76 +8092,37 @@ function openExport(){
     : "The complete arrangement, first bar to last, at the tempo you have set.";
   paintExpFade(); paintExpSize();
   $("expProg").style.display="none";
-  expSetReady(null);          // a file from a previous visit is not this one
   openDlg($("expDlg"));
 }
-/* ══ WHERE THE FILE GOES (David, 1 Sep: "please ask me for location when
-   exporting files. On desktop also for a name") ═══════════════════════════
-   THE PICKER OPENS BEFORE THE RENDER, NOT AFTER, and that is the whole trick.
-   `showSaveFilePicker` needs transient user activation; render-plus-encode
-   spends around twenty seconds, so by the time a file exists the click that
-   asked for it has expired and the call throws. Ask where it goes, then make
-   it, then write it — which is the better shape anyway: you commit once, and
-   the progress line runs against a destination already chosen.
+/* ══ WHERE THE FILE GOES ══════════════════════════════════════════════════
+   David asked for a location prompt, saw what it cost, and dropped it the same
+   hour: "let's drop that extra dialog box for now. Let's have the app save to
+   the download folder and use the name that the arrangement or jam has."
 
-   WHAT EACH PLATFORM CAN HONESTLY OFFER. This ceiling belongs to the browser,
-   not to us, and no amount of code raises it:
-     Chrome / Edge desktop  showSaveFilePicker — a true Save As: name AND folder
-     iPhone / iPad          no picker at all; the share sheet's "Save to Files…"
-                            is the only way to choose a folder, and it needs its
-                            OWN tap under the same activation rule — so it
-                            becomes a button that appears once the file exists
-     Safari / Firefox       neither. Their own "ask me where to save" preference
-                            decides, and it ships off
-   The fallback is what the app did before: hand the file to the browser and
-   SAY so, rather than let it vanish into a folder nobody named. */
-let expReady=null;                       // a rendered file waiting for its tap
-const expCanPick=()=>typeof window.showSaveFilePicker==="function";
-function expCanShare(){
-  try{
-    if(!(IOS||PHONE)||!navigator.canShare||!window.File) return false;
-    return navigator.canShare({files:[new File([new Uint8Array(1)],"a.mp3",{type:"audio/mpeg"})]});
-  }catch(e){ return false; }
-}
+   So there is no picker and no share sheet — one path everywhere: write the
+   file with `<a download>`, named after the piece or the jam, and SAY where it
+   went. A `showSaveFilePicker` route was built first (Chrome and Edge only —
+   Safari and Firefox have no such API) and taken out again; it is not missing,
+   it was declined.
+
+   THE MAC APP NEEDED THE OTHER HALF OF THIS. Its shell is a WKWebView, and a
+   WKWebView with no navigationDelegate DISCARDS a download without a word — so
+   the export said "Saved" and wrote nothing, anywhere, for as long as it
+   existed. Fixed in launchers/hps-shell.swift, which now takes the same
+   `<a download>` this function writes and puts the file in Downloads. Nothing
+   here can detect that shell, and nothing here needs to. */
 function expTargetName(){
   const raw=jamOn?(typeof jamDefaultName==="function"?jamDefaultName():"Jam")
                  :(piece.title||"Handpan");
   return expFileName(raw)+(jamOn?" ("+expCycles()+"x)":"");
 }
-function expSetReady(r){
-  /* the previous blob is dropped with its button — an export the student did
-     not keep must not sit in memory behind the next one */
-  expReady=r;
-  const b=$("expSend"); if(b) b.style.display=r?"":"none";
-}
-async function expSendNow(){
-  if(!expReady) return;
-  try{
-    await navigator.share({title:expReady.name,
-      files:[new File([expReady.blob],expReady.name,{type:expReady.blob.type})]});
-  }catch(e){ if(e&&e.name!=="AbortError") toast("The share sheet could not open"); }
-}
 async function doExport(fmt){
   if(expBusy) return;
   const ext=fmt==="mp3"?"mp3":"wav";
-  const name=expTargetName(), full=name+"."+ext;
+  const full=expTargetName()+"."+ext;
   const prog=$("expProg"), btns=[$("expMp3"),$("expWav")];
   const say=t=>{ prog.textContent=t; };
-  /* ASKED FIRST, while the click is still a gesture. A cancel here renders
-     nothing at all — the student changed their mind before any work was done,
-     and twenty seconds of silence followed by nothing would look like a bug. */
-  let handle=null;
-  if(expCanPick()){
-    try{
-      handle=await window.showSaveFilePicker({suggestedName:full,types:[ext==="mp3"
-        ?{description:"MP3 audio",accept:{"audio/mpeg":[".mp3"]}}
-        :{description:"WAV audio",accept:{"audio/wav":[".wav"]}}]});
-    }catch(e){
-      if(e&&e.name==="AbortError") return;   // cancelled — nothing rendered
-      handle=null;      // blocked (a cross-origin embed does this) — fall back
-    }
-  }
-  expBusy=true; expSetReady(null);
+  expBusy=true;
   btns.forEach(b=>b.disabled=true);
   prog.style.display=""; say("Getting the samples ready…");
   try{
@@ -8169,24 +8143,12 @@ async function doExport(fmt){
       await new Promise(r=>setTimeout(r,0));
       blob=wavBlob(buf);
     }
-    const MB=(blob.size/1048576).toFixed(1);
-    if(handle){
-      say("Writing the file…");
-      const w=await handle.createWritable();
-      await w.write(blob); await w.close();
-      say("Saved "+handle.name+" — "+MB+" MB");
-      toast("Exported "+handle.name);
-    }else if(expCanShare()){
-      expSetReady({blob,name:full});
-      say(full+" is ready — "+MB+" MB. Save to Files to choose where it goes.");
-    }else{
-      const a=document.createElement("a");
-      a.href=URL.createObjectURL(blob);
-      a.download=full; a.click();
-      setTimeout(()=>URL.revokeObjectURL(a.href),8000);
-      say("Saved "+full+" — "+MB+" MB, to wherever this browser keeps downloads.");
-      toast("Exported "+full);
-    }
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download=full; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),8000);
+    say("Saved to your downloads — "+full+", "+(blob.size/1048576).toFixed(1)+" MB");
+    toast("Exported "+full);
   }catch(e){
     say("Export failed — "+((e&&e.message)||"unknown"));
   }finally{
@@ -21366,6 +21328,14 @@ function choosePan(id){
      button on an already very, very cramped interface"). Same shape as the
      jam's own askPanMove, which asks the same thing about a progression. */
   else if(editing&&!grooveEdit&&wasId!==id&&id!==piece.writtenFor) askPieceInstrument(id);
+  /* …and if the picker was reached through the header's pan button, the piece
+     question comes up now, on the pan just chosen. Last, so the two dialogs
+     that askPanMove / askPieceInstrument may raise are not talked over. */
+  if(panPickThenMine){
+    panPickThenMine=false;
+    const mpd=$("myPanDlg");
+    if(mpd&&!mpd.open&&!$("panMoveDlg").open&&!$("pieceInstrDlg").open) openDlg(mpd);
+  }
 }
 let pieceInstrAsk=null;
 function askPieceInstrument(id){
@@ -21462,7 +21432,19 @@ function renderPanPick(){
     for(const it of list) L.appendChild(ppRow(it.show,it.scale));
   }
 }
-function openPanPick(){
+/* WHICH DOOR THE PICKER WAS OPENED BY (David, 1 Sep: "on desktop the scale
+   selector opens a dialogue … instead let's go straight to the scale selector
+   and bring the other dialogue up once a scale is selected"). The header's pan
+   button used to open #myPanDlg, whose first row held the chooser — so
+   choosing an instrument took two doors. It opens the CHOOSER now, and the
+   As-written / For-my-pan question follows the choice, which is also when it
+   is worth asking: the answer only means something once the pan has changed.
+   Flagged rather than assumed for every caller — the phone's drawer and the
+   chooser inside #myPanDlg both still open the picker plainly, and neither
+   should chain a dialog behind it. */
+let panPickThenMine=false;
+function openPanPick(fromDoor){
+  panPickThenMine=!!fromDoor;
   /* open on the pan you are actually holding — its scale's row shows the
      build you own, not the smallest one */
   const cur=panById(myPanId);
@@ -21532,7 +21514,11 @@ function boot(){
   try{ const saved=localStorage.getItem("hps.panId");
     if(saved&&allPans().some(p=>p.id===saved)) myPanId=saved; }catch(e){}
   paintPanSel();
-  sel.addEventListener("click",openPanPick);
+  /* WRAPPED, not passed. `openPanPick` takes a flag now, and handing the
+     listener the bare function makes the click EVENT that flag — truthy — so
+     the chooser inside #myPanDlg and the phone's drawer would both chain a
+     dialog behind themselves. Only the header's pan button asks for it. */
+  sel.addEventListener("click",()=>openPanPick());
   $("ppLib").addEventListener("click",()=>{ ppView="lib"; renderPanPick(); });
   $("ppMine").addEventListener("click",()=>{ ppView="mine"; renderPanPick(); });
   $("ppFav").addEventListener("click",()=>{ ppTier="fav"; renderPanPick(); });
@@ -22147,17 +22133,9 @@ function boot(){
   /* the Settings sheet steps aside for the export dialog — two modal sheets
      stacked is a phone with nowhere to tap */
   $("setExpBtn").addEventListener("click",()=>{ $("setDlg").close(); openExport(); });
-  /* CLOSING DROPS THE RENDERED FILE — several minutes of stereo audio is not
-     something to keep alive behind a shut door. Cleared on the BUTTON, which
-     is provable, and again on the dialog's `close` event, which catches an ESC
-     or a backdrop dismissal. The event could NOT be verified here: the preview
-     pane fires no `close` on any dialog at all, app-made or freshly created —
-     measured, so it is the rig and not this sheet. openExport() clears on the
-     way IN as well, and that one IS proven, so the worst an unfired event can
-     cost is one blob held until the sheet is next opened. */
-  $("expClose").addEventListener("click",()=>{ expSetReady(null); $("expDlg").close(); });
-  $("expSend").addEventListener("click",expSendNow);
-  $("expDlg").addEventListener("close",()=>expSetReady(null));
+  /* nothing to clean up on close any more: the file is handed to the browser
+     the moment it exists, so the sheet holds no blob of its own (1 Sep) */
+  $("expClose").addEventListener("click",()=>$("expDlg").close());
   $("expFade").addEventListener("click",()=>{ expFade=!expFade; paintExpFade(); });
   $("expCycles").addEventListener("input",paintExpSize);
   $("expMp3").addEventListener("click",()=>doExport("mp3"));
@@ -24009,7 +23987,8 @@ if(!PHONE){
       if(window.ResizeObserver) new ResizeObserver(chk).observe(band);
       window.addEventListener("resize",chk);
     }
-    $("myPanBtn").addEventListener("click",()=>openDlg(mpd));
+    /* straight to the chooser; #myPanDlg follows the choice (see openPanPick) */
+    $("myPanBtn").addEventListener("click",()=>openPanPick(true));
     $("myPanClose").addEventListener("click",()=>mpd.close());
     paintMyPanBtn();
   }
