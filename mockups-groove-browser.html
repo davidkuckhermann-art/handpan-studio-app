@@ -2,37 +2,33 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Groove browser — categories and favourites</title>
 <!--
-  GROOVE BROWSER (David, 1 Sep: "We need categories for the groove selector…
-  we also need an option to favourite grooves and see a favourites tab at the
-  top. Think carefully about how to implement this best in the UI. Keep it
-  clean and create a mockup.")
+  GROOVE BROWSER, second pass (David, 1 Sep: "make design and layout more
+  consistent with the scale selector menu").
 
-  A WORKING mockup, not a picture: the tabs filter, the hearts stick
-  (localStorage), the collections fold — try the browsing, not just the look.
+  So it now IS the scale selector's design, piece for piece — the CSS below is
+  lifted from #panPickDlg and renamed only where the content differs:
 
-  The three design decisions it proposes:
+    scale picker                        groove browser
+    ─ Library | My pans (top right)     Built-in | My grooves
+    ─ Common · Rare · All · ♥ filters   Simple · Backbeat · Arpeggio · Odd · World · All · ♥
+    ─ one row per SCALE                 one row per FAMILY
+    ─ build chips 9 · 10 · 17 in-row    variation chips 1 · 2 · 3 in-row
+    ─ ♥ marks the scale, not the build  ♥ marks the family, not the variation
+    ─ ▸ hears the pan                   ▸ hears the groove
+    ─ full-bleed rows, hairline rules   the same
+    ─ ✓ on the chosen row, amber name   the same
 
-  1. CATEGORIES ARE TAGS, NOT DRAWERS. "Backbeat arpeggio" is both a backbeat
-     and an arpeggio; filing it in one place means someone looking in the
-     other never finds it. So a groove may carry several tags and appears
-     under every tab that names one. The All tab is the whole library.
+  The family-with-chips idea is the picker's own best move carried over:
+  43 grooves become 24 rows, and "Relaxed backbeat 1–5" reads like
+  "D Kurd 9 · 10 · 17" — one thing with sizes, not five things.
 
-  2. THE HEART IS THE PAN PICKER'S HEART. The app already teaches this: a ♥
-     pill among the filters, clay-red when chosen, and a small heart on each
-     row. Same idiom here, so nothing new has to be learned.
-
-  3. COLLECTIONS STAY, INSIDE EVERY TAB. Twenty backbeat grooves are only
-     browsable because "Relaxed backbeat" folds its five into one family.
-     The collection headings the app already has do the grouping within
-     whichever tab is open.
-
-  The category ASSIGNMENTS below are a first draft for David to correct —
-  the corrections list is at the foot of the page.
+  A WORKING mockup: filters filter, chips switch, hearts stick, ▸ is inert.
+  Category assignments are a draft; corrections at the foot of the page.
 -->
 <style>
-:root{--paper:#FBF9F6;--dust:#F1EDE6;--card:#FFFFFF;--ink:#1E1B16;--ink2:#5E5749;
+:root{--paper:#FBF9F6;--dust:#F1EDE6;--card:#FFFFFF;--card2:#FAF7F2;--ink:#1E1B16;--ink2:#5E5749;
   --ink3:#8D8578;--rule:#E4DCD0;--rule2:#EFE9E0;--dixie:#E59315;--dixie-soft:#FDF3E4;
-  --clay:#BF5346;--clay-soft:#F8E7E4;--sh:70,52,28;
+  --amber-ink:#A9660A;--clay:#BF5346;--clay-soft:#F8E7E4;--sh:70,52,28;
   --shadow:0 1px 2px rgba(var(--sh),.05), 0 14px 34px -16px rgba(var(--sh),.2)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--dust);color:var(--ink);
@@ -40,55 +36,65 @@ body{margin:0;background:var(--dust);color:var(--ink);
   padding:26px 18px 60px}
 h1{font-size:21px;margin:0 0 6px}
 .lede{max-width:46em;color:var(--ink2);font-size:14px;line-height:1.55;margin:0 0 24px}
-.stage{display:flex;gap:34px;flex-wrap:wrap;align-items:flex-start}
-.framecap{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
-  color:var(--ink3);margin:0 0 8px}
 
-/* ---- the dialog, at the app's own width ---- */
+/* ---- the dialog frame, exactly the picker's ---- */
 .gdlg{background:var(--card);border:1px solid var(--rule);border-radius:14px;
-  box-shadow:var(--shadow);padding:16px 16px 13px;width:min(690px,94vw)}
-.gdlg h3{margin:0 0 10px;font-size:16px}
-.phoneframe .gdlg{width:355px;border-radius:18px 18px 14px 14px}
+  box-shadow:var(--shadow);width:min(420px,94vw);max-height:min(78vh,640px);
+  padding:0;overflow:hidden;display:flex;flex-direction:column}
+.pptop{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:14px 14px 8px}
+.pptop h3{margin:0;font-size:16px}
+.pills{display:inline-flex;background:var(--dust);border:1px solid var(--rule);
+  border-radius:10px;padding:3px}
+.pills button{font-size:13px;font-weight:600;border:none;background:none;color:var(--ink2);
+  padding:6px 12px;border-radius:7px;cursor:pointer;white-space:nowrap}
+.pills button[aria-pressed="true"]{background:var(--card);color:var(--ink);
+  box-shadow:0 1px 3px rgba(var(--sh),.15)}
+.pptop .pills button{font-size:12.5px;padding:5px 9px}
+.ppfilters{display:flex;gap:8px;align-items:center;padding:0 14px 10px;
+  border-bottom:1px solid var(--rule)}
+.ppfilters .pills{overflow-x:auto;scrollbar-width:none;max-width:100%}
+.ppfilters .pills::-webkit-scrollbar{display:none}
+.ppfilters .pills button{font-size:12.5px;padding:5px 9px;flex:none}
+.ppfilters .pills button.ppfavpill{padding:5px 9px;font-size:13.5px;line-height:1.15}
+.ppfilters .pills button.ppfavpill[aria-pressed="true"]{color:var(--clay)}
 
-/* ---- the tab row: ♥ first, then the categories ---- */
-.gtabs{display:flex;gap:4px;background:var(--dust);border:1px solid var(--rule);
-  border-radius:10px;padding:3px;margin-bottom:11px;overflow-x:auto;scrollbar-width:none}
-.gtabs::-webkit-scrollbar{display:none}
-.gtabs button{font-size:12.5px;font-weight:600;border:none;background:none;color:var(--ink2);
-  padding:6px 10px;border-radius:7px;white-space:nowrap;flex:none;cursor:pointer}
-.gtabs button[aria-pressed="true"]{background:var(--card);color:var(--ink);
-  box-shadow:0 1px 3px rgba(70,52,28,.15)}
-.gtabs button.fav{font-size:13.5px;padding:6px 9px;line-height:1.15}
-.gtabs button.fav[aria-pressed="true"]{color:var(--clay)}
-
-/* ---- the list ---- */
-.glist{max-height:390px;overflow:auto;padding-right:4px}
-.phoneframe .glist{max-height:430px}
-.ghead{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--ink3);margin:12px 0 4px;display:flex;align-items:center;gap:7px;cursor:pointer;
-  -webkit-user-select:none;user-select:none}
-.ghead:first-child{margin-top:2px}
-.ghead .tri{font-size:9px;transition:transform .15s}
-.ghead.closed .tri{transform:rotate(-90deg)}
-.ghead .n{font-weight:600;color:var(--ink3);opacity:.75;text-transform:none;letter-spacing:0}
-.grow{display:flex;align-items:center;gap:9px;padding:7px 9px;border:1px solid var(--rule);
-  border-radius:10px;margin:0 0 5px;background:var(--card);cursor:pointer}
-.grow:hover{border-color:var(--dixie);background:var(--dixie-soft)}
-.grow.on{border-color:var(--dixie);background:var(--dixie-soft)}
-.grow b{font-size:13.5px;font-weight:700}
-.grow .meta{font-size:11px;color:var(--ink3);margin-left:auto;white-space:nowrap;
-  font-variant-numeric:tabular-nums}
-.gfav{flex:none;width:26px;height:26px;border-radius:8px;border:1px solid var(--rule);
-  background:var(--card);color:var(--rule);font-size:13px;display:grid;place-items:center;
-  cursor:pointer;padding:0}
-.gfav.on{color:var(--clay);border-color:var(--clay-soft);background:var(--clay-soft)}
-.gempty{color:var(--ink2);font-size:13px;padding:22px 8px;text-align:center;line-height:1.5}
-.gfoot{display:flex;gap:8px;margin-top:11px}
+/* ---- the list, full-bleed rows with hairline rules ---- */
+.pplist{flex:1 1 auto;overflow:auto;-webkit-overflow-scrolling:touch;min-height:300px;max-height:430px}
+.ppgroup{font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink3);padding:12px 14px 4px}
+.pprow{display:flex;align-items:center;gap:8px;padding:8px 14px;
+  border-top:1px solid var(--rule2);cursor:pointer;background:none;border-left:0;
+  border-right:0;border-bottom:0;width:100%;text-align:left;font:inherit;color:inherit}
+.pprow:hover{background:var(--card2)}
+.pprow.sel{background:var(--dixie-soft)}
+.ppchk{color:var(--amber-ink);font-size:14px;width:14px;flex:none;text-align:center}
+.ppchk.off{visibility:hidden}
+.ppnm{flex:1;min-width:0}
+.ppnm b{display:block;font-size:13.5px;font-weight:700;color:var(--ink);line-height:1.25}
+.pprow.sel .ppnm b{color:var(--amber-ink)}
+.ppnm small{display:block;font-size:11.5px;color:var(--ink3);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ppbuilds{display:flex;gap:5px;margin-top:3px;flex-wrap:wrap}
+.ppbuilds button{font-size:10.5px;font-weight:700;color:var(--ink2);background:var(--dust);
+  border:1px solid var(--rule);border-radius:999px;padding:1px 8px;line-height:1.5;cursor:pointer}
+.ppbuilds button.lit{background:var(--dixie-soft);border-color:var(--dixie);color:var(--amber-ink)}
+.pprow.sel .ppbuilds button{background:var(--card)}
+.pprow.sel .ppbuilds button.lit{background:var(--dixie-soft)}
+.ppv{width:27px;height:27px;border-radius:8px;border:1px solid var(--rule);
+  background:var(--card);color:var(--ink2);display:grid;place-items:center;flex:none;
+  font-size:11px;padding:0;cursor:pointer}
+.ppfav{color:var(--rule);font-size:14px;border-color:var(--rule)}
+.ppfav.on{color:var(--clay);border-color:var(--clay-soft);background:var(--clay-soft)}
+.ppempty{padding:22px 16px;text-align:center;color:var(--ink3);font-size:13px}
+.ppempty b{display:block;color:var(--ink2);font-size:13.5px;margin-bottom:3px}
+.ppfoot{display:flex;align-items:center;gap:8px;padding:8px 14px;
+  border-top:1px solid var(--rule)}
 .ctl{font-size:12.5px;font-weight:600;padding:5px 11px;border:1px solid var(--rule);
   border-radius:9px;background:var(--card);color:var(--ink2);cursor:pointer}
 .spacer{flex:1 1 auto}
 
-/* ---- the corrections list ---- */
+/* ---- page furniture ---- */
 .notes{max-width:52em;margin-top:34px;font-size:13px;line-height:1.6;color:var(--ink2)}
 .notes h2{font-size:14px;color:var(--ink);margin:22px 0 6px}
 .notes code{background:var(--card);border:1px solid var(--rule2);border-radius:5px;
@@ -97,47 +103,48 @@ h1{font-size:21px;margin:0 0 6px}
 .cats b{font-weight:700}
 </style>
 
-<h1>Groove browser — categories and favourites</h1>
-<p class="lede">A working mockup: the tabs filter, the hearts stick, the family
-headings fold. <b>♥ sits first</b> — the same heart the pan picker taught —
-and a groove may appear under more than one tab, because "Backbeat arpeggio"
-is both things and should be findable as either. Collections keep doing the
-grouping inside whichever tab is open. Category assignments are a draft;
-corrections at the foot of the page.</p>
+<h1>Groove browser — the scale selector's own design</h1>
+<p class="lede">Second pass, matched to the scale picker piece for piece: the
+same narrow frame, <b>Built-in&nbsp;|&nbsp;My grooves</b> where
+Library&nbsp;|&nbsp;My pans sits, the categories where
+Common&nbsp;·&nbsp;Rare&nbsp;·&nbsp;All sit with the <b>♥ last in the row</b>
+as it is there, full-bleed rows with hairline rules, ✓ and amber on the chosen
+one. And the picker's best idea carried over: <b>a family is one row with
+variation chips</b>, the way one scale is one row with build chips — 43
+grooves become 24 rows. The ♥ marks the family, as it marks the scale.
+Everything works: filter, switch variations, heart, choose.</p>
 
-<div class="stage">
-  <div>
-    <p class="framecap">Desktop — the dialog at its real width</p>
-    <div class="gdlg" data-browser></div>
-  </div>
-  <div class="phoneframe">
-    <p class="framecap">Phone — the same component, sheet-width</p>
-    <div class="gdlg" data-browser></div>
-  </div>
-</div>
+<div class="gdlg" data-browser></div>
 
 <div class="notes">
   <h2>Draft category assignments — correct me</h2>
   <div class="cats">
-    <b>Simple</b><span>Classical 3 pulse · 2 pulse · 2-step · Just nice (both) · Ramp · Downwards is also nice</span>
-    <b>Backbeat</b><span>every Relaxed / Uptempo / Another / Funky / Up-and-down backbeat · Busy backbeat · Backbeat arpeggio (both) · Groovy steps</span>
-    <b>Arpeggio</b><span>Fast arpeggio 1 · 3-3-2 arpeggio · Backbeat arpeggio (both) · 7/8 arpeggio · Arpeggio in 5 · Groovy arpeggio · Upwards motion</span>
-    <b>Odd meters</b><span>7/8 rhythm · 7 flow · 7/8 arpeggio · Arpeggio in 5 · Curcuna 10/8 · Bembé — plus the polyrhythms 4 vs 3 · 5 vs 4 · 2/4 polyrhythm, which are not odd meters but are the same kind of "tricky time"; say the word and they get their own tab</span>
-    <b>World</b><span>Bossa (both) · Malfuf · Bembé · Curcuna 10/8 — proposed, because Bossa and Malfuf fit none of your four; drop the tab and they'd live only under All</span>
+    <b>Simple</b><span>Classical 3 pulse · 2 pulse · 2-step · Just nice (family) · Ramp · Downwards is also nice</span>
+    <b>Backbeat</b><span>the Relaxed / Uptempo / Another / Funky / Up-and-down backbeat families · Busy backbeat · Backbeat arpeggio (also Arpeggio) · Groovy steps</span>
+    <b>Arpeggio</b><span>Fast arpeggio 1 · 3-3-2 arpeggio · Backbeat arpeggio · 7/8 arpeggio · Arpeggio in 5 · Groovy arpeggio · Upwards motion</span>
+    <b>Odd</b><span>7/8 rhythm · 7 flow · 7/8 arpeggio · Arpeggio in 5 · Curcuna 10/8 · Bembé — plus the polyrhythms 4 vs 3 · 5 vs 4 · 2/4 polyrhythm; say the word and those get their own pill</span>
+    <b>World</b><span>Bossa · Malfuf · Bembé · Curcuna 10/8 — proposed, because Bossa and Malfuf fit none of your four; drop it and they live only under All</span>
   </div>
+  <h2>Choices this pass makes, so you can overturn them</h2>
+  <p><b>♥ sits last in the filter row</b>, because that is where the scale
+  picker puts it — your "favourites tab at the top" is the row itself; say the
+  word and it moves to the front. <b>A groove family is one row</b> — hearting
+  it favourites the family, and the chips choose the variation, exactly as a
+  scale row's chips choose the build. The subtitle names the meter and how
+  many variations the family holds. <b>▸ would play the groove</b> on the
+  current pan, as it previews a scale — a small win the old browser never had.</p>
   <h2>What building it involves</h2>
-  <p>Small: a <code>cats:[…]</code> field beside the <code>coll</code> the grooves
-  already carry, favourites in <code>hps.grooveFavs</code> exactly as pan
-  favourites are stored, and the tab row in the one renderer both groove
-  dialogs share. User-written grooves can be hearted too and appear under ♥
-  and All (a category picker in the New-groove dialog could come later, or
-  never). The selected tab is remembered, so the browser reopens where you
-  left it.</p>
+  <p>The picker's CSS is reused nearly verbatim (this page's styles are lifted
+  from it), a <code>cats:[…]</code> field joins the <code>coll</code> the
+  grooves already carry, favourites store as <code>hps.grooveFavs</code>
+  beside the pan favourites, and the family rows come from the
+  <code>patGroups()</code> the browser already computes. The chosen filter is
+  remembered so the browser reopens where you left it.</p>
 </div>
 
 <script>
 "use strict";
-/* the real library: name · meter · bars-per-row label · collection · draft tags */
+/* the real library: name · meter · collection · draft tags */
 var G=[
  ["Classical 3 pulse","3/4",null,["simple"]],
  ["Fast arpeggio 1","4/4",null,["arp"]],
@@ -183,105 +190,146 @@ var G=[
  ["Uptempo backbeat 3","2/4","Uptempo backbeat",["back"]],
  ["Upwards motion","4/4",null,["arp"]]
 ];
-var TABS=[["fav","♥"],["all","All"],["simple","Simple"],["back","Backbeat"],
-          ["arp","Arpeggio"],["odd","Odd meters"],["world","World"]];
-var USER=["My evening groove"];              // stands in for user grooves
+var FILTERS=[["simple","Simple"],["back","Backbeat"],["arp","Arpeggio"],
+             ["odd","Odd"],["world","World"],["all","All"]];
+var MYGROOVES=[["My evening groove","4/4"]];
 
-function favs(){ try{ return JSON.parse(localStorage.getItem("mock.gfavs")||"[]"); }catch(e){ return []; } }
-function setFavs(f){ try{ localStorage.setItem("mock.gfavs",JSON.stringify(f)); }catch(e){} }
-function folded(){ try{ return JSON.parse(localStorage.getItem("mock.gfold")||"{}"); }catch(e){ return {}; } }
-function setFolded(o){ try{ localStorage.setItem("mock.gfold",JSON.stringify(o)); }catch(e){} }
+/* families: one entry per collection, solos stand alone — patGroups' job */
+function families(){
+  var out=[], byColl={};
+  G.forEach(function(g){
+    if(!g[2]){ out.push({key:g[0],name:g[0],meter:g[1],tags:g[3],items:[g]}); return; }
+    if(!byColl[g[2]]){
+      byColl[g[2]]={key:g[2],name:g[2],meter:g[1],tags:g[3].slice(),items:[]};
+      out.push(byColl[g[2]]);
+    }
+    byColl[g[2]].items.push(g);
+    g[3].forEach(function(t){ if(byColl[g[2]].tags.indexOf(t)<0) byColl[g[2]].tags.push(t); });
+  });
+  return out;
+}
+function favs(){ try{ return JSON.parse(localStorage.getItem("mock.gfavs2")||"[]"); }catch(e){ return []; } }
+function setFavs(f){ try{ localStorage.setItem("mock.gfavs2",JSON.stringify(f)); }catch(e){} }
 
 document.querySelectorAll("[data-browser]").forEach(function(root){
-  var tab="all", picked="Relaxed backbeat";
+  var src="lib", filter="all", picked="Relaxed backbeat", pickedVar={};
   function build(){
     root.innerHTML="";
-    var h=document.createElement("h3"); h.textContent="Grooves"; root.appendChild(h);
-    var tr=document.createElement("div"); tr.className="gtabs";
-    TABS.forEach(function(t){
+    var top=document.createElement("div"); top.className="pptop";
+    var h=document.createElement("h3"); h.textContent="Grooves";
+    var sw=document.createElement("div"); sw.className="pills";
+    [["lib","Built-in"],["mine","My grooves"]].forEach(function(t){
       var b=document.createElement("button");
-      b.textContent=t[1];
-      if(t[0]==="fav") b.className="fav";
-      b.setAttribute("aria-pressed",String(tab===t[0]));
-      b.title=t[0]==="fav"?"Your favourites":t[1];
-      b.addEventListener("click",function(){ tab=t[0]; build(); });
-      tr.appendChild(b);
+      b.textContent=t[1]; b.setAttribute("aria-pressed",String(src===t[0]));
+      b.addEventListener("click",function(){ src=t[0]; build(); });
+      sw.appendChild(b);
     });
-    root.appendChild(tr);
-    var list=document.createElement("div"); list.className="glist";
+    top.append(h,sw); root.appendChild(top);
+
+    var fr=document.createElement("div"); fr.className="ppfilters";
+    var fp=document.createElement("div"); fp.className="pills";
+    FILTERS.forEach(function(t){
+      var b=document.createElement("button");
+      b.textContent=t[1]; b.setAttribute("aria-pressed",String(filter===t[0]));
+      b.addEventListener("click",function(){ filter=t[0]; build(); });
+      fp.appendChild(b);
+    });
+    var fb=document.createElement("button");
+    fb.className="ppfavpill"; fb.textContent="♥";
+    fb.setAttribute("aria-pressed",String(filter==="fav"));
+    fb.setAttribute("aria-label","Favourites"); fb.title="Favourites";
+    fb.addEventListener("click",function(){ filter="fav"; build(); });
+    fp.appendChild(fb);
+    fr.appendChild(fp); root.appendChild(fr);
+
+    var list=document.createElement("div"); list.className="pplist";
     var fv=favs();
-    var rows=G.filter(function(g){
-      if(tab==="all") return true;
-      if(tab==="fav") return fv.indexOf(g[0])>=0;
-      return g[3].indexOf(tab)>=0;
-    });
-    function row(name,meter){
-      var r=document.createElement("div"); r.className="grow"+(name===picked?" on":"");
-      var fb=document.createElement("button");
-      fb.className="gfav"+(fv.indexOf(name)>=0?" on":"");
-      fb.textContent=fv.indexOf(name)>=0?"♥":"♡";
-      fb.setAttribute("aria-label",(fv.indexOf(name)>=0?"Remove ":"Add ")+name+
-        (fv.indexOf(name)>=0?" from":" to")+" favourites");
-      fb.addEventListener("click",function(e){ e.stopPropagation();
-        var f=favs(), i=f.indexOf(name);
-        if(i>=0) f.splice(i,1); else f.push(name);
-        setFavs(f);
-        document.querySelectorAll("[data-browser]").forEach(function(el){
-          el.dispatchEvent(new Event("rebuild")); });
+    function row(fam){
+      var r=document.createElement("button"); r.type="button";
+      var sel=fam.key===picked;
+      r.className="pprow"+(sel?" sel":"");
+      var chk=document.createElement("span");
+      chk.className="ppchk"+(sel?"":" off"); chk.textContent="✓";
+      var nm=document.createElement("span"); nm.className="ppnm";
+      var b=document.createElement("b"); b.textContent=fam.name;
+      var sm=document.createElement("small");
+      sm.textContent=fam.meter+(fam.items.length>1
+        ?" · "+fam.items.length+" variations":"");
+      nm.append(b,sm);
+      if(fam.items.length>1){
+        var bl=document.createElement("span"); bl.className="ppbuilds";
+        fam.items.forEach(function(it,i){
+          var c=document.createElement("button"); c.type="button";
+          c.textContent=String(i+1);
+          c.className=(pickedVar[fam.key]||0)===i?"lit":"";
+          c.setAttribute("aria-label",it[0]);
+          c.addEventListener("click",function(e){ e.stopPropagation();
+            pickedVar[fam.key]=i; picked=fam.key; build(); });
+          bl.appendChild(c);
+        });
+        nm.appendChild(bl);
+      }
+      r.append(chk,nm);
+      var hf=document.createElement("button"); hf.type="button";
+      var on=fv.indexOf(fam.key)>=0;
+      hf.className="ppv ppfav"+(on?" on":""); hf.textContent=on?"♥":"♡";
+      hf.setAttribute("aria-label",(on?"Remove ":"Add ")+fam.name+(on?" from":" to")+" favourites");
+      hf.addEventListener("click",function(e){ e.stopPropagation();
+        var f=favs(), i=f.indexOf(fam.key);
+        if(i>=0) f.splice(i,1); else f.push(fam.key);
+        setFavs(f); build();
       });
-      var nm=document.createElement("b"); nm.textContent=name;
-      var mt=document.createElement("span"); mt.className="meta"; mt.textContent=meter;
-      r.append(fb,nm,mt);
-      r.addEventListener("click",function(){ picked=name;
-        document.querySelectorAll("[data-browser]").forEach(function(el){
-          el.dispatchEvent(new Event("rebuild")); }); });
+      var pv=document.createElement("button"); pv.type="button";
+      pv.className="ppv"; pv.textContent="▸";
+      pv.setAttribute("aria-label","Hear "+fam.name);
+      pv.addEventListener("click",function(e){ e.stopPropagation(); });
+      r.append(hf,pv);
+      r.addEventListener("click",function(){ picked=fam.key; build(); });
       return r;
     }
-    /* user grooves lead, in All and in ♥ when hearted — the app's own order */
-    var shownUser=USER.filter(function(n){
-      return tab==="all"||(tab==="fav"&&fv.indexOf(n)>=0); });
-    if(shownUser.length){
-      var uh=document.createElement("div"); uh.className="ghead";
-      uh.innerHTML='<span class="tri">▾</span>Your grooves';
-      list.appendChild(uh);
-      shownUser.forEach(function(n){ list.appendChild(row(n,"4/4")); });
-    }
-    /* collections group whatever the tab shows; solo grooves keep their place */
-    var fold=folded(), groups=[], byColl={};
-    rows.forEach(function(g){
-      if(!g[2]){ groups.push({title:null,items:[g]}); return; }
-      if(!byColl[g[2]]){ byColl[g[2]]={title:g[2],items:[]}; groups.push(byColl[g[2]]); }
-      byColl[g[2]].items.push(g);
-    });
-    if(!rows.length&&!shownUser.length){
-      var e=document.createElement("div"); e.className="gempty";
-      e.textContent=tab==="fav"
-        ? "No favourites yet — tap the ♡ on any groove and it gathers here."
-        : "Nothing in this category yet.";
-      list.appendChild(e);
-    }
-    groups.forEach(function(g){
-      if(g.title&&g.items.length>1){
-        var key=tab+"|"+g.title, closed=!!fold[key];
-        var gh=document.createElement("div"); gh.className="ghead"+(closed?" closed":"");
-        gh.innerHTML='<span class="tri">▾</span>'+g.title+' <span class="n">· '+g.items.length+'</span>';
-        gh.addEventListener("click",function(){
-          var f=folded(); f[key]=!f[key]; setFolded(f); build(); });
-        list.appendChild(gh);
-        if(!closed) g.items.forEach(function(it){ list.appendChild(row(it[0],it[1])); });
-      } else {
-        g.items.forEach(function(it){ list.appendChild(row(it[0],it[1])); });
+    if(src==="mine"){
+      if(!MYGROOVES.length){
+        var e0=document.createElement("div"); e0.className="ppempty";
+        e0.innerHTML="<b>No grooves of your own yet</b>Write one with ＋ New groove below.";
+        list.appendChild(e0);
       }
-    });
+      MYGROOVES.forEach(function(m){
+        list.appendChild(row({key:m[0],name:m[0],meter:m[1],tags:[],items:[m]}));
+      });
+    } else {
+      var fams=families().filter(function(f){
+        if(filter==="all") return true;
+        if(filter==="fav") return fv.indexOf(f.key)>=0;
+        return f.tags.indexOf(filter)>=0;
+      });
+      if(!fams.length){
+        var e=document.createElement("div"); e.className="ppempty";
+        e.innerHTML=filter==="fav"
+          ? "<b>No favourites yet</b>Tap the ♡ on any groove and it gathers here."
+          : "<b>Nothing here yet</b>";
+        list.appendChild(e);
+      }
+      var solo=fams.filter(function(f){ return f.items.length===1; });
+      var multi=fams.filter(function(f){ return f.items.length>1; });
+      if(multi.length){
+        var g1=document.createElement("div"); g1.className="ppgroup";
+        g1.textContent="Families"; list.appendChild(g1);
+        multi.forEach(function(f){ list.appendChild(row(f)); });
+      }
+      if(solo.length){
+        var g2=document.createElement("div"); g2.className="ppgroup";
+        g2.textContent=multi.length?"Single grooves":""; if(multi.length) list.appendChild(g2);
+        solo.forEach(function(f){ list.appendChild(row(f)); });
+      }
+    }
     root.appendChild(list);
-    var foot=document.createElement("div"); foot.className="gfoot";
+    var foot=document.createElement("div"); foot.className="ppfoot";
     var nb=document.createElement("button"); nb.className="ctl"; nb.textContent="＋ New groove…";
     var sp=document.createElement("span"); sp.className="spacer";
     var cb=document.createElement("button"); cb.className="ctl"; cb.textContent="Close";
     foot.append(nb,sp,cb);
     root.appendChild(foot);
   }
-  root.addEventListener("rebuild",build);
   build();
 });
 </script>
