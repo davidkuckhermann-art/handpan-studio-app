@@ -5394,10 +5394,20 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     times the size — take it when the file is going into a video edit.
     MP3 encoding by <a href="https://lame.sourceforge.net" target="_blank"
     rel="noopener noreferrer">LAME</a>.</p>
+  <!-- NO `on` ON SAVE MP3 (David, 1 Sep: "the Save MP3 button is highlighted
+       when I open the menu for no reason"). He is right, and the fault is
+       local to this dialog: `.ctl.on` is the amber the app uses for a primary
+       action — but two rows up, "Fade out at the end · On" wears the SAME
+       amber to mean a switch that is thrown. One colour saying "do this" and
+       "this is set" in one small sheet reads as a toggle nobody turned on.
+       Amber stays where it carries state; MP3 says it is the default in the
+       hint below, and by sitting where the eye ends. -->
   <div class="row"><span class="spacer"></span>
     <button class="ctl" id="expClose">Close</button>
+    <!-- appears only once a file exists: the share sheet needs its own tap -->
+    <button class="ctl" id="expSend" style="display:none">Save to Files…</button>
     <button class="ctl" id="expWav">Save WAV</button>
-    <button class="ctl on" id="expMp3">Save MP3</button></div>
+    <button class="ctl" id="expMp3">Save MP3</button></div>
 </dialog>
 
 <!-- THE PAN PICKER (David, 28 Aug — mockups-scale-picker.html, live variant C).
@@ -8069,15 +8079,78 @@ function openExport(){
     : "The complete arrangement, first bar to last, at the tempo you have set.";
   paintExpFade(); paintExpSize();
   $("expProg").style.display="none";
+  expSetReady(null);          // a file from a previous visit is not this one
   openDlg($("expDlg"));
+}
+/* ══ WHERE THE FILE GOES (David, 1 Sep: "please ask me for location when
+   exporting files. On desktop also for a name") ═══════════════════════════
+   THE PICKER OPENS BEFORE THE RENDER, NOT AFTER, and that is the whole trick.
+   `showSaveFilePicker` needs transient user activation; render-plus-encode
+   spends around twenty seconds, so by the time a file exists the click that
+   asked for it has expired and the call throws. Ask where it goes, then make
+   it, then write it — which is the better shape anyway: you commit once, and
+   the progress line runs against a destination already chosen.
+
+   WHAT EACH PLATFORM CAN HONESTLY OFFER. This ceiling belongs to the browser,
+   not to us, and no amount of code raises it:
+     Chrome / Edge desktop  showSaveFilePicker — a true Save As: name AND folder
+     iPhone / iPad          no picker at all; the share sheet's "Save to Files…"
+                            is the only way to choose a folder, and it needs its
+                            OWN tap under the same activation rule — so it
+                            becomes a button that appears once the file exists
+     Safari / Firefox       neither. Their own "ask me where to save" preference
+                            decides, and it ships off
+   The fallback is what the app did before: hand the file to the browser and
+   SAY so, rather than let it vanish into a folder nobody named. */
+let expReady=null;                       // a rendered file waiting for its tap
+const expCanPick=()=>typeof window.showSaveFilePicker==="function";
+function expCanShare(){
+  try{
+    if(!(IOS||PHONE)||!navigator.canShare||!window.File) return false;
+    return navigator.canShare({files:[new File([new Uint8Array(1)],"a.mp3",{type:"audio/mpeg"})]});
+  }catch(e){ return false; }
+}
+function expTargetName(){
+  const raw=jamOn?(typeof jamDefaultName==="function"?jamDefaultName():"Jam")
+                 :(piece.title||"Handpan");
+  return expFileName(raw)+(jamOn?" ("+expCycles()+"x)":"");
+}
+function expSetReady(r){
+  /* the previous blob is dropped with its button — an export the student did
+     not keep must not sit in memory behind the next one */
+  expReady=r;
+  const b=$("expSend"); if(b) b.style.display=r?"":"none";
+}
+async function expSendNow(){
+  if(!expReady) return;
+  try{
+    await navigator.share({title:expReady.name,
+      files:[new File([expReady.blob],expReady.name,{type:expReady.blob.type})]});
+  }catch(e){ if(e&&e.name!=="AbortError") toast("The share sheet could not open"); }
 }
 async function doExport(fmt){
   if(expBusy) return;
-  expBusy=true;
+  const ext=fmt==="mp3"?"mp3":"wav";
+  const name=expTargetName(), full=name+"."+ext;
   const prog=$("expProg"), btns=[$("expMp3"),$("expWav")];
-  btns.forEach(b=>b.disabled=true);
-  prog.style.display=""; prog.textContent="Getting the samples ready…";
   const say=t=>{ prog.textContent=t; };
+  /* ASKED FIRST, while the click is still a gesture. A cancel here renders
+     nothing at all — the student changed their mind before any work was done,
+     and twenty seconds of silence followed by nothing would look like a bug. */
+  let handle=null;
+  if(expCanPick()){
+    try{
+      handle=await window.showSaveFilePicker({suggestedName:full,types:[ext==="mp3"
+        ?{description:"MP3 audio",accept:{"audio/mpeg":[".mp3"]}}
+        :{description:"WAV audio",accept:{"audio/wav":[".wav"]}}]});
+    }catch(e){
+      if(e&&e.name==="AbortError") return;   // cancelled — nothing rendered
+      handle=null;      // blocked (a cross-origin embed does this) — fall back
+    }
+  }
+  expBusy=true; expSetReady(null);
+  btns.forEach(b=>b.disabled=true);
+  prog.style.display=""; say("Getting the samples ready…");
   try{
     ensureCtx();
     if(ctx.state!=="running"){ try{ await ctx.resume(); }catch(e){} }
@@ -8087,25 +8160,33 @@ async function doExport(fmt){
        file that is half recorded pan and half sine wave. */
     await preloadBank();
     const buf=await exportRender(expPulses(),expFade,say);
-    let blob,ext;
+    let blob;
     if(fmt==="mp3"){
       say("Encoding MP3…");
       blob=await mp3Blob(buf,p=>say("Encoding MP3… "+Math.round(p*100)+"%"));
-      ext="mp3";
     }else{
       say("Writing the WAV…");
       await new Promise(r=>setTimeout(r,0));
-      blob=wavBlob(buf); ext="wav";
+      blob=wavBlob(buf);
     }
-    const raw=jamOn?(typeof jamDefaultName==="function"?jamDefaultName():"Jam")
-                   :(piece.title||"Handpan");
-    const name=expFileName(raw)+(jamOn?" ("+expCycles()+"x)":"");
-    const a=document.createElement("a");
-    a.href=URL.createObjectURL(blob);
-    a.download=name+"."+ext; a.click();
-    setTimeout(()=>URL.revokeObjectURL(a.href),8000);
-    say("Saved "+name+"."+ext+" — "+(blob.size/1048576).toFixed(1)+" MB");
-    toast("Exported "+name+"."+ext);
+    const MB=(blob.size/1048576).toFixed(1);
+    if(handle){
+      say("Writing the file…");
+      const w=await handle.createWritable();
+      await w.write(blob); await w.close();
+      say("Saved "+handle.name+" — "+MB+" MB");
+      toast("Exported "+handle.name);
+    }else if(expCanShare()){
+      expSetReady({blob,name:full});
+      say(full+" is ready — "+MB+" MB. Save to Files to choose where it goes.");
+    }else{
+      const a=document.createElement("a");
+      a.href=URL.createObjectURL(blob);
+      a.download=full; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),8000);
+      say("Saved "+full+" — "+MB+" MB, to wherever this browser keeps downloads.");
+      toast("Exported "+full);
+    }
   }catch(e){
     say("Export failed — "+((e&&e.message)||"unknown"));
   }finally{
@@ -22066,7 +22147,17 @@ function boot(){
   /* the Settings sheet steps aside for the export dialog — two modal sheets
      stacked is a phone with nowhere to tap */
   $("setExpBtn").addEventListener("click",()=>{ $("setDlg").close(); openExport(); });
-  $("expClose").addEventListener("click",()=>$("expDlg").close());
+  /* CLOSING DROPS THE RENDERED FILE — several minutes of stereo audio is not
+     something to keep alive behind a shut door. Cleared on the BUTTON, which
+     is provable, and again on the dialog's `close` event, which catches an ESC
+     or a backdrop dismissal. The event could NOT be verified here: the preview
+     pane fires no `close` on any dialog at all, app-made or freshly created —
+     measured, so it is the rig and not this sheet. openExport() clears on the
+     way IN as well, and that one IS proven, so the worst an unfired event can
+     cost is one blob held until the sheet is next opened. */
+  $("expClose").addEventListener("click",()=>{ expSetReady(null); $("expDlg").close(); });
+  $("expSend").addEventListener("click",expSendNow);
+  $("expDlg").addEventListener("close",()=>expSetReady(null));
   $("expFade").addEventListener("click",()=>{ expFade=!expFade; paintExpFade(); });
   $("expCycles").addEventListener("input",paintExpSize);
   $("expMp3").addEventListener("click",()=>doExport("mp3"));
