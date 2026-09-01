@@ -2057,6 +2057,10 @@ body.jam #srcBadge{display:none !important}
   text-transform:uppercase; color:var(--ink3); min-width:112px}
 /* the fundamental choice, as two cards that say what they are */
 .qkinds{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:4px}
+.qkinds.one{grid-template-columns:1fr}          /* the rhythm quiz: one card, one quiz */
+.qkinds.one .qkind{cursor:default}
+/* the three options under the headline, no label in front of them */
+#quizsetup .qrow.qpresets,#rqsetup .qrow.qpresets{margin-bottom:10px}
 .qkind{display:flex; flex-direction:column; gap:3px; text-align:left; font:inherit;
   background:var(--card); border:1px solid var(--rule); border-radius:12px;
   padding:12px 14px; cursor:pointer; color:var(--ink)}
@@ -18571,7 +18575,7 @@ const QTIMES=[5,10,20,0];      // 0 = no timer: the student reveals by hand
    chord and the student names it. Everything else — the pool, the chord
    types, the clock, the round length, the summary — is shared. */
 let qcfg={src:"pan",level:"triads",time:10,len:10,mode:"tap",
-          kind:"find",opts:4,voicing:"full",play:"arp",preset:"normal",ding:true};
+          kind:"find",opts:4,voicing:"full",play:"arp",preset:"normal"};
 /* PRESETS, AND A DOOR TO THE REST (David, 1 Sep: "the user should not be
    greeted by a wall of parameters" — a Normal preset, a Challenging one, and
    Customise, "only when that is selected should all the settings come onto
@@ -18583,8 +18587,8 @@ let qcfg={src:"pan",level:"triads",time:10,len:10,mode:"tap",
    value from an old Customise cannot leak into it; what the student set in
    Customise is kept aside in `custom` and comes back when they return. */
 const QPRESETS={
-  normal:   {src:"pan",level:"triads",voicing:"full",opts:4,len:10,time:20,play:"arp",mode:"tap",ding:true},
-  challenge:{src:"pan",level:"9th",   voicing:"full",opts:6,len:10,time:20,play:"arp",mode:"tap",ding:true}};
+  normal:   {src:"pan",level:"triads",voicing:"full",opts:4,len:10,time:20,play:"arp",mode:"tap"},
+  challenge:{src:"pan",level:"9th",   voicing:"full",opts:6,len:10,time:20,play:"arp",mode:"tap"}};
 const QPRESET_KEYS=Object.keys(QPRESETS.normal);
 function qzApplyPreset(){
   const P=QPRESETS[qcfg.preset]; if(!P) return;
@@ -18610,7 +18614,6 @@ function qzLoadCfg(){
   if(qcfg.voicing!=="full"&&qcfg.voicing!=="varied") qcfg.voicing="full";
   if(qcfg.play!=="arp"&&qcfg.play!=="block") qcfg.play="arp";
   if(!["normal","challenge","custom"].includes(qcfg.preset)) qcfg.preset="normal";
-  qcfg.ding=qcfg.ding!==false;
   qzApplyPreset();
 }
 const qzKind=()=>qcfg.kind==="name"?"name":"find";
@@ -18877,21 +18880,19 @@ function qzNext(){
     QZ.voice=qzVoiceFields(QZ.cur,QZ.options);
   } else { QZ.options=null; QZ.voice=null; }
   renderQuiz();
-  if(qzKind()==="name") qzAskSound();            // the question IS the sound
+  if(qzKind()==="name") qzHearChord(QZ.voice);   // the question IS the sound
   if(qcfg.time) qzRunClock(qcfg.time,qzReveal);
 }
-/* THE QUESTION, WITH ITS REFERENCE (David, 1 Sep). The ding sounds, two
-   seconds pass, the chord comes — and the same on "hear it again", never on
-   the reveal, which is an answer and needs no reference before it. The two
-   seconds are his; the ding is field 0, the note the pan is named for. */
-const QDING_GAP=2.0;
-function qzAskSound(){
-  if(!QZ||!QZ.cur||qzKind()!=="name") return;
-  if(!qcfg.ding){ qzHearChord(QZ.voice); return; }
+/* THE CENTRAL NOTE, ON REQUEST (David, 2 Sep: "instead of playing the ding
+   every time automatically, let's give the user a button … put it into the
+   quiz card"). It had sounded before every question for a day; now it is a
+   button beside "hear it again", in both quizzes' question cards, and the
+   question is the chord alone. The ding is field 0, the note the pan is
+   named for — the reference every other note is heard against. */
+function qzHearDing(){
   ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
-  const m=myPan.midiFor(0);
+  const m=myPan&&myPan.midiFor(0);
   if(m!=null) fire(bankBuf("o"+m)||synthBuf(m,"open"),ctx.currentTime+.06,.85);
-  qzHearChord(QZ.voice,QDING_GAP);
 }
 // One clock for both counts: the search, and (hands-free) the look at the
 // answer. Wall-clock driven, so a throttled tab can't stretch the round.
@@ -19077,8 +19078,14 @@ const QPRESET_OPTS=[
   {id:"normal",label:"Normal",why:"A good round to start with"},
   {id:"challenge",label:"Challenging",why:"Harder material, more to choose between"},
   {id:"custom",label:"Customise",why:"Every setting, yours to set"}];
+/* NO LABEL (David, 2 Sep: "I don't think we need to write 'preset'. We can
+   simply put the three options below the headline"). The row is built by the
+   same hand as every other, minus its label, so it keeps the rows' metrics. */
 function qzPresetRow(box,cur,pick){
-  return qzChipRow(box,"Preset",QPRESET_OPTS,cur,pick);
+  const row=qzChipRow(box,"",QPRESET_OPTS,cur,pick);
+  const l=row.querySelector(".qlab"); if(l) l.remove();
+  row.classList.add("qpresets");
+  return row;
 }
 function qzChipRow(box,label,opts,cur,pick,dis){
   const row=document.createElement("div"); row.className="qrow";
@@ -19194,11 +19201,6 @@ function renderQuizSetup(){
      default, because the ding is the reference every other note is heard
      against: hearing it first turns "which chord was that" from absolute
      pitch into a relative question, which is the one a player can answer. */
-  if(naming)
-    qzChipRow(round,"Before the chord",[
-      {id:true,label:"Central note first",why:"The pan's ding, a pause, then the chord — so you hear the chord against the note you know"},
-      {id:false,label:"Just the chord"}
-    ],qcfg.ding,v=>set("ding",v));
   }
   // the bank — seeing the family before the round is itself the lesson
   const pool=qzPool();
@@ -19262,7 +19264,9 @@ function renderQuiz(){
     const left=QGUESSES-QZ.wrong;
     h+='<span class="qask-lab">What chord is this?</span>'
       +'<div class="qhear"><button class="ctl big" id="qzHearBtn">'
-      +'&#9834; Hear it again</button></div>'
+      +'&#9834; Hear it again</button>'
+      +'<button class="ctl big" id="qzDingBtn" title="The pan\'s central note — the one every other note is heard against">'
+      +'&#9834; Central note</button></div>'
       +'<div class="qopts" id="qzOpts"></div>'
       +'<span class="qtapcount'+(QZ.wrong?"":" none")+'">'
       +(QZ.wrong?left+" guess"+(left===1?"":"es")+" left":"Three guesses")+'</span>';
@@ -19344,6 +19348,9 @@ function renderQuiz(){
     mk(qcfg.mode==="tap"?"Give up — show me":"Show me","big",qzReveal,
        "Reveal the answer now (space)");
     mk("Skip","",qzNext,"Next chord, nothing scored");
+    // the reference note, in this card too (David, 2 Sep) — the pan below may
+    // not keep its tap, and the question is easier heard against the ding
+    mk("&#9834; Central note","",qzHearDing,"The pan's central note — the one every other note is heard against");
   } else if(naming){
     mk("Next chord","big",qzNext);
     mk2("♪ Hear it again","",qzRevealSound);
@@ -19357,7 +19364,8 @@ function renderQuiz(){
   }
   if(searching&&naming){
     const hb=$("qzHearBtn");
-    if(hb) hb.addEventListener("click",qzAskSound);   // again WITH the ding (David, 2 Sep)
+    if(hb) hb.addEventListener("click",()=>qzHearChord(QZ.voice));
+    const db=$("qzDingBtn"); if(db) db.addEventListener("click",qzHearDing);
     const box=$("qzOpts");
     for(const o of (QZ.options||[])){
       const b=document.createElement("button");
@@ -20964,10 +20972,20 @@ function renderRQSetup(){
   const set=(k,v)=>{ rqcfg[k]=v; rqSaveCfg(); renderRQSetup(); };
   const sect=t=>{ const h=document.createElement("h4"); h.className="jgroup"; h.textContent=t;
     box.appendChild(h); };
+  /* A HEADLINE, THE CHORD QUIZ'S OWN CARD (David, 2 Sep: "the rhythm quiz
+     should have a headline. In the chord quiz section, the selector between
+     the two quizzes functions like that, so in the rhythm quiz we also need
+     the same kind of element"). One card, lit, because there is one quiz
+     here — it says what the round is before the options say how. */
+  const kinds=document.createElement("div"); kinds.className="qkinds one";
+  const k=document.createElement("div"); k.className="qkind on";
+  k.innerHTML="<b>Name the rhythm</b><span>The app plays a rhythm — you say its metre and how it groups.</span>";
+  kinds.appendChild(k); box.appendChild(kinds);
   // the same three-way door the chord quiz has — see QPRESETS
   rqApplyPreset();
   const custom=rqcfg.preset==="custom";
-  qzPresetRow(box,rqcfg.preset,rqSetPreset);
+  const pr=qzPresetRow(box,rqcfg.preset,rqSetPreset);
+  pr.style.marginTop="10px";
 
   if(custom){
   sect("The rhythms");
