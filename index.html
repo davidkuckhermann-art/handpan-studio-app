@@ -3101,7 +3101,10 @@ body.phone #backBtn:disabled{ display:none }
 body.phone #cpHost{ display:none !important }
 #sideDots{ display:none }
 body.phone #sideDots{ display:flex; gap:8px; justify-content:center;
-  align-items:center; padding:9px 0 3px }
+  align-items:center;
+  /* the slack Flow's snap gives back is spent here (see flowPhoneFit) —
+     centred, so the dots sit in the middle of whatever strip they get */
+  padding:calc(9px + var(--sdslack,0px)/2) 0 calc(3px + var(--sdslack,0px)/2) }
 body.phone.editing #sideDots, body.phone.gedit #sideDots,
 body.phone.jam #sideDots, body.phone.quiz #sideDots,
 body.phone.rquiz #sideDots, body.phone.learn #sideDots{ display:none }
@@ -3121,7 +3124,21 @@ body.phone.rquiz #sideDots, body.phone.learn #sideDots{ display:none }
    rather than three 7px dots against the page.
    It is not a fourth control — it is the control that was always there,
    given the room it needs when nothing else is on screen. */
-body.phone.bare #sideDots{ padding:20px 0 14px }
+/* IN BARE THE STRIP IS THE FLEXIBLE ROW, NOT THE EMPTY ONE. #belowrow is
+   `flex:1 1 auto`, so with both companions off it still collected every
+   leftover pixel and held it as dead air between the notation and the dots —
+   the gap David saw. The empty row collapses instead and the strip stretches,
+   which puts the same pixels where he asked for them: "make the swipe window
+   a bit more generous when there is no space below". The dots stay centred in
+   whatever it gets, so the strip grows around them rather than under them. */
+body.phone.bare #belowrow{ flex:0 0 auto }
+body.phone.bare #sideDots{ flex:1 1 auto; min-height:0 }
+/* NO FIXED PADDING HERE ANY MORE. A flat 20px/14px was added when the strip
+   was made findable, and because Flow's fitter did not count this row it went
+   straight into the deck (David: "the deck is pushed down … the deck should
+   never be pushed out"). The strip still grows in bare — that is where the
+   snap's slack is largest — but it grows out of the notation's own budget
+   rather than out of the controls. */
 body.phone.bare #sideDots i{ background:var(--ink3) }
 body.phone.bare #sideDots i.on{ background:var(--dixie) }
 /* POCKET ZONES D: sideways is the music stand. In landscape PRACTICE the
@@ -10771,7 +10788,18 @@ function flowPhoneFit(wrap,land){
   const barH=bar?bar.offsetHeight-((drawerOpen()&&ex)?ex.offsetHeight:0):0;
   wrap.style.paddingTop=""; mus.style.maxHeight=""; mus.style.minHeight="";
   const padB=parseFloat(getComputedStyle(document.body).paddingBottom)||0;
-  let avail=innerHeight-wrap.getBoundingClientRect().top-barH-padB-8;
+  /* THE DOTS ROW IS PART OF THE STACK, AND FLOW NEVER COUNTED IT (David, 1 Sep,
+     with two screenshots: a chord card cut off at the bottom, and "the deck is
+     pushed down"). fitPortraitStack has subtracted `sdH` since Pocket Zones B;
+     this fitter did not, so every Flow layout has been one dots-row too tall
+     and whatever sat below — the companion card, then the deck — was pushed
+     into the clip. It was 19px and survived as a trimmed edge; the taller bare
+     strip made it 53px and pushed the deck off, which is how it was found.
+     Reserved here, so the strip's height is the notation's to give. */
+  const sd=$("sideDots");
+  const sdH=(sd&&sd.offsetParent)?sd.getBoundingClientRect().height:0;
+  const padB2=padB;
+  let avail=innerHeight-wrap.getBoundingClientRect().top-barH-padB2-sdH-8;
   /* LANDSCAPE TAKES THE SHARED STAGE instead of measuring its own window
      (David, 30 Aug — the three skins are one rectangle now). The music gets a
      fixed height rather than a ceiling, so the BOX is the same whether the
@@ -10807,8 +10835,26 @@ function flowPhoneFit(wrap,land){
   const h=Math.max(90,avail-chrome);
   /* portrait trims to a whole row so the chord card sits right under the
      music; landscape keeps the full box — there the stage IS the height */
-  mus.style.maxHeight=(land?h:snapFlowWindow(mus,h))+"px";
+  const snapped=land?h:snapFlowWindow(mus,h);
+  mus.style.maxHeight=snapped+"px";
   if(land) mus.style.minHeight=h+"px";     // the box, not just its ceiling
+  /* THE SLACK GOES TO THE SWIPE STRIP, NOT INTO A GAP (David, 1 Sep: "the flow
+     notation leaves a gap now at the bottom … we should just make the swipe
+     window a bit more generous when there is no space below"). Portrait Flow
+     trims its window to a WHOLE row, and whatever the trim gives back used to
+     sit under the card as dead air. The strip takes it instead: the total is
+     unchanged — the row was reserved above and the remainder is what the snap
+     handed back — so nothing below moves, the gap closes, and the surface
+     that answers a swipe is biggest exactly where there is least else to
+     touch, which is the bare view. */
+  if(!land&&sd){
+    /* bare has no slack to hand out — there the strip is the flexible row and
+       the CSS above gives it everything left over, so adding padding on top
+       would take the same pixels twice */
+    const bare=document.body.classList.contains("bare");
+    sd.style.setProperty("--sdslack",
+      bare?"0px":Math.max(0,Math.min(64,Math.round(h-snapped)))+"px");
+  } else if(sd) sd.style.removeProperty("--sdslack");
 }
 function fitPortraitStack(sc,z,designW){
   const wrap=$("scorewrap"), bar=$("transport");
@@ -10825,7 +10871,14 @@ function fitPortraitStack(sc,z,designW){
      (Pocket Zones B) — un-counted, they cost the pan card its bottom edge
      (David, 31 Aug, from his phone: "the pan tab below the notation is cut
      off at the bottom") */
-  const sd=$("sideDots"), sdH=(sd&&sd.offsetParent)?sd.offsetHeight:0;
+  /* THE SLACK IS FLOW'S, AND IT DOES NOT TRAVEL. Flow hands the strip whatever
+     its row-snap gives back; Table and Tab snap to nothing and have none to
+     give, so the property is cleared BEFORE this row is measured — left
+     standing, a 64px strip earned in Flow would go on taking 64px out of
+     every other skin's notation. */
+  const sd=$("sideDots");
+  if(sd) sd.style.removeProperty("--sdslack");
+  const sdH=(sd&&sd.offsetParent)?sd.offsetHeight:0;
   const space=innerHeight-top-barH-10-sdH;
   if(space<=0) return;
   let h=sc.getBoundingClientRect().height;
@@ -10880,19 +10933,42 @@ function fitPortraitStack(sc,z,designW){
          the assignment into a silent no-op. Measure the rect. */
       const chrome=box.offsetHeight-svg.getBoundingClientRect().height;
       const hAvail=leftover-chrome;
-      const size=Math.max(150,Math.min(wAvail,hAvail,430));
+      /* THE FLOOR WAS A CEILING IN DISGUISE. `max(150, …)` meant that once the
+         room fell under 150px the drawing stopped shrinking and the card
+         simply overflowed the row, which is clipped — measured at 42px on a
+         600pt screen in Table (David, 1 Sep: "if they are pushed out of the
+         screen, they should go smaller rather than being pushed out"). A pan
+         at 110px is small but still a pan; below that the card guard beneath
+         takes over and scales the whole thing. */
+      const size=Math.max(110,Math.min(wAvail,hAvail,430));
       svg.style.width=Math.floor(size)+"px";
       svg.style.maxWidth="none";
       svg.style.height="auto";
     }
-    return;
+  } else {
+    let cz=1.2;
+    if(bh>0&&leftover>0) cz=Math.min(cz,leftover/bh);
+    if(bw>0&&availW>0)   cz=Math.min(cz,availW/bw);
+    cz=Math.max(0.3,cz);
+    if(Math.abs(cz-1)<0.02){ box.style.zoom=""; box.style.removeProperty("--panfit"); }
+    else panBoxFit(box,box.getBoundingClientRect().height*cz);
   }
-  let cz=1.2;
-  if(bh>0&&leftover>0) cz=Math.min(cz,leftover/bh);
-  if(bw>0&&availW>0)   cz=Math.min(cz,availW/bw);
-  cz=Math.max(0.3,cz);
-  if(Math.abs(cz-1)<0.02){ box.style.zoom=""; box.style.removeProperty("--panfit"); }
-  else panBoxFit(box,box.getBoundingClientRect().height*cz);
+  /* THE LAST WORD, FOR BOTH CARDS (David, 1 Sep: "please make that a general
+     behaviour"). Everything above sizes a card by ONE of its parts — the pan
+     by its drawing, the chords by a zoom off their natural box — and each has
+     a floor it will not go below. A floor is the right instinct and the wrong
+     last step: when the room is smaller than the floor, the card does not
+     stop shrinking politely, it overflows a row that is overflow:hidden and
+     loses its bottom edge with no sign that anything is missing.
+     So whatever the branch decided, the card is measured against the room it
+     was actually given and scaled to fit. Nothing below it moves, because
+     nothing below it was ever asked to make way. */
+  const roomFor=Math.max(0,leftover);
+  const got=box.getBoundingClientRect().height;
+  if(roomFor>0&&got>roomFor+2){
+    const prev=parseFloat(box.style.zoom)||1;
+    box.style.zoom=Math.max(0.35,prev*(roomFor/got));
+  }
 }
 /* THE LANDSCAPE STAGE — the one rectangle every skin fills (David, 30 Aug).
    `LAND_TOP` is the air between the header and the notation: Flow used to
