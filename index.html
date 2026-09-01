@@ -14468,10 +14468,6 @@ const JAMPATS=[
    [0,"1","L"],[1,"3","L"],[2,"5","R"],[3,"g","R"],[4,"^","L"],[5,"g","R"],[6,"g","L"],[7,"5","R"],[8,"g","L"],[9,"3","R"],[10,"1","L"],[11,"g","R"],[12,"^","L"],[13,"g","R"],[14,"g","L"],[15,"g","R"]]},
  {id:"mg30",name:"Up and down backbeat 3",cats:["back"],coll:"Up and down backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[1,"g","R"],[2,"3","L"],[3,"5","R"],[4,"^","L"],[5,"g","R"],[6,"g","L"],[7,"5","R"],[8,"1","L"],[9,"3","R"],[10,"g","L"],[11,"g","R"],[12,"^","L"],[13,"g","R"],[14,"g","L"],[15,"g","R"]]},
- {id:"mg31",name:"Uptempo backbeat 2",cats:["back"],coll:"Uptempo backbeat",meter:[4,4],sub:4,bpr:1,ev:[
-   [0,"9","R"],[0,"3","L"],[0,"1","L"],[2,"^","R"],[4,"g","R"],[5,"3","L"],[5,"1","L"],[6,"11","R"],[8,"9","R"],[8,"7","L"],[8,"5","L"],[10,"^","R"],[12,"g","R"],[13,"7","L"],[13,"5","L"],[14,"^","R"]]},
- {id:"mg32",name:"Uptempo backbeat 3",cats:["back"],coll:"Uptempo backbeat",meter:[2,4],sub:4,bpr:2,ev:[
-   [0,"3","L"],[0,"1","L"],[1,"g","L"],[2,"^","R"],[3,"1","L"],[4,"g","L"],[5,"3","R"],[6,"^","L"],[7,"5","R"]]},
  {id:"mg33",name:"Upwards motion",cats:["arp"],meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","L"],[1,"g","R"],[2,"3","L"],[3,"5","R"],[4,"1","L"],[5,"g","R"],[6,"3","L"],[7,"7","R"],[8,"3","L"],[9,"g","R"],[10,"5","L"],[11,"9","R"],[12,"3","L"],[13,"g","R"],[14,"5","L"],[15,"11","R"]]},
 ];
@@ -14501,7 +14497,14 @@ const JAM_COLOUR_DEF=75;
 const JC_TIP="Mild keeps to plain triads. Hotter lets sevenths, ninths and diminished chords in.";
 /* the voicing pair gets one of its own, in the same shape (David, 29 Aug) */
 const JV_TIP="Narrow keeps the chords in the middle of the pan. Wide uses the whole instrument and grounds each chord in the bass.";
+/* HELD, NOT SET (1 Sep). The groove preview generates its progression at 0%
+   spice, and the honest way to ask for that is a hook the generator reads —
+   not writing 0 into `hps.jamColour` and putting it back, which would lose
+   his own setting if anything threw in between, and would broadcast a
+   settings change to every painter that watches it. */
+let jcHold=null;
 function jamColour(){
+  if(jcHold!=null) return jcHold;
   const v=+localStorage.getItem("hps.jamColour");
   return isNaN(v)||v===null||localStorage.getItem("hps.jamColour")===null?JAM_COLOUR_DEF:Math.max(0,Math.min(100,v));
 }
@@ -20325,38 +20328,109 @@ function jamPreviewStop(){
   document.querySelectorAll("#grooveList .gplay.on").forEach(b=>{
     b.classList.remove("on"); b.textContent="▸"; });
 }
+/* THE PREVIEW IS LIVE, NOT A SNAPSHOT (David, 1 Sep — two reports, one
+   cause). "If I click on another version of the same groove while the
+   preview is playing, it would be amazing if that groove could change to
+   the variation I'm selecting", and "I just had the Annaziska scale
+   selected, and the preview sounded very dissonant."
+
+   It used to voice the groove ONCE, at the tap, and hand a fixed list of
+   field numbers to a loop that repeated them forever. A field number is a
+   POSITION on the pan you were holding, so anything that moved underneath
+   the loop went wrong quietly: change the instrument and the same positions
+   sound whatever the new pan has there — its own chord if you are lucky,
+   and something with no relation to the home chord if you are not.
+
+   Nothing is captured now except which groove is playing. Each bar is
+   voiced fresh from the CURRENT pattern on the CURRENT pan's home chord, so
+   swapping the variation, changing the instrument or moving the tempo all
+   land on the next bar with no gap and no restart. */
+/* THE PREVIEW HAS A PROGRESSION (David, 1 Sep: "let's use a randomly
+   generated chord sequence for the previews. It should start on the root
+   chord, use the narrow setting and 0% on the spicy meter" — "no runs of
+   course"). One chord under a groove tells you the rhythm; four tell you
+   what the groove DOES to a harmony, which is what you are choosing between.
+
+   The four settings are exactly his: it opens on the pan's home chord, the
+   rest come from the jam's own `suggestPick` with the spice held at 0, the
+   voicing is narrow whatever the jam is set to, and there are no runs —
+   not suppressed, but absent by construction, since a run is something
+   `buildJamPiece` writes into a melody line and the preview voices the
+   groove's own tokens chord by chord instead.
+
+   suggestPick reads the progression so far off `jam`, so it is handed a
+   stand-in holding what the preview has picked. The real jam is put back in
+   a finally, because it is the live one on screen. */
+const JPV_BARS=4;
+function jpvProg(){
+  const home=grooveHomeRef(); if(!home) return null;
+  const keepJam=jam, keepHold=jcHold;
+  const shim={slots:[{chord:home,bars:1}],motion:false,narrow:true,patternId:jpv&&jpv.patId};
+  try{
+    jam=shim; jcHold=0;
+    for(let i=1;i<JPV_BARS;i++){
+      const pick=suggestPick(); if(!pick) break;
+      shim.slots.push({chord:pick.name,bars:1});
+    }
+  }catch(e){ /* a pan too small to suggest on keeps its home chord alone */ }
+  finally{ jam=keepJam; jcHold=keepHold; }
+  return shim.slots.map(x=>x.chord);
+}
+function jpvBar(){
+  const pat=allPats().find(p=>p.id===jpv.patId); if(!pat) return null;
+  /* the pan can change under a running preview, and its home chord with it —
+     when it does the sequence is rebuilt rather than replayed on an
+     instrument it was never chosen for */
+  const home=grooveHomeRef();
+  if(!jpv.prog||!jpv.prog.length||jpv.home!==home){
+    jpv.prog=jpvProg()||[]; jpv.home=home; jpv.i=0;
+  }
+  if(!jpv.prog.length) return null;
+  const chord=jpv.prog[jpv.i%jpv.prog.length];
+  const v=jamVoice(chord,patVoices(pat),true);   // narrow, as he asked
+  if(!v) return null;
+  return {pat,chord,evs:pat.ev.map(([t,k,h])=>k==="g"?null:patEv(t,k,h,v)).filter(Boolean)};
+}
+/* swap the groove under a running preview; false if nothing was running */
+function jamPreviewSwap(patId){
+  if(!jpv||jpv.patId===patId) return false;
+  jpv.patId=patId; return true;
+}
+function jamPreviewPaint(){
+  document.querySelectorAll("#grooveList .gplay").forEach(b=>{
+    const on=!!(jpv&&b.dataset.pat===jpv.patId);
+    b.classList.toggle("on",on); b.textContent=on?"■":"▸"; });
+}
 function jamPreviewToggle(patId,btn){
   if(jpv&&jpv.patId===patId){ jamPreviewStop(); return; }
   jamPreviewStop(); ensureCtx();
-  const pat=allPats().find(p=>p.id===patId); if(!pat) return;
-  /* THE PREVIEW SOUNDS ON THE PAN'S OWN HOME CHORD (David, 1 Sep: "the groove
-     preview should use a chord. Let's use the root chord of the currently
-     selected instrument"). It used to take the JAM'S first chord, which made
-     the same groove sound different depending on where the progression
-     happened to start — and left the browser mute when it was opened with no
-     jam, or with an empty first slot, where it could only say "Add a chord
-     first". `grooveHomeRef` is the answer the groove bench already uses for
-     the same question: panHomes' minor, then its major, then the ding. */
-  const pvChord=grooveHomeRef();
-  const v=jamVoice(pvChord,patVoices(pat),jamNarrowNow());
-  if(!v){ toast("This pan has no complete chord to preview on"); return; }
-  const evs=pat.ev.map(([t,k,h])=>k==="g"?null:patEv(t,k,h,v))
-    .filter(Boolean);
+  if(!allPats().some(p=>p.id===patId)) return;
+  jpv={patId,nextBar:0,timer:null,prog:null,home:null,i:0};
+  if(!jpvBar()){ jpv=null; toast("This pan has no complete chord to preview on"); return; }
   // if the jam (or another preview) is sounding: fade it, one breath, then
   // the groove starts (David, 26 Aug)
   const takeover=playing||live.length>0;
   if(takeover) jamFadeLive(.3);
-  jpv={patId,nextBar:ctx.currentTime+(takeover?0.72:0.08),timer:null};
-  const tickP=()=>{ if(!jpv) return;
-    // tempo read every pass, so a scrub lands on the next bar
-    const slotDur=60/effBpm()/pat.sub*(4/(pat.unit||4));
-    const bp=pat.meter[0]*pat.sub;
-    while(jpv.nextBar<ctx.currentTime+0.45){
-      for(const ev of evs) fireEvent(ev,jpv.nextBar+ev.t*slotDur);
+  jpv.nextBar=ctx.currentTime+(takeover?0.72:0.08);
+  const tickP=()=>{
+    /* EVERY BAR IS ASKED FOR SEPARATELY — the groove, its metre, its voicing
+       and the tempo are all read again for each one, because any of them may
+       have changed since the last. Uptempo backbeat 3 was a 2/4 beside its
+       family's 4/4: hoisting the bar length out of this loop would measure
+       the new variation's bar with the old one's ruler. */
+    while(jpv){
+      const bar=jpvBar(); if(!bar) return;
+      const pat=bar.pat;
+      const slotDur=60/effBpm()/pat.sub*(4/(pat.unit||4));
+      const bp=pat.meter[0]*pat.sub;
+      if(jpv.nextBar>=ctx.currentTime+0.45) return;
+      for(const ev of bar.evs) fireEvent(ev,jpv.nextBar+ev.t*slotDur);
       jpv.nextBar+=bp*slotDur;
+      jpv.i++;                                   // one chord per bar, then round
     } };
   jpv.timer=setInterval(tickP,100); tickP();
-  btn.classList.add("on"); btn.textContent="■";
+  if(btn){ btn.classList.add("on"); btn.textContent="■"; }
+  else jamPreviewPaint();
 }
 /* ---------------- STUDENT GROOVES (26 Aug, ABC'd, David's three answers) ----
    A groove is ONE BAR, stored the way David's ten are: chord DEGREES
@@ -21093,7 +21167,15 @@ function gbRow(f,mine){
       c.className=q.id===cur.id?"lit":"";
       c.setAttribute("aria-label",q.name);
       c.addEventListener("click",e=>{ e.stopPropagation();
-        gbPick[f.key]=q.id; renderGrooveDlg(); });
+        /* THE PREVIEW FOLLOWS THE CHIP (David: "if I click on another version
+           of the same groove while the preview is playing, it would be
+           amazing if that groove could change to the variation I'm
+           selecting"). Only when the preview belongs to THIS family — a chip
+           in one row must not steal a preview running in another. */
+        const running=jpv&&f.items.some(x=>x.id===jpv.patId);
+        gbPick[f.key]=q.id;
+        if(running) jamPreviewSwap(q.id);
+        renderGrooveDlg(); });
       bl.appendChild(c);
     });
     nm.appendChild(bl);
@@ -21123,7 +21205,9 @@ function gbRow(f,mine){
       renderGrooveDlg(); toast("Groove deleted"); }));
   }
   const pv=document.createElement("button");
-  pv.type="button"; pv.className="ppv gplay"; pv.textContent="▸";
+  const pvOn=!!(jpv&&jpv.patId===cur.id);
+  pv.type="button"; pv.className="ppv gplay"+(pvOn?" on":""); pv.textContent=pvOn?"■":"▸";
+  pv.dataset.pat=cur.id;                 // so a re-render can find its own button
   pv.title="Loop this groove — tap again to stop";
   pv.setAttribute("aria-label","Hear "+f.name);
   pv.addEventListener("click",e=>{ e.stopPropagation(); jamPreviewToggle(cur.id,pv); });
@@ -21149,11 +21233,11 @@ function gbEmpty(){
 }
 function openGrooveDlg(){ gbSyncPick(); renderGrooveDlg(); openDlg($("grooveDlg")); }
 function renderGrooveDlg(){
-  /* the hint names the chord you will actually hear, and that is the PAN's
-     home now rather than the jam's first chord — so the line reads the same
-     whether or not there is a jam behind the dialog */
+  /* the hint says where the preview STARTS, which is the pan's own home
+     chord — the three that follow are rolled fresh each time you press ▸,
+     so naming them would be a caption for one take of four bars */
   const ch=grooveHomeRef();
-  $("gbHint").textContent=(ch?"Previewed on "+ch+" at the current tempo — ":"")
+  $("gbHint").textContent=(ch?"Previewed from "+ch+" at the current tempo — ":"")
     +"tap ▸ to loop a groove, tap the row to use it.";
   gbPaintPills();
   const L=$("grooveList"); L.innerHTML="";
