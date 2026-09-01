@@ -7536,6 +7536,10 @@ async function reviveAudio(){
   try{ if(iosSink&&iosSink!=="failed"){ iosSink.pause(); iosSink.srcObject=null; } }catch(e){}
   iosSink=null;
   try{ if(old&&old.state!=="closed") await old.close(); }catch(e){}
+  /* the session type is declared again for the new graph: it is set once per
+     session and iOS routes playback by it, so a context built after an
+     interruption must not inherit "already done" from the one it replaces */
+  audioSessionSet=false;
   ensureCtx(); ensureSink();
   try{ await ctx.resume(); }catch(e){}
   preloadBank();
@@ -7625,22 +7629,39 @@ function stopSchedClock(){
    answer, which already parks `pendingStart` on the last pulse that sounded.
    Pressing play then carries on from exactly there. A hidden desktop tab keeps
    its context running and never reaches this. */
+/* A BLIP IS NOT AN INTERRUPTION (David, 1 Sep: "audio playback now picks up
+   again after it was interrupted in the iOS app, but then it stops again
+   after a few seconds"). The first version parked on ANY state that was not
+   "running", and iOS emits transient ones for seconds after an interruption
+   — the session settling, the other app letting go — so the music came back
+   and was then killed by the wake of the interruption it had just survived.
+   Now a state change only opens a QUESTION: try to resume, give the clock a
+   breath to prove itself, and park only if it really is gone. Parking late
+   costs nothing — the audio is silent either way — while parking early costs
+   exactly what he heard. */
 function watchAudioInterruption(){
   if(!ctx||ctx.__hpsWatch) return;
   ctx.__hpsWatch=true;
   ctx.addEventListener("statechange",()=>{
     if(!playing||ctx.state==="running") return;
-    /* the marker is the honest resume point, but it is painted from rAF —
-       which is already frozen when the interruption arrives, and has never
-       run at all if the music was taken away in its first moments. The
-       scheduler's own pulse stands in then, so play always has somewhere to
-       come back to rather than starting the piece again. */
-    const at=(lastPaint>=0)?lastPaint:loopedPulse(nextPulse);
-    try{ stop(); }catch(e){}
-    if(pendingStart==null&&!loopSec&&at>=0){
-      pendingStart=at;
-      try{ if(!C) C=compile(piece); paintPulse(at); }catch(e){}
-    }
+    const mine=ctx;                    // a revive swaps it; that check is not ours
+    setTimeout(async ()=>{
+      if(!playing||ctx!==mine) return;
+      if(ctx.state!=="running"){ try{ await ctx.resume(); }catch(e){} }
+      if(!playing||ctx!==mine) return;
+      if(await clockAlive(200)) return;        // it came back — carry on
+      /* the marker is the honest resume point, but it is painted from rAF —
+         which is already frozen by now, and has never run at all if the music
+         was taken away in its first moments. The scheduler's own pulse stands
+         in then, so play always has somewhere to come back to rather than
+         starting the piece again. */
+      const at=(lastPaint>=0)?lastPaint:loopedPulse(nextPulse);
+      try{ stop(); }catch(e){}
+      if(pendingStart==null&&!loopSec&&at>=0){
+        pendingStart=at;
+        try{ if(!C) C=compile(piece); paintPulse(at); }catch(e){}
+      }
+    },500);
   });
 }
 function stop(){
