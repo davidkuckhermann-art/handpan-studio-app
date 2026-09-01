@@ -7977,7 +7977,7 @@ function stop(){
   clearMarks();
   document.querySelectorAll(".chip.playing").forEach(el=>el.classList.remove("playing"));
   if(pendingStart!=null){ if(!C) C=compile(piece); paintPulse(pendingStart); } // show where play will resume
-  updatePlayBtn();
+  updatePlayBtn();          // …which repaints the lock screen and syncs the sink
   /* clearMarks() has just taken the grey away with everything else the clock
      owned — but a break set to every cycle is a fact about the SETTING, not
      about the playhead, so it comes straight back. */
@@ -9173,7 +9173,27 @@ function parkHere(){
    that playback is running", and the press that follows is then spent
    correcting the icon instead of pausing. It is the cheapest call here and the
    one that must never be skipped, so it stands alone. */
+/* THE ELEMENT IS THE TRANSPORT'S TRUTH, NOT playbackState (1 Sep, after the
+   glyph drifted a second time). Asserting `playbackState` is telling iOS what
+   we think; iOS draws its button from the MEDIA ELEMENT, which is a fact it
+   can check. So the element is kept in lockstep with `playing` and the drift
+   becomes impossible rather than corrected — David's "first it went well,
+   then the lock screen didn't pick up the play state again" is what arguing
+   with it looks like.
+   A paused element KEEPS the Now Playing card — that is how every player
+   offers you a play button on the lock screen — so this does not cost the
+   resume that now works; the element's own play event is still what carries
+   it. `sinkSelf` keeps our sync from reading as the student's press. */
+function sinkSync(){
+  if(!iosSink||iosSink==="failed") return;
+  const arm=()=>{ sinkSelf=true; setTimeout(()=>{ sinkSelf=false; },400); };
+  try{
+    if(playing&&iosSink.paused){ arm(); iosSink.play().catch(()=>{}); }
+    else if(!playing&&!iosSink.paused){ arm(); iosSink.pause(); }
+  }catch(e){}
+}
 function mediaSessionState(){
+  sinkSync();                   // the fact first, then what we say about it
   if(!mediaOK()) return;
   try{ navigator.mediaSession.playbackState=playing?"playing":"paused"; }catch(e){}
 }
