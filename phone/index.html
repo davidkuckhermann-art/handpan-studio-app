@@ -20335,8 +20335,17 @@ function jamPreviewToggle(patId,btn){
   if(jpv&&jpv.patId===patId){ jamPreviewStop(); return; }
   jamPreviewStop(); ensureCtx();
   const pat=allPats().find(p=>p.id===patId); if(!pat) return;
-  const v=jamVoice(jam.slots[0]&&jam.slots[0].chord,patVoices(pat),jamNarrowNow());
-  if(!v){ toast("Add a chord first"); return; }
+  /* THE PREVIEW SOUNDS ON THE PAN'S OWN HOME CHORD (David, 1 Sep: "the groove
+     preview should use a chord. Let's use the root chord of the currently
+     selected instrument"). It used to take the JAM'S first chord, which made
+     the same groove sound different depending on where the progression
+     happened to start — and left the browser mute when it was opened with no
+     jam, or with an empty first slot, where it could only say "Add a chord
+     first". `grooveHomeRef` is the answer the groove bench already uses for
+     the same question: panHomes' minor, then its major, then the ding. */
+  const pvChord=grooveHomeRef();
+  const v=jamVoice(pvChord,patVoices(pat),jamNarrowNow());
+  if(!v){ toast("This pan has no complete chord to preview on"); return; }
   const evs=pat.ev.map(([t,k,h])=>k==="g"?null:patEv(t,k,h,v))
     .filter(Boolean);
   // if the jam (or another preview) is sounding: fade it, one breath, then
@@ -21146,9 +21155,10 @@ function gbEmpty(){
 }
 function openGrooveDlg(){ gbSyncPick(); renderGrooveDlg(); openDlg($("grooveDlg")); }
 function renderGrooveDlg(){
-  // `jam` is null until a jam has been entered — the browser can be reached
-  // without one now, so the preview chord is optional rather than assumed
-  const ch=jam&&jam.slots[0]&&jam.slots[0].chord;
+  /* the hint names the chord you will actually hear, and that is the PAN's
+     home now rather than the jam's first chord — so the line reads the same
+     whether or not there is a jam behind the dialog */
+  const ch=grooveHomeRef();
   $("gbHint").textContent=(ch?"Previewed on "+ch+" at the current tempo — ":"")
     +"tap ▸ to loop a groove, tap the row to use it.";
   gbPaintPills();
