@@ -6415,7 +6415,6 @@ function ensureSink(){
          student's NEXT press, four seconds later */
       if(sinkOurs("pause")) return;
       if(!playing||document.visibilityState!=="hidden") return;
-      try{ mediaSeen.push("sink-pause"); }catch(e){}
       const at=(lastPaint>=0)?lastPaint:loopedPulse(nextPulse);
       try{ stop(); }catch(e){}
       if(pendingStart==null&&!loopSec&&at>=0) pendingStart=at;
@@ -6423,14 +6422,12 @@ function ensureSink(){
     /* `playing`, not `play`: playing means audio is actually flowing, which
        is when iOS has a session to attach to. Fires on every resume too. */
     el.addEventListener("playing",()=>{
-      try{ mediaSeen.push("rewire"); }catch(e){}
       try{ mediaSessionWire(true); mediaSessionPaint(); }catch(e){}
     });
     el.addEventListener("play",()=>{
       if(sinkOurs("play")) return;               // that play() was ours
       if(playing||document.visibilityState!=="hidden") return;
       if(pendingStart==null) return;              // nothing was parked
-      try{ mediaSeen.push("sink-play"); }catch(e){}
       try{ togglePlay(); }catch(e){}
     });
     sinkArm("play");
@@ -9038,7 +9035,7 @@ function updateScoreTools(){
    one-line experiment, deliberately not taken here, because it would change
    the audio path that currently works. */
 const mediaOK=()=>{ try{ return !!(navigator.mediaSession); }catch(e){ return false; } };
-let mediaWired=false, mediaPosAt=-9, mediaSeen=[], mediaMetaKey="";
+let mediaWired=false, mediaPosAt=-9, mediaMetaKey="";
 /* WHERE THE MUSIC ACTUALLY IS, ASKED OF THE SCHEDULER (1 Sep, second pass).
    The first version read `lastPaint`, which is set ONLY inside tick() — the
    requestAnimationFrame loop — and a locked phone does not run rAF. So the
@@ -9080,17 +9077,8 @@ function nowPulse(){
 function mediaSessionWire(force){
   if((mediaWired&&!force)||!mediaOK()) return;
   mediaWired=true;
-  /* DIAGNOSTIC, and it should come out once this is settled. David reports the
-     controls were on his lock screen BEFORE any of this code existed — so iOS
-     draws that widget for the audio session itself, and its buttons may never
-     reach our JavaScript at all. Nothing else can tell us whether a handler
-     ran on a locked phone, so each one leaves a mark and the app says what it
-     saw when he comes back to it. */
   const set=(a,fn)=>{ try{
-    navigator.mediaSession.setActionHandler(a,d=>{
-      mediaSeen.push(a);            // it RAN — that is the fact in question
-      try{ fn(d); }catch(e){}
-    });
+    navigator.mediaSession.setActionHandler(a,d=>{ try{ fn(d); }catch(e){} });
   }catch(e){} };
   /* A LOCK-SCREEN PLAY THAT ARRIVES WHILE WE ARE ALREADY PLAYING is not a
      no-op: it means iOS's idea of the state has drifted from ours, and the
@@ -9185,70 +9173,10 @@ function mediaSessionPos(){
   try{ navigator.mediaSession.setPositionState(
     {duration:dur,position:Math.min(dur,m[p]),playbackRate:1}); }catch(e){}
 }
-/* WHAT THE LOCK SCREEN ACTUALLY REACHED (diagnostic, 1 Sep — remove once this
-   is settled). David reports the controls were on his lock screen BEFORE any
-   Media Session code existed, which means iOS draws that widget for the audio
-   session itself and its buttons may never reach this page at all. A locked
-   phone cannot be watched, so the app says what it saw the moment he returns
-   to it. Silent when nothing arrived, which is itself the answer. */
-document.addEventListener("visibilitychange",()=>{
-  if(document.hidden||!mediaSeen.length) return;
-  const seen=mediaSeen.slice(-6).join(", "); mediaSeen=[];
-  setTimeout(()=>{ try{ toast("Lock screen sent: "+seen); }catch(e){} },600);
-});
-/* STOP, AND REMEMBER WHERE. `stop()` alone parks on `lastPaint`, which is set
-   only inside the rAF tick — and a locked phone runs no rAF, so it is -1 and
-   the park is empty. start() then falls back to the top of the table, which is
-   exactly what David saw: "on a restart, it does start from the beginning of
-   the table though, not from where it stopped."
-   nowPulse() asks the scheduler, which a locked phone DOES keep running. */
-function parkHere(){
-  /* THE POSITION IS RECORDED BEFORE stop(), NOT AFTER (1 Sep, second pass).
-     stop() repaints the lock screen on its way out — and it used to do that
-     while `playing` was already false and `pendingStart` still null, so
-     nowPulse() fell through to 0 and iOS was told the piece was at the
-     beginning. The next one-second update then corrected it, which is exactly
-     what David saw: "the timer jumps to zero ... and then it would jump
-     forward to wherever it was."
-     stop()'s own park line cannot clobber this: it only fires when lastPaint
-     is >= 0, and on a locked phone lastPaint is -1. */
-  const at=nowPulse();
-  if(pendingStart==null&&!loopSec&&at>=0) pendingStart=at;
-  try{ stop(); }catch(e){}
-  try{ if(!C) C=compile(piece); paintPulse(pendingStart); }catch(e){}
-  mediaSessionState();
-  mediaSessionPos();                 // …and the scrubber lands where it stopped
-}
-/* THE GLYPH, ON ITS OWN AND FIRST. This used to be one line inside the same
-   try as the metadata, after it — so anything MediaMetadata threw took the
-   play/pause glyph down with it and left iOS showing whatever it had last.
-   That is David's "it shows the triangle symbol, so it doesn't really pick up
-   that playback is running", and the press that follows is then spent
-   correcting the icon instead of pausing. It is the cheapest call here and the
-   one that must never be skipped, so it stands alone. */
-/* THE ELEMENT IS THE TRANSPORT'S TRUTH, NOT playbackState (1 Sep, after the
-   glyph drifted a second time). Asserting `playbackState` is telling iOS what
-   we think; iOS draws its button from the MEDIA ELEMENT, which is a fact it
-   can check. So the element is kept in lockstep with `playing` and the drift
-   becomes impossible rather than corrected — David's "first it went well,
-   then the lock screen didn't pick up the play state again" is what arguing
-   with it looks like.
-   A paused element KEEPS the Now Playing card — that is how every player
-   offers you a play button on the lock screen — so this does not cost the
-   resume that now works; the element's own play event is still what carries
-   it. sinkArm/sinkOurs keep our sync from reading as the student's press. */
-function sinkSync(){
-  if(!iosSink||iosSink==="failed") return;
-  try{
-    if(playing&&iosSink.paused){ sinkArm("play"); iosSink.play().catch(()=>{}); }
-    else if(!playing&&!iosSink.paused){ sinkArm("pause"); iosSink.pause(); }
-  }catch(e){}
-}
-function mediaSessionState(){
-  sinkSync();                   // the fact first, then what we say about it
-  if(!mediaOK()) return;
-  try{ navigator.mediaSession.playbackState=playing?"playing":"paused"; }catch(e){}
-}
+/* The "Lock screen sent: …" diagnostic that lived here from 1 Sep is GONE —
+   it answered its question (the handlers do fire; the fix was registering
+   them after the element plays) and students should never have seen it. The
+   whole hunt is written up in HANDOVER.md under THE LOCK SCREEN RECIPE. */
 function mediaSessionPaint(){
   if(!mediaOK()) return;
   mediaSessionWire();
@@ -11286,6 +11214,7 @@ function landSymmetry(hdr){
      ours to draw in, and the app settled on giving it half back on 28 Aug — so
      where the floor is the larger, BOTH rows take the floor and stay equal,
      which is the rule he set before he chose the number. */
+  const floor=safeInsets().b/2;
   const target=landEdge();
   /* The bottom row is moved by the BODY's padding, which is what actually
      holds it off the edge — the bar itself carries none in landscape. Measured
