@@ -2653,8 +2653,16 @@ body.phone #pvwrap.sides #pvsvg{width:min(calc(236px*var(--panzoom,1)*var(--panf
 #panlabels,#edPanLabels{-webkit-touch-callout:none; -webkit-user-select:none;
   user-select:none; touch-action:manipulation}
 #panbox{position:relative}
-/* the editor's pan half carries the card's corner buttons — see renderEditbar */
-#panbox .edpan{position:relative}
+/* the editor's card carries the pan's corner buttons — see renderEditbar —
+   and the palettes begin below them, so nothing stands under the pair */
+#panbox .edpals{padding-top:34px}
+/* THE CHORD'S OWN FIELDS ARE MARKED ON THE BENCH (David, 2 Sep: "gently mark
+   the tone fields of the pan that are part of the selected chord, so the user
+   knows which ones they can use"). A groove is written on a reference chord
+   and only that chord's tones may land — placeField refuses the rest with a
+   toast — so the drawing says up front what the toast would say after. Gentle:
+   the soft amber, a faint ring, nothing that could be read as "playing". */
+.pvf.edok .pvbase{fill:var(--dixie-soft); stroke:rgba(var(--dixie-rgb),.5); stroke-width:1.5}
 /* One .ib icon button in the corner gap the pan's circle leaves free — the
    text pill was wider than the gap and sat on the pan (David, 26 Aug). */
 #panmenu,#pancustom{position:absolute; top:8px; right:8px; z-index:2; width:28px; height:28px}
@@ -14391,6 +14399,18 @@ function place(ev){
   refresh();
   if(ctx) fireEvent(Object.assign({},ev),ctx.currentTime+0.01);
 }
+/* which fields of a drawn pan carry the reference chord — the same test
+   placeField makes when a field is tapped, made once for the whole drawing */
+function markChordTones(root){
+  if(!root||!grooveEdit) return;
+  const def=jamDefs().byName[grooveEdit.ref]; if(!def) return;
+  const pcs=def.pcs||[];
+  root.querySelectorAll(".pvf").forEach(g=>{
+    const pos=g.dataset.b!==undefined?botPos(+g.dataset.b+1):+g.dataset.f;
+    const m=myPan.posMidi(pos);
+    g.classList.toggle("edok",m!=null&&pcs.includes(jpc(m)));
+  });
+}
 function placeField(f){
   if(grooveEdit){
     // only the reference chord's tones may land — the whole point of a groove
@@ -14652,7 +14672,13 @@ function renderEditbar(){
         try{localStorage.setItem("hps.panlabels",panLabels)}catch(e){}
         renderEditbar();
       });
-      pane.append(mn,lb);
+      /* ALL THE WAY TO THE RIGHT (David, 2 Sep, with a screenshot of the
+         bench: the pair sat on the pan's rim above field 7). The pan half is
+         exactly the drawing's square, so either of its corners is on the
+         circle; the CARD's corner is free, it is the corner the reading pan
+         already uses for the same two buttons, and the palettes simply start
+         one row lower. Same ids, so the card's own corner rules place them. */
+      E.append(mn,lb);
     } }
   E.querySelectorAll(".key").forEach(b=>b.addEventListener("click",()=>{
     const k=b.dataset.k;
@@ -14670,6 +14696,7 @@ function renderEditbar(){
     else if(k==="gld"){ openGrooveLoadDlg(); return; }
     renderEditbar();
   }));
+  markChordTones(E);
   E.querySelectorAll(".pvf").forEach(g=>{
     // .pvb groups are the underside and carry data-b instead of data-f
     const pos=g.dataset.b!==undefined?botPos(+g.dataset.b+1):+g.dataset.f;
@@ -14771,6 +14798,7 @@ function paintEditDeck(){
     /* the editor draws the UNDERSIDE now, because there is finally something
        to place there (28 Aug). `.pvb` groups carry data-b, not data-f. */
     host.innerHTML=panViewSVG(srcPan,"Tap a field to place it",{under:true});
+    markChordTones(host);
     host.querySelectorAll("[id]").forEach(el=>el.removeAttribute("id"));
     host.querySelectorAll(".pvf").forEach(g=>{
       const pos=g.dataset.b!==undefined?botPos(+g.dataset.b+1):+g.dataset.f;
