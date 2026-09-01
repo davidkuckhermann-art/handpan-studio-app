@@ -2595,6 +2595,29 @@ body.phone #pvwrap.sides #pvsvg{width:min(calc(236px*var(--panzoom,1)*var(--panf
 .pvtint{fill:var(--flash)}
 /* The pan card's own two-way switch, top-right like the score frame's tools —
    Strokes flashes every hit, Chords holds the active chord's fields lit. */
+/* ── THE PAN, HELD UP TO THE LIGHT (David, 1 Sep) ─────────────────────────
+   A long press on the A/1 switcher throws the drawing full screen "so
+   students can see the notes better if they want to doublecheck". It is a
+   SNAPSHOT, not a second pan view: the SVG is cloned as it stands, so it shows
+   exactly the labels and marks the small one shows, and nothing here has to be
+   kept in step with the painter.
+   The scrim is its own dark, not a token: it sits over whatever theme is
+   underneath and white-on-dark reads in both, which is one less thing to get
+   wrong in the theme that is not being looked at. */
+#panZoom{position:fixed; inset:0; z-index:99999; display:none;
+  flex-direction:column; align-items:center; justify-content:center; gap:12px;
+  padding:18px; background:rgba(14,12,10,.86);
+  -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px)}
+#panZoom.on{display:flex}
+#panZoomInner{width:min(94vw,86vh,780px); height:min(94vw,86vh,780px);
+  display:flex; align-items:center; justify-content:center}
+#panZoomInner svg{width:100%; height:100%; overflow:visible}
+#panZoomCap{margin:0; color:#fff; opacity:.9; font-size:13.5px; text-align:center;
+  text-wrap:balance}
+#panZoomCap b{font-weight:600}
+/* a long press must not also select the glyph or raise iOS's callout */
+#panlabels,#edPanLabels{-webkit-touch-callout:none; -webkit-user-select:none;
+  user-select:none; touch-action:manipulation}
 #panbox{position:relative}
 /* One .ib icon button in the corner gap the pan's circle leaves free — the
    text pill was wider than the gap and sat on the pan (David, 26 Aug). */
@@ -5468,6 +5491,16 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <div class="drow"><span>Export</span>
     <button class="ctl" id="setExpBtn"
       title="Save what you hear as MP3 or WAV, or the notes as a MIDI file">Export Audio and MIDI</button></div>
+  <div class="dsep"></div>
+  <!-- WHICH BUILD AM I LOOKING AT (David, 1 Sep). Several sessions publish to
+       the same site in a day, and twice this evening a phone test was
+       inconclusive because nobody could tell whether the device had the fix or
+       the build before it. `document.lastModified` is the SERVED FILE'S own
+       timestamp, so there is no version constant anyone can forget to bump —
+       it is right by construction, and on a stale service-worker copy it
+       reports the OLD time, which is exactly the fault it exists to reveal. -->
+  <div class="drow"><span>Version</span>
+    <b id="setVer" style="font-size:13px;font-variant-numeric:tabular-nums">&mdash;</b></div>
   <div class="row"><span class="spacer"></span><button class="ctl" id="setClose">Close</button></div>
 </dialog>
 
@@ -5476,6 +5509,12 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
      whether the ending fades. Everything else — tempo, groove map, breaks,
      your pan — is already answered by the app you are looking at, and asking
      twice is how an export dialog turns into a mixing desk. -->
+<!-- the zoomed pan: a clone of #pvsvg, shown over everything (1 Sep) -->
+<div id="panZoom" role="dialog" aria-modal="true" aria-label="Pan, enlarged">
+  <div id="panZoomInner"></div>
+  <p id="panZoomCap"></p>
+</div>
+
 <dialog id="expDlg">
   <h3>Export Audio and MIDI</h3>
   <p class="hint" id="expWhat"></p>
@@ -6324,7 +6363,16 @@ function ensureCtx(){
   dry=ctx.createGain(); wet=ctx.createGain(); dry.connect(limiter); wet.connect(limiter);
   conv=ctx.createConvolver(); conv.buffer=makeIR(1.3,2.4); conv.connect(wet);
   send=ctx.createGain(); sendOn=false; setWet(16);
-  ctx.onstatechange=()=>{ if(playing&&ctx.state!=="running") ctx.resume().catch(()=>{});
+  /* THE APP NO LONGER UN-PAUSES ITSELF (David, 1 Sep — option A, chosen).
+     This line used to resume the context the moment it left "running" while
+     playing, which made the lock screen's pause button impossible: iOS
+     suspends the session, the app resumed it a frame later, and the music
+     carried on with only a hiccup to show for it. Judging a pause is now
+     watchAudioInterruption's job alone, and it waits to see whether the
+     context comes back BY ITSELF before deciding.
+     The sink is still nudged: an <audio> element that iOS paused is not the
+     same event, and leaving it paused would silence a context that is running. */
+  ctx.onstatechange=()=>{
     if(playing&&iosSink&&iosSink!=="failed"&&iosSink.paused) iosSink.play().catch(()=>{}); };
 }
 let live=[];
@@ -7147,6 +7195,17 @@ function setSheet(v){
   try{ localStorage.setItem("hps.sheet."+(root.dataset.theme||"dark"),v); }catch(e){}
   loadHandCol(); applyHandColors(); paintThemeUI();
 }
+/* the served file's own Last-Modified, read back as a build stamp */
+function paintVersion(){
+  const el=$("setVer"); if(!el) return;
+  let out=document.lastModified;
+  try{
+    const d=new Date(document.lastModified);
+    if(!isNaN(d)) out=d.toLocaleString(undefined,
+      {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
+  }catch(e){}
+  el.textContent=out||"unknown";
+}
 function paintThemeUI(){
   const sel=$("themeSel");
   if(sel) sel.value=document.documentElement.dataset.mode||"auto";
@@ -7819,9 +7878,15 @@ function watchAudioInterruption(){
     const mine=ctx;                    // a revive swaps it; that check is not ours
     setTimeout(async ()=>{
       if(!playing||ctx!==mine) return;
-      if(ctx.state!=="running"){ try{ await ctx.resume(); }catch(e){} }
-      if(!playing||ctx!==mine) return;
-      if(await clockAlive(200)) return;        // it came back — carry on
+      /* A BLIP COMES BACK BY ITSELF; A PAUSE DOES NOT. The window is what
+         separates them, and it is why this no longer calls resume(): forcing
+         the context back made every pause look like a blip, which is exactly
+         the bug. A notification's momentary duck still survives — the context
+         returns to "running" on its own and the clock proves it — while a
+         deliberate pause stays suspended and parks below.
+         (Kept from the session that fixed blips: the clock is asked, never the
+         state, once the context claims to be running again.) */
+      if(ctx.state==="running"&&await clockAlive(200)) return;   // a blip — carry on
       /* the marker is the honest resume point, but it is painted from rAF —
          which is already frozen by now, and has never run at all if the music
          was taken away in its first moments. The scheduler's own pulse stands
@@ -12169,6 +12234,63 @@ function panViewSVG(pan,label,opts){
    and setPan() never fitted at all — so the fit was computed against the
    previous pan and a tall one ran under the bottom bar (David, 26 Aug: "part
    is cut off"). Refit at the end of every pan render. */
+/* ── LONG PRESS ON THE SWITCHER ZOOMS THE PAN ─────────────────────────────
+   The A/1 button already toggles note names and numbers on a tap; holding it
+   throws the same drawing full screen. Two rules make that safe to add to a
+   button that already does something:
+     · THE TAP MUST NOT ALSO FIRE. The switcher's own click listener was
+       registered when the button was built, and listeners on the TARGET run in
+       registration order whatever their capture flag — so stopping it there is
+       a race we would lose. The guard sits on `document` in the capture phase,
+       which runs before the target is reached at all.
+     · A DRAG IS NOT A PRESS. A finger that travels more than a few pixels is
+       scrolling, and cancels. */
+let pzOpenedAt=0;
+function longPressZoom(el){
+  if(!el||el.__pz) return; el.__pz=true;
+  let t=null, x=0, y=0;
+  const cancel=()=>{ if(t){ clearTimeout(t); t=null; } };
+  el.addEventListener("pointerdown",e=>{
+    x=e.clientX; y=e.clientY; cancel();
+    t=setTimeout(()=>{ t=null; pzOpenedAt=Date.now(); openPanZoom(); },450);
+  });
+  el.addEventListener("pointermove",e=>{
+    if(t&&(Math.abs(e.clientX-x)>8||Math.abs(e.clientY-y)>8)) cancel();
+  });
+  ["pointerup","pointercancel","pointerleave"].forEach(k=>el.addEventListener(k,cancel));
+}
+/* the tap the long press must swallow */
+document.addEventListener("click",e=>{
+  if(Date.now()-pzOpenedAt>700) return;
+  if(!e.target.closest||!e.target.closest("#panlabels,#edPanLabels")) return;
+  e.preventDefault(); e.stopPropagation();
+},true);
+function openPanZoom(){
+  const src=$("pvsvg"); if(!src) return;
+  const host=$("panZoomInner"); if(!host) return;
+  host.innerHTML="";
+  /* ids are stripped from the copy: two elements answering to #pvsvg would
+     make every later getElementById a coin toss */
+  const c=src.cloneNode(true);
+  c.removeAttribute("id");
+  c.querySelectorAll("[id]").forEach(el=>el.removeAttribute("id"));
+  host.appendChild(c);
+  const nm=(myPan&&myPan.pan)?myPan.pan.name:"";
+  $("panZoomCap").innerHTML=(nm?"<b>"+nm.replace(/[<&]/g,"")+"</b> &middot; ":"")
+    +"tap anywhere to close";
+  const z=$("panZoom");
+  /* a fullscreen element is the only thing painted, so the overlay has to be
+     inside it — the same reasoning openDlg uses for flat dialogs */
+  const fs=document.fullscreenElement||document.webkitFullscreenElement;
+  (fs||document.body).appendChild(z);
+  z.classList.add("on");
+}
+function closePanZoom(){
+  const z=$("panZoom"); if(!z||!z.classList.contains("on")) return;
+  z.classList.remove("on");
+  $("panZoomInner").innerHTML="";                 // the clone is not kept
+  if(z.parentElement!==document.body) document.body.appendChild(z);
+}
 function renderPanPanel(){
   const r=renderPanPanelInner();
   if(PHONE) phoneFit();
@@ -12242,6 +12364,7 @@ function renderPanPanelInner(){
       +' fill="currentColor">'+(nt?"A":"1")+'</text></svg>';
     lb.title=nt?"Note names are big — tap for numbers":"Numbers are big — tap for note names";
     lb.setAttribute("aria-label",lb.title);
+    longPressZoom(lb);                 // hold it to see the pan full screen
     lb.addEventListener("click",()=>{
       panLabels=nt?"num":"note";
       try{localStorage.setItem("hps.panlabels",panLabels)}catch(e){}
@@ -22645,6 +22768,8 @@ function boot(){
     // the quiz owns the keyboard while it runs — space must not start the
     // hidden piece playing behind the stage
     if(quizOn&&!typing&&e.key===" "){ e.preventDefault(); qzKey(e); return; }
+    if(e.key==="Escape"&&$("panZoom").classList.contains("on")){
+      e.preventDefault(); closePanZoom(); return; }
     if(e.key===" "&&!typing){ e.preventDefault(); togglePlay(); return; }
     if((e.key==="t"||e.key==="T")&&!typing&&!editing&&videoSeen){
       e.preventDefault(); $("tapBtn").click(); return; }
@@ -22917,10 +23042,13 @@ function boot(){
   window.addEventListener("pagehide",saveRoom);
   document.addEventListener("visibilitychange",()=>{
     if(document.visibilityState==="hidden") saveRoom(); });
-  $("setBtn").addEventListener("click",()=>openDlg($("setDlg")));
+  $("setBtn").addEventListener("click",()=>{ paintVersion(); openDlg($("setDlg")); });
   $("setClose").addEventListener("click",()=>$("setDlg").close());
   /* the Settings sheet steps aside for the export dialog — two modal sheets
      stacked is a phone with nowhere to tap */
+  /* the zoomed pan closes on a tap anywhere in it, and on Escape — it holds
+     nothing to lose, so every way out is the same way out */
+  $("panZoom").addEventListener("pointerup",closePanZoom);
   $("setExpBtn").addEventListener("click",()=>{ $("setDlg").close(); openExport(); });
   /* nothing to clean up on close any more: the file is handed to the browser
      the moment it exists, so the sheet holds no blob of its own (1 Sep) */
@@ -23894,6 +24022,7 @@ if(PHONE){
     b.setAttribute("aria-label",b.title);
   }
   paintEdPanLabels();
+  longPressZoom($("edPanLabels"));
   $("edPanLabels").addEventListener("click",()=>{
     panLabels=panLabels==="note"?"num":"note";
     try{localStorage.setItem("hps.panlabels",panLabels)}catch(e){}
