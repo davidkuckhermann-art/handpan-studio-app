@@ -7309,6 +7309,14 @@ function sched(){
         fire(clickBuf(rel%m.bp===0),nextTime,1);
       // `ab` — the absolute pulse, so the paint can ask the same question
       fired.push({pi:p2,at:nextTime,ab:nextPulse}); if(fired.length>200) fired.splice(0,80);
+      /* THE LOCK SCREEN IS TOLD WHERE WE ARE, about once a second. iOS runs
+         its own clock from the last position it was handed, so one figure at
+         the start becomes a scrubber that drifts and then jumps back. This is
+         driven from the scheduler because the scheduler is what a locked phone
+         keeps running. */
+      if(mediaOK()&&ctx.currentTime-mediaPosAt>1){
+        mediaPosAt=ctx.currentTime; try{ mediaSessionPos(); }catch(e){}
+      }
     }catch(e){ /* one bad pulse is skipped, never repeated */ }
     // …and the clock advances whatever happened above. A duration that can't
     // be read would otherwise stall it (or spin it), so it has a floor.
@@ -8849,18 +8857,47 @@ function updateScoreTools(){
    one-line experiment, deliberately not taken here, because it would change
    the audio path that currently works. */
 const mediaOK=()=>{ try{ return !!(navigator.mediaSession); }catch(e){ return false; } };
-let mediaWired=false;
+let mediaWired=false, mediaPosAt=-9, mediaSeen=[];
+/* WHERE THE MUSIC ACTUALLY IS, ASKED OF THE SCHEDULER (1 Sep, second pass).
+   The first version read `lastPaint`, which is set ONLY inside tick() — the
+   requestAnimationFrame loop — and a locked phone does not run rAF. So the
+   lock screen was told position 0 once and never corrected, which is why its
+   scrubber ran on by itself and snapped back to zero on a tap.
+   This is the trap this file already warned about on 1 Sep, in the entry about
+   background playback: *the marker is painted from rAF, frozen by then, so the
+   scheduler's own pulse stands in*. It stands in here too. `fired[]` is filled
+   by the scheduler, which a locked phone DOES keep running — that is why the
+   music continues at all — so it is the one honest clock available. */
+function nowPulse(){
+  if(playing&&ctx&&fired.length){
+    const now=ctx.currentTime;
+    for(let i=fired.length-1;i>=0;i--) if(fired[i].at<=now) return fired[i].pi;
+  }
+  if(pendingStart!=null) return pendingStart;
+  return lastPaint>=0?lastPaint:0;
+}
 function mediaSessionWire(){
   if(mediaWired||!mediaOK()) return;
   mediaWired=true;
-  const set=(a,fn)=>{ try{ navigator.mediaSession.setActionHandler(a,fn); }catch(e){} };
+  /* DIAGNOSTIC, and it should come out once this is settled. David reports the
+     controls were on his lock screen BEFORE any of this code existed — so iOS
+     draws that widget for the audio session itself, and its buttons may never
+     reach our JavaScript at all. Nothing else can tell us whether a handler
+     ran on a locked phone, so each one leaves a mark and the app says what it
+     saw when he comes back to it. */
+  const set=(a,fn)=>{ try{
+    navigator.mediaSession.setActionHandler(a,d=>{
+      mediaSeen.push(a);            // it RAN — that is the fact in question
+      try{ fn(d); }catch(e){}
+    });
+  }catch(e){} };
   set("play",()=>{ if(!playing) togglePlay(); });
   set("pause",()=>{ if(playing) stop(); });
   set("stop",()=>{ if(playing) stop(); });
   /* the top of this table, or the previous one if we are already at the top */
   set("previoustrack",()=>{
     try{
-      const es=arrEntries(), here=(lastPaint>=0?lastPaint:(pendingStart||0));
+      const es=arrEntries(), here=nowPulse();
       let i=es.findIndex(e=>here>=e.from&&here<e.to); if(i<0) i=0;
       const intoTable=here-es[i].from, m=SM(piece,es[i].nm);
       const target=(intoTable>m.bp&&i>=0)?es[i].from:(i>0?es[i-1].from:0);
@@ -8869,12 +8906,23 @@ function mediaSessionWire(){
   });
   set("nexttrack",()=>{
     try{
-      const es=arrEntries(), here=(lastPaint>=0?lastPaint:(pendingStart||0));
+      const es=arrEntries(), here=nowPulse();
       let i=es.findIndex(e=>here>=e.from&&here<e.to); if(i<0) i=0;
       seekToPulse(i+1<es.length?es[i+1].from:0);
     }catch(e){}
   });
   set("seekto",d=>{ try{ if(d&&d.seekTime!=null) seekToPulse(pulseAtSeconds(d.seekTime)); }catch(e){} });
+  /* THE GREY BUTTONS IN DAVID'S SCREENSHOT WERE ⏪ AND ⏩, NOT ⏮ AND ⏭.
+     iOS drew seek controls and disabled them, because only previoustrack and
+     nexttrack had handlers. A control with no handler is drawn dead — which
+     looks exactly like a control that is broken. Ten seconds is the step every
+     player uses, and it is roughly a bar at these tempi. */
+  const nudge=(dir,secs)=>()=>{ try{
+    const at=timeOfPulse(nowPulse())+dir*(secs||10);
+    seekToPulse(pulseAtSeconds(Math.max(0,at)));
+  }catch(e){} };
+  set("seekbackward",d=>nudge(-1,d&&d.seekOffset)());
+  set("seekforward",d=>nudge(1,d&&d.seekOffset)());
 }
 /* seconds ↔ pulses, walked rather than divided, because the grid is not even:
    sections carry their own metre and subdivision, and unit 16 halves the count */
@@ -8892,6 +8940,35 @@ function pulseAtSeconds(sec){
   for(let i=1;i<m.length;i++) if(m[i]>sec) return i-1;
   return Math.max(0,m.length-2);
 }
+/* position only — the scheduler calls this once a second, so it must not
+   rebuild metadata or walk the piece more than it has to */
+let mediaMap=null, mediaMapKey="";
+function mediaTimes(){
+  const key=[bpm,halfSpeed,piece&&piece.unit,C&&C.total].join("|");
+  if(mediaMap&&mediaMapKey===key) return mediaMap;
+  const out=[0]; let t=0; const n=(C&&C.total)||1;
+  for(let i=0;i<n;i++){ let d=0; try{ d=pulseDurOf(i); }catch(e){} t+=(d>0.0005?d:0.12); out.push(t); }
+  mediaMapKey=key; mediaMap=out; return out;
+}
+function mediaSessionPos(){
+  if(!mediaOK()||!navigator.mediaSession.setPositionState||!C) return;
+  const m=mediaTimes(), dur=m[m.length-1];
+  if(!(dur>0)) return;
+  const p=Math.max(0,Math.min(m.length-1,Math.round(nowPulse())));
+  try{ navigator.mediaSession.setPositionState(
+    {duration:dur,position:Math.min(dur,m[p]),playbackRate:1}); }catch(e){}
+}
+/* WHAT THE LOCK SCREEN ACTUALLY REACHED (diagnostic, 1 Sep — remove once this
+   is settled). David reports the controls were on his lock screen BEFORE any
+   Media Session code existed, which means iOS draws that widget for the audio
+   session itself and its buttons may never reach this page at all. A locked
+   phone cannot be watched, so the app says what it saw the moment he returns
+   to it. Silent when nothing arrived, which is itself the answer. */
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden||!mediaSeen.length) return;
+  const seen=mediaSeen.slice(-6).join(", "); mediaSeen=[];
+  setTimeout(()=>{ try{ toast("Lock screen sent: "+seen); }catch(e){} },600);
+});
 function mediaSessionPaint(){
   if(!mediaOK()) return;
   mediaSessionWire();
@@ -8912,7 +8989,7 @@ function mediaSessionPaint(){
     ms.playbackState=playing?"playing":"paused";
     if(ms.setPositionState&&C){
       const dur=pieceLength();
-      const pos=Math.min(dur,timeOfPulse(lastPaint>=0?lastPaint:(pendingStart||0)));
+      const pos=Math.min(dur,timeOfPulse(nowPulse()));
       if(dur>0) ms.setPositionState({duration:dur,position:Math.max(0,pos),playbackRate:1});
     }
   }catch(e){}
