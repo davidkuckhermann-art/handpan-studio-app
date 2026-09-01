@@ -5434,10 +5434,16 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
        sheet under a heading of its own rather than among the switches (David,
        1 Sep: "accessible through the settings menu"). One door: what it offers
        is decided behind it by the room you are in. -->
-  <h4>Export</h4>
-  <div class="drow"><span>Audio file</span>
+  <!-- THE ROW NAMES ITSELF, so the section heading went (David, 1 Sep: the
+       item is "just be labeled Export", with "Export Audio and MIDI" on the
+       right). A heading reading Export above a row reading Export above a
+       button reading Export Audio and MIDI is the same word three times.
+       The `dsep` above still fences it off from Playback, and the phone never
+       saw the heading anyway — its sweep carries `.drow` children only, so
+       the row's own label has always been the whole story there. -->
+  <div class="drow"><span>Export</span>
     <button class="ctl" id="setExpBtn"
-      title="Save what you hear as an MP3 or a WAV file">Export audio…</button></div>
+      title="Save what you hear as MP3 or WAV, or the notes as a MIDI file">Export Audio and MIDI</button></div>
   <div class="row"><span class="spacer"></span><button class="ctl" id="setClose">Close</button></div>
 </dialog>
 
@@ -5447,7 +5453,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
      your pan — is already answered by the app you are looking at, and asking
      twice is how an export dialog turns into a mixing desk. -->
 <dialog id="expDlg">
-  <h3>Export audio</h3>
+  <h3>Export Audio and MIDI</h3>
   <p class="hint" id="expWhat"></p>
   <!-- shown in Jam only: a jam has no ending, so it needs a length -->
   <div class="drow" id="expCycRow"><span>Cycles of the jam</span>
@@ -5469,6 +5475,9 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <p class="hint" id="expProg" style="display:none"></p>
   <p class="hint">MP3 is small enough to send; WAV is lossless, and about eight
     times the size — take it when the file is going into a video edit.
+    <b>MIDI</b> carries the notes rather than the sound: your pan's real pitches,
+    for playing back with any instrument in a music program. It is tiny, it is
+    written instantly, and the fade-out does not apply to it.
     MP3 encoding by <a href="https://lame.sourceforge.net" target="_blank"
     rel="noopener noreferrer">LAME</a>.</p>
   <!-- NO `on` ON SAVE MP3 (David, 1 Sep: "the Save MP3 button is highlighted
@@ -5481,6 +5490,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
        hint below, and by sitting where the eye ends. -->
   <div class="row"><span class="spacer"></span>
     <button class="ctl" id="expClose">Close</button>
+    <button class="ctl" id="expMidi">Save MIDI</button>
     <button class="ctl" id="expWav">Save WAV</button>
     <button class="ctl" id="expMp3">Save MP3</button></div>
 </dialog>
@@ -7902,13 +7912,16 @@ function exportVoice(ev,trans){
   return pair((art==="open"?bankBuf("o"+midi):art==="mute"?bankBuf("m"+midi):null)
     ||synthBuf(midi,art));
 }
-/* Every stroke of `pulses` pulses, with the time each one falls at. The pulse
-   counter is absolute (breaks count cycles) while the score is read folded, so
-   a jam repeats its form and the breaks still know which pass they are on.
+/* ONE WALK, TWO EXPORTS (1 Sep). Audio and MIDI must agree about every
+   decision that places a stroke in time — feel and swing, jam breaks, the
+   pulse floor, the folded score against the absolute cycle counter — and the
+   surest way to guarantee that is to have one loop and two visitors rather
+   than two loops and a promise. `visit` sees every sounding event; `onPulse`
+   sees every pulse whether it carries one or not, which is how the MIDI file
+   finds its section boundaries.
    `loopSec` is put aside for the walk — synchronously, so nothing can observe
    it half-done — because a loop is a practice tool and this exports the piece. */
-function exportPlan(pulses){
-  const out=[]; const trans=!!(mode==="trans"&&MAP);
+function exportWalk(pulses,visit,onPulse){
   const savedLoop=loopSec; loopSec=null;
   let t=0;
   try{
@@ -7921,17 +7934,24 @@ function exportPlan(pulses){
         let at=t;
         if(feelOn) at+=feelShift(rel,m,dur);
         else if(swing>0&&m.sub%2===0&&(rel%2)===1) at+=swing/100*dur/3;
+        if(onPulse) onPulse(pi,ab,t,m,sec);
         const bk=jamOn?jamBreakInfo(ab):null;
         if(!(bk&&bk.inBreak&&!bk.first))
-          for(const ev of (C.byPulse.get(pi)||[])){
-            const vs=exportVoice(ev,trans);
-            if(vs) for(const v of vs) out.push({buf:v.buf,at:Math.max(0,at+v.off),gain:v.gain});
-          }
+          for(const ev of (C.byPulse.get(pi)||[])) visit(ev,at,ab,m,sec);
       }catch(e){ /* one bad pulse is skipped, never repeated — sched()'s rule */ }
       t+=dur;
     }
   }finally{ loopSec=savedLoop; }
-  return {evs:out,end:t};
+  return t;
+}
+/* Every stroke of `pulses` pulses, as buffers to sound. */
+function exportPlan(pulses){
+  const out=[]; const trans=!!(mode==="trans"&&MAP);
+  const end=exportWalk(pulses,(ev,at)=>{
+    const vs=exportVoice(ev,trans);
+    if(vs) for(const v of vs) out.push({buf:v.buf,at:Math.max(0,at+v.off),gain:v.gain});
+  });
+  return {evs:out,end};
 }
 /* How long the file will be, without building it — the dialog quotes this
    before you commit to a five-minute render. */
@@ -8101,6 +8121,190 @@ async function mp3Blob(ab,onProg){
   return new Blob(parts,{type:"audio/mpeg"});
 }
 
+/* ══════════════════ MIDI EXPORT ═════════════════════════════════════════════
+   David, at the very start of this feature: "MIDI should relate to the actual
+   pitches of the tone fields. I don't know how you compute this internally, so
+   that when the MIDI for a tune is exported and somebody throws it in a DAW and
+   puts another instrument on it, it will play exactly the same notes."
+
+   IT DOES, AND EXACTLY IS THE RIGHT WORD. Every pan in the library is defined
+   by note NAMES — "D3", "A♭4" — which midiOf() turns into real MIDI numbers at
+   boot; posMidi() is what the player already asks to pick a sample. So the
+   numbers written here are not a translation of the notation, they ARE the
+   numbers the app sounds. The MIDI and the MP3 of one piece carry the same
+   pitches because they read the same function, and both follow the pan you
+   have chosen through the transposition map — what you hear is what is
+   written.
+
+   DECISIONS TAKEN HERE, each easy to change:
+   · A NOTE RINGS UNTIL THE NEXT STROKE ON ITS OWN FIELD, capped at four
+     seconds. A handpan rings; MIDI needs a note-off, and a fixed short length
+     turns a pan into a marimba. A MUTED stroke is short by definition (0.18 s)
+     — the one place the notation's articulation can survive into MIDI at all.
+   · ONE TRACK FOR THE NOTES. It was two, split by hand, until David said the
+     split was not wanted: the sticking is a READING aid and a DAW is not
+     where anyone reads it. (It also retired a trap — this app's `hand` values
+     are COLOURS, "L" being black being the RIGHT hand, so a hand-split file
+     had to go through handLetter() or every track was labelled backwards.)
+   · PERCUSSION GOES TO CHANNEL 10, the General MIDI drum channel, on a track
+     of its own: a piano loaded onto the pitched tracks then ignores it, and a
+     drum plugin plays it. Ghosts stay silent, exactly as in playback.
+   · NO PROGRAM CHANGE IS WRITTEN. He said someone will "put another instrument
+     on it" — so the file must not arrive with an opinion about which.
+   · SWING AND THE GROOVE MAP ARE HONOURED, because the walk is shared with the
+     audio and the two must not disagree. Turn them off in the app for a
+     straight grid.
+   The fade-out does not apply: there is nothing to fade in a note list. */
+const MIDI_PPQ=960;            // divides by 3, 4 and 5 — triplets and 32nds land exactly
+const MIDI_MAXRING=4.0;        // seconds a note may ring before it is let go
+const MIDI_MUTE=0.18;          // a damped stroke, in seconds
+/* General MIDI percussion. Hand clap for the slap, muted conga for the tak,
+   low wood block for the knock — near enough to read at a glance, and the one
+   line to edit if David wants different drums. */
+const MIDI_PERC={slap:39,tak:62,knock:77};
+
+function vlq(n){                       // MIDI's variable-length delta times
+  n=Math.max(0,Math.round(n));
+  const out=[n&0x7f]; n=Math.floor(n/128);
+  while(n>0){ out.unshift((n&0x7f)|0x80); n=Math.floor(n/128); }
+  return out;
+}
+/* Meta text must survive a DAW that assumes Latin-1, so the accidentals are
+   transliterated the way filenames are and anything still non-ASCII is
+   dropped rather than written as bytes nobody can read. */
+function midiText(str){
+  const a=String(str).replace(/♭/g,"b").replace(/♯/g,"#")
+    /* dashes and quotes become their ASCII cousins BEFORE the strip, or a
+       title reads "Handpan Studio  D Kurd 10" with a hole where the em dash
+       was — found by parsing the file back rather than by looking at it */
+    .replace(/[—–]/g,"-").replace(/[""]/g,'"').replace(/['']/g,"'")
+    .replace(/·/g,"-")
+    .replace(/[^\x20-\x7e]/g,"").replace(/\s+/g," ").trim();
+  return [...a].map(c=>c.charCodeAt(0));
+}
+function midiMeta(type,bytes){ return [0xFF,type,...vlq(bytes.length),...bytes]; }
+function midiTrack(events){
+  // offs before ons at the same instant, metas before either
+  events.sort((a,b)=>a.tick-b.tick||a.pri-b.pri);
+  const out=[]; let last=0;
+  for(const e of events){ out.push(...vlq(e.tick-last),...e.data); last=e.tick; }
+  out.push(0x00,0xFF,0x2F,0x00);                    // end of track
+  return out;
+}
+function midiChunk(id,body){
+  const n=body.length;
+  return [...midiText(id),(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255,...body];
+}
+const midiVel=ev=>Math.max(1,Math.min(127,Math.round(evGain(ev)*110)));
+
+function midiPlan(pulses){
+  const trans=!!(mode==="trans"&&MAP);
+  const notes=[], perc=[], sigs=[];
+  let lastSec=null;
+  const end=exportWalk(pulses,
+    (ev,at)=>{
+      if(ev.v==="ghost") return;                    // notated, not sounded
+      const vel=midiVel(ev);
+      if(ev.v==="perc"){
+        const n=MIDI_PERC[ev.s]||MIDI_PERC.tak;
+        if(ev.roll) perc.push({at:Math.max(0,at-0.045),note:n,vel:Math.round(vel*0.45)});
+        perc.push({at,note:n,vel});
+        return;
+      }
+      let f=ev.f;
+      if(trans){ f=MAP[f]; if(f===null||f===undefined) return; }
+      const midi=myPan.posMidi(f);
+      if(midi===null||midi===undefined) return;     // field missing on this pan
+      const art=ev.art||"open", hand=ev.hand;
+      if(ev.roll) notes.push({at:Math.max(0,at-0.045),pos:f,midi,vel:Math.round(vel*0.45),hand,art});
+      notes.push({at,pos:f,midi,vel,hand,art});
+    },
+    (pi,ab,t,m,sec)=>{
+      if(sec.name!==lastSec){ lastSec=sec.name; sigs.push({at:t,beats:m.beats}); }
+    });
+  /* HOW LONG EACH NOTE RINGS — TWO PASSES, AND BOTH ARE NEEDED.
+     FIRST by POSITION, because that is the musical question: a field rings
+     until that field is struck again, and two fields can carry the same note
+     on an extended pan, so re-striking one must not cut the other short.
+     THEN by PITCH, because that is the MIDI question, and it is a different
+     one: a note number is either sounding or it is not. Two fields at the
+     same pitch, overlapping, would send on-on-off-off and leave the first
+     note hanging until the end of the piece in most players — a drone under
+     the tune. Clamping the earlier note to just before the later one costs
+     nothing when the pitches are distinct, which is nearly always. */
+  const ring=n=>n.art==="mute"?MIDI_MUTE:MIDI_MAXRING;
+  const group=(key)=>{
+    const m=new Map();
+    for(const n of notes){ const k=key(n);
+      if(!m.has(k)) m.set(k,[]); m.get(k).push(n); }
+    return m;
+  };
+  for(const list of group(n=>String(n.pos)).values()){
+    list.sort((a,b)=>a.at-b.at);
+    list.forEach((n,i)=>{
+      const next=list[i+1]?list[i+1].at-0.01:Infinity;
+      n.off=Math.max(n.at+0.05,Math.min(n.at+ring(n),next,end+MIDI_MAXRING));
+    });
+  }
+  for(const list of group(n=>n.midi).values()){
+    list.sort((a,b)=>a.at-b.at);
+    list.forEach((n,i)=>{
+      const next=list[i+1]?list[i+1].at-0.01:Infinity;
+      if(n.off>next) n.off=Math.max(n.at+0.02,next);
+    });
+  }
+  return {notes,perc,sigs,end};
+}
+function midiBlob(pulses){
+  const plan=midiPlan(pulses);
+  if(!plan.notes.length&&!plan.perc.length) throw new Error("there is nothing to export");
+  const bpm=effBpm();                       // half-speed included, as the audio does
+  const tick=sec=>Math.round(sec*bpm/60*MIDI_PPQ);
+  const unit=piece.unit||4;                 // the note value one COUNT stands for
+  const dd=Math.round(Math.log2(unit));
+
+  /* track 0 — the conductor: what this is, how fast, and in what metre */
+  const t0=[{tick:0,pri:0,data:midiMeta(0x03,midiText(expTargetName()))},
+            {tick:0,pri:0,data:midiMeta(0x01,midiText(
+               "Handpan Studio — "+(myPan&&myPan.pan?myPan.pan.name:"pan")
+               +(mode==="trans"&&MAP?" (transposed)":"")))}];
+  const us=Math.round(60000000/bpm);
+  t0.push({tick:0,pri:0,data:midiMeta(0x51,[(us>>16)&255,(us>>8)&255,us&255])});
+  let lastSig="";
+  for(const g of plan.sigs){
+    const key=g.beats+"/"+unit;
+    if(key===lastSig) continue; lastSig=key;
+    t0.push({tick:tick(g.at),pri:0,data:midiMeta(0x58,[g.beats,dd,24,8])});
+  }
+
+  /* ONE TRACK FOR THE NOTES (David, 1 Sep: "we don't need to separate hands
+     for the midi"). It was two, named through handLetter() — which mattered,
+     because this app's `hand` values are COLOURS and writing them literally
+     labels a file backwards. That trap is simply gone with the split: the
+     sticking is a READING aid, and a DAW is not where anyone reads it.
+     The percussion keeps its own track, since that is a channel split rather
+     than a hand one. */
+  const notes=[{tick:0,pri:0,data:midiMeta(0x03,midiText("Handpan"))}];
+  for(const n of plan.notes){
+    notes.push({tick:tick(n.at),pri:2,data:[0x90,n.midi,n.vel]});
+    notes.push({tick:tick(n.off),pri:1,data:[0x80,n.midi,0x40]});
+  }
+  const tracks=[midiTrack(t0)];
+  if(plan.notes.length) tracks.push(midiTrack(notes));
+  if(plan.perc.length){
+    const p=[{tick:0,pri:0,data:midiMeta(0x03,midiText("Percussion"))}];
+    for(const e of plan.perc){
+      p.push({tick:tick(e.at),pri:2,data:[0x99,e.note,e.vel]});          // channel 10
+      p.push({tick:tick(e.at+0.12),pri:1,data:[0x89,e.note,0x40]});
+    }
+    tracks.push(midiTrack(p));
+  }
+  const head=midiChunk("MThd",[0,1,(tracks.length>>8)&255,tracks.length&255,
+                               (MIDI_PPQ>>8)&255,MIDI_PPQ&255]);
+  const bytes=[...head]; for(const t of tracks) bytes.push(...midiChunk("MTrk",t));
+  return new Blob([new Uint8Array(bytes)],{type:"audio/midi"});
+}
+
 /* ---- the dialog ------------------------------------------------------- */
 /* A FLAT MUST NOT BECOME A NATURAL ON THE WAY TO THE FILE SYSTEM. The .hps
    saver's `[^\w -]+` → "" is fine for a title someone typed, and quietly wrong
@@ -8135,7 +8339,7 @@ function paintExpFade(){
 function paintExpName(){
   let nm=""; try{ nm=expTargetName(); }catch(e){}
   $("expNameVal").textContent=nm;
-  $("expNameExt").textContent=nm?" — .mp3 or .wav":"";
+  $("expNameExt").textContent=nm?" — .mp3, .wav or .mid":"";
 }
 function paintExpSize(){
   paintExpName();
@@ -8184,16 +8388,40 @@ function expTargetName(){
                  :(piece.title||"Handpan");
   return expFileName(raw)+(jamOn?" ("+expCycles()+"x)":"");
 }
+/* ONE PLACE A FILE LEAVES THE APP, whatever made it. A megabyte figure is
+   silly for a MIDI file of a few kilobytes, so the size reads in whichever
+   unit is honest. */
+function expDeliver(blob,full){
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=full; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),8000);
+  const sz=blob.size<400000?(Math.round(blob.size/1024)+" KB")
+                           :((blob.size/1048576).toFixed(1)+" MB");
+  $("expProg").textContent="Saved to your downloads — "+full+", "+sz;
+  toast("Exported "+full);
+}
 async function doExport(fmt){
   if(expBusy) return;
-  const ext=fmt==="mp3"?"mp3":"wav";
+  const ext=fmt==="mp3"?"mp3":fmt==="mid"?"mid":"wav";
   const full=expTargetName()+"."+ext;
-  const prog=$("expProg"), btns=[$("expMp3"),$("expWav")];
+  const prog=$("expProg"), btns=[$("expMp3"),$("expWav"),$("expMidi")];
   const say=t=>{ prog.textContent=t; };
   expBusy=true;
   btns.forEach(b=>b.disabled=true);
-  prog.style.display=""; say("Getting the samples ready…");
+  prog.style.display="";
   try{
+    /* MIDI IS A NOTE LIST, so it needs neither the audio context nor a
+       decoded sample nor a render — it is written in a few milliseconds from
+       the same walk the audio uses, and returns before the others have
+       finished clearing their throat. */
+    if(fmt==="mid"){
+      say("Writing the MIDI…");
+      const blob=midiBlob(expPulses());
+      expDeliver(blob,full);
+      return;
+    }
+    say("Getting the samples ready…");
     ensureCtx();
     if(ctx.state!=="running"){ try{ await ctx.resume(); }catch(e){} }
     /* EVERY SAMPLE, DECODED, BEFORE A NOTE IS PLACED. bankBuf() answers null
@@ -8211,12 +8439,7 @@ async function doExport(fmt){
       await new Promise(r=>setTimeout(r,0));
       blob=wavBlob(buf);
     }
-    const a=document.createElement("a");
-    a.href=URL.createObjectURL(blob);
-    a.download=full; a.click();
-    setTimeout(()=>URL.revokeObjectURL(a.href),8000);
-    say("Saved to your downloads — "+full+", "+(blob.size/1048576).toFixed(1)+" MB");
-    toast("Exported "+full);
+    expDeliver(blob,full);
   }catch(e){
     say("Export failed — "+((e&&e.message)||"unknown"));
   }finally{
@@ -8602,12 +8825,113 @@ function updateScoreTools(){
   // while editing, the frame carries only the hand badge and play
   if(editing){ fb.classList.add("hidden"); fm.classList.add("hidden"); }
 }
+/* ══════════════ THE LOCK SCREEN (1 Sep 2026) ═══════════════════════════════
+   David: "it actually seems to play back fine in the background at the moment,
+   but the lock screen controls don't work."
+
+   THEY NEVER COULD: the app had no Media Session code at all. Background sound
+   is one thing — `navigator.audioSession.type = "playback"` earns that, and on
+   a modern iPhone it evidently earns it cleanly — but the buttons on the lock
+   screen are a SECOND, separate contract. Nothing told iOS what was playing or
+   what a tap should do, so there was nothing to draw and nothing to press.
+
+   Three parts, all required, and missing any one of them shows a blank:
+     metadata      what is playing — title, who wrote it, which instrument
+     handlers      what the buttons DO; a control with no handler is not drawn
+     playbackState "playing" / "paused", or the sheet shows the wrong glyph
+
+   WHAT THE SKIP BUTTONS MEAN HERE. A piece is not a playlist, so ⏭ moves by
+   TABLE — the next section of the arrangement — which is the unit a student
+   practises in and the one the notation already navigates by. ⏮ goes to the
+   top of the table you are in, and only to the previous one if you are already
+   there: the behaviour every music player has, and the one a thumb expects
+   without looking.
+
+   IF THE CONTROLS STILL DO NOT APPEAR on the phone, the next thing to try is
+   NOT more Media Session code — it is giving iOS a real media element to hang
+   them on. `ensureSink()` returns early on the phone build (the audioSession
+   type alone is doing the work there), so no <audio> exists, and iOS has
+   historically wanted one before it will show Now Playing. That is a
+   one-line experiment, deliberately not taken here, because it would change
+   the audio path that currently works. */
+const mediaOK=()=>{ try{ return !!(navigator.mediaSession); }catch(e){ return false; } };
+let mediaWired=false;
+function mediaSessionWire(){
+  if(mediaWired||!mediaOK()) return;
+  mediaWired=true;
+  const set=(a,fn)=>{ try{ navigator.mediaSession.setActionHandler(a,fn); }catch(e){} };
+  set("play",()=>{ if(!playing) togglePlay(); });
+  set("pause",()=>{ if(playing) stop(); });
+  set("stop",()=>{ if(playing) stop(); });
+  /* the top of this table, or the previous one if we are already at the top */
+  set("previoustrack",()=>{
+    try{
+      const es=arrEntries(), here=(lastPaint>=0?lastPaint:(pendingStart||0));
+      let i=es.findIndex(e=>here>=e.from&&here<e.to); if(i<0) i=0;
+      const intoTable=here-es[i].from, m=SM(piece,es[i].nm);
+      const target=(intoTable>m.bp&&i>=0)?es[i].from:(i>0?es[i-1].from:0);
+      seekToPulse(target);
+    }catch(e){}
+  });
+  set("nexttrack",()=>{
+    try{
+      const es=arrEntries(), here=(lastPaint>=0?lastPaint:(pendingStart||0));
+      let i=es.findIndex(e=>here>=e.from&&here<e.to); if(i<0) i=0;
+      seekToPulse(i+1<es.length?es[i+1].from:0);
+    }catch(e){}
+  });
+  set("seekto",d=>{ try{ if(d&&d.seekTime!=null) seekToPulse(pulseAtSeconds(d.seekTime)); }catch(e){} });
+}
+/* seconds ↔ pulses, walked rather than divided, because the grid is not even:
+   sections carry their own metre and subdivision, and unit 16 halves the count */
+function secondsToPulse(){
+  const out=[0]; let t=0;
+  const n=(C&&C.total)||1;
+  for(let i=0;i<n;i++){ let d=0; try{ d=pulseDurOf(i); }catch(e){} t+=(d>0.0005?d:0.12); out.push(t); }
+  return out;
+}
+function pieceLength(){ const m=secondsToPulse(); return m[m.length-1]; }
+function timeOfPulse(p){ const m=secondsToPulse();
+  return m[Math.max(0,Math.min(m.length-1,Math.round(p)))]; }
+function pulseAtSeconds(sec){
+  const m=secondsToPulse();
+  for(let i=1;i<m.length;i++) if(m[i]>sec) return i-1;
+  return Math.max(0,m.length-2);
+}
+function mediaSessionPaint(){
+  if(!mediaOK()) return;
+  mediaSessionWire();
+  try{
+    const ms=navigator.mediaSession;
+    const jam=!!jamOn;
+    const title=jam?(typeof jamDefaultName==="function"?jamDefaultName():"Jam")
+                   :((piece&&piece.title)||"Handpan Studio");
+    ms.metadata=new MediaMetadata({
+      title,
+      artist:(piece&&piece.author)||"Handpan Studio",
+      album:(myPan&&myPan.pan?myPan.pan.name:""),
+      /* the installed phone app has these beside it; anywhere else the fetch
+         simply fails and iOS shows the title without art */
+      artwork:[{src:"icon-512.png",sizes:"512x512",type:"image/png"},
+               {src:"icon-192.png",sizes:"192x192",type:"image/png"}]
+    });
+    ms.playbackState=playing?"playing":"paused";
+    if(ms.setPositionState&&C){
+      const dur=pieceLength();
+      const pos=Math.min(dur,timeOfPulse(lastPaint>=0?lastPaint:(pendingStart||0)));
+      if(dur>0) ms.setPositionState({duration:dur,position:Math.max(0,pos),playbackRate:1});
+    }
+  }catch(e){}
+}
 function updatePlayBtn(){
   const active=playing||(follow&&vidPlaying);
   $("playBtn").innerHTML=active
     ?'<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
     :'<svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.6l13 7.4-13 7.4z"/></svg>';
   $("playBtn").setAttribute("aria-label",active?"Stop":"Play");
+  /* the lock screen is a second face of the transport — repainted with it, so
+     the two can never disagree about whether the music is running */
+  mediaSessionPaint();
 }
 const fmtT=x=>Math.floor(x/60)+":"+String(Math.floor(x%60)).padStart(2,"0");
 function barStarts(){
@@ -22440,6 +22764,7 @@ function boot(){
   $("expCycles").addEventListener("input",paintExpSize);
   $("expMp3").addEventListener("click",()=>doExport("mp3"));
   $("expWav").addEventListener("click",()=>doExport("wav"));
+  $("expMidi").addEventListener("click",()=>doExport("mid"));
   $("libBtn").addEventListener("click",()=>{ renderLib(); openDlg($("libDlg")); });
   /* ARRANGER IS THE WAY HOME as well as a room (David, 29 Aug): from a quiz
      or a jam it leaves the mode; standing in it already, it does nothing —
