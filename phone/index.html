@@ -2134,17 +2134,20 @@ body.phone #cpsetup::after{content:""; display:block; height:12px}
 #score .bar.cprep-start>.beat:first-child{padding-left:9px}
 #score .bar.cprep-end>.beat:last-child{padding-right:9px}
 #score .bar.cprep-end .repn{position:absolute; right:10px; top:0; font:800 10.5px Inter,sans-serif; color:var(--sc-bn); pointer-events:none}
-/* …and Flow's cells wear the same sign (David, 2 Sep) */
-#score .fcell.cprep-start,#score .fcell.cprep-end{position:relative}
-#score .fcell.cprep-start{box-shadow:inset 3px 0 0 var(--sc-edge); padding-left:9px}
-#score .fcell.cprep-end{box-shadow:inset -3px 0 0 var(--sc-edge); padding-right:9px}
-#score .fcell.cprep-start.cprep-end{box-shadow:inset 3px 0 0 var(--sc-edge), inset -3px 0 0 var(--sc-edge)}
-#score .fcell.cprep-start::before,#score .fcell.cprep-end::after{content:""; position:absolute; top:50%; width:3px; height:12px;
-  transform:translateY(-50%); pointer-events:none; z-index:1;
-  background:radial-gradient(circle,var(--sc-edge) 1.4px,transparent 1.6px) 0 0/3px 6px repeat-y}
-#score .fcell.cprep-start::before{left:5px}
-#score .fcell.cprep-end::after{right:5px}
-#score .fcell.cprep-end .repn{position:absolute; right:10px; top:0; font:800 10.5px Inter,sans-serif; color:var(--sc-bn); pointer-events:none}
+/* …and Flow's cells wear the same sign, ON the bar line (David, 2 Sep): the
+   opening line lies over the previous bar's line, the closing one is the
+   bar's own line darkened; the dots stand beside them within the lanes */
+#score .fcell.cprep-start{padding-left:.6em}
+#score .fcell.cprep-end{padding-right:.6em}
+#score .fcell .crepl{position:absolute; left:-2px; width:2px; border-radius:1px; background:var(--sc-edge);
+  top:calc(var(--fStrip) + .04em); bottom:.14em; z-index:1; pointer-events:none}
+#score .fcell.cprep-end.bend::after{background:var(--sc-edge)}
+#score .fcell .crepd{position:absolute; width:3px; top:calc(var(--fHead) + .1em); bottom:.14em; z-index:1; pointer-events:none;
+  background:radial-gradient(circle at 50% calc(50% - 3px),var(--sc-edge) 1.4px,transparent 1.6px),
+             radial-gradient(circle at 50% calc(50% + 3px),var(--sc-edge) 1.4px,transparent 1.6px)}
+#score .fcell .crepd.l{left:3px}
+#score .fcell .crepd.r{right:3px}
+#score .fcell.cprep-end .repn{position:absolute; right:8px; top:0; font:800 10.5px Inter,sans-serif; color:var(--sc-bn); pointer-events:none}
 /* the stage's band in the chord tab's place, left of the pan (the usual layout) */
 body:not(.phone) #belowrow>#cpband{flex:0 1 auto; margin:0; min-width:0; max-width:62%}
 #cpband .cphead .dn{font-size:10px; color:var(--ink3)}
@@ -5614,7 +5617,8 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <div class="drow"><span>View</span>
     <span class="pills" role="group" aria-label="Pan view mode">
       <button id="pmStrokes" title="Every hit flashes on the pan">Strokes</button>
-      <button id="pmChords" title="The active chord's fields stay lit">Chords</button></span></div>
+      <button id="pmChords" title="The active chord's fields stay lit">Chords</button>
+      <button id="pmBoth" title="The chord stays lit and every hit flashes over it">Both</button></span></div>
   <!-- THE LABELS LIVE HERE NOW, EVERYWHERE (David, 2 Sep: "move the tone
        field/note name selector into the pan view settings menu everywhere …
        the option doesn't need an extra button"). The A/1 corner toggle is
@@ -7567,7 +7571,7 @@ let panCustom=false;
 function setPanCustom(v){
   panCustom=!!v;
   if(!panCustom) setSuggest(false);
-  if(panCustom&&panMode==="chords") setPanMode("strokes");   // chords paints over the drag
+  if(panCustom&&panMode!=="strokes") setPanMode("strokes");   // chords paints over the drag
   else renderPanPanel();
   if(panCustom) toast("Drag the fields to match your instrument — they cannot overlap");
 }
@@ -7589,7 +7593,10 @@ function layoutFor(id){ const l=panLayouts()[id]; return (l&&(l.f||l.b))?l:null;
 let panOn=(localStorage.getItem("hps.pan")||"0")==="1";       // the pan companion panel
 let landIdx=-1;   // the landscape ring's slide on screen (-1: the notation) — see landSwipe
 // pan view: strokes flash per hit | chords hold the active chord's fields lit
-let panMode=localStorage.getItem("hps.panmode")==="chords"?"chords":"strokes";
+/* strokes · chords · BOTH (David, 2 Sep: "we keep the markers for the chord,
+   but at the same time we animate over them" — what chord practice's live
+   pan of four already did) */
+let panMode=(v=>v==="chords"||v==="both"?v:"strokes")(localStorage.getItem("hps.panmode"));
 /* the pan card's own settings, gathered behind ONE corner menu (David, 30 Aug):
    which of the two faces it shows, which label writes big on the fields, the
    drawing's size, and the way into the layout customiser */
@@ -8221,7 +8228,7 @@ function paintPulse(pi,seek){
     document.querySelectorAll(".cnow").forEach(el=>el.classList.remove("cnow"));
     markPlayingChips(cur.ai);
     // a held chord follows the cursor here too — see the note below
-    if((panOn||landIdx>=0)&&(panMode==="chords"||(!seek&&(playing||follow)))) paintPan(pi);
+    if((panOn||landIdx>=0)&&(panMode!=="strokes"||(!seek&&(playing||follow)))) paintPan(pi);
     return;
   }
   if(cur){
@@ -8295,7 +8302,7 @@ function paintPulse(pi,seek){
        for CHORDS, which state what is under the cursor and have no flash at
        all. The pan switch only made it visible: the rebuild repaints from
        panCursor(), so the two agreed again until the next navigation. */
-    if((panOn||landIdx>=0)&&(panMode==="chords"||(!seek&&(playing||follow)))) paintPan(pi);
+    if((panOn||landIdx>=0)&&(panMode!=="strokes"||(!seek&&(playing||follow)))) paintPan(pi);
     markPlayingChips(cur.ai);
     document.querySelectorAll(".cchip.playing").forEach(el=>el.classList.remove("playing"));
     const bar=Math.floor(rel/SM(piece,cur.name).bp);
@@ -13402,7 +13409,7 @@ function landPanPaint(){
     d.className="pvside "+cls; d.innerHTML=html; return d; };
   const left=side("pvleft",pvLeftHTML()), right=side("pvright",pvRightHTML());
   const mid=document.createElement("div"); mid.className="pvmid"; mid.appendChild(sq);
-  if(panMode==="chords"){
+  if(panMode!=="strokes"){
     /* THE PROGRESSION STANDS BESIDE THE PAN (David, 2 Sep, from
        mockups-ring-chords.html: "Progression shows is nice, but not at the
        top, on the side in a column. Max 4 chords that update over time if the
@@ -13423,7 +13430,7 @@ function landPanPaint(){
   host.querySelectorAll(".pvb").forEach(g=>panTapWire(g,()=>panSoundBottom(+g.dataset.b)));
   [["slap","pvp-slap"],["tak","pvp-tak"],["knock","pvp-knock"],["tak","pvp-tak2"]].forEach(([s,id])=>{
     const el=host.querySelector('[data-twin="'+id+'"]'); if(el) panTapWire(el,()=>panSoundPerc(s,id)); });
-  if(panMode==="chords") paintPanChord(panCursor());
+  if(panMode!=="strokes") paintPanChord(panCursor());
 }
 const LAND_CHORDS=4;                  // names on screen at once (David: "max 4")
 function landChordColumn(secName){
@@ -13624,7 +13631,7 @@ function renderPanPanelInner(){
   const side=(cls,html)=>{ const d=document.createElement("div");
     d.className="pvside "+cls; d.innerHTML=html; return d; };
   const left=side("pvleft",pvLeftHTML()), right=side("pvright",pvRightHTML());
-  if(panMode==="chords"){          // a chord has no hand: the name takes the lamps' place
+  if(panMode!=="strokes"){         // a chord has no hand: the name takes the lamps' place (Both too)
     /* the flanks stay, hidden, so this view is exactly as wide as the other —
        see "ONE SIZE FOR BOTH VIEWS" in the stylesheet */
     for(const f of [left,right]){ f.style.visibility="hidden"; f.setAttribute("aria-hidden","true"); }
@@ -13673,7 +13680,7 @@ function renderPanPanelInner(){
     el.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); tapPerc(s,id); } });
   });
   if(panCustom) wirePanDrag(box);
-  if(panMode==="chords"&&!panCustom) paintPanChord(panCursor());
+  if(panMode!=="strokes"&&!panCustom) paintPanChord(panCursor());
 }
 /* FREE DRAG, WITH ONE RULE: fields may not overlap (David, 28 Aug). Positions
    are LAYOUT — a field keeps its number wherever it lands, so no score can be
@@ -13926,15 +13933,16 @@ function setSuggest(on){
   if(on) paintSuggestPane();
 }
 function setPanMode(m){
-  panMode=m==="chords"?"chords":"strokes";
+  panMode=(m==="chords"||m==="both")?m:"strokes";
   try{localStorage.setItem("hps.panmode",panMode)}catch(e){}
   renderPanPanel();
 }
 /* the pan card's menu — every control paints the card at once, so the sheet
    can stay open while the student compares the two faces or sizes */
 function paintPanMenu(){
-  $("pmStrokes").setAttribute("aria-pressed",String(panMode!=="chords"));
+  $("pmStrokes").setAttribute("aria-pressed",String(panMode==="strokes"));
   $("pmChords").setAttribute("aria-pressed",String(panMode==="chords"));
+  const pb=$("pmBoth"); if(pb) pb.setAttribute("aria-pressed",String(panMode==="both"));
   $("pmNums").setAttribute("aria-pressed",String(panLabels!=="note"));
   $("pmNotes").setAttribute("aria-pressed",String(panLabels==="note"));
   $("pmZoomVal").textContent=Math.round(panZoom*100)+"%";
@@ -13951,6 +13959,7 @@ function openPanMenu(){ paintPanMenu(); openDlg($("panMenuDlg")); }
   const on=(id,fn)=>{ const b=$(id); if(b) b.addEventListener("click",fn); };
   on("pmStrokes",()=>{ setPanMode("strokes"); paintPanMenu(); });
   on("pmChords",()=>{ setPanMode("chords"); paintPanMenu(); });
+  on("pmBoth",()=>{ setPanMode("both"); paintPanMenu(); });
   /* the labels flip, from the menu — the ONE copy of what three corner
      buttons used to do (reading card, desktop editor, phone bench) */
   const setLabels=v=>{ panLabels=v==="note"?"note":"num";
@@ -14025,7 +14034,8 @@ function pvFlashId(id,cls){
   if(typeof cpFour!=="undefined"&&cpFour){ const t=document.querySelector('#cpband .cpfour .cell.active [data-twin="'+id+'"]'); if(t) pvFlash(t,cls); }
 }
 function paintPan(pi){
-  if(panMode==="chords"){ paintPanChord(pi); if(!(typeof cpFour!=="undefined"&&cpFour)) return; }   // chords hold; strokes flash — and on the four's live pan, both
+  if(panMode!=="strokes"){ paintPanChord(pi);                       // the chord holds…
+    if(panMode==="chords"&&!(typeof cpFour!=="undefined"&&cpFour)) return; }   // …and in Both (and on the four's live pan) the strokes flash over it
   for(const ev of (C&&C.byPulse.get(pi)||[])){
     const hand=ev.hand==="R"?"hR":"hL";
     /* The L and R lamps DO NOT flash (David, 26 Aug: "(R) and (L) don't need
@@ -14204,9 +14214,14 @@ function renderFlowSection(sc,nm,ai,absStart){
       const cell=document.createElement("span");
       cell.className="fcell"+(b===m.beats-1?" bend":"");
       cell.dataset.bar=bi;
+      /* the sign sits ON THE BAR LINE (David, 2 Sep: "the repeat sign lines
+         don't sit on the separator neatly"): a line of its own laid over the
+         previous bar's line, the dots beside it, and the closing bar line
+         darkened — children, never the cell's own ::after, which IS the line */
       if(reps>1){
-        if(b===0&&D.pos===0) cell.classList.add("cprep-start");
-        if(b===m.beats-1&&D.pos===D.span-1){ cell.classList.add("cprep-end");
+        const mk=cls=>{ const e=document.createElement("span"); e.className=cls; cell.appendChild(e); };
+        if(b===0&&D.pos===0){ cell.classList.add("cprep-start"); mk("crepl"); mk("crepd l"); }
+        if(b===m.beats-1&&D.pos===D.span-1){ cell.classList.add("cprep-end"); mk("crepd r");
           if(reps>2){ const rn=document.createElement("span"); rn.className="repn"; rn.textContent="×"+reps; cell.appendChild(rn); } }
       }
       let stripEl=null;
@@ -21259,7 +21274,7 @@ function cpStart(){
   navPush("cpstage","Chord practice overview",()=>cpOpenSetup());   // Back: the overview, not the room before
   loadPiece(built);
   bpm=cpcfg.bpm; $("bpm").value=bpm;
-  panMode="chords";                       // held, not stored — leaveCp puts it back
+  panMode="both";                         // the chord lit and the strokes over it — held, not stored; leaveCp puts it back
   sideQuiet=true;
   try{ setPan(true); if(!PHONE||TABLET) setChords(false); } finally{ sideQuiet=false; }
   placeCpBand();
