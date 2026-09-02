@@ -6486,14 +6486,33 @@ function bankNear(art,midi){
   }
   return null;
 }
+/* RESAMPLED IN PLAIN ARITHMETIC, NOT IN AN OfflineAudioContext (2 Sep). David,
+   from the Kajabi embed in Safari: "sometimes audio drops … I think it might
+   be connected to selecting a new scale". Choosing a pan preloads its notes,
+   and every note past the bank's recorded range — above C6 open, above E5
+   MUTE, which many ten-note pans reach — used to be shifted by rendering an
+   OfflineAudioContext, one per note, WHILE THE LIVE CONTEXT WAS PLAYING.
+   WebKit runs offline renders on the same audio machinery as the live
+   graph, and a burst of them at the moment of the switch is the one thing
+   this app does that can starve the running context; Chromium keeps the two
+   apart, which is why the drop was never heard there. A cubic (Catmull-Rom)
+   resample into a plain buffer is the same operation the offline node did
+   for a playbackRate, costs a few milliseconds per note, and touches no audio
+   thread at all. Same signature, same promise, same cache key. */
 function bankShift(buf,rate){
-  const OC=window.OfflineAudioContext||window.webkitOfflineAudioContext;
-  const n=Math.max(1,Math.ceil(buf.length/rate));
-  const oc=new OC(buf.numberOfChannels,n,buf.sampleRate);
-  const src=oc.createBufferSource();
-  src.buffer=buf; src.playbackRate.value=rate;
-  src.connect(oc.destination); src.start(0);
-  return oc.startRendering();
+  const n=Math.max(1,Math.ceil(buf.length/rate)), ch=buf.numberOfChannels;
+  const out=ctx.createBuffer(ch,n,buf.sampleRate);
+  for(let c=0;c<ch;c++){
+    const x=buf.getChannelData(c), y=out.getChannelData(c), L=x.length;
+    for(let i=0;i<n;i++){
+      const p=i*rate, k=Math.floor(p), t=p-k;
+      const x0=x[k-1]||0, x1=x[k]||0, x2=x[k+1]||0, x3=x[k+2]||0;
+      // Catmull-Rom: smooth through the samples, no ringing past the ends
+      y[i]=0.5*((2*x1)+(-x0+x2)*t+(2*x0-5*x1+4*x2-x3)*t*t+(-x0+3*x1-3*x2+x3)*t*t*t);
+      if(k>=L) break;
+    }
+  }
+  return Promise.resolve(out);
 }
 function bankDecode(key){
   if(!window.HPS_BANK||BANKBUF.has(key)) return BANKPEND.get(key)||Promise.resolve();
