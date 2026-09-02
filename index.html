@@ -2679,7 +2679,7 @@ body.phone #pvwrap.sides #pvsvg{width:min(calc(236px*var(--panzoom,1)*var(--panf
 /* the pan as tall as the screen allows, the flanks beside it as on the card;
    the right edge keeps room for ⚙ and × */
 #landPanInner{height:100%; display:flex; align-items:center; justify-content:center; gap:16px;
-  padding:calc(6px + env(safe-area-inset-top)) calc(60px + env(safe-area-inset-right))
+  padding:calc(6px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
           calc(6px + env(safe-area-inset-bottom)/2) calc(16px + env(safe-area-inset-left))}
 #landPanInner .landsq{
   --sq:min(calc(100vh - 12px - env(safe-area-inset-top) - env(safe-area-inset-bottom)/2),calc(100vw - 260px));
@@ -2687,11 +2687,23 @@ body.phone #pvwrap.sides #pvsvg{width:min(calc(236px*var(--panzoom,1)*var(--panf
 #landPanInner .landsq svg{width:100%; height:100%; overflow:visible; display:block}
 #landPanInner .pvmid{display:flex; flex-direction:column; align-items:center; gap:0; min-width:0}
 #landPanInner .pvchord{margin-top:-6px}
-/* "a little x in a circle" (David, 2 Sep) — and the menu beside it */
+/* "a little x in a circle" — top LEFT, the menu top RIGHT (David, 2 Sep,
+   second pass: "the little X button should go to the top left, and the pan
+   view menu button to the top right") */
 #landMenu,#landClose{position:absolute; top:calc(8px + env(safe-area-inset-top)); z-index:2;
   width:32px; height:32px; border-radius:50%}
-#landMenu{right:calc(50px + env(safe-area-inset-right))}
-#landClose{right:calc(10px + env(safe-area-inset-right))}
+#landMenu{right:calc(10px + env(safe-area-inset-right))}
+#landClose{left:calc(10px + env(safe-area-inset-left))}
+/* the progression beside the pan — see landChordColumn: a column of names,
+   the current one lit the way the Flow counts are, four at a time */
+#landPanInner .landchords{flex:none; width:150px; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:14px}
+#landPanInner .lname{font-family:Figtree,sans-serif; font-size:26px; font-weight:700;
+  line-height:1.1; color:var(--ink3); position:relative; white-space:nowrap}
+#landPanInner .lname.inf{font-style:italic}
+#landPanInner .lname.cur{color:var(--ink)}
+#landPanInner .lname.cur::after{content:""; position:absolute; left:0; right:0; bottom:-5px;
+  height:3px; border-radius:2px; background:var(--dixie)}
 #landMenu svg{width:15px; height:15px}
 #landClose svg{width:16px; height:16px}
 /* a long press must not also select the glyph or raise iOS's callout */
@@ -12960,18 +12972,53 @@ function landPanPaint(){
     d.className="pvside "+cls; d.innerHTML=html; return d; };
   const left=side("pvleft",pvLeftHTML()), right=side("pvright",pvRightHTML());
   const mid=document.createElement("div"); mid.className="pvmid"; mid.appendChild(sq);
-  if(panMode==="chords"){          // the card's rule: flanks stay, hidden; the name takes their place
-    for(const f of [left,right]){ f.style.visibility="hidden"; f.setAttribute("aria-hidden","true"); }
-    const nm=document.createElement("div"); nm.className="pvchord"; nm.id="pvchord";
-    mid.appendChild(nm);
-  }
-  host.append(left,mid,right);
+  if(panMode==="chords"){
+    /* THE PROGRESSION STANDS BESIDE THE PAN (David, 2 Sep, from
+       mockups-ring-chords.html: "Progression shows is nice, but not at the
+       top, on the side in a column. Max 4 chords that update over time if the
+       piece has more than 4"). The name under the drawing had pushed the pan
+       off the top; now the section's chord names stand in a column on the
+       left, where the strokes flank stands in the other view, FOUR AT A TIME
+       as pages of four — bars 1–4, then 5–8 — the current one lit, the page
+       turning when the music passes it (landChordWindow). Pages, not a
+       sliding window, so the column holds still for four bars rather than
+       shuffling every bar. paintPanChord keeps it: the current bar, and a
+       fresh column when the music moves to another section. The right flank
+       stays, hidden, so the pan sits where it sits in strokes. */
+    right.style.visibility="hidden"; right.setAttribute("aria-hidden","true");
+    host.append(landChordColumn(viewSec),mid,right);
+  } else host.append(left,mid,right);
   host.querySelectorAll("[id]").forEach(el=>{ el.dataset.twin=el.id; el.removeAttribute("id"); });
   host.querySelectorAll(".pvf:not(.pvb)").forEach(g=>panTapWire(g,()=>panSoundField(+g.dataset.f)));
   host.querySelectorAll(".pvb").forEach(g=>panTapWire(g,()=>panSoundBottom(+g.dataset.b)));
   [["slap","pvp-slap"],["tak","pvp-tak"],["knock","pvp-knock"],["tak","pvp-tak2"]].forEach(([s,id])=>{
     const el=host.querySelector('[data-twin="'+id+'"]'); if(el) panTapWire(el,()=>panSoundPerc(s,id)); });
   if(panMode==="chords") paintPanChord(panCursor());
+}
+const LAND_CHORDS=4;                  // names on screen at once (David: "max 4")
+function landChordColumn(secName){
+  const col=document.createElement("div"); col.className="landchords";
+  col.dataset.sec=secName;
+  const sec=piece&&piece.sections[secName];
+  if(sec) sec.bars.forEach((bar,bi)=>{
+    const bc=barChordLabel(bar); if(!bc) return;
+    const n=document.createElement("span"); n.className="lname"+(bc.inf?" inf":"");
+    n.innerHTML=fmtChord(bc.name); n.dataset.cbar=bi;
+    if(bc.inf) n.title="Chord guessed from the notes — not notated";
+    col.appendChild(n);
+  });
+  landChordWindow(col,-1);            // the first page, until the music says otherwise
+  return col;
+}
+/* the page of four that holds bar `bi`, the bar lit; a bar without a chord
+   (no name of its own) leaves the page where it was */
+function landChordWindow(col,bi){
+  const names=[...col.children];
+  const idx=names.findIndex(n=>+n.dataset.cbar===bi);
+  let page=+col.dataset.page||0;
+  if(idx>=0) page=Math.floor(idx/LAND_CHORDS);
+  col.dataset.page=page;
+  names.forEach((n,i)=>{ n.hidden=Math.floor(i/LAND_CHORDS)!==page; n.classList.toggle("cur",i===idx); });
 }
 landPainters.push(landPanPaint);
 function landPaint(i){ const p=landPainters[i]; if(p) p(); }
@@ -13044,8 +13091,16 @@ function renderPanPanelInner(){
      editing turned on with a cursor ring, a hand badge and no way whatsoever
      to enter a note (David, 31 Aug: "the editors don't seem to work on
      tablet"). It takes the desktop's side of this. */
+  /* NO PAN CARD IN A PHONE JAM (David, 2 Sep, screenshot: "in jam mode and
+     flow notation, the pan tab appeared — it shouldn't be here"). The side
+     chosen in Practice carried into the jam, where the dots are hidden and
+     nothing can switch it off, and the fitters gave it half the height under
+     the chord card. A jam's companion on the phone is the chord card; the
+     pan comes back with Practice. Both fitters reserve only a card that is
+     on screen, so hiding it here is the whole change. Tablet untouched. */
+  const phoneJam=PHONE&&!tabletPortrait()&&(typeof jamOn!=="undefined"&&jamOn);
   $("panwrap").classList.toggle("hidden",
-    (PHONE&&!tabletPortrait()&&editing)||!(panOn||editing));
+    (PHONE&&!tabletPortrait()&&editing)||phoneJam||!(panOn||editing));
   /* …and the same fork one line down: the tablet must draw the DESKTOP's
      editor into this card, not paint a deck that is not on screen. Showing the
      card without this drew the read-only player pan — the notes were there to
@@ -13483,6 +13538,13 @@ function paintPanChord(pi){
   for(const lab of labs){ lab.innerHTML=fmtChord(bc.name); lab.classList.toggle("inf",!!bc.inf);
     lab.title=bc.inf?"Chord guessed from the notes — not notated":bc.name; }
   for(const f of chordFields(bc.name)) for(const g of els(pvId(f))) g.classList.add("clit");
+  /* the ring's column: this section's names, the current bar lit, its page shown */
+  const lp=landIdx>=0?$("landPanInner"):null;
+  let col=lp&&lp.querySelector(".landchords");
+  if(col){
+    if(col.dataset.sec!==sec.name){ const fresh=landChordColumn(sec.name); col.replaceWith(fresh); col=fresh; }
+    landChordWindow(col,Math.floor((pi-sec.pulse)/m.bp));
+  }
 }
 const pvTimers=new WeakMap();
 function pvFlash(el,cls){
