@@ -2706,6 +2706,10 @@ body.phone #pvwrap.sides #pvsvg{width:min(calc(236px*var(--panzoom,1)*var(--panf
   height:3px; border-radius:2px; background:var(--dixie)}
 #landMenu svg{width:15px; height:15px}
 #landClose svg{width:16px; height:16px}
+/* the play button, large, bottom right — the transport's own look, at 64px */
+#landPlay{position:absolute; z-index:2; width:64px; height:64px;
+  right:calc(14px + env(safe-area-inset-right)); bottom:calc(12px + env(safe-area-inset-bottom)/2)}
+#landPlay svg{width:30px; height:30px}
 /* a long press must not also select the glyph or raise iOS's callout */
 #panmenu,#edPanMenu{-webkit-touch-callout:none; -webkit-user-select:none;
   user-select:none; touch-action:manipulation}
@@ -2723,6 +2727,9 @@ body.phone #pvwrap.sides #pvsvg{width:min(calc(236px*var(--panzoom,1)*var(--panf
 /* One .ib icon button in the corner gap the pan's circle leaves free — the
    text pill was wider than the gap and sat on the pan (David, 26 Aug). */
 #panmenu,#pancustom{position:absolute; top:8px; right:8px; z-index:2; width:28px; height:28px}
+/* the extend button takes the OTHER corner the circle leaves free (2 Sep) */
+#panbig{position:absolute; top:8px; left:8px; z-index:2; width:28px; height:28px}
+#panbig svg{width:15px; height:15px}
 #panmenu svg{width:15px; height:15px}
 #pancustom svg{width:16px; height:16px}
 /* the sheet's rows need their own layout: .drow is styled under #setDlg and
@@ -5719,6 +5726,10 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   </div>
   <button class="ib" id="landMenu" title="Pan view settings" aria-label="Pan view settings"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#is-set"/></svg></button>
   <button class="ib" id="landClose" title="Back to the notation" aria-label="Back to the notation"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#is-x"/></svg></button>
+  <!-- the transport's second face (David, 2 Sep: "a play button on this
+       page. Large one on the bottom right") — painted with #playBtn by
+       updatePlayBtn, so the two can never disagree -->
+  <button class="play" id="landPlay" aria-label="Play"></button>
 </div>
 
 <dialog id="expDlg">
@@ -9465,6 +9476,8 @@ function updatePlayBtn(){
     ?'<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
     :'<svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.6l13 7.4-13 7.4z"/></svg>';
   $("playBtn").setAttribute("aria-label",active?"Stop":"Play");
+  const lp=$("landPlay");              // the landscape sheet's face of the same button
+  if(lp){ lp.innerHTML=$("playBtn").innerHTML; lp.setAttribute("aria-label",active?"Stop":"Play"); }
   /* the lock screen is a second face of the transport — repainted with it, so
      the two can never disagree about whether the music is running */
   mediaSessionPaint();
@@ -13027,8 +13040,15 @@ function landTo(i){ landIdx=i; $("landTrack").style.transform="translateX("+(-i*
    -1 right. The sheet starts off-screen on that side and slides in. */
 function landOpen(i,dir){
   const v=$("landView"), tr=$("landTrack");
-  landPaint(i);
+  /* the slide is RECORDED before it is painted: the painters ask `landIdx`
+     to find their twins and their column, and the first paint used to run
+     while it still said "notation" — no field lit, no bar underlined, until
+     the next pulse (measured 2 Sep). The chord column was briefly made to
+     stand in strokes view too, foldable and remembered; David took that back
+     the same hour: "chords only in chord view … it's simply part of this
+     view". */
   tr.style.transition="none"; landTo(i);
+  landPaint(i);
   v.classList.add("snap"); v.style.setProperty("--side",dir<0?"-100%":"100%");
   void v.offsetWidth;                            // commit the start side before the slide
   v.classList.remove("snap"); tr.style.transition="";
@@ -13133,6 +13153,22 @@ function renderPanPanelInner(){
     mn.addEventListener("click",openPanMenu);
     longPressZoom(mn);                 // hold ⚙ to see the pan full screen
     box.appendChild(mn);
+    /* EXTEND (David, 2 Sep: "In the pan tab on the top left there can be an
+       'extend window' option … a window opens above the notation table and
+       everything else, basically taking over the full width and height of
+       the app, showing a similar window as we have now created for the
+       phone with a pan in big"). It IS that window — the landscape sheet,
+       `landOpen`, with its chord column, play button, ⚙ and × — opened by a
+       button instead of a swipe. The phone's card has the swipe and no room
+       in this corner; the desktop and the upright tablet get the button. */
+    if(!PHONE||tabletPortrait()){
+      const bg=document.createElement("button");
+      bg.id="panbig"; bg.className="ib"; bg.type="button";
+      bg.title="Show the pan large"; bg.setAttribute("aria-label",bg.title);
+      bg.innerHTML='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><use href="#is-fs"/></svg>';
+      bg.addEventListener("click",()=>landOpen(0,1));
+      box.appendChild(bg);
+    }
     /* The A/1 labels toggle stood beside the menu from 30 Aug to 2 Sep. It is
        the menu's Labels row now, on every platform (David: "we can totally
        save that screen space, the option doesn't need an extra button"), and
@@ -23469,6 +23505,7 @@ function boot(){
   $("viewFlow").addEventListener("click",()=>setView("flow"));
   $("viewTab").addEventListener("click",()=>setView("tab"));
   $("playBtn").addEventListener("click",()=>togglePlay());
+  { const lp=$("landPlay"); if(lp) lp.addEventListener("click",()=>togglePlay()); }
   tempoControl();
   iosSliders();          // every range the app has, or will ever build
   updatePlayBtn();   // the bigger icons from the first paint on
@@ -23675,6 +23712,7 @@ function boot(){
     if(quizOn&&!typing&&e.key===" "){ e.preventDefault(); qzKey(e); return; }
     if(e.key==="Escape"&&$("panZoom").classList.contains("on")){
       e.preventDefault(); closePanZoom(); return; }
+    if(e.key==="Escape"&&landIdx>=0){ e.preventDefault(); landClose(0); return; }
     if(e.key===" "&&!typing){ e.preventDefault(); togglePlay(); return; }
     if((e.key==="t"||e.key==="T")&&!typing&&!editing&&videoSeen){
       e.preventDefault(); $("tapBtn").click(); return; }
