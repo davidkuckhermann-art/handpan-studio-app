@@ -10378,6 +10378,15 @@ document.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("message",e=>{
   const d=e.data; let t=null, r=null;
+  /* SPACE FROM THE LESSON PAGE (David, 2 Sep: "give me play/stop when pressing
+     space for the embed … currently spacebar scrolls down"). Keys go to the
+     page that has focus, and inside a lesson that is Kajabi's document until
+     the student clicks in the frame — so the block forwards a bare space
+     here (EMBED.md, "Space"), and the transport answers as if it were ours. */
+  if(d&&d.type==="hps-key"){
+    if(d.key===" "&&!quizOn){ try{ togglePlay(); }catch(x){} }
+    return;
+  }
   if(typeof d==="number") t=d;
   else if(d&&typeof d==="object"){
     if(typeof d.t==="number"&&(d.type==="hps-video-time"||d.hps)) t=d.t;
@@ -23771,14 +23780,25 @@ function boot(){
     saveRoom();        // updatePracticeBtn never hears about the editor
   });
   document.addEventListener("keydown",e=>{
-    const typing=["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName);
+    /* TYPING means a field that takes letters. A read-only input (the title
+       in player mode) and the sliders are not that — space there is the
+       transport's (David, 2 Sep: "give me play/stop when pressing space for
+       the embed"). Number fields keep it: someone editing the BPM is typing. */
+    const tg=e.target, tag=tg.tagName;
+    const typing=tag==="TEXTAREA"||tag==="SELECT"
+      ||(tag==="INPUT"&&!tg.readOnly&&!["range","checkbox","radio","button"].includes(tg.type));
     // the quiz owns the keyboard while it runs — space must not start the
     // hidden piece playing behind the stage
     if(quizOn&&!typing&&e.key===" "){ e.preventDefault(); qzKey(e); return; }
     if(e.key==="Escape"&&$("panZoom").classList.contains("on")){
       e.preventDefault(); closePanZoom(); return; }
     if(e.key==="Escape"&&landIdx>=0){ e.preventDefault(); landClose(0); return; }
-    if(e.key===" "&&!typing){ e.preventDefault(); togglePlay(); return; }
+    if(e.key===" "&&!typing){
+      /* a button that still holds focus from the last click — Play itself,
+         usually — would ALSO fire its click on the key-up in some engines and
+         undo this toggle. Let go of it first. */
+      if(tag==="BUTTON") try{ tg.blur(); }catch(x){}
+      e.preventDefault(); togglePlay(); return; }
     if((e.key==="t"||e.key==="T")&&!typing&&!editing&&videoSeen){
       e.preventDefault(); $("tapBtn").click(); return; }
     if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="z"&&!typing&&!editing&&videoSeen){
@@ -25914,6 +25934,14 @@ if(!PHONE){
        is hidden anyway) and hidden by CSS in this mode. `?author=1` cancels
        player mode, so David's own lesson URL keeps the desktop's head. */
     if(document.documentElement.classList.contains("player")&&!PHONE){
+      /* THE FRAME TAKES THE KEYBOARD WHEN THE POINTER COMES OVER IT (2 Sep).
+         Inside a lesson page the keys belong to Kajabi's document until the
+         student has clicked in the app; space then scrolls the page or works
+         the video. A hover is the earliest honest sign that the app is what
+         they mean to drive. Best effort: a browser may refuse a focus with no
+         gesture behind it, and a click focuses the frame anyway. */
+      document.documentElement.addEventListener("mouseenter",()=>{
+        if(!document.hasFocus()) try{ window.focus(); }catch(x){} });
       const zone=document.querySelector("header .hside.hright");
       if(zone){
         const g=document.createElement("span"); g.id="playerPanels";
