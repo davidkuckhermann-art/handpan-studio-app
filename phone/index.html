@@ -2043,6 +2043,10 @@ body.learn .auth,body.learn #srcBadge{display:none !important}
 #learnwrap{max-width:780px;margin:0 auto;padding:48px 16px 24px;
   display:flex;align-items:center;justify-content:center}
 #learnwrap .learncards{display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;width:100%}
+#learnwrap{flex-direction:column; gap:22px}
+.learnlink{margin:0; text-align:center; font-family:Figtree,sans-serif; font-size:16px; font-weight:600}
+.learnlink a{color:var(--ink); text-decoration:none; border-bottom:2px solid var(--dixie); padding-bottom:2px}
+.learnlink a:hover{color:var(--dixie)}
 #learnwrap .pchoice{flex:1 1 300px}
 body.rquiz #scorewrap,body.rquiz #belowrow,body.rquiz #transport,
 body.rquiz #viewrow,body.rquiz #jampanel,body.rquiz #vidwrap,
@@ -3267,7 +3271,8 @@ html.player #syncbar, html.player #mapbar{ display:none !important }
 html.player #linkBtn{ display:none !important }
 /* the three panel toggles at the header's right end (2 Sep) — see the boot
    move by #scoreheadL; the card head's emptied Panels group goes with them */
-html.player #playerPanels{ display:inline-flex; gap:6px; margin-left:auto }
+html.player #playerPanels{ display:inline-flex; gap:6px }
+html.player #studioBtn{ margin-left:auto; margin-right:8px }
 html.player #scoreheadL .ctlgroup[aria-label="Panels"]{ display:none }
 /* 60px of air at the foot is right for a page you scroll and wasted in a
    window sized to fit (28 Aug) */
@@ -4638,6 +4643,11 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
      the same words the dialog had. practiceDlg stays in the DOM, unopened
      from the desktop tab. A third exercise later is simply a third card. -->
 <div id="learnwrap" class="hidden">
+  <!-- THE COURSE LIBRARY, ABOVE THE QUIZZES (David, 2 Sep: "an option on top
+       which says 'Access your course library on masterthehandpan.com' …
+       centered and sit above the quiz options"). A plain link to the site,
+       in a new tab — the Mac shell hands external links to the browser. -->
+  <p class="learnlink"><a href="https://masterthehandpan.com" target="_blank" rel="noopener">Access your course library on masterthehandpan.com</a></p>
   <div class="learncards">
     <button class="pchoice" id="lcQuiz">
       <b>Chord quiz</b>
@@ -5102,6 +5112,18 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 </dialog>
 
 <!-- what the bulb opens: the invitation, and the door to the course -->
+<!-- THE EMBED'S BULB (David, 2 Sep): "Do you want to open this composition in
+     Handpan Studio?" — Open tries the Mac app first (handpanstudio://, the
+     shell registers it), and the web app in a new tab is the fallback where
+     no app answers. The piece rides in the link the way shared links carry
+     one (#p=), and the key rides in the query so the app boots at all. -->
+<dialog id="studioDlg" aria-label="Open in Handpan Studio">
+  <h3>Open in Handpan Studio?</h3>
+  <p class="hint">Do you want to open this composition in Handpan Studio?</p>
+  <div class="row" style="justify-content:flex-end;margin:12px 0 0">
+    <button class="ctl" id="studioNo">Not now</button>
+    <button class="ctl on" id="studioGo">Open</button></div>
+</dialog>
 <dialog id="linkDlg">
   <h3><svg width="16" height="16" style="vertical-align:-2px"><use href="#is-bulb"/></svg> Course available</h3>
   <!-- THIS MARKUP IS THE DEFAULT TEXT (David, 31 Aug) — boot captures it
@@ -6039,7 +6061,16 @@ const EMBED_KEY="ce0f3bf87594bda9";
   const local=location.protocol==="file:"||/^(localhost|127\.)/.test(location.hostname);
   if(local) return;
   const given=new URLSearchParams(location.search).get("k")||localStorage.getItem("hps.k");
-  if(given===EMBED_KEY){ try{localStorage.setItem("hps.k",given)}catch(e){} return; }
+  if(given===EMBED_KEY){
+    try{localStorage.setItem("hps.k",given)}catch(e){}
+    /* AND LEAVES THE ADDRESS BAR (2 Sep): the embed's bulb opens the app with
+       the key in the link, because a lesson iframe's storage is not this
+       page's (Safari partitions it). Once read, the query is dropped and the
+       piece's hash stays — so the bar shows the app, not the key. */
+    try{ if(new URLSearchParams(location.search).has("k")){
+      const u=new URL(location.href); u.searchParams.delete("k");
+      history.replaceState(null,"",u.pathname+(u.search||"")+u.hash); } }catch(e){}
+    return; }
   document.addEventListener("DOMContentLoaded",()=>{
     document.body.innerHTML='<div style="max-width:420px;margin:18vh auto;text-align:center;font-family:Figtree,sans-serif"><h2>Handpan Studio</h2><p>This player is part of David Kuckhermann\'s courses.<br>Please open it from your lesson page.</p></div>';
   });
@@ -10401,6 +10432,29 @@ document.addEventListener("DOMContentLoaded",()=>{
   });
 });
 
+/* INTO THE STUDIO (2 Sep). The piece as the student sees it, encoded the way
+   a shared link carries one. The Mac app answers handpanstudio:// (see
+   launchers/hps-shell.swift — registered in build-app.command); a browser
+   with no app to hand the scheme to does nothing visible, so if this page
+   is still the front one a moment later, the web app opens in a new tab
+   with the key in the query (dropped from its address bar on boot). Both
+   from the same click, so the popup is the student's, not a blocked one. */
+function openInStudio(){
+  let hash=""; try{ hash="#p="+enc(piece); }catch(e){}
+  const web="https://davidkuckhermann-art.github.io/handpan-studio-app/?k="+encodeURIComponent(EMBED_KEY)+hash;
+  const app="handpanstudio://open"+hash;
+  const tab=window.open("about:blank","_blank");        // claimed on the click, filled below
+  const t0=Date.now(); let handed=false;
+  const gone=()=>{ handed=true; };
+  window.addEventListener("blur",gone,{once:true});
+  document.addEventListener("visibilitychange",gone,{once:true});
+  try{ location.href=app; }catch(e){}
+  setTimeout(()=>{
+    window.removeEventListener("blur",gone);
+    if(handed&&Date.now()-t0<2500){ try{ tab&&tab.close(); }catch(e){} return; }   // the Mac app took it
+    try{ if(tab) tab.location.href=web; else window.open(web,"_blank"); }catch(e){}
+  },900);
+}
 window.addEventListener("message",e=>{
   const d=e.data; let t=null, r=null;
   /* SPACE FROM THE LESSON PAGE (David, 2 Sep: "give me play/stop when pressing
@@ -25959,6 +26013,19 @@ if(!PHONE){
        is hidden anyway) and hidden by CSS in this mode. `?author=1` cancels
        player mode, so David's own lesson URL keeps the desktop's head. */
     if(document.documentElement.classList.contains("player")&&!PHONE){
+      /* THE BULB, LEFT OF THE TOGGLES (David, 2 Sep: "a light bulb icon that
+         looks like the one we have in the main app … just left of the pan
+         notation chords selector … open the main app, opening the
+         composition that the student was just working on"). The main app's
+         own bulb is the course door and player mode hides it; this one is
+         the door the other way. */
+      const sb=document.createElement("button"); sb.id="studioBtn"; sb.className="ib"; sb.type="button";
+      sb.title="Open this composition in Handpan Studio"; sb.setAttribute("aria-label",sb.title);
+      sb.innerHTML='<svg width="15" height="15" aria-hidden="true"><use href="#is-bulb"/></svg>';
+      sb.addEventListener("click",()=>openDlg($("studioDlg")));
+      const zoneB=document.querySelector("header .hside.hright"); if(zoneB) zoneB.appendChild(sb);
+      $("studioNo").addEventListener("click",()=>$("studioDlg").close());
+      $("studioGo").addEventListener("click",()=>{ $("studioDlg").close(); openInStudio(); });
       /* THE FRAME TAKES THE KEYBOARD WHEN THE POINTER COMES OVER IT (2 Sep).
          Inside a lesson page the keys belong to Kajabi's document until the
          student has clicked in the app; space then scrolls the page or works
