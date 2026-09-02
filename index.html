@@ -2704,6 +2704,12 @@ body.phone #pvwrap.sides #pvsvg{width:min(calc(236px*var(--panzoom,1)*var(--panf
 #landPanInner .lname.cur{color:var(--ink)}
 #landPanInner .lname.cur::after{content:""; position:absolute; left:0; right:0; bottom:-5px;
   height:3px; border-radius:2px; background:var(--dixie)}
+/* the desktop's sheet has the height: the names at 42px in a wider column
+   (David, 2 Sep: "make the chord labels a bit bigger on desktop"); the phone
+   keeps 26 — sideways it has 375px to stack four in */
+body:not(.phone) #landPanInner .landchords{width:230px; gap:20px}
+body:not(.phone) #landPanInner .lname{font-size:42px}
+body:not(.phone) #landPanInner .lname.cur::after{bottom:-7px; height:4px}
 #landMenu svg{width:15px; height:15px}
 #landClose svg{width:16px; height:16px}
 /* the play button, large, bottom right — the transport's own look, at 64px */
@@ -3221,6 +3227,10 @@ html.player #syncbar, html.player #mapbar{ display:none !important }
    student in the embed is already inside the course it would point to.
    Standalone and the phone app keep it; that is who it is for. */
 html.player #linkBtn{ display:none !important }
+/* the three panel toggles at the header's right end (2 Sep) — see the boot
+   move by #scoreheadL; the card head's emptied Panels group goes with them */
+html.player #playerPanels{ display:inline-flex; gap:6px; margin-left:auto }
+html.player #scoreheadL .ctlgroup[aria-label="Panels"]{ display:none }
 /* 60px of air at the foot is right for a page you scroll and wasted in a
    window sized to fit (28 Aug) */
 html.player body{ padding-bottom:14px }
@@ -4372,6 +4382,11 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
        the point of the drawing (David, 31 Aug), so it is painted literally;
        only the screw base follows the scheme's ink through currentColor -->
   <symbol id="is-bulb" viewBox="0 0 24 24"><path d="M12 2.6a6.4 6.4 0 0 0-3.6 11.7c.9.66 1.6 1.68 1.6 2.7h4c0-1.02.7-2.04 1.6-2.7A6.4 6.4 0 0 0 12 2.6z" fill="#FFCB3D" stroke="#B8730A" stroke-width="1.5" stroke-linejoin="round"/><path d="M9.9 19.5h4.2M10.5 21.5h3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+  <!-- ENLARGE, not full screen (David, 2 Sep: "change the little symbol …
+       from a full screen symbol to an increase size symbol because we're not
+       actually going full screen like the notation does. We're just taking
+       over the space of the iframe") — a magnifier with a plus -->
+  <symbol id="is-grow" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.2"/><path d="M15.2 15.2L20.5 20.5M10.5 7.6v5.8M7.6 10.5h5.8"/></g></symbol>
   <symbol id="is-fs" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></g></symbol>
   <symbol id="is-fsx" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h5V4M20 9h-5V4M4 15h5v5M20 15h-5v5"/></g></symbol>
   <!-- three voices stacked, longest at the bottom: a chord's own shape, and
@@ -13164,8 +13179,8 @@ function renderPanPanelInner(){
     if(!PHONE||tabletPortrait()){
       const bg=document.createElement("button");
       bg.id="panbig"; bg.className="ib"; bg.type="button";
-      bg.title="Show the pan large"; bg.setAttribute("aria-label",bg.title);
-      bg.innerHTML='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><use href="#is-fs"/></svg>';
+      bg.title="Enlarge the pan"; bg.setAttribute("aria-label",bg.title);
+      bg.innerHTML='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><use href="#is-grow"/></svg>';
       bg.addEventListener("click",()=>landOpen(0,1));
       box.appendChild(bg);
     }
@@ -23534,8 +23549,12 @@ function boot(){
      press like its two siblings there: the pills are a switch, so the way out
      of "nothing" is to choose Chords or Pan. */
   $("bareBtn").addEventListener("click",()=>{ if(PHONE&&!bareSide) setBare(true); });
-  notaOn=true; try{ localStorage.setItem("hps.nota","1"); }catch(e){}
-  setNota(true);            // always on now — a stored "off" must not strand it
+  if(document.documentElement.classList.contains("player")&&!PHONE){
+    setNota(notaOn);        // the lesson embed has the toggle back (2 Sep): the stored choice holds
+  } else {
+    notaOn=true; try{ localStorage.setItem("hps.nota","1"); }catch(e){}
+    setNota(true);          // always on everywhere else — a stored "off" must not strand it
+  }
   $("notaBtn").addEventListener("click",()=>setNota(!notaOn));
   wireMarkPop();
   $("countSel").value=countMark;
@@ -25835,6 +25854,29 @@ if(!PHONE){
           pg=document.querySelector('#viewrow .ctlgroup[aria-label="Panels"]');
     if(vp) hl.appendChild(vp);
     if(pg) hl.appendChild(pg);
+    /* THE LESSON EMBED KEEPS ITS PANELS IN THE HEADER (David, 2 Sep: "In the
+       Kajabi embed and only there, can you move the chords, pan, tab selector
+       to the top right out of the notation table? And let's bring the
+       notation selection back … three buttons to toggle: Chords, Pan and
+       Notation … independently of each other. This change should not affect
+       desktop, tablet and phone"). Player mode empties the header's right
+       zone — Library, Edit, Share, Settings all hide there — so the three
+       toggles take it. Same three elements, same listeners: Chords and Pan
+       are already independent on the desktop, and Notation is the 26 Aug
+       toggle (setNota) that was retired on the 27th and kept in the DOM.
+       The card head's Panels group stays behind, emptied (the ⊘ pill in it
+       is hidden anyway) and hidden by CSS in this mode. `?author=1` cancels
+       player mode, so David's own lesson URL keeps the desktop's head. */
+    if(document.documentElement.classList.contains("player")&&!PHONE){
+      const zone=document.querySelector("header .hside.hright");
+      if(zone){
+        const g=document.createElement("span"); g.id="playerPanels";
+        g.className="ctlgroup"; g.setAttribute("role","group"); g.setAttribute("aria-label","Panels");
+        const nb=$("notaBtn"); nb.classList.remove("hidden");
+        g.append($("chordBtn"),$("panBtn"),nb);
+        zone.appendChild(g);
+      }
+    }
   }
   /* THE ONE DOOR TO THE PAN (mockup 2): the live pan chooser and the
      As written | For my pan pills move into #myPanDlg — same elements, same
