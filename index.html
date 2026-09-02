@@ -2028,8 +2028,15 @@ body.quiz .auth,body.quiz #srcBadge{display:none !important}
 body.learn #scorewrap,body.learn #belowrow,body.learn #transport,
 body.learn #viewrow,body.learn #jampanel,body.learn #vidwrap,
 body.learn .auth,body.learn #srcBadge{display:none !important}
-#learnwrap{max-width:780px;margin:48px auto 0;padding:0 16px}
-#learnwrap .learncards{display:flex;gap:16px;flex-wrap:wrap;align-items:stretch}
+/* THE TWO CARDS SIT IN THE MIDDLE OF THE ROOM, NOT AT ITS TOP (David, 2 Sep:
+   "align them vertically so they're not sitting lonely at the top of the
+   screen"). The wrap is a flex box that fitLearn() gives the height of the
+   room below the header, so the cards centre in whatever is left on this
+   screen — desktop, tablet with its deck, phone — instead of hanging 48px
+   under the header. The 48px is kept as the smallest air above them. */
+#learnwrap{max-width:780px;margin:0 auto;padding:48px 16px 24px;
+  display:flex;align-items:center;justify-content:center}
+#learnwrap .learncards{display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;width:100%}
 #learnwrap .pchoice{flex:1 1 300px}
 body.rquiz #scorewrap,body.rquiz #belowrow,body.rquiz #transport,
 body.rquiz #viewrow,body.rquiz #jampanel,body.rquiz #vidwrap,
@@ -2653,8 +2660,42 @@ body.phone #pvwrap.sides #pvsvg{width:min(calc(236px*var(--panzoom,1)*var(--panf
 #panZoomCap{margin:0; color:#fff; opacity:.9; font-size:13.5px; text-align:center;
   text-wrap:balance}
 #panZoomCap b{font-weight:600}
+/* THE LANDSCAPE RING — see landSwipe. A sheet over the whole screen, so the
+   layout under it is untouched. It slides in from the side the finger
+   travelled towards and leaves the same way (--side); inside, #landTrack
+   shifts between slides, so a second destination joins without touching
+   this. Under the dialogs (shade 55, flat 60, top layer above all) so the pan
+   menu opens over it. `.snap` skips the slide — a rotation. */
+#landView{position:fixed; inset:0; z-index:50; background:var(--paper);
+  visibility:hidden; transform:translateX(var(--side,100%));
+  transition:transform .28s cubic-bezier(.22,.61,.36,1), visibility 0s linear .28s;
+  overflow:hidden; touch-action:pan-y; -webkit-user-select:none; user-select:none}
+#landView.on{visibility:visible; transform:none;
+  transition:transform .28s cubic-bezier(.22,.61,.36,1)}
+#landView.snap,#landView.snap #landTrack{transition:none}
+#landTrack{display:flex; height:100%; width:100%;
+  transition:transform .28s cubic-bezier(.22,.61,.36,1)}
+.landSlide{flex:0 0 100%; height:100%; min-width:0}
+/* the pan as tall as the screen allows, the flanks beside it as on the card;
+   the right edge keeps room for ⚙ and × */
+#landPanInner{height:100%; display:flex; align-items:center; justify-content:center; gap:16px;
+  padding:calc(6px + env(safe-area-inset-top)) calc(60px + env(safe-area-inset-right))
+          calc(6px + env(safe-area-inset-bottom)/2) calc(16px + env(safe-area-inset-left))}
+#landPanInner .landsq{
+  --sq:min(calc(100vh - 12px - env(safe-area-inset-top) - env(safe-area-inset-bottom)/2),calc(100vw - 260px));
+  width:var(--sq); height:var(--sq); display:flex; align-items:center; justify-content:center}
+#landPanInner .landsq svg{width:100%; height:100%; overflow:visible; display:block}
+#landPanInner .pvmid{display:flex; flex-direction:column; align-items:center; gap:0; min-width:0}
+#landPanInner .pvchord{margin-top:-6px}
+/* "a little x in a circle" (David, 2 Sep) — and the menu beside it */
+#landMenu,#landClose{position:absolute; top:calc(8px + env(safe-area-inset-top)); z-index:2;
+  width:32px; height:32px; border-radius:50%}
+#landMenu{right:calc(50px + env(safe-area-inset-right))}
+#landClose{right:calc(10px + env(safe-area-inset-right))}
+#landMenu svg{width:15px; height:15px}
+#landClose svg{width:16px; height:16px}
 /* a long press must not also select the glyph or raise iOS's callout */
-#panlabels,#edPanLabels{-webkit-touch-callout:none; -webkit-user-select:none;
+#panmenu,#edPanMenu{-webkit-touch-callout:none; -webkit-user-select:none;
   user-select:none; touch-action:manipulation}
 #panbox{position:relative}
 /* the editor's card carries the pan's corner buttons — see renderEditbar —
@@ -2671,9 +2712,6 @@ body.phone #pvwrap.sides #pvsvg{width:min(calc(236px*var(--panzoom,1)*var(--panf
    text pill was wider than the gap and sat on the pan (David, 26 Aug). */
 #panmenu,#pancustom{position:absolute; top:8px; right:8px; z-index:2; width:28px; height:28px}
 #panmenu svg{width:15px; height:15px}
-/* the labels toggle sits beside the menu, in the gap the pan's circle leaves */
-#panlabels{position:absolute; top:8px; right:42px; z-index:2; width:28px; height:28px;
-  font-size:14px; font-weight:800; color:var(--ink2)}
 #pancustom svg{width:16px; height:16px}
 /* the sheet's rows need their own layout: .drow is styled under #setDlg and
    #menuDlg alone, so these had no flex at all and sat on each other
@@ -2690,6 +2728,7 @@ body.phone #pvwrap.sides #pvsvg{width:min(calc(236px*var(--panzoom,1)*var(--panf
 #panMenuDlg .drow>span:first-child,#flowMenuDlg .drow>span:first-child{
   font-size:13.5px; font-weight:600; color:var(--ink2)}
 #panMenuDlg .pills,#flowMenuDlg .pills{flex:0 0 auto}
+#panMenuDlg .ctl:disabled{opacity:.4; cursor:default}
 /* the two corner buttons are absolutely positioned over this row's right end,
    so the bar reserves their width — without it the phone ran "Reset" straight
    under them and half the button was unreachable */
@@ -2985,7 +3024,13 @@ body.design-flow #fszDn,body.design-flow #fszUp{display:inline-flex;
    narrows the stream, which re-sets the systems, which can remove the
    overflow, which widens it again — the loop David hit by dragging a window
    edge (30 Aug: "the app just crashed when I resized"). */
-body.design-flow #score{overflow-y:auto; -webkit-overflow-scrolling:touch;
+/* VERTICAL ONLY (David, 2 Sep: "in jam mode … it still scrolls in all
+   directions"). `overflow-y:auto` alone turns the x-axis from visible into
+   auto, and the loop frame or the marker box can stand a pixel past the right
+   edge — enough for a sideways scroll under the thumb. Flow wraps to its
+   width, so there is never anything to scroll to on x. Table and Tab already
+   set x hidden from the fitter; this is the same rule for the stream. */
+body.design-flow #score{overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch;
   overscroll-behavior:contain; scrollbar-gutter:stable}
 /* THE STREAM GETS ITS OWN FRAME (David, 31 Aug: "the main notation table has a
    frame in which lots of controls are sitting in 2 rows top and bottom.
@@ -3195,7 +3240,14 @@ body.phone #sideDots{ display:flex; gap:8px; justify-content:center;
   /* 9/3 → 5/3 → 2/1 (David, 1–2 Sep: "can we bring the dot strip down to
      10 px?"): 7px of dot in a 10px strip. The finger's target is the ::after
      inset below, not the padding, so nothing is lost to the tap. */
-  padding:calc(2px + var(--sdslack,0px)/2) 0 calc(1px + var(--sdslack,0px)/2) }
+  /* 2/1 → 2/7 (David, 2 Sep, screenshot: "the little navigator dots … now
+     are on the border of the deck. They sit a little bit too low"). With the
+     slack gone — his phone's insets eat it — the strip was its 10px minimum
+     and the dots stood 1px off the deck's edge, under its shadow. A dot's own
+     height of air below, always; the slack still centres them when there is
+     any. Both fitters reserve what the strip measures, so this costs the
+     notation 6px in the tight case and nothing else moves. */
+  padding:calc(2px + var(--sdslack,0px)/2) 0 calc(7px + var(--sdslack,0px)/2) }
 body.phone.editing #sideDots, body.phone.gedit #sideDots,
 body.phone.jam #sideDots, body.phone.quiz #sideDots,
 body.phone.rquiz #sideDots, body.phone.learn #sideDots{ display:none }
@@ -3425,14 +3477,15 @@ body.phone #practiceDlg,body.phone #jamDlg,body.phone #pieceDlg{
   width:100%; max-width:none; margin:auto auto 0; background:var(--card);
   max-height:82vh; overflow-y:auto; overscroll-behavior:contain;
   box-shadow:0 -12px 40px -14px rgba(var(--sh),.55)}
-/* THE BROWSER IS STILL A BOTTOM SHEET on the phone — it is what David has
-   been looking at in the mockup — but it keeps the picker's insides, so the
-   sheet's own padding goes: rows are full-bleed and pay for their own. */
-body.phone #grooveDlg{
-  border:none; border-radius:18px 18px 0 0; padding:0;
-  width:100%; max-width:none; margin:auto auto 0; background:var(--card);
-  max-height:82vh; overflow:hidden; overscroll-behavior:contain;
-  box-shadow:0 -12px 40px -14px rgba(var(--sh),.55)}
+/* THE BROWSER FLOATS LIKE THE SCALE PICKER NOW (David, 2 Sep: "the groove
+   selector at the moment is very close to the bottom of the screen on my
+   phone, so that the close button is almost cut off … the scale selector sits
+   vertically centered, which looks much better"). It had been written as a
+   bottom sheet — margin:auto auto 0, square bottom corners, flush to the
+   edge — which put its padding-less foot straight into the home-indicator
+   strip. It wears the picker's phone rule instead: same width, same 82vh cap,
+   a dialog's own margin:auto, so the two selectors sit in the same place. */
+body.phone #grooveDlg{width:100%; max-height:82vh}
 body.phone #practiceDlg::backdrop,body.phone #jamDlg::backdrop,
 body.phone #grooveDlg::backdrop,body.phone #pieceDlg::backdrop{background:rgba(var(--scrim),.34)}
 body.phone #jamChordGrid{gap:6px}
@@ -3713,9 +3766,11 @@ body.phone .gmini i{font-size:10px}
   #edPanRow .edside .edbadge:nth-child(1){grid-area:a}
   #edPanRow .edside .edbadge:nth-child(2){grid-area:b}
   #edPanRow .edside .edbadge:nth-child(3){grid-area:c}
-  /* the labels switcher, top right of the pan — the reading pan's own toggle,
-     here because the bench draws the same pan (David, 31 Aug) */
-  #edPanLabels{position:absolute; top:0; right:12px; z-index:2}
+  /* the pan menu, top right of the pan — the reading pan's own ⚙, here
+     because the bench draws the same pan (31 Aug as the labels flip; the
+     menu since 2 Sep) */
+  #edPanMenu{position:absolute; top:0; right:12px; z-index:2}
+  #edPanMenu svg{width:15px; height:15px}
   .edside{justify-content:center}
   .edbadge{width:34px; height:34px; border-radius:50%; display:grid; place-items:center;
     font-family:Inter,sans-serif; font-size:15px; font-weight:700; flex:none;
@@ -4012,6 +4067,17 @@ body.phone .gmini i{font-size:10px}
   body.phone #mNotaRow{display:none}
 }
 body.phone #scorewrap{overflow-x:hidden}
+/* Y ONLY, TOLD TO THE BROWSER (David, 2 Sep, from the phone: "the table and
+   tab notations still scroll in all directions" in a jam, and "swiping left
+   or right in landscape mode still does nothing"). Both are iOS: a scroller
+   whose x-axis is hidden can still be DRAGGED sideways there when its content
+   is a pixel wider — the zoomed table is exactly one pixel wider (510 in 509)
+   — and a sideways finger is claimed as a pan and the pointer cancelled
+   before the app sees the release, which is where the landscape swipe went.
+   `pan-y` says sideways is not the browser's; vertical scrolling inside the
+   notation is untouched, pinch stays, and the double-tap zoom this replaces
+   `manipulation` for is still off (only auto/manipulation allow it). */
+body.phone #scorewrap,body.phone #scorewrap *{touch-action:pan-y pinch-zoom}
 /* CENTRED, ALWAYS (David, 28 Aug). The card has a fixed design width and is
    scaled by `zoom`; when the fit shrinks it to make the music fit the height —
    which is what the editors do, with the deck taking half the screen — the
@@ -4840,9 +4906,10 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
         <button class="edbadge" id="edKnock" title="Knock">°</button>
         <button class="edbadge" id="edTak" title="Tak">T</button>
       </div>
-      <!-- the note-names ⇄ numbers flip, top right — the reading pan's toggle,
-           because the bench draws the same pan (David, 31 Aug) -->
-      <button class="ib" id="edPanLabels"></button>
+      <!-- the pan's settings menu, top right — the reading pan's own ⚙; its
+           Labels row is the note-names ⇄ numbers flip that stood here from
+           31 Aug to 2 Sep, and holding it zooms the pan -->
+      <button class="ib" id="edPanMenu" title="Pan view settings" aria-label="Pan view settings"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><use href="#is-set"/></svg></button>
       <!-- The instrument door was briefly a button here, and beside Sections
            on the desktop. David withdrew both the same hour: "if the user
            picks another pan from the normal pan selector while in edit mode,
@@ -5285,6 +5352,15 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <span class="pills" role="group" aria-label="Pan view mode">
       <button id="pmStrokes" title="Every hit flashes on the pan">Strokes</button>
       <button id="pmChords" title="The active chord's fields stay lit">Chords</button></span></div>
+  <!-- THE LABELS LIVE HERE NOW, EVERYWHERE (David, 2 Sep: "move the tone
+       field/note name selector into the pan view settings menu everywhere …
+       the option doesn't need an extra button"). The A/1 corner toggle is
+       gone from the reading card, the desktop editor and the phone's bench;
+       the long press that zoomed the pan moved onto the ⚙ beside it. -->
+  <div class="drow"><span>Labels</span>
+    <span class="pills" role="group" aria-label="Which label is big">
+      <button id="pmNums" title="Numbers big, note names small">Numbers</button>
+      <button id="pmNotes" title="Note names big, numbers small">Notes</button></span></div>
   <div class="drow"><span>Size</span>
     <span style="display:flex;gap:9px;align-items:center">
       <button class="ctl" id="pmZoomDn" title="Smaller pan">−</button>
@@ -5303,9 +5379,9 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <div class="drow"><span>Counts</span>
     <select class="ctl" id="flowCountSel" title="The counting numbers above the notes">
       <option value="1">On</option><option value="0">Off</option></select></div>
-  <div class="drow"><span>Window</span>
-    <select class="ctl" id="flowWinSel" title="Keep the notation within the screen, or let the page run its full length">
-      <option value="fit">Fit the screen</option><option value="full">Full page</option></select></div>
+  <!-- the Window row (Fit the screen / Full page) stood here until 2 Sep;
+       David: "we are now working on one solution that works optimally
+       everywhere, so let's get rid of that window row". The window fits. -->
   <div class="drow"><span>Page</span>
     <select class="ctl" id="flowAllSel" title="One table at a time, or the whole arrangement as one scrolling page">
       <option value="0">Section</option><option value="1">Whole piece</option></select></div>
@@ -5620,6 +5696,17 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 <div id="panZoom" role="dialog" aria-modal="true" aria-label="Pan, enlarged">
   <div id="panZoomInner"></div>
   <p id="panZoomCap"></p>
+</div>
+<!-- THE LANDSCAPE RING (David, 2 Sep) — see landSwipe. Sideways on the phone,
+     a swipe across the notation turns the page to the pan and a swipe turns
+     it back. One slide today; a second destination is planned, so the track
+     already holds slides and the walk already counts them. -->
+<div id="landView" role="region" aria-label="Pan" aria-hidden="true">
+  <div id="landTrack">
+    <section class="landSlide" id="landPanSlide"><div id="landPanInner"></div></section>
+  </div>
+  <button class="ib" id="landMenu" title="Pan view settings" aria-label="Pan view settings"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#is-set"/></svg></button>
+  <button class="ib" id="landClose" title="Back to the notation" aria-label="Back to the notation"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#is-x"/></svg></button>
 </div>
 
 <dialog id="expDlg">
@@ -7126,6 +7213,7 @@ function panLayouts(){ try{return JSON.parse(localStorage.getItem("hps.panlayout
 function setPanLayouts(o){ try{localStorage.setItem("hps.panlayout",JSON.stringify(o))}catch(e){} }
 function layoutFor(id){ const l=panLayouts()[id]; return (l&&(l.f||l.b))?l:null; }
 let panOn=(localStorage.getItem("hps.pan")||"0")==="1";       // the pan companion panel
+let landIdx=-1;   // the landscape ring's slide on screen (-1: the notation) — see landSwipe
 // pan view: strokes flash per hit | chords hold the active chord's fields lit
 let panMode=localStorage.getItem("hps.panmode")==="chords"?"chords":"strokes";
 /* the pan card's own settings, gathered behind ONE corner menu (David, 30 Aug):
@@ -7755,7 +7843,7 @@ function paintPulse(pi,seek){
     document.querySelectorAll(".cnow").forEach(el=>el.classList.remove("cnow"));
     markPlayingChips(cur.ai);
     // a held chord follows the cursor here too — see the note below
-    if(panOn&&(panMode==="chords"||(!seek&&(playing||follow)))) paintPan(pi);
+    if((panOn||landIdx>=0)&&(panMode==="chords"||(!seek&&(playing||follow)))) paintPan(pi);
     return;
   }
   if(cur){
@@ -7829,7 +7917,7 @@ function paintPulse(pi,seek){
        for CHORDS, which state what is under the cursor and have no flash at
        all. The pan switch only made it visible: the rebuild repaints from
        panCursor(), so the two agreed again until the next navigation. */
-    if(panOn&&(panMode==="chords"||(!seek&&(playing||follow)))) paintPan(pi);
+    if((panOn||landIdx>=0)&&(panMode==="chords"||(!seek&&(playing||follow)))) paintPan(pi);
     markPlayingChips(cur.ai);
     document.querySelectorAll(".cchip.playing").forEach(el=>el.classList.remove("playing"));
     const bar=Math.floor(rel/SM(piece,cur.name).bp);
@@ -10726,6 +10814,17 @@ function setView(v,opts){
      so the skin and the panels below it change in one paint. */
   if(typeof syncBare==="function") syncBare();
   if(!(opts&&opts.skipRender)) render();
+  /* A SETTLE PASS, ONE FRAME LATER (David, 2 Sep: "when switching between
+     notation modes, sometimes the pan would have a different size … I
+     switched to another notation mode and back, and then it had its proper
+     size again"). Caught once on the emulator and never again in sixteen
+     runs: a fit that ran while the window was mid-transition — a pane being
+     hidden, and on a phone the keyboard, an app switch, a rotation — measured
+     a room that was not the room, and the size it wrote stayed until the
+     next fit. The fit is idempotent (three passes in a row agree to the
+     pixel), so a second pass after the browser has painted costs nothing
+     when the first was right and corrects it when it was not. */
+  if(PHONE&&!(opts&&opts.skipRender)) requestAnimationFrame(()=>{ try{ phoneFit(); }catch(e){} });
 }
 function render(){
   if(!piece.sections[viewSec]) viewSec=piece.arrangement[0];
@@ -11093,12 +11192,10 @@ function flowDeskFit(){
   if(!sc||!mus||!mus.offsetParent) return;
   mus.style.maxHeight="";
   if(view!=="flow"||editing) return;
-  /* FULLSCREEN ALWAYS FITS, whatever "Flow window" says: there is nothing
-     else on the screen to make room for, and a page that runs past the
-     bottom in fullscreen is just a card you cannot see the foot of (David,
-     30 Aug: "flow fullscreen has the same issue as tab"). Outside
-     fullscreen the setting still decides. */
-  if(!fsOn()&&flowWin!=="fit") return;
+  /* THE WINDOW ALWAYS FITS. "Full page" was a Flow-menu setting until 2 Sep
+     (fullscreen ignored it since 30 Aug: "flow fullscreen has the same issue
+     as tab"); David retired it — "one solution that works optimally
+     everywhere". A stored "full" from before is simply no longer read. */
   const top=mus.getBoundingClientRect().top;
   let avail;
   if(fsOn()){
@@ -11149,6 +11246,24 @@ function flowDeskFit(){
    Landscape hands it everything the transport leaves; portrait shares with
    the companion card, which may take at most half — the notation is what
    they came for — and is zoomed down if it wants more than that. */
+/* THE STRIP'S HEIGHT AT REST (David, 2 Sep: "flow still doesn't increase in
+   size to use up the available space"). In bare the strip is the flexible row
+   and soaks up whatever the window leaves; a refit then read that soaked-up
+   height as the reserve, took it off the window, the strip grew by as much —
+   and the window could only ever shrink. Measured at one height: four
+   systems, then three after a single refit, then three for good. Outside bare
+   the same ratchet rode in on `--sdslack`, which pads the strip by the last
+   fit's slack. Both fitters reserve this instead: the slack cleared, the flex
+   held still for one read, the padding and the dot and nothing else. The
+   leftover is paid out AFTER the window is set, by the CSS. */
+function stripRestHeight(sd){
+  if(!sd||!sd.offsetParent) return 0;
+  sd.style.removeProperty("--sdslack");
+  const was=sd.style.flex; sd.style.flex="0 0 auto";
+  const h=sd.getBoundingClientRect().height;
+  sd.style.flex=was;
+  return h;
+}
 function flowPhoneFit(wrap,land){
   const sc=$("scorecard"), mus=$("score");
   const bar=$("transport"), ex=$("drawerExtra");
@@ -11164,9 +11279,21 @@ function flowPhoneFit(wrap,land){
      strip made it 53px and pushed the deck off, which is how it was found.
      Reserved here, so the strip's height is the notation's to give. */
   const sd=$("sideDots");
-  const sdH=(sd&&sd.offsetParent)?sd.getBoundingClientRect().height:0;
+  const sdH=stripRestHeight(sd);
   const padB2=padB;
-  let avail=innerHeight-wrap.getBoundingClientRect().top-barH-padB2-sdH-8;
+  /* THE EXTRAS ARE MEASURED, NOT 8 (David, 2 Sep, screenshot: the dots "still
+     are sitting on the edge of the deck" in Flow). Under the card stand the
+     wrap's bottom padding (4), the wrap's bottom margin (6) and #belowrow's
+     top margin (4, 0 in a jam) — 14, and the budget took 8, so the stack was
+     6px over the screen. The strip is the only thing that can give, and it
+     did: squeezed from 16 to 10, the dots on the deck. With a SNAPPED window
+     the row-trim's slack hid the shortfall; his Page is "Whole piece", which
+     does not snap, and there it showed. Read from the stylesheet, so a
+     margin changed there cannot leave this number behind again. */
+  const wcs=getComputedStyle(wrap), br=$("belowrow");
+  const extras=(parseFloat(wcs.paddingBottom)||0)+(parseFloat(wcs.marginBottom)||0)
+    +((br&&br.offsetParent)?(parseFloat(getComputedStyle(br).marginTop)||0):0);
+  let avail=innerHeight-wrap.getBoundingClientRect().top-barH-padB2-sdH-extras;
   /* LANDSCAPE TAKES THE SHARED STAGE instead of measuring its own window
      (David, 30 Aug — the three skins are one rectangle now). The music gets a
      fixed height rather than a ceiling, so the BOX is the same whether the
@@ -11184,7 +11311,13 @@ function flowPhoneFit(wrap,land){
        That is what made Chords look like the bare view. It is measured, not
        zoomed — every one of those is a tap target, and the strip already
        scrolls sideways, so its height is a fact rather than a budget. */
-    const jp=(jamOn&&chordRowOn)?$("jampanel"):null;
+    /* WHENEVER IT IS ON SCREEN, not only on the chords side. The panel stays
+       up in a jam whatever side is chosen (measured 2 Sep: it is shown with
+       the pan and in bare alike), so gating on chordRowOn left it uncounted
+       in bare — and with the window now a box, that pushed the deck off the
+       screen by 45px. No student can reach bare in a jam today; the guard is
+       for the day one can. */
+    const jp=jamOn?$("jampanel"):null;
     if(jp&&jp.offsetParent){
       avail-=jp.getBoundingClientRect().height;
       avail-=10;                      // the gap between the two cards
@@ -11192,6 +11325,19 @@ function flowPhoneFit(wrap,land){
     const box=panOn?$("panbox"):(chordRowOn?$("chordbox"):null);
     if(box&&box.offsetParent){
       box.style.zoom=""; box.style.removeProperty("--panfit");
+      /* TABLE'S PIXELS MUST NOT SURVIVE INTO FLOW (David, 2 Sep, with a
+         screenshot: "when I switch from table notation to flow notation, the
+         pan tab gets pushed out at the bottom … this does not happen when I
+         switch from tab to flow"). fitPortraitStack sizes the drawing in
+         definite pixels — 281px on his phone, fitted to TABLE's leftover —
+         and writes them inline on the SVG. Flow sizes the same drawing by a
+         factor (--panfit), and an inline width beats a factor, so the pan
+         arrived in Flow at Table's size: 295px against the 250 Flow would
+         have given it, 45px the row did not have. From Tab the leftover
+         pixels happen to be smaller and fit, which is exactly the asymmetry
+         he noticed. Cleared here, before the card is measured. */
+      const dr=$("pvsvg");
+      if(dr){ dr.style.width=""; dr.style.maxWidth=""; dr.style.height=""; }
       const h=box.getBoundingClientRect().height, cap=Math.max(0,avail*.5);
       if(h>cap){ panBoxFit(box,cap); avail-=cap; } else avail-=h;
       avail-=10;                      // the gap between the two cards
@@ -11202,9 +11348,21 @@ function flowPhoneFit(wrap,land){
   const h=Math.max(90,avail-chrome);
   /* portrait trims to a whole row so the chord card sits right under the
      music; landscape keeps the full box — there the stage IS the height */
-  const snapped=land?h:snapFlowWindow(mus,h);
+  /* IN A JAM THE WINDOW IS A BOX, PORTRAIT TOO (David, 2 Sep, with a
+     screenshot: two systems, then four hundred pixels of nothing above the
+     deck — "flow doesn't fill the screen"; and the rule: "the notation can
+     take as much space as there is, pushing the UI elements downwards until
+     they reach the deck"). Portrait Flow had only ever set a CEILING, so a
+     short table gave a short card and the room fell out under the panel.
+     Landscape solved the same thing on 30 Aug by making the stage a box;
+     a jam gets the box in portrait as well — the card is the height that
+     is free, the panel sits on the deck, and a longer stream scrolls inside.
+     Practice keeps the ceiling: there the companion adjusts to the table,
+     which is what David asked to keep. */
+  const boxed=land||(typeof jamOn!=="undefined"&&jamOn);
+  const snapped=boxed?h:snapFlowWindow(mus,h);
   mus.style.maxHeight=snapped+"px";
-  if(land) mus.style.minHeight=h+"px";     // the box, not just its ceiling
+  if(boxed) mus.style.minHeight=h+"px";    // the box, not just its ceiling
   /* THE SLACK GOES TO THE SWIPE STRIP, NOT INTO A GAP (David, 1 Sep: "the flow
      notation leaves a gap now at the bottom … we should just make the swipe
      window a bit more generous when there is no space below"). Portrait Flow
@@ -11244,8 +11402,7 @@ function fitPortraitStack(sc,z,designW){
      standing, a 64px strip earned in Flow would go on taking 64px out of
      every other skin's notation. */
   const sd=$("sideDots");
-  if(sd) sd.style.removeProperty("--sdslack");
-  const sdH=(sd&&sd.offsetParent)?sd.offsetHeight:0;
+  const sdH=stripRestHeight(sd);
   /* THE RESERVES CAME DOWN 10 → 8, TWICE (David, 1 Sep: "in tab mode, the pan
      is smaller, even though it wouldn't have to decrease in size … that
      doesn't need to be such a big gap"). Measured at his phone's geometry
@@ -11277,7 +11434,7 @@ function fitPortraitStack(sc,z,designW){
      #score sits INSIDE the zoomed card, so its max-height is written in
      unzoomed px — the screen measurement divided by the zoom. */
   const mus=$("score");
-  mus.style.maxHeight=""; mus.style.overflowY="";
+  mus.style.maxHeight=""; mus.style.overflowY=""; mus.style.overflowX="";
   { const zz=parseFloat(sc.style.zoom)||1;
     const chrome=sc.getBoundingClientRect().height-mus.getBoundingClientRect().height;
     let musCap=Infinity;                              // screen px, the music alone
@@ -11288,11 +11445,12 @@ function fitPortraitStack(sc,z,designW){
          entirely behind the deck. flowPhoneFit reserves it; so does this.
          Chords side: the panel's own height, it is not a thing to squeeze.
          Pan side: the drawing may have up to half, the rule Flow uses. */
+      /* the panel is on screen on every side of a jam (measured 2 Sep), so it
+         is reserved whenever it is shown; a jam offers no pan side on the
+         phone, so no second reserve is needed */
       let reserve=0;
       const jp=$("jampanel");
-      if(chordRowOn&&jp&&jp.offsetParent) reserve=jp.getBoundingClientRect().height+10;
-      else if(panOn){ const pb=$("panbox");
-        if(pb&&pb.offsetParent) reserve=Math.min(pb.getBoundingClientRect().height,space*.5)+10; }
+      if(jp&&jp.offsetParent) reserve=jp.getBoundingClientRect().height+10;
       musCap=space-chrome-reserve;
     } else{
       const rows=mus.querySelectorAll(".nrow");
@@ -11300,7 +11458,12 @@ function fitPortraitStack(sc,z,designW){
         musCap=rows[3].getBoundingClientRect().bottom-mus.getBoundingClientRect().top;
     }
     if(musCap<Infinity&&mus.getBoundingClientRect().height>musCap+1){
-      mus.style.maxHeight=(musCap/zz)+"px"; mus.style.overflowY="auto";
+      /* VERTICAL ONLY (David, 2 Sep: "it should only scroll vertically, not
+         horizontally"). CSS turns a `visible` x-axis into `auto` the moment
+         the y-axis stops being visible, and the marker box and the loop frame
+         are positioned children that can stand a pixel or two past the right
+         edge — enough for a sideways scroll to appear under the thumb. */
+      mus.style.maxHeight=(musCap/zz)+"px"; mus.style.overflowY="auto"; mus.style.overflowX="hidden";
       h=sc.getBoundingClientRect().height;
     }
   }
@@ -12183,7 +12346,8 @@ function effField(f){ // the field that actually sounds right now (mode-aware)
 /* the drawn element for a position — the two shells keep separate id series
    (#pvf3 is top field 3, #pvb3 the fourth underside note), so one lookup
    spares every caller from knowing which surface it is lighting */
-const pvEl=p=>isBotPos(p)?$("pvb"+(botIdx(p)-1)):$("pvf"+p);
+const pvId=p=>isBotPos(p)?"pvb"+(botIdx(p)-1):"pvf"+p;
+const pvEl=p=>$(pvId(p));
 /* THE UNDERSIDE (David, 28 Aug — mockups-pan-underside.html, S1 phone + S3
    desktop). OPT-IN via opts.under, because only the pan CARD wants it: the
    editor palette and the chord quiz draw this same function and there is
@@ -12660,10 +12824,12 @@ function panViewSVG(pan,label,opts){
    and setPan() never fitted at all — so the fit was computed against the
    previous pan and a tall one ran under the bottom bar (David, 26 Aug: "part
    is cut off"). Refit at the end of every pan render. */
-/* ── LONG PRESS ON THE SWITCHER ZOOMS THE PAN ─────────────────────────────
-   The A/1 button already toggles note names and numbers on a tap; holding it
-   throws the same drawing full screen. Two rules make that safe to add to a
-   button that already does something:
+/* ── LONG PRESS ON THE PAN'S ⚙ ZOOMS THE PAN ──────────────────────────────
+   (On the A/1 switcher from 1 Sep until 2 Sep, when David folded that button
+   into the menu: "we can move that function to a long press on the pan
+   settings button".) The ⚙ opens the menu on a tap; holding it throws the
+   drawing full screen. Two rules make that safe to add to a button that
+   already does something:
      · THE TAP MUST NOT ALSO FIRE. The switcher's own click listener was
        registered when the button was built, and listeners on the TARGET run in
        registration order whatever their capture flag — so stopping it there is
@@ -12688,7 +12854,7 @@ function longPressZoom(el){
 /* the tap the long press must swallow */
 document.addEventListener("click",e=>{
   if(Date.now()-pzOpenedAt>700) return;
-  if(!e.target.closest||!e.target.closest("#panlabels,#edPanLabels")) return;
+  if(!e.target.closest||!e.target.closest("#panmenu,#edPanMenu")) return;
   e.preventDefault(); e.stopPropagation();
 },true);
 function openPanZoom(){
@@ -12726,8 +12892,136 @@ function closePanZoom(){
   $("panZoomInner").innerHTML="";                 // the clone is not kept
   if(z.parentElement!==document.body) document.body.appendChild(z);
 }
+/* the flanks' markup, one copy: the card and the landscape ring both draw it */
+function pvLeftHTML(){
+  return '<span class="lamp lampR" id="pvlampR" title="Left hand">'+handLetter("R")+'</span>'
+    +'<span class="pvperc" id="pvp-tak2" title="Tak (K)">K</span>'
+    +'<span class="pvperc" id="pvp-slap" title="Slap">^</span>';
+}
+function pvRightHTML(){
+  return '<span class="lamp lampL" id="pvlampL" title="Right hand">'+handLetter("L")+'</span>'
+    +'<span class="pvperc" id="pvp-tak" title="Tak">T</span>'
+    +'<span class="pvperc" id="pvp-knock" title="Knock">°</span>';
+}
+/* a tapped field, underside field or badge sounds — from the card or the ring.
+   The flash goes by id so the twin lights too. */
+function panSoundField(f){
+  ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
+  const midi=myPan.midiFor(f); if(midi==null) return;
+  fire(bankBuf("o"+midi)||synthBuf(midi,"open"),ctx.currentTime+0.01,1);
+  pvFlashId("pvf"+f,["hT"]);
+}
+function panSoundBottom(i){
+  ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
+  const midi=myPan.botMidiFor(i); if(midi==null) return;
+  fire(bankBuf("o"+midi)||synthBuf(midi,"open"),ctx.currentTime+0.01,1);
+  pvFlashId("pvb"+i,["hT"]);
+}
+function panSoundPerc(s,id){
+  ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
+  fire(bankBuf("p_"+s+"R")||percBuf(s),ctx.currentTime+0.01,0.9);
+  pvFlashId(id||("pvp-"+s),["hT"]);
+}
+/* POCKET ZONES fix (David, 31 Aug: "the pan tab triggers tone fields when I
+   swipe sideways"): the phone's pans are SWIPE surfaces, so they fire on
+   pointerup with a move-cancel — a tap still sounds, a swipe crossing fields
+   stays silent. The desktop keeps the down-fire (no swipe exists there). */
+function panTapWire(g,go){
+  if(PHONE&&!TABLET){
+    let x0=0,y0=0;
+    g.addEventListener("pointerdown",e=>{ x0=e.clientX; y0=e.clientY; });
+    g.addEventListener("pointerup",e=>{
+      if(Math.abs(e.clientX-x0)>10||Math.abs(e.clientY-y0)>10) return;
+      go();
+    });
+  } else g.addEventListener("pointerdown",go);
+}
+/* ── THE LANDSCAPE RING (David, 2 Sep) ──────────────────────────────────
+   Phone, sideways: a swipe across the notation turns the page to the pan —
+   "everything on screen can disappear, and only the pan view can be on the
+   screen" — and a swipe turns it back; ⚙ opens the pan menu (Size greyed: it
+   IS the screen), × is the other way home. A SHEET OVER THE SCREEN, so the
+   landscape layout under it is untouched: the swipe adds the sheet, the
+   swipe back removes it. The ring is [notation, slides…]: one slide today,
+   the pan, and the walk already counts a second ("there will be a 2nd
+   destination"), which joins by adding a <section> and a painter.
+   Live, not a picture: the fields light as the piece plays (pvFlashId
+   flashes the twin) and a tap sounds one as the card's do. The sheet carries
+   NO ids of its own — the pan's ids belong to the card (see openPanZoom) —
+   each element remembers its twin in data-twin instead. */
+const LAND_SWIPE=56;                  // px of travel; angle-gated at 2:1 by the callers
+const landPainters=[];                // one per slide, in track order — filled below
+function landPanPaint(){
+  const host=$("landPanInner"); if(!host) return;
+  host.innerHTML="";
+  const sq=document.createElement("div"); sq.className="landsq";
+  sq.innerHTML=panViewSVG(null,null,{under:true});
+  const side=(cls,html)=>{ const d=document.createElement("div");
+    d.className="pvside "+cls; d.innerHTML=html; return d; };
+  const left=side("pvleft",pvLeftHTML()), right=side("pvright",pvRightHTML());
+  const mid=document.createElement("div"); mid.className="pvmid"; mid.appendChild(sq);
+  if(panMode==="chords"){          // the card's rule: flanks stay, hidden; the name takes their place
+    for(const f of [left,right]){ f.style.visibility="hidden"; f.setAttribute("aria-hidden","true"); }
+    const nm=document.createElement("div"); nm.className="pvchord"; nm.id="pvchord";
+    mid.appendChild(nm);
+  }
+  host.append(left,mid,right);
+  host.querySelectorAll("[id]").forEach(el=>{ el.dataset.twin=el.id; el.removeAttribute("id"); });
+  host.querySelectorAll(".pvf:not(.pvb)").forEach(g=>panTapWire(g,()=>panSoundField(+g.dataset.f)));
+  host.querySelectorAll(".pvb").forEach(g=>panTapWire(g,()=>panSoundBottom(+g.dataset.b)));
+  [["slap","pvp-slap"],["tak","pvp-tak"],["knock","pvp-knock"],["tak","pvp-tak2"]].forEach(([s,id])=>{
+    const el=host.querySelector('[data-twin="'+id+'"]'); if(el) panTapWire(el,()=>panSoundPerc(s,id)); });
+  if(panMode==="chords") paintPanChord(panCursor());
+}
+landPainters.push(landPanPaint);
+function landPaint(i){ const p=landPainters[i]; if(p) p(); }
+function landTo(i){ landIdx=i; $("landTrack").style.transform="translateX("+(-i*100)+"%)"; }
+/* dir is the way the finger went: +1 left (the page comes from the right),
+   -1 right. The sheet starts off-screen on that side and slides in. */
+function landOpen(i,dir){
+  const v=$("landView"), tr=$("landTrack");
+  landPaint(i);
+  tr.style.transition="none"; landTo(i);
+  v.classList.add("snap"); v.style.setProperty("--side",dir<0?"-100%":"100%");
+  void v.offsetWidth;                            // commit the start side before the slide
+  v.classList.remove("snap"); tr.style.transition="";
+  v.classList.add("on"); v.setAttribute("aria-hidden","false");
+}
+/* …and leaves the way the finger went; snap (a rotation) skips the slide */
+function landClose(dir,snap){
+  const v=$("landView"); if(landIdx<0) return;
+  landIdx=-1;
+  v.classList.toggle("snap",!!snap);
+  v.style.setProperty("--side",dir>0?"-100%":"100%");
+  v.classList.remove("on"); v.setAttribute("aria-hidden","true");
+  if(snap) requestAnimationFrame(()=>v.classList.remove("snap"));
+  const d=$("panMenuDlg"); if(d&&d.open) d.close();
+}
+function landSwipe(dir){
+  const n=$("landTrack").children.length, ring=n+1;    // the notation is member 0
+  const pos=landIdx+1, to=((pos+dir)%ring+ring)%ring;
+  if(to===0) landClose(dir);
+  else if(landIdx<0) landOpen(to-1,dir);
+  else { landPaint(to-1); landTo(to-1); }
+}
+{ const v=$("landView");
+  if(v){
+    let id=null,sx=0,sy=0;
+    v.addEventListener("pointerdown",e=>{
+      if(e.target.closest&&e.target.closest("#landMenu,#landClose")) return;
+      id=e.pointerId; sx=e.clientX; sy=e.clientY; });
+    v.addEventListener("pointerup",e=>{
+      if(id===null||e.pointerId!==id) return; id=null;
+      const dx=e.clientX-sx, dy=e.clientY-sy;
+      if(Math.abs(dx)>=LAND_SWIPE&&Math.abs(dx)>2*Math.abs(dy)) landSwipe(dx<0?1:-1);
+    });
+    v.addEventListener("pointercancel",()=>{ id=null; });
+    $("landClose").addEventListener("click",()=>landClose(0));
+    $("landMenu").addEventListener("click",openPanMenu);
+  } }
 function renderPanPanel(){
   const r=renderPanPanelInner();
+  if(landIdx>=0) landPanPaint();       // the landscape ring's pan wears the same settings
   if(PHONE) phoneFit();
   /* The pan card is repainted on its own, without a full render — and the
      chord view is the taller of the two, so switching to it under a lesson
@@ -12782,30 +13076,12 @@ function renderPanPanelInner(){
     mn.title="Pan view settings"; mn.setAttribute("aria-label",mn.title);
     mn.innerHTML='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><use href="#is-set"/></svg>';
     mn.addEventListener("click",openPanMenu);
+    longPressZoom(mn);                 // hold ⚙ to see the pan full screen
     box.appendChild(mn);
-    /* the labels toggle stands OUT of the menu, beside it (David, 30 Aug):
-       it is a thing you flip while looking at the pan, not a setting you go
-       and find. It shows the label that is currently BIG. */
-    const nt=panLabels==="note";
-    const lb=document.createElement("button");
-    lb.id="panlabels"; lb.className="ib";
-    /* the mark is a TONE FIELD (David, 30 Aug: "change the button label from
-       A/1 to a circle") — a dashed circle with what it would write inside it,
-       so the button shows the pan's own vocabulary rather than a bare glyph */
-    lb.innerHTML='<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">'
-      +'<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5"/>'
-      +'<text x="12" y="12" text-anchor="middle" dominant-baseline="central"'
-      +' font-family="'+(nt?"Figtree":"Inter")+'" font-size="'+(nt?10:11)+'" font-weight="800"'
-      +' fill="currentColor">'+(nt?"A":"1")+'</text></svg>';
-    lb.title=nt?"Note names are big — tap for numbers":"Numbers are big — tap for note names";
-    lb.setAttribute("aria-label",lb.title);
-    longPressZoom(lb);                 // hold it to see the pan full screen
-    lb.addEventListener("click",()=>{
-      panLabels=nt?"num":"note";
-      try{localStorage.setItem("hps.panlabels",panLabels)}catch(e){}
-      renderPanPanel();
-    });
-    box.appendChild(lb);
+    /* The A/1 labels toggle stood beside the menu from 30 Aug to 2 Sep. It is
+       the menu's Labels row now, on every platform (David: "we can totally
+       save that screen space, the option doesn't need an extra button"), and
+       the long press that zoomed the pan moved onto ⚙. */
     /* SIZE LIVES IN THE PAN MENU, on every platform (David, 31 Aug: "let's
        move the zoom controls into the pan tab settings menu, on tablet and
        desktop"). It had been a pair of corner buttons on the desktop since 30
@@ -12836,14 +13112,7 @@ function renderPanPanelInner(){
      is the black (right) hand, T and knock. */
   const side=(cls,html)=>{ const d=document.createElement("div");
     d.className="pvside "+cls; d.innerHTML=html; return d; };
-  const left=side("pvleft",
-     '<span class="lamp lampR" id="pvlampR" title="Left hand">'+handLetter("R")+'</span>'
-    +'<span class="pvperc" id="pvp-tak2" title="Tak (K)">K</span>'
-    +'<span class="pvperc" id="pvp-slap" title="Slap">^</span>');
-  const right=side("pvright",
-     '<span class="lamp lampL" id="pvlampL" title="Right hand">'+handLetter("L")+'</span>'
-    +'<span class="pvperc" id="pvp-tak" title="Tak">T</span>'
-    +'<span class="pvperc" id="pvp-knock" title="Knock">°</span>');
+  const left=side("pvleft",pvLeftHTML()), right=side("pvright",pvRightHTML());
   if(panMode==="chords"){          // a chord has no hand: the name takes the lamps' place
     /* the flanks stay, hidden, so this view is exactly as wide as the other —
        see "ONE SIZE FOR BOTH VIEWS" in the stylesheet */
@@ -12863,12 +13132,7 @@ function renderPanPanelInner(){
     wrap.append(left,pan.firstChild,right);
   }
   box.appendChild(wrap);
-  const tapField=f=>{
-    ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
-    const midi=myPan.midiFor(f); if(midi==null) return;
-    fire(bankBuf("o"+midi)||synthBuf(midi,"open"),ctx.currentTime+0.01,1);
-    pvFlash($("pvf"+f),["hT"]);
-  };
+  const tapField=panSoundField;      // top level since 2 Sep: the landscape ring taps the same way
   /* :not(.pvb) — the underside groups share .pvf so they inherit the whole
      flash machinery for free, but they carry data-b and would come through
      here as +undefined = NaN */
@@ -12878,36 +13142,18 @@ function renderPanPanelInner(){
      still sounds, a swipe crossing fields stays silent. The desktop keeps
      the down-fire (no swipe exists there), and the jam and editing pans are
      built elsewhere and keep their latency. */
-  const tapWire=(g,go)=>{
-    if(PHONE&&!TABLET){
-      let x0=0,y0=0;
-      g.addEventListener("pointerdown",e=>{ x0=e.clientX; y0=e.clientY; });
-      g.addEventListener("pointerup",e=>{
-        if(Math.abs(e.clientX-x0)>10||Math.abs(e.clientY-y0)>10) return;
-        go();
-      });
-    } else g.addEventListener("pointerdown",go);
-  };
+  const tapWire=panTapWire;
   box.querySelectorAll(".pvf:not(.pvb)").forEach(g=>{
     tapWire(g,()=>{ if(!panCustom) tapField(+g.dataset.f); });
     g.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); tapField(+g.dataset.f); } });
   });
   // the underside sounds exactly as the top shell does, from the same bank
-  const tapBottom=i=>{
-    ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
-    const midi=myPan.botMidiFor(i); if(midi==null) return;
-    fire(bankBuf("o"+midi)||synthBuf(midi,"open"),ctx.currentTime+0.01,1);
-    pvFlash($("pvb"+i),["hT"]);
-  };
+  const tapBottom=panSoundBottom;
   box.querySelectorAll(".pvb").forEach(g=>{
     tapWire(g,()=>{ if(!panCustom) tapBottom(+g.dataset.b); });
     g.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); tapBottom(+g.dataset.b); } });
   });
-  const tapPerc=(s,id)=>{ // the badges sound like the fields do (David, 26 Aug)
-    ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
-    fire(bankBuf("p_"+s+"R")||percBuf(s),ctx.currentTime+0.01,0.9);
-    pvFlash($(id||("pvp-"+s)),["hT"]);
-  };
+  const tapPerc=panSoundPerc;        // the badges sound like the fields do (David, 26 Aug)
   [["slap","pvp-slap"],["tak","pvp-tak"],["knock","pvp-knock"],["tak","pvp-tak2"]].forEach(([s,id])=>{
     const el=$(id); if(!el) return;
     el.setAttribute("role","button"); el.tabIndex=0;
@@ -13178,13 +13424,30 @@ function setPanMode(m){
 function paintPanMenu(){
   $("pmStrokes").setAttribute("aria-pressed",String(panMode!=="chords"));
   $("pmChords").setAttribute("aria-pressed",String(panMode==="chords"));
+  $("pmNums").setAttribute("aria-pressed",String(panLabels!=="note"));
+  $("pmNotes").setAttribute("aria-pressed",String(panLabels==="note"));
   $("pmZoomVal").textContent=Math.round(panZoom*100)+"%";
+  /* SIZE IS GREYED WHERE IT CANNOT MEAN ANYTHING (David, 2 Sep: "size greyed
+     out because it is full-screen already"): the landscape ring's pan is the
+     screen, and the phone's bench fits its own drawing (fitEdPan) and never
+     reads --panzoom. */
+  const noSize=landIdx>=0||(PHONE&&!tabletPortrait()&&editing);
+  for(const id of ["pmZoomDn","pmZoomUp"]) $(id).disabled=noSize;
+  $("pmZoomVal").style.opacity=noSize?".4":"";
 }
 function openPanMenu(){ paintPanMenu(); openDlg($("panMenuDlg")); }
 {
   const on=(id,fn)=>{ const b=$(id); if(b) b.addEventListener("click",fn); };
   on("pmStrokes",()=>{ setPanMode("strokes"); paintPanMenu(); });
   on("pmChords",()=>{ setPanMode("chords"); paintPanMenu(); });
+  /* the labels flip, from the menu — the ONE copy of what three corner
+     buttons used to do (reading card, desktop editor, phone bench) */
+  const setLabels=v=>{ panLabels=v==="note"?"note":"num";
+    try{localStorage.setItem("hps.panlabels",panLabels)}catch(e){}
+    edPanFor=null;                         // the bench's cached drawing wears the old labels
+    renderPanPanel(); paintPanMenu(); };   // …and renderPanPanel repaints whichever pan is up
+  on("pmNums",()=>setLabels("num"));
+  on("pmNotes",()=>setLabels("note"));
   const zoomBy=d=>{ panZoom=Math.max(.7,Math.min(1.4,Math.round((panZoom+d)*10)/10));
     try{localStorage.setItem("hps.panzoom",panZoom)}catch(e){}
     renderPanPanel(); paintPanMenu(); };
@@ -13205,19 +13468,21 @@ function panCursor(){
 /* Chord view: the active bar's chord held steady on the student's own fields
    — no per-stroke flashing at all in this mode. */
 function paintPanChord(pi){
-  const box=$("panbox"); if(!box) return;
-  box.querySelectorAll(".pvf.clit").forEach(g=>g.classList.remove("clit"));
-  const lab=$("pvchord"); if(lab){ lab.textContent=""; lab.classList.remove("inf"); }
+  /* the card, and the landscape ring's twin while it is up — both wear the chord */
+  const hosts=[$("panbox"),landIdx>=0?$("landPanInner"):null].filter(Boolean);
+  if(!hosts.length) return;
+  const els=id=>hosts.map(h=>h.id==="panbox"?$(id):h.querySelector('[data-twin="'+id+'"]')).filter(Boolean);
+  hosts.forEach(h=>h.querySelectorAll(".pvf.clit").forEach(g=>g.classList.remove("clit")));
+  const labs=els("pvchord");
+  for(const lab of labs){ lab.textContent=""; lab.classList.remove("inf"); }
   if(!C) C=compile(piece);
   const sec=secOfPulse(pi); if(!sec) return;
   const m=SM(piece,sec.name), bars=piece.sections[sec.name].bars;
   const bar=bars[Math.floor((pi-sec.pulse)/m.bp)]; if(!bar) return;
   const bc=barChordLabel(bar); if(!bc) return;
-  if(lab){ lab.innerHTML=fmtChord(bc.name); lab.classList.toggle("inf",!!bc.inf);
+  for(const lab of labs){ lab.innerHTML=fmtChord(bc.name); lab.classList.toggle("inf",!!bc.inf);
     lab.title=bc.inf?"Chord guessed from the notes — not notated":bc.name; }
-  for(const f of chordFields(bc.name)){
-    const g=pvEl(f); if(g) g.classList.add("clit");
-  }
+  for(const f of chordFields(bc.name)) for(const g of els(pvId(f))) g.classList.add("clit");
 }
 const pvTimers=new WeakMap();
 function pvFlash(el,cls){
@@ -13227,6 +13492,14 @@ function pvFlash(el,cls){
   el.classList.add("hit",...cls);
   clearTimeout(pvTimers.get(el));
   pvTimers.set(el,setTimeout(()=>el.classList.remove("hit","hL","hR","hT","soft"),520));
+}
+/* by id: the card's element, and the landscape ring's twin while the ring is
+   up — the ring carries no ids (see landPanPaint), each element remembers the
+   card's in data-twin. The card may be empty (the pan companion off) and the
+   ring still lights, which is the point of gating paintPan on either. */
+function pvFlashId(id,cls){
+  pvFlash($(id),cls);
+  if(landIdx>=0){ const t=$("landPanInner").querySelector('[data-twin="'+id+'"]'); if(t) pvFlash(t,cls); }
 }
 function paintPan(pi){
   if(panMode==="chords"){ paintPanChord(pi); return; }   // chords hold; strokes flash
@@ -13240,9 +13513,9 @@ function paintPan(pi){
     if(ev.v==="perc"){
       // tak wears two glyphs, one per side — light the one for this hand
       const id=ev.s==="tak"?(ev.hand==="R"?"pvp-tak2":"pvp-tak"):("pvp-"+ev.s);
-      pvFlash($(id),[hand]); continue; }
+      pvFlashId(id,[hand]); continue; }
     const f=effField(ev.f); if(f===null) continue;
-    pvFlash(pvEl(f),[hand]);
+    pvFlashId(pvId(f),[hand]);
   }
 }
 
@@ -13283,7 +13556,6 @@ let flowAll=(localStorage.getItem("hps.flowall")||"0")==="1";
    pushes everything under it out of reach; "fit" gives the notation the room
    the screen actually has and scrolls the music inside it. "full" is the
    long page, for reading a piece end to end. */
-let flowWin=(localStorage.getItem("hps.flowwin")||"fit")==="full"?"full":"fit";
 let flowW=0;                       // the width the last flow render was set for
 
 const FLOWRES=[1,2,3,4,5,6,7,8];
@@ -13633,10 +13905,7 @@ function flowBump(d){
     fas.addEventListener("change",()=>{ flowAll=fas.value==="1";
       try{localStorage.setItem("hps.flowall",flowAll?"1":"0")}catch(e){}
       if(view==="flow") render(); }); }
-  const fws=$("flowWinSel"); if(fws){ fws.value=flowWin;
-    fws.addEventListener("change",()=>{ flowWin=fws.value;
-      try{localStorage.setItem("hps.flowwin",flowWin)}catch(e){}
-      if(view==="flow") render(); }); } }
+  }
 
 let chordRowOn=(localStorage.getItem("hps.chords")||"1")==="1";
 let notaOn=(localStorage.getItem("hps.nota")||"1")==="1";     // the notation itself
@@ -14681,29 +14950,15 @@ function renderEditbar(){
       mn.title="Pan view settings"; mn.setAttribute("aria-label",mn.title);
       mn.innerHTML='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><use href="#is-set"/></svg>';
       mn.addEventListener("click",openPanMenu);
-      const nt=panLabels==="note";
-      const lb=document.createElement("button");
-      lb.id="panlabels"; lb.className="ib"; lb.type="button";
-      lb.innerHTML='<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">'
-        +'<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5"/>'
-        +'<text x="12" y="12" text-anchor="middle" dominant-baseline="central"'
-        +' font-family="'+(nt?"Figtree":"Inter")+'" font-size="'+(nt?10:11)+'" font-weight="800"'
-        +' fill="currentColor">'+(nt?"A":"1")+'</text></svg>';
-      lb.title=nt?"Note names are big — tap for numbers":"Numbers are big — tap for note names";
-      lb.setAttribute("aria-label",lb.title);
-      longPressZoom(lb);
-      lb.addEventListener("click",()=>{
-        panLabels=nt?"num":"note";
-        try{localStorage.setItem("hps.panlabels",panLabels)}catch(e){}
-        renderEditbar();
-      });
+      longPressZoom(mn);               // hold ⚙ to see the pan full screen
+      /* the A/1 flip beside it went into the menu's Labels row (2 Sep) */
       /* ALL THE WAY TO THE RIGHT (David, 2 Sep, with a screenshot of the
          bench: the pair sat on the pan's rim above field 7). The pan half is
          exactly the drawing's square, so either of its corners is on the
          circle; the CARD's corner is free, it is the corner the reading pan
          already uses for the same two buttons, and the palettes simply start
          one row lower. Same ids, so the card's own corner rules place them. */
-      E.append(mn,lb);
+      E.append(mn);
     } }
   E.querySelectorAll(".key").forEach(b=>b.addEventListener("click",()=>{
     const k=b.dataset.k;
@@ -19859,7 +20114,23 @@ function enterLearn(){
   $("learnwrap").classList.remove("hidden");
   $("title").value="Learn"; $("title").readOnly=true; fitTitle();
   updatePracticeBtn();
+  fitLearn();
 }
+/* THE ROOM BELOW THE HEADER, MEASURED (2 Sep). The wrap's min-height is the
+   screen less where the wrap starts and less the page's own bottom padding
+   (60 on the desktop, 104 under the tablet's deck, the phone's safe area) —
+   read from the layout rather than guessed per device, and re-read on resize
+   and rotation. Centring is the CSS's; this only gives it a height to centre
+   in. */
+function fitLearn(){
+  const w=$("learnwrap"); if(!w||!learnOn) return;
+  w.style.minHeight="";
+  const top=w.getBoundingClientRect().top;
+  const padB=parseFloat(getComputedStyle(document.body).paddingBottom)||0;
+  const room=innerHeight-top-padB;
+  if(room>0) w.style.minHeight=room+"px";
+}
+window.addEventListener("resize",()=>{ if(learnOn) fitLearn(); });
 function leaveLearn(){
   navDrop("learn");
   if(!learnOn) return;
@@ -24035,6 +24306,14 @@ function phoneTouchNav(){
       else { reanchorLoop(); toast(loopBarsLabel()); }
       return;
     }
+    /* SIDEWAYS ON THE STAND TURNS THE PAGE (David, 2 Sep) — a swipe across
+       the notation in phone landscape opens the ring (landSwipe). The loop
+       drag is mode "loop" and never reaches here, and a plain swipe was
+       thrown away on the next line until today. Angle-gated 2:1 so Flow's
+       vertical scroll with a little drift is not a page turn. Phone only:
+       a tablet sideways still has its pan card. */
+    if(mode===null&&land()&&!TABLET&&Math.abs(dx)>=LAND_SWIPE&&Math.abs(dx)>2*Math.abs(dy)){
+      landSwipe(dx<0?1:-1); return; }
     if(Math.abs(dx)>=TAP||Math.abs(dy)>=TAP) return;
     lastTap=performance.now(); lastX=e.clientX; lastY=e.clientY;
     if(editing){
@@ -24056,6 +24335,16 @@ function phoneTouchNav(){
     else { const c=cellAtPoint(e.clientX,e.clientY); if(c) seekToPulse(c.from); }  // gaps count too
   },true);
   wrap.addEventListener("pointercancel",()=>{ id=null; mode=null; clearTimeout(holdT); },true);
+  /* A SIDEWAYS FINGER IS OURS (2 Sep). touch-action above is the rule; this is
+     the brace for the engines that pan first and read the rule later: while a
+     landscape swipe is plainly horizontal the default is refused, so no pan
+     starts and no pointercancel follows. Vertical movement is left alone —
+     Flow's window has to scroll. Non-passive on purpose. */
+  wrap.addEventListener("touchmove",e=>{
+    if(id===null||mode!==null||!land()||TABLET||!e.touches.length) return;
+    const dx=e.touches[0].clientX-sx, dy=e.touches[0].clientY-sy;
+    if(Math.abs(dx)>TAP&&Math.abs(dx)>Math.abs(dy)&&e.cancelable) e.preventDefault();
+  },{passive:false});
 }
 /* Desktop mouse (David, 26 Aug): DRAG across the notation to set the loop —
    both ends land on a beat-cell boundary, so the loop is always musical. A
@@ -24593,28 +24882,11 @@ if(PHONE){
   $("edArtO").addEventListener("click",()=>{ selArt="open"; paintEditDeck(); });
   $("edArtM").addEventListener("click",()=>{ selArt="mute"; paintEditDeck(); });
   $("edArtV").addEventListener("click",()=>{ selArt="overtone"; paintEditDeck(); });
-  /* the bench's labels flip — same preference, same dashed-circle face as the
-     reading pan's toggle (David, 31 Aug: "we need the mode switcher for the
-     pan tab… in edit mode") */
-  function paintEdPanLabels(){
-    const b=$("edPanLabels"); if(!b) return;
-    const nt=panLabels==="note";
-    b.innerHTML='<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">'
-      +'<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5"/>'
-      +'<text x="12" y="12" text-anchor="middle" dominant-baseline="central"'
-      +' font-family="'+(nt?"Figtree":"Inter")+'" font-size="'+(nt?10:11)+'" font-weight="800"'
-      +' fill="currentColor">'+(nt?"A":"1")+'</text></svg>';
-    b.title=nt?"Note names are big — tap for numbers":"Numbers are big — tap for note names";
-    b.setAttribute("aria-label",b.title);
-  }
-  paintEdPanLabels();
-  longPressZoom($("edPanLabels"));
-  $("edPanLabels").addEventListener("click",()=>{
-    panLabels=panLabels==="note"?"num":"note";
-    try{localStorage.setItem("hps.panlabels",panLabels)}catch(e){}
-    paintEdPanLabels();
-    edPanFor=null; paintEditDeck();      // the cached drawing is the old labels
-  });
+  /* the bench's corner is the pan MENU (David, 2 Sep) — the labels flip that
+     stood here since 31 Aug is the menu's Labels row now, everywhere, and
+     holding ⚙ zooms the pan as holding the flip did */
+  longPressZoom($("edPanMenu"));
+  $("edPanMenu").addEventListener("click",openPanMenu);
   $("edGhost").addEventListener("click",()=>place({v:"ghost",hand:nextHand()}));
   $("edSlap").addEventListener("click",()=>placePerc("slap"));
   $("edTak").addEventListener("click",()=>placePerc("tak"));
@@ -25677,6 +25949,12 @@ if(PHONE){ // refit on rotation / viewport changes (debounced — zoom relayouts
     try{ fitEdPan(); }catch(e){}   // the bench pan re-spends the new screen's slack
   },80); };
   window.addEventListener("resize",pf);
+  /* …AND WHEN THE PAGE COMES BACK. A phone that switched apps, took a call or
+     put its keyboard away may have fitted while hidden, against a window it
+     did not have; the return is the moment to measure the real one. Same
+     debounced fit the resize uses. */
+  document.addEventListener("visibilitychange",()=>{ if(!document.hidden) pf(); });
+  window.addEventListener("pageshow",()=>pf());
   // iOS reports the OLD dimensions during orientationchange, so fit again after
   window.addEventListener("orientationchange",()=>{ pf();
     setTimeout(()=>{ phoneFit(); refitScore(); },260); });
@@ -25684,6 +25962,9 @@ if(PHONE){ // refit on rotation / viewport changes (debounced — zoom relayouts
   // a missed one leaves the landscape sizing applied to a portrait screen
   const mq=matchMedia("(orientation:landscape)");
   if(mq.addEventListener) mq.addEventListener("change",pf); else if(mq.addListener) mq.addListener(pf);
+  // upright has the pan card, so the landscape ring closes — without the slide
+  const landOff=()=>{ if(!mq.matches) landClose(0,true); };
+  if(mq.addEventListener) mq.addEventListener("change",landOff); else if(mq.addListener) mq.addListener(landOff);
   if(window.visualViewport) visualViewport.addEventListener("resize",pf);
   /* THE MUSIC STAND WHILE WRITING is pure CSS now (see the landscape block).
      It was first built here as a rotation that clicked the editor's exit
