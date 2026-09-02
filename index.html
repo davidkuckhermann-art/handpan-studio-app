@@ -1540,6 +1540,21 @@ body.phone{--btpad:.12em}
 .slot.n3 .sym,.lane.ln3 .sym{font-size:16px; line-height:1.08}
 .slot.n1 .sym.gh,.lane.ln1 .sym.gh{font-size:33px}
 .slot.n2 .sym.gh,.slot.n3 .sym.gh,.lane.ln2 .sym.gh,.lane.ln3 .sym.gh{font-size:18px}
+/* THE DESKTOP'S TAB WEARS THE PHONE'S SMALLER LADDER TOO (David, 2 Sep: "the
+   letters should get a little bit smaller in tab view, similar to what they
+   do on mobile") — the shared ladder × 0.77, the phone's own numbers:
+   37→29, 20→15.5, 16→12.5. The Table keeps its sizes. */
+body:not(.phone) .lane.ln1 .sym{font-size:29px}
+body:not(.phone) .lane.ln1 .sym.d2{font-size:21px}
+body:not(.phone) .lane.ln2 .sym{font-size:15.5px}
+body:not(.phone) .lane.ln2 .sym.d2{font-size:13px}
+body:not(.phone) .lane.ln3 .sym{font-size:12.5px}
+body:not(.phone) .lane.ln3 .sym.d2{font-size:10.5px}
+body:not(.phone) .lane.ln1 .sym.gh{font-size:25.5px}
+body:not(.phone) .lane.ln2 .sym.gh,body:not(.phone) .lane.ln3 .sym.gh{font-size:14px}
+/* …and the lane and the cell's air come down with the glyphs, as on the phone (40→31, 8/6→5/4) */
+body:not(.phone) .tsyms.lane{min-height:31px}
+body:not(.phone) .beat.tbeat{padding:5px 1px 4px}
 .sym.l{color:var(--hand-l)}
 .sym.r{color:var(--hand-r)}
 .sym.gh{font-size:21px; line-height:1.15}
@@ -5606,6 +5621,19 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 
 <!-- CHANGING INSTRUMENT WITH A JAM DOWN (27 Aug, David): the progression can
      follow the new scale's home, or stay where it is. -->
+<!-- CHORD PRACTICE's ⚙ (David, 2 Sep): a small sheet, not a jump to the
+     overview — the boxes' voicing, and the way to the settings -->
+<dialog id="cpMenuDlg" aria-label="Chord practice">
+  <h3>Chord practice</h3>
+  <div class="drow"><span>Boxes</span>
+    <span class="pills" role="group" aria-label="Chord boxes">
+      <button id="cpvFull" title="Every field of the chord your pan has">Full chords</button>
+      <button id="cpvSug" title="The three or four notes the simple arpeggio proposes">Suggested voicing</button></span></div>
+  <div class="row" style="margin:12px 0 0">
+    <button class="ctl" id="cpmSettings">Settings…</button>
+    <span class="spacer"></span>
+    <button class="ctl" id="cpmClose">Done</button></div>
+</dialog>
 <dialog id="panMenuDlg" aria-label="Pan view settings">
   <h3>Pan view</h3>
   <div class="drow"><span>View</span>
@@ -20689,7 +20717,7 @@ function leavePractice(){ if(quizOn) leaveQuiz(); if(rqOn) leaveRhythmQuiz(); if
    counts four clicks, brings the next one. No scoring; portrait first. */
 var cpOn=false, cpStage=false, cpPrev=null, cpWas=null, cpSeq=null, cpSeqN=0, cpLastTpl=null, cpLastIdx=-1;
 var cpFour=false, cpFourIdx=-1;      // the four-pan view (desktop), and which chord its live pan shows
-var cpcfg={src:"common",key:"minor",bars:2,pattern:"cp-arp",arp:"sug",sev:"tri",sound:"play",bpm:60};
+var cpcfg={src:"common",key:"minor",bars:2,pattern:"cp-arp",arp:"sug",sev:"tri",sound:"play",bpm:60,voicing:"full"};
 /* HANDS ARE COLOUR TOKENS, NOT LETTERS (see handLetter): "L" = black = the
    RIGHT hand, "R" = green = the LEFT hand. David's sticking for the arpeggio
    is right · right · left (corrected three times, 2 Sep, because each session
@@ -20707,6 +20735,7 @@ function cpLoadCfg(){
   if(!["play","click","silent"].includes(cpcfg.sound)) cpcfg.sound="play";
   if(cpcfg.arp!=="all") cpcfg.arp="sug";
   if(cpcfg.sev!=="7th") cpcfg.sev="tri";
+  if(cpcfg.voicing!=="sug") cpcfg.voicing="full";
   cpcfg.bpm=Math.max(30,Math.min(200,+cpcfg.bpm||60));
   if(!cpcfg.pattern||(!/^cp-/.test(cpcfg.pattern)&&!allPats().some(p=>p.id===cpcfg.pattern))) cpcfg.pattern="cp-arp";
 }
@@ -20983,7 +21012,7 @@ function cpRenderBand(){
   const gear=document.createElement("button"); gear.className="ib"; gear.id="cpSetBtn";
   gear.title="Chord practice settings"; gear.setAttribute("aria-label",gear.title);
   gear.innerHTML='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><use href="#is-set"/></svg>';
-  gear.addEventListener("click",cpOpenSetup); head.appendChild(gear);
+  gear.addEventListener("click",cpOpenMenu); head.appendChild(gear);
   /* FOUR PANS (David, 2 Sep, mockups-chord-practice §8): on the desktop the
      band can turn into the panel of four pans, one lit for each chord, the
      sounding one live; the magnifier and the (lit) four-pan button lead its
@@ -21005,13 +21034,16 @@ function cpRenderBand(){
   b.classList.remove("four");
   b.appendChild(head);
   const row=document.createElement("div"); row.className="chordrow";
-  const counts=cpSeq.names.map(n=>Math.max(1,chordFields(n).length)), fewest=Math.min(...counts);
+  /* the boxes show every field of the chord, or only the suggested voicing —
+     the three or four notes the simple arpeggio proposes (David, 2 Sep) */
+  const boxFields=n=>cpcfg.voicing==="sug"?cpSuggested(n).slice().sort((a,b)=>myPan.posMidi(a)-myPan.posMidi(b)):chordFields(n);
+  const counts=cpSeq.names.map(n=>Math.max(1,boxFields(n).length)), fewest=Math.min(...counts);
   cpSeq.names.forEach((n,i)=>{
     const w=document.createElement("div"); w.className="cchipwrap";
     const nm=document.createElement("div"); nm.className="cname"; nm.innerHTML=fmtChord(n);
     const c=document.createElement("div"); c.className="cchip"; c.dataset.cpi=i;
     c.style.setProperty("--cs",(fewest/counts[i]).toFixed(3));
-    for(const f of chordFields(n)){
+    for(const f of boxFields(n)){
       const el=document.createElement("span"); el.className="sym";
       el.textContent=isBotPos(f)?String(botIdx(f)):(f===0?"D":String(f));
       if(isBotPos(f)) el.classList.add("bt");
@@ -21209,7 +21241,22 @@ function enterCp(){
   renderCpSetup();
   if(PHONE){ setDrawer(false); placeDrawer(); }
 }
-/* ⚙ on the band: back to the setup with the round kept; Start builds afresh */
+/* ⚙ on the band: a small sheet — the boxes' voicing and the way to the settings */
+function cpOpenMenu(){
+  if(!cpOn) return;
+  const F=$("cpvFull"), S=$("cpvSug");
+  if(F) F.setAttribute("aria-pressed",String(cpcfg.voicing!=="sug"));
+  if(S) S.setAttribute("aria-pressed",String(cpcfg.voicing==="sug"));
+  openDlg($("cpMenuDlg"));
+}
+function cpSetVoicing(v){
+  cpcfg.voicing=v==="sug"?"sug":"full"; cpSaveCfg();
+  const F=$("cpvFull"), S=$("cpvSug");
+  if(F) F.setAttribute("aria-pressed",String(cpcfg.voicing!=="sug"));
+  if(S) S.setAttribute("aria-pressed",String(cpcfg.voicing==="sug"));
+  cpRenderBand();
+}
+/* the sheet's Settings: back to the setup with the round kept; Start builds afresh */
 function cpOpenSetup(){
   if(!cpOn) return;
   navDrop("cpstage");
@@ -25267,6 +25314,10 @@ function boot(){
   $("lcName").addEventListener("click",()=>{ leaveLearn(); enterQuiz("name"); });
   $("lcRhythm").addEventListener("click",()=>{ leaveLearn(); enterRhythmQuiz(); });
   $("lcChord").addEventListener("click",()=>{ leaveLearn(); enterCp(); });
+  $("cpvFull").addEventListener("click",()=>cpSetVoicing("full"));
+  $("cpvSug").addEventListener("click",()=>cpSetVoicing("sug"));
+  $("cpmSettings").addEventListener("click",()=>{ try{ $("cpMenuDlg").close(); }catch(e){} cpOpenSetup(); });
+  $("cpmClose").addEventListener("click",()=>$("cpMenuDlg").close());
   $("leaveBtn").addEventListener("click",()=>{
     // one ✕, three rooms: a groove saves itself, editing offers the library
     // on the way out (David, 26 Aug), practice just leaves
