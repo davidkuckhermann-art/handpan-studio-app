@@ -2748,7 +2748,12 @@ body:not(.phone) #landPanInner .lname.cur::after{bottom:-7px; height:4px}
 /* …and in the embed at the TOP LEFT, diagonally under the × (David, 2 Sep:
    "place the play button on the top left, bottom right of the encircled x")
    — the bottom right of an iframe may be below the fold; its top never is */
-html.player #landPlay{right:auto; bottom:auto; left:calc(36px + env(safe-area-inset-left)); top:44px}
+html.player #landPlay{right:auto; bottom:auto; left:calc(12px + env(safe-area-inset-left)); top:8px}
+/* …and the embed's × moves to the TOP RIGHT beside ⚙ (David, 2 Sep: "move the
+   encircled x to close this window to the top right, next to the pan view
+   menu icon"). The play button, which had been placed under the ×, takes
+   the corner the × leaves. Desktop and phone keep × top left. */
+html.player #landClose{left:auto; right:calc(50px + env(safe-area-inset-right))}
 /* a long press must not also select the glyph or raise iOS's callout */
 #panmenu,#edPanMenu{-webkit-touch-callout:none; -webkit-user-select:none;
   user-select:none; touch-action:manipulation}
@@ -6687,7 +6692,7 @@ function ensureSink(){
          own sync — an armed token nobody spends is one that swallows the
          student's NEXT press, four seconds later */
       if(sinkOurs("pause")) return;
-      if(!playing||document.visibilityState!=="hidden") return;
+      if(!soundActive()||document.visibilityState!=="hidden") return;
       const at=(lastPaint>=0)?lastPaint:loopedPulse(nextPulse);
       try{ stop(); }catch(e){}
       if(pendingStart==null&&!loopSec&&at>=0) pendingStart=at;
@@ -6699,7 +6704,7 @@ function ensureSink(){
     });
     el.addEventListener("play",()=>{
       if(sinkOurs("play")) return;               // that play() was ours
-      if(playing||document.visibilityState!=="hidden") return;
+      if(soundActive()||document.visibilityState!=="hidden") return;
       if(pendingStart==null) return;              // nothing was parked
       try{ togglePlay(); }catch(e){}
     });
@@ -6728,7 +6733,7 @@ function ensureCtx(){
      The sink is still nudged: an <audio> element that iOS paused is not the
      same event, and leaving it paused would silence a context that is running. */
   ctx.onstatechange=()=>{
-    if(playing&&iosSink&&iosSink!=="failed"&&iosSink.paused){
+    if(soundActive()&&iosSink&&iosSink!=="failed"&&iosSink.paused){
       sinkArm("play"); iosSink.play().catch(()=>{}); } };
 }
 let live=[];
@@ -9493,17 +9498,31 @@ function parkHere(){
    offers you a play button on the lock screen — so this does not cost the
    resume that now works; the element's own play event is still what carries
    it. sinkArm/sinkOurs keep our sync from reading as the student's press. */
+/* IS SOUND MEANT TO BE FLOWING? `playing` alone is the transport's own
+   answer; in follow mode the transport never starts — the VIDEO is the clock
+   and `playing` stays false while the pan sounds. The sink, the lock screen
+   and the play button all have to ask this instead (David, 2 Sep, from a
+   lesson: "after the video finished … the player was silent even if I
+   navigated backwards and started playback again"). What had happened:
+   turning the pan on in a lesson (panSoundOn) builds the framed-Safari sink;
+   the first updatePlayBtn after that — the video reaching its end — ran
+   sinkSync, which read `playing` false and PAUSED the sink for good, and a
+   restarted video could not wake it because sinkSync only re-plays when
+   `playing`. Mute and unmute never touched it. Same expression updatePlayBtn
+   had used for its icon since August; now it is the one truth. */
+function soundActive(){ return playing||(typeof follow!=="undefined"&&follow&&vidPlaying); }
 function sinkSync(){
   if(!iosSink||iosSink==="failed") return;
+  const active=soundActive();
   try{
-    if(playing&&iosSink.paused){ sinkArm("play"); iosSink.play().catch(()=>{}); }
-    else if(!playing&&!iosSink.paused){ sinkArm("pause"); iosSink.pause(); }
+    if(active&&iosSink.paused){ sinkArm("play"); iosSink.play().catch(()=>{}); }
+    else if(!active&&!iosSink.paused){ sinkArm("pause"); iosSink.pause(); }
   }catch(e){}
 }
 function mediaSessionState(){
   sinkSync();                   // the fact first, then what we say about it
   if(!mediaOK()) return;
-  try{ navigator.mediaSession.playbackState=playing?"playing":"paused"; }catch(e){}
+  try{ navigator.mediaSession.playbackState=soundActive()?"playing":"paused"; }catch(e){}
 }
 function mediaSessionPaint(){
   if(!mediaOK()) return;
@@ -9538,7 +9557,7 @@ function mediaSessionPaint(){
   }catch(e){}
 }
 function updatePlayBtn(){
-  const active=playing||(follow&&vidPlaying);
+  const active=soundActive();
   $("playBtn").innerHTML=active
     ?'<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
     :'<svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.6l13 7.4-13 7.4z"/></svg>';
