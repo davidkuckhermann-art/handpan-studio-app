@@ -22516,10 +22516,10 @@ function coRenderList(){
   }
 }
 function coVisible(){ return coItems.filter(c=>coAlmost||!c.miss); }
-/* `id`: the pan to show — the picker's soft-selected build, or the one you
-   hold; `fromPicker`: the picker is reopened when the sheet closes (David,
-   3 Sep: "when the chord overview is closed, the user should go back to the
-   scale selector screen") */
+/* `id`: the pan to show (null: the one you hold — the picker's soft
+   selection was tried and reverted, 3 Sep); `fromPicker`: the picker is
+   reopened when the sheet closes (David: "when the chord overview is closed,
+   the user should go back to the scale selector screen") */
 function coOpen(id,fromPicker){
   const d=$("chordOvDlg"); if(!d) return;
   if(playing) stop();
@@ -22569,10 +22569,7 @@ function coClosed(){
   coHush();
   if(coFromMyPan){ coFromMyPan=false; const mpd=$("myPanDlg"); if(mpd&&!mpd.open) try{ openDlg(mpd); }catch(e){} return; }
   if(!coFromPicker) return; coFromPicker=false;
-  const keep=ppSoft;
-  try{ openPanPick(coPickFlag); }catch(e){ return; }
-  ppSoft=keep;
-  if(keep){ const q=panById(keep); if(q&&q.scale){ ppPick[q.scale]=keep; renderPanPick(); } }
+  try{ openPanPick(coPickFlag); }catch(e){}
 }
 function coWire(){
   /* DELEGATED, NOT ATTACHED. The phone's boot clones and re-parents parts of
@@ -22588,7 +22585,7 @@ function coWire(){
     const t=e.target.closest&&e.target.closest("#ppChords,#myPanChords,#coClose,#coHear,#coComplete,#coAlmost,#coVoiceSug,#coVoiceAll");
     if(!t) return;
     switch(t.id){
-      case "ppChords": coOpen(ppSoft||myPanId,true); break;     // the picker's soft selection, or the held pan
+      case "ppChords": coOpen(null,true); break;     // always the pan you hold (the soft selection was reverted, 3 Sep)
       case "myPanChords": coOpen(null,false); break;
       /* the button reopens the picker itself: `close` is a queued event, and a
          throttled document (a locked phone, the test pane) can hold it for a
@@ -25608,11 +25605,10 @@ function toggleFav(k){
   return i<0;
 }
 const ppPick={};                       // scale key -> the build id its row shows
-/* THE SOFT SELECTION (David, 3 Sep): the build pill last tapped, without the
-   row being chosen — "already when I'm just clicking into one of the pills,
-   the instrument is kind of soft-selected, and that should already define
-   the chord that is shown in the chord overview" */
-let ppSoft=null;
+/* The soft selection (a tapped build pill defining the chord overview's pan)
+   lived here for an hour on 3 Sep and was reverted at David's word: "it's not
+   consistent. The chord overview in the pan selector should always show the
+   selected pan." */
 /* THE SCALE READS IN PITCH ORDER (David, 30 Aug: "they should always be
    displayed in pitch order. In this case something like: (B♭ C) D (F G) A B♭
    C…"). It used to read ding · top shell, then every underside note bundled
@@ -25682,7 +25678,7 @@ function ppRow(p,scaleKey){
       c.className=q.id===p.id?"lit":"";
       c.setAttribute("aria-label",q.name);
       c.addEventListener("click",e=>{ e.stopPropagation();
-        ppPick[scaleKey]=q.id; ppSoft=q.id; renderPanPick(); });   // soft-selected: the overview's pan
+        ppPick[scaleKey]=q.id; renderPanPick(); });
       bl.appendChild(c);
     }
     nm.appendChild(bl);
@@ -25845,7 +25841,6 @@ function renderPanPick(){
 let panPickThenMine=false;
 function openPanPick(fromDoor){
   panPickThenMine=!!fromDoor;
-  ppSoft=null;                            // a fresh open starts from the pan you hold
   /* open on the pan you are actually holding — its scale's row shows the
      build you own, not the smallest one */
   const cur=panById(myPanId);
