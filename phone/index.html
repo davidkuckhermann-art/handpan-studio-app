@@ -5344,9 +5344,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
          By position | Transpose, MOVED between the drawer and the resting
          bar's second line so the two can never disagree. Its own label is
          for the bar — inside the drawer the MY PAN heading already says it. -->
-    <div class="drow" id="dwPan"><span id="panNow"><span class="lab" id="panNowLab">My pan</span></span>
-      <!-- the chord overview's phone door: the drawer IS the phone's pan menu -->
-      <button class="ctl" id="dwChords" title="Every chord this pan can play">&#9834; Chords</button></div>
+    <div class="drow" id="dwPan"><span id="panNow"><span class="lab" id="panNowLab">My pan</span></span></div>
     <div class="dsec" id="dsFeel">Feel</div>
     <div class="drow" id="dwFeel"></div>
   </div>
@@ -5603,8 +5601,8 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
       <div class="cowhisper" id="coWhisper"></div>
       <div class="cofields" id="coFields"></div>
       <div class="cohear">
-        <button class="play" id="coHear" title="Hear again — a block, then the arpeggio" aria-label="Hear again"><svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.6l13 7.4-13 7.4z"/></svg></button>
-        <div class="costage" id="coStage"><span>Block</span><span>Arpeggio</span></div>
+        <button class="play" id="coHear" title="Hear it again — the arpeggio" aria-label="Hear again"><svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.6l13 7.4-13 7.4z"/></svg></button>
+        <span class="cosub">Hear again</span>
       </div>
       <span class="pills" role="group" aria-label="What plays">
         <button id="coVoiceSug" aria-pressed="true" title="The most common way to play the chord">Suggested voicing</button>
@@ -17563,7 +17561,8 @@ function panRootPcs(P){ const p=P||myPan;
 }
 /* …and the student can put it back (David, 30 Aug). The switch lives in the
    chord picker and governs Generate too, which is why turning it on says so. */
-function topOnlyChords(){ try{ return localStorage.getItem("hps.topchords")==="1"; }catch(e){ return false; } }
+let coForceUnder=false;   // the chord overview counts the underside whatever the switch says (David, 3 Sep)
+function topOnlyChords(){ if(coForceUnder) return false; try{ return localStorage.getItem("hps.topchords")==="1"; }catch(e){ return false; } }
 function panScalePcs(P){ return panTonePcs(P); }                   // is in
 function chordFitOn(name){
   const t=chordPCs(name);
@@ -22399,44 +22398,65 @@ function cpNext(){
    button on the desktop, the drawer's My pan row on the phone. The music
    underneath keeps its cursor and loop; if it was playing it stops. */
 let coCur=null, coVoice="sug", coAlmost=false, coPanFor=null, coTimers=[];
-function coDefs(){ return jamDefs().list.filter(c=>jamVoice(c.name)); }   // the picker's own filter
+let coPanId=null, coPanObj=null, coItems=[], coFromPicker=false, coPickFlag=false;
+const coWiredClose=new WeakSet();   // dialog nodes whose close is wired — a clone is a new node
+/* THE OVERVIEW'S PAN IS A SNAPSHOT (David, 3 Sep): it may be the picker's
+   soft-selected build rather than the one you hold, so the chord table, the
+   fields and the suggested voicings are computed once, under a temporary
+   swap of the held pan (jamDefs, chordFields and cpSuggested all read
+   myPan), with the underside counted whatever the jam's switch says ("it
+   should take into account bottom notes as well"), and kept as plain data
+   for the sheet to draw and play from. The held pan is put back before
+   anything else runs. */
+function coSnapshot(id){
+  const sP=myPan, sId=myPanId, swap=id!==myPanId;
+  if(swap){ myPanId=id; myPan=derive(panById(id)); }
+  coForceUnder=true;
+  try{
+    coPanObj=myPan;
+    const srt=l=>[...new Set(l)].sort((a,b)=>myPan.posMidi(a)-myPan.posMidi(b));
+    coItems=jamDefs().list.filter(c=>jamVoice(c.name)).map(c=>{
+      const f=chordFields(c.name), v=cpSuggested(c.name);
+      return {name:c.name,group:c.group,miss:c.miss||null,fields:srt(f),sug:srt(v.length?v:f)}; });
+  } finally { coForceUnder=false; if(swap){ myPanId=sId; myPan=sP; }
+    if(swap) try{ jamDefs(); }catch(e){} }          // the cache back on the held pan
+}
 function coLabel(f){ return f===0?"D":isBotPos(f)?String(botIdx(f)):String(f); }
-function coSorted(list){ return [...new Set(list)].sort((a,b)=>myPan.posMidi(a)-myPan.posMidi(b)); }
-function coVoicing(c){ const v=coVoice==="all"?[]:cpSuggested(c.name); return coSorted(v.length?v:chordFields(c.name)); }
+function coVoicing(c){ return coVoice==="all"?c.fields:c.sug; }
 function coGroupEl(pos){
   const host=$("coPan"); if(!host) return null;
   return host.querySelector(isBotPos(pos)?'.pvf[data-b="'+(botIdx(pos)-1)+'"]':'.pvf[data-f="'+pos+'"]');
 }
 function coClearTimers(){ for(const t of coTimers) clearTimeout(t); coTimers=[]; }
 function coStrike(pos,at){         // one field: the sound at `at`, the flash when it sounds
-  const midi=myPan.posMidi(pos); if(midi==null) return;
+  const midi=coPanObj?coPanObj.posMidi(pos):myPan.posMidi(pos); if(midi==null) return;
   ensureCtx(); const now=ctx.currentTime, when=at==null?now+0.02:at;
   const buf=bankBuf("o"+midi)||synthBuf(midi,"open");
   fire(buf,when,evGain({v:"field",f:pos,hand:"L"}));
   const g=coGroupEl(pos), ms=Math.max(0,(when-now)*1000);
   coTimers.push(setTimeout(()=>pvFlash(g,["hT"]),ms));
 }
+/* ONE FAST ARPEGGIO (David, 3 Sep: "playing all of the notes of the chord at
+   the same time for chords with lots of tone fields doesn't sound good.
+   Let's drop that option and simply go to a faster arpeggio") — the voicing
+   upward, a fifth of a second a note, nothing struck together. */
 function coPlay(){
   if(!coCur) return;
   coClearTimers();
-  const st=$("coStage").children, notes=coVoicing(coCur);
-  ensureCtx(); const t0=ctx.currentTime+0.05, beat=1;        // 60 bpm
-  st[0].className="on"; st[1].className="";
-  for(const f of notes) coStrike(f,t0);                        // the block
-  coTimers.push(setTimeout(()=>{ st[0].className="done"; st[1].className="on"; },beat*900));
-  notes.forEach((f,i)=>coStrike(f,t0+beat+i*beat/2));         // the arpeggio, eighths upward
-  coTimers.push(setTimeout(()=>{ st[1].className="done"; },(beat+notes.length*beat/2+0.3)*1000));
+  const notes=coVoicing(coCur);
+  ensureCtx(); const t0=ctx.currentTime+0.05;
+  notes.forEach((f,i)=>coStrike(f,t0+i*0.2));
 }
 function coShow(c,hear){
   coCur=c;
   $("coName").innerHTML=fmtChord(c.name);
   const fam=c.group==="Triads"?"Triad":c.group.replace(" chords"," chord");
   $("coWhisper").textContent=fam+(c.miss?" \u00b7 missing its "+c.miss:" \u00b7 complete on this pan");
-  const all=coSorted(chordFields(c.name)), voicing=new Set(coVoicing(c));
-  $("coFields").innerHTML=all.map(f=>"<i"+((voicing.has(f)?"":" class='dim'")+(isBotPos(f)?" class='jb"+(voicing.has(f)?"":" dim")+"'":""))+">"+coLabel(f)+"</i>").join("");
+  const voicing=new Set(coVoicing(c));
+  $("coFields").innerHTML=c.fields.map(f=>"<i class='"+(voicing.has(f)?"":"dim ")+(isBotPos(f)?"jb":"")+"'>"+coLabel(f)+"</i>").join("");
   const host=$("coPan");
   host.querySelectorAll(".pvf.clit").forEach(g=>g.classList.remove("clit","csug"));
-  for(const f of all){ const g=coGroupEl(f); if(g) g.classList.add("clit"); }
+  for(const f of c.fields){ const g=coGroupEl(f); if(g) g.classList.add("clit"); }
   for(const f of voicing){ const g=coGroupEl(f); if(g) g.classList.add("csug"); }
   $("coList").querySelectorAll(".jchord").forEach(b=>b.classList.toggle("sel",b.dataset.n===c.name));
   const sel=$("coList").querySelector(".jchord.sel"); if(sel&&sel.scrollIntoView) sel.scrollIntoView({block:"nearest"});
@@ -22444,36 +22464,42 @@ function coShow(c,hear){
 }
 function coRenderList(){
   const L=$("coList"); L.innerHTML="";
-  const defs=coDefs(); let cur=null, grid=null;
-  const done=defs.filter(c=>!c.miss).length;
-  $("coCounts").textContent=done+" complete chord"+(done===1?"":"s")+" \u00b7 "+(defs.length-done)+" missing one tone";
-  for(const c of defs){
+  let cur=null, grid=null;
+  const done=coItems.filter(c=>!c.miss).length;
+  $("coCounts").textContent=done+" complete chord"+(done===1?"":"s")+" \u00b7 "+(coItems.length-done)+" missing one tone";
+  for(const c of coItems){
     if(c.group!==cur){ cur=c.group;
       const h=document.createElement("h4"); h.className="jgroup";
-      const n=defs.filter(x=>x.group===cur&&!x.miss).length, a=defs.filter(x=>x.group===cur&&x.miss).length;
+      const n=coItems.filter(x=>x.group===cur&&!x.miss).length, a=coItems.filter(x=>x.group===cur&&x.miss).length;
       h.innerHTML=cur+"<small>"+n+" complete"+(a?" \u00b7 "+a+" almost":"")+"</small>"; L.appendChild(h);
       grid=document.createElement("div"); grid.className="cogrid"; L.appendChild(grid); }
     const b=document.createElement("button");
     b.className="jchord"+(c.miss?" almost":"")+(coCur&&c.name===coCur.name?" sel":""); b.dataset.n=c.name;
-    const flds=coSorted((cpSuggested(c.name).length?cpSuggested(c.name):chordFields(c.name)))
-      .map(f=>"<span"+(isBotPos(f)?" class='jb'":"")+">"+coLabel(f)+"</span>").join("");
+    const flds=c.sug.map(f=>"<span"+(isBotPos(f)?" class='jb'":"")+">"+coLabel(f)+"</span>").join("");
     b.innerHTML="<b>"+fmtChord(c.name)+"</b><span class='jcf'>"+flds+"</span>"+(c.miss?"<small class='miss'>no "+c.miss+"</small>":"");
     b.addEventListener("click",()=>coShow(c,true));
     grid.appendChild(b);
   }
 }
-function coVisible(){ return coDefs().filter(c=>coAlmost||!c.miss); }
-function coOpen(){
+function coVisible(){ return coItems.filter(c=>coAlmost||!c.miss); }
+/* `id`: the pan to show — the picker's soft-selected build, or the one you
+   hold; `fromPicker`: the picker is reopened when the sheet closes (David,
+   3 Sep: "when the chord overview is closed, the user should go back to the
+   scale selector screen") */
+function coOpen(id,fromPicker){
   const d=$("chordOvDlg"); if(!d) return;
   if(playing) stop();
   if(PHONE) setDrawer(false);
+  coFromPicker=!!fromPicker; coPickFlag=!!panPickThenMine;
   try{ $("myPanDlg").close(); }catch(e){}
   try{ $("panPickDlg").close(); }catch(e){}
-  $("coTitle").textContent="Chords on "+myPan.pan.name;
+  coPanId=(id&&panById(id))?id:myPanId;
+  coSnapshot(coPanId);
+  $("coTitle").textContent="Chords on "+panById(coPanId).name;
   const host=$("coPan");
-  if(coPanFor!==myPanId||!host.firstChild){        // the pan, drawn once per instrument
-    coPanFor=myPanId;
-    host.innerHTML=panViewSVG(myPan,"",{under:true});
+  if(coPanFor!==coPanId||!host.firstChild){        // the pan, drawn once per instrument
+    coPanFor=coPanId;
+    host.innerHTML=panViewSVG(coPanObj,"",{under:true});
     host.querySelectorAll("[id]").forEach(el=>el.removeAttribute("id"));   // the reading pan keeps its ids
   }
   if(!host.dataset.coTap){ host.dataset.coTap="1";
@@ -22481,10 +22507,15 @@ function coOpen(){
       const g=e.target.closest&&e.target.closest(".pvf"); if(!g) return;
       const pos=g.dataset.b!==undefined?botPos(+g.dataset.b+1):+g.dataset.f;
       coClearTimers(); coStrike(pos); }); }
+  /* `close` does not reach the document, capture or not (measured 3 Sep), so
+     the listener sits on the node that is open, wired the first time each
+     node opens */
+  if(!coWiredClose.has(d)){ coWiredClose.add(d); d.addEventListener("close",coClosed); }
   d.classList.toggle("hidealmost",!coAlmost);
-  coRenderList();
   const vis=coVisible();
-  if(!coCur||!vis.some(c=>c.name===coCur.name)) coCur=vis[0]||coDefs()[0]||null;
+  if(!coCur||!coItems.some(c=>c.name===coCur.name)) coCur=vis[0]||coItems[0]||null;
+  else coCur=coItems.find(c=>c.name===coCur.name);
+  coRenderList();
   if(coCur) coShow(coCur,true);
   openDlg(d);
   try{ d.focus(); }catch(e){}
@@ -22493,6 +22524,16 @@ function coStep(dir){
   const vis=coVisible(); if(!vis.length) return;
   const i=Math.max(0,vis.findIndex(c=>coCur&&c.name===coCur.name));
   coShow(vis[(i+dir+vis.length)%vis.length],true);
+}
+/* the sheet closed: back to the picker it came from, the soft-selected
+   build still lit there */
+function coClosed(){
+  coClearTimers();
+  if(!coFromPicker) return; coFromPicker=false;
+  const keep=ppSoft;
+  try{ openPanPick(coPickFlag); }catch(e){ return; }
+  ppSoft=keep;
+  if(keep){ const q=panById(keep); if(q&&q.scale){ ppPick[q.scale]=keep; renderPanPick(); } }
 }
 function coWire(){
   /* DELEGATED, NOT ATTACHED. The phone's boot clones and re-parents parts of
@@ -22505,11 +22546,15 @@ function coWire(){
      are wired when they are (re)drawn, which is at every open. */
   const pill=(on,off)=>{ $(on).setAttribute("aria-pressed","true"); $(off).setAttribute("aria-pressed","false"); };
   document.addEventListener("click",e=>{
-    const t=e.target.closest&&e.target.closest("#dwChords,#ppChords,#myPanChords,#coClose,#coHear,#coComplete,#coAlmost,#coVoiceSug,#coVoiceAll");
+    const t=e.target.closest&&e.target.closest("#ppChords,#myPanChords,#coClose,#coHear,#coComplete,#coAlmost,#coVoiceSug,#coVoiceAll");
     if(!t) return;
     switch(t.id){
-      case "dwChords": case "ppChords": case "myPanChords": coOpen(); break;
-      case "coClose": coClearTimers(); $("chordOvDlg").close(); break;
+      case "ppChords": coOpen(ppSoft||myPanId,true); break;     // the picker's soft selection, or the held pan
+      case "myPanChords": coOpen(null,false); break;
+      /* the button reopens the picker itself: `close` is a queued event, and a
+         throttled document (a locked phone, the test pane) can hold it for a
+         second — coClosed is idempotent, so the event's own call is harmless */
+      case "coClose": coClearTimers(); $("chordOvDlg").close(); coClosed(); break;
       case "coHear": coPlay(); break;
       case "coComplete": coAlmost=false; pill("coComplete","coAlmost"); $("chordOvDlg").classList.add("hidealmost");
         if(coCur&&coCur.miss){ const v=coVisible(); if(v[0]) coShow(v[0],false); } break;
@@ -22526,7 +22571,6 @@ function coWire(){
     else if(e.key==="ArrowLeft"){ coStep(-1); e.preventDefault(); e.stopPropagation(); }
     else if(e.key===" "){ coPlay(); e.preventDefault(); e.stopPropagation(); }
   },true);
-  document.addEventListener("close",e=>{ if(e.target&&e.target.id==="chordOvDlg") coClearTimers(); },true);
 }
 /* ---- the setup card: your chords, "The chords", "The round", Start ---- */
 function renderCpSetup(){
@@ -25525,6 +25569,11 @@ function toggleFav(k){
   return i<0;
 }
 const ppPick={};                       // scale key -> the build id its row shows
+/* THE SOFT SELECTION (David, 3 Sep): the build pill last tapped, without the
+   row being chosen — "already when I'm just clicking into one of the pills,
+   the instrument is kind of soft-selected, and that should already define
+   the chord that is shown in the chord overview" */
+let ppSoft=null;
 /* THE SCALE READS IN PITCH ORDER (David, 30 Aug: "they should always be
    displayed in pitch order. In this case something like: (B♭ C) D (F G) A B♭
    C…"). It used to read ding · top shell, then every underside note bundled
@@ -25594,7 +25643,7 @@ function ppRow(p,scaleKey){
       c.className=q.id===p.id?"lit":"";
       c.setAttribute("aria-label",q.name);
       c.addEventListener("click",e=>{ e.stopPropagation();
-        ppPick[scaleKey]=q.id; renderPanPick(); });
+        ppPick[scaleKey]=q.id; ppSoft=q.id; renderPanPick(); });   // soft-selected: the overview's pan
       bl.appendChild(c);
     }
     nm.appendChild(bl);
@@ -25757,6 +25806,7 @@ function renderPanPick(){
 let panPickThenMine=false;
 function openPanPick(fromDoor){
   panPickThenMine=!!fromDoor;
+  ppSoft=null;                            // a fresh open starts from the pan you hold
   /* open on the pan you are actually holding — its scale's row shows the
      build you own, not the smallest one */
   const cur=panById(myPanId);
