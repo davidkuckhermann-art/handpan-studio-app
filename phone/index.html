@@ -12218,7 +12218,12 @@ function fitPortraitStack(sc,z,designW){
      dots at that geometry (the 14px card margin and the score's border are
      not in `top`), so 8 is the honest floor, not a guess. Most of the room
      came back from the tab cells and the dots strip, not from here. */
-  const space=innerHeight-top-barH-8-sdH;
+  /* WHILE EDITING THE DECK IS PINNED AND THE CARD ENDS 2px ABOVE IT (David,
+     3 Sep: "it can touch this lower frame of the notation table, or let's
+     say almost touch it, give it 1, 2, or 3 pixels, but it should not go
+     over it") — the 8px reserve is the reading rooms' */
+  const gapBelow=(typeof editing!=="undefined"&&editing&&PHONE)?EDPAN_GAP:8;
+  const space=innerHeight-top-barH-gapBelow-sdH;
   if(space<=0) return;
   let h=sc.getBoundingClientRect().height;
   /* THE NOTATION HAS A CEILING, AND SCROLLS UNDER IT (David, 1–2 Sep, ABC'd).
@@ -12710,7 +12715,20 @@ function phoneFit(){
     if(ed){ edPanGrow();
       // a size of his own can be bigger than the slack — the notation is
       // fitted again, against the deck as he set it
-      if(edPanSize!=null) fitPortraitStack(sc,z,designW); }
+      if(edPanSize!=null) fitPortraitStack(sc,z,designW);
+      /* …AND THE DECK PUSHES THE CARD, IT DOES NOT COVER IT (David, 3 Sep):
+         a table that cannot zoom below its floor would run under the pinned
+         deck, so the pan gives back exactly the overlap, and the card is
+         fitted once more. Two rounds settle it; the release stores what
+         this allowed, so the split he keeps is one that fits. */
+      for(let i=0;i<3;i++){
+        const svg=$("edPanHost")&&$("edPanHost").querySelector("svg"); if(!svg) break;
+        const over=sc.getBoundingClientRect().bottom-($("transport").getBoundingClientRect().top-EDPAN_GAP);
+        if(over<=0.5) break;
+        const w=parseFloat(svg.style.maxWidth)||EDPAN_FLOOR, nw=Math.max(EDPAN_FLOOR,Math.floor(w-over));
+        if(nw>=w) break;
+        svg.style.maxWidth=nw+"px"; fitPortraitStack(sc,z,designW);
+      } }
     centrePortraitStack(wrap);
   }
   /* The header push that used to carry the leftover slack upward went with the
@@ -16235,13 +16253,17 @@ function edPanFloor(){
    since you have the zoom of the edit row, it actually works with pretty
    small tables, so please put their size limit much smaller"): a four-row
    tab zooms to about 0.3 there, the fit's own floor, four rows still in. */
-const EDPAN_FLOOR=224, EDPAN_MIN_SCORE=120;
+const EDPAN_FLOOR=224, EDPAN_MIN_SCORE=120, EDPAN_GAP=2;   // the air between the card's bottom edge and the deck
 let edPanSize=(()=>{ try{ const v=+localStorage.getItem("hps.edpan"); return v>=EDPAN_FLOOR?v:null; }catch(e){ return null; } })();
 function edPanGrow(){
   const host=$("edPanHost"), deck=$("editdeck");
   const svg=host&&host.querySelector("svg");
   if(!svg||!deck||!deck.offsetParent) return;     // hidden deck measures as nothing
-  const free=Math.max(0, innerHeight-deck.getBoundingClientRect().bottom-10);
+  /* the slack is between the notation (fitted against the deck at its
+     floor) and the deck's top — the deck is pinned to the screen's edge, so
+     under it there is never any */
+  const bar=deck.closest("#transport"), card=$("scorecard");
+  const free=Math.max(0, bar.getBoundingClientRect().top-EDPAN_GAP-card.getBoundingClientRect().bottom);
   let want=edPanSize!=null?edPanSize:EDPAN_FLOOR+free;
   want=Math.round(Math.min(host.clientWidth,Math.max(EDPAN_FLOOR,want)));
   svg.style.maxWidth=want+"px";
