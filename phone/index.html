@@ -4135,6 +4135,7 @@ body.phone .gmini i{font-size:10px}
   body.phone.editing #belowrow{display:none}
   body.phone.editing #prow1,body.phone.editing #prow2{display:none !important}
   body.phone.editing #editdeck{display:block}
+  body.phone.editing.drawer-open #editdeck{display:none}   /* the drawer stands in the deck's place; the bar slides between the two (slideBar) */
   /* THE DECK SITS ON THE BOTTOM EDGE while editing (David, 3 Sep: "the bottom
      row should basically be fixed at the bottom of the screen … only the pan
      and the notation should change in size"): the bar takes the column's
@@ -27906,13 +27907,27 @@ function setDrawer(on){
      Nothing pops at the end, because neither side is restored by a callback:
      they simply arrive. */
   const dk=$("editdeck"), wasEditing=editing&&!!dk;
+  /* THE EDITOR'S BAR SLIDES TO ITS NEW HEIGHT — ONE NUMBER (David, 3 Sep,
+     evening: "just a smooth animation to the proper size, and it doesn't
+     overextend"). The deck and the drawer used to be driven in opposite
+     directions at once, and wherever their two curves disagreed the bar's
+     top edge went past its resting place and came back, with a 4px step at
+     the end where the drawer's padding gave way to the pinned bar's. Now
+     the content switches underneath at once — the drawer shown or hidden by
+     the class, the deck at its natural height — and only the bar's own
+     height moves, from what it was to what it is, clipped on the way. The
+     reading rooms keep the panel's own grow: their bar has no deck to trade. */
   if(on){
     if(wasEditing){
-      dk.style.transition="none";
-      dk.style.height=dk.offsetHeight+"px";     // a height to animate FROM
-      dk.style.opacity="1";
-      dk.getBoundingClientRect();
-      dk.style.transition="";
+      slideBar(gen,()=>{
+        drawerTakeBar(true);
+        document.body.classList.add("drawer-open");
+        sh.classList.remove("hidden");
+        fitDrawerTopRow(); fitFeelRow(); fitPanRow(); fitSpiceRow();
+        ex.style.transition=""; ex.style.height="";   // the panel at its natural height, at once
+      });
+      requestAnimationFrame(()=>sh.classList.add("lit"));
+      return;
     }
     drawerTakeBar(true);
     document.body.classList.add("drawer-open");
@@ -27923,48 +27938,54 @@ function setDrawer(on){
     fitDrawerTopRow(); fitFeelRow(); fitPanRow(); fitSpiceRow();
     ex.style.height="auto";                     // measure the natural height…
     const h=ex.offsetHeight;
-    if(wasEditing){ dk.style.height="0px"; dk.style.opacity="0"; }  // fold as it grows
     grow(0,h,()=>{ ex.style.height="auto"; phoneFit(); });
     requestAnimationFrame(()=>sh.classList.add("lit"));
   } else {
-    const h=ex.offsetHeight;
     sh.classList.remove("lit");
     tr.scrollTop=0;                 // start the move from the top, not at the end
-    /* The deck comes back WITH the panel going down. Its target height is
-       measured AFTER phoneFit has sized the pan for the layout it is returning
-       to — measuring first and fitting last was the hiccup (David, 27 Aug):
-       the deck animated to one height and the fit then gave it another, so it
-       twitched exactly as it arrived. */
-    /* WHAT THE BAR LENT COMES HOME FIRST. Measuring the deck while the play
-       button was still up in the drawer left the lane 12px short, so it
-       animated to 393 and snapped to 405 the instant the button returned —
-       that was the hiccup David could see (27 Aug). */
-    drawerTakeBar(false);
-    let deckH=0;
     if(wasEditing){
-      dk.style.transition="none"; dk.style.opacity="0"; dk.style.height="auto";
-      phoneFit();                                 // the pan takes its resting size
-      deckH=dk.offsetHeight;                      // …now this is the real height
-      dk.style.height="0px"; dk.getBoundingClientRect();
-      dk.style.transition="";
-      dk.style.height=deckH+"px"; dk.style.opacity="1";   // grows AND fades in
+      slideBar(gen,()=>{
+        drawerTakeBar(false);
+        document.body.classList.remove("drawer-open");
+        ex.style.transition=""; ex.style.height="";
+        sh.classList.add("hidden");
+        /* the notation did not move while the drawer was up (phoneFit stands
+           still then), so this fit finds the same inputs and the same deck;
+           it runs for whatever the drawer changed — a pan, a skin */
+        phoneFit();
+      });
+      return;
     }
+    const h=ex.offsetHeight;
+    drawerTakeBar(false);
     grow(h,0,()=>{
       document.body.classList.remove("drawer-open");
       ex.style.transition=""; ex.style.height="";
       sh.classList.add("hidden");
-      if(wasEditing){
-        /* the deck arrives at the height it left with — the notation did not
-           move while the drawer was up (phoneFit stands still then), so the
-           fit here finds the same inputs and the same answer; it runs for
-           whatever the drawer changed (a pan, a skin), not for the split */
-        dk.style.transition="none"; dk.style.height=""; dk.style.opacity="";
-        phoneFit();
-        dk.style.transition="";
-      }
-      else phoneFit();
+      phoneFit();
     });
   }
+}
+/* the bar's height from what it was to what it is — see setDrawer */
+function slideBar(gen,switchState){
+  const tr=$("transport");
+  const h0=tr.offsetHeight;                    // as it stands (mid-move, if it is)
+  tr.style.transition="none"; tr.style.height=""; tr.style.overflow="";
+  switchState();
+  const h1=tr.offsetHeight;                    // as it will rest
+  if(Math.abs(h1-h0)<1) return;
+  tr.style.height=h0+"px"; tr.style.overflow="hidden";
+  tr.getBoundingClientRect();                  // let the browser take that in
+  tr.style.transition="height .24s cubic-bezier(.22,.61,.36,1)";
+  tr.style.height=h1+"px";
+  let done=false;
+  const finish=()=>{ if(done) return; done=true;
+    tr.removeEventListener("transitionend",onEnd);
+    if(gen!==drawerGen) return;                // superseded — the new move owns the styles
+    tr.style.transition=""; tr.style.height=""; tr.style.overflow=""; };
+  const onEnd=e=>{ if(e.target===tr&&e.propertyName==="height") finish(); };
+  tr.addEventListener("transitionend",onEnd);
+  drawerT=setTimeout(finish,300);
 }
 /* THE BAR HANDS ITS CONTROLS UP, AND TAKES THEM BACK (David, 28 Aug: option
    A). The drawer's top line is the same tempo control, the same play button
