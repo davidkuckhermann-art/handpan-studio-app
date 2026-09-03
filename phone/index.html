@@ -16256,7 +16256,11 @@ function edPanOn(){
    of the 120 and 0.2 they were: "let's say two-thirds of what they are now
    can be the minimum size") — and the 2px of air between the card's bottom
    edge and the deck. */
-const EDPAN_FLOOR=224, EDPAN_GAP=2, EDPAN_ZOOM_FLOOR=0.13;   // the card's smallest zoom is the deck's upper limit
+/* the card's smallest zoom is the deck's upper limit — and it is nearly no
+   floor at all (David, 3 Sep: "there should just be no scrolling involved in
+   this view. Even if the symbols get really small, that's okay because we can
+   see them enlarged in the editing row"): a long table zooms to whatever fits */
+const EDPAN_FLOOR=224, EDPAN_GAP=2, EDPAN_ZOOM_FLOOR=0.04;
 let edPanSize=(()=>{ try{ const v=+localStorage.getItem("hps.edpan"); return v>=EDPAN_FLOOR?v:null; }catch(e){ return null; } })();
 /* THE DRAWING STOPS WHERE IT WOULD TOUCH THE CORNER BADGES (David, 3 Sep:
    "the upper limit of this pan regarding size should be when it starts to
@@ -16309,41 +16313,37 @@ function edPanCornerCap(svg,P){
 function edFitSplit(sc,z,designW){
   const bar=$("transport"), host=$("edPanHost"), mus=$("score");
   const svg=host&&host.querySelector("svg"); if(!svg||!bar||!mus) return;
-  /* 1 · the notation at its full size: the width zoom, four rows at most */
-  sc.style.zoom=z; mus.style.maxHeight=""; mus.style.overflowY=""; mus.style.overflowX="";
-  const rows=mus.querySelectorAll(".nrow");
-  if(rows.length>4){
-    mus.style.maxHeight=((rows[3].getBoundingClientRect().bottom-mus.getBoundingClientRect().top)/z)+"px";
-    mus.style.overflowY="auto"; mus.style.overflowX="hidden";
-  }
-  const cardTop=sc.getBoundingClientRect().top, fullH=sc.getBoundingClientRect().height;
+  /* 1 · the notation's natural height, measured UNZOOMED (David, 3 Sep: "there
+     should just be no scrolling involved in this view. Even if the symbols
+     get really small, that's okay" — so no four-row window and no cap here,
+     the whole table always; and at zoom 1 a rectangle means the same thing
+     in every engine, which is what the phone's WebKit and this Chromium
+     disagreed about under a zoom). */
+  sc.style.zoom=1; mus.style.maxHeight=""; mus.style.overflowY=""; mus.style.overflowX="";
+  const cardTop=sc.getBoundingClientRect().top, natH=sc.getBoundingClientRect().height;
+  const fullH=natH*z;                                        // the card at the width zoom
   /* 2 · the deck: its fixed rest, measured with the pan at its floor */
   svg.style.maxWidth=EDPAN_FLOOR+"px";
   const rest=bar.offsetHeight-svg.getBoundingClientRect().height;
   const padB=parseFloat(getComputedStyle(document.body).paddingBottom)||0;
   const avail=innerHeight-padB-rest-EDPAN_GAP-cardTop;     // for the pan and the card together
-  /* the deck's most: where the card, at its smallest zoom, would have to
-     start scrolling (David, 3 Sep: "at the point where the tables would
-     start scrolling, let's give them their lower size limit … they can go
-     as small as possible before, but they should not start scrolling") */
-  const touch=avail-fullH, most=avail-fullH*(EDPAN_ZOOM_FLOOR/z);
+  const touch=avail-fullH, most=avail-natH*EDPAN_ZOOM_FLOOR;   // most: the card at its smallest
   let P=edPanSize!=null?Math.max(edPanSize,touch):touch;
   P=Math.min(P,most,host.clientWidth);
   P=Math.max(EDPAN_FLOOR,Math.round(P));
   P=edPanCornerCap(svg,P);
   svg.style.maxWidth=P+"px";
-  /* 3 · the notation into the room that is left */
+  /* 3 · the notation into the room that is left — by zoom only, never by a
+     scrolling window; two pixels of slack for the rounding of a zoomed
+     layout, and one correction from the card's own zoomed rectangle should
+     the engine's rounding still leave it a hair over */
   const room=bar.getBoundingClientRect().top-EDPAN_GAP-cardTop;
-  /* two pixels of slack: a zoomed layout rounds each row, and a card zoomed
-     to the room exactly came out a pixel over — which tripped the scroll cap
-     below for that one pixel and cut the fourth row's edge */
-  const zoom=Math.max(EDPAN_ZOOM_FLOOR,z*Math.min(1,(room-2)/fullH));
+  let zoom=Math.max(EDPAN_ZOOM_FLOOR,Math.min(z,(room-2)/natH));
   sc.style.zoom=zoom;
-  const over=sc.getBoundingClientRect().bottom-(bar.getBoundingClientRect().top-EDPAN_GAP);
-  if(over>2.5){                                              // past the zoom floor: the music scrolls
-    const chrome=sc.getBoundingClientRect().height-mus.getBoundingClientRect().height;
-    mus.style.maxHeight=Math.max(24,(room-chrome)/zoom)+"px";
-    mus.style.overflowY="auto"; mus.style.overflowX="hidden";
+  for(let i=0;i<3;i++){                                     // a long table rounds every row: a pass or two more
+    const over=sc.getBoundingClientRect().bottom-(bar.getBoundingClientRect().top-EDPAN_GAP);
+    if(over<=0.5) break;
+    const ch=sc.getBoundingClientRect().height; zoom=Math.max(EDPAN_ZOOM_FLOOR,zoom*(ch-over-1)/ch); sc.style.zoom=zoom;
   }
 }
 function fitEdPan(){ if(edPanOn()) phoneFit(); }
