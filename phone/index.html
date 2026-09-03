@@ -4156,7 +4156,6 @@ body.phone .gmini i{font-size:10px}
     padding-right:calc(20px + 2*env(safe-area-inset-right))}
   /* the wrapper's 4px of padding and 6px of margin below the card are 10 against
      the fit's reserve of 8 — 2px the pinned deck was pushed past the edge */
-  body.phone.editing #scorewrap{margin-bottom:2px}   /* 2, not 4: the zoomed card's border still pushed the deck 2px past the edge */
   #editdeck .lane{background:var(--card2); border:1px solid var(--rule);
     border-radius:12px; padding:6px 8px 8px; margin-bottom:7px}
   #edLaneHead{display:flex; align-items:center; gap:6px; margin-bottom:5px}
@@ -12599,6 +12598,13 @@ function phoneFit(){
   }
   const wrap=$("scorewrap"), sc=$("scorecard");
   if(!wrap.clientWidth) return;
+  /* WHILE EDITING, THE NOTATION IS FITTED BY THE DECK AND BY NOTHING ELSE
+     (David, 3 Sep: "when we switch from the deck to the drawer, the notation
+     actually doesn't change size … when we switch back … the deck should
+     simply go to the same space where it sat before"). The drawer floats over
+     the deck's place; the card keeps the size the deck gave it, so there is
+     nothing to refit on the way in and nothing to glide on the way out. */
+  if(PHONE&&editing&&drawerOpen()) return;
   /* FLOW'S WINDOW BELONGS TO FLOW ALONE. Its max-height sat on #score and
      stayed there when the student switched to Table or Tab, which clipped
      them mid-row with no way to scroll (David, 30 Aug: "on mobile, the table
@@ -27948,22 +27954,13 @@ function setDrawer(on){
       ex.style.transition=""; ex.style.height="";
       sh.classList.add("hidden");
       if(wasEditing){
-        /* THE LAST INCH IS A GLIDE, NOT A JUMP (David, 3 Sep: "the deck first
-           opens to a specific size and then jumps abruptly to a smaller
-           size"). The height above was measured with the drawer still up —
-           the resting fit (the pan into the slack above the pinned deck, the
-           settle against the table) only runs once the drawer-open class is
-           gone, and that is here. So: fit now, and if the deck's resting
-           height differs from the one it arrived at, move to it over the same
-           240 ms rather than snapping. */
-        dk.style.transition="none"; dk.style.height="auto"; dk.style.opacity="";
+        /* the deck arrives at the height it left with — the notation did not
+           move while the drawer was up (phoneFit stands still then), so the
+           fit here finds the same inputs and the same answer; it runs for
+           whatever the drawer changed (a pan, a skin), not for the split */
+        dk.style.transition="none"; dk.style.height=""; dk.style.opacity="";
         phoneFit();
-        const h2=dk.offsetHeight;
-        if(Math.abs(h2-deckH)>1){
-          dk.style.height=deckH+"px"; dk.getBoundingClientRect();
-          dk.style.transition=""; dk.style.height=h2+"px";
-          setTimeout(()=>{ dk.style.height=""; },280);
-        } else { dk.style.transition=""; dk.style.height=""; }
+        dk.style.transition="";
       }
       else phoneFit();
     });
