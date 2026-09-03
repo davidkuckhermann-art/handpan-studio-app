@@ -12284,7 +12284,11 @@ function fitPortraitStack(sc,z,designW){
      magnified view, so the card above may shrink for the deck like any other
      bar content. The deck's height is part of barH, and that is correct. */
   if(h>space){                                  // the music alone is too tall
-    z=Math.max(0.3,z*(space/h)); sc.style.zoom=z;
+    /* the reading rooms stop at 0.3; the editor may go to 0.2 (David, 3 Sep,
+       the tab's lower edge still under the deck — a four-row tab at 0.3 is
+       taller than the smallest room the deck may leave) */
+    const zf=(typeof editing!=="undefined"&&editing&&PHONE)?0.2:0.3;
+    z=Math.max(zf,z*(space/h)); sc.style.zoom=z;
     h=sc.getBoundingClientRect().height;
   }
   const box=panOn?$("panbox"):(chordRowOn?$("chordbox"):null);
@@ -12706,22 +12710,31 @@ function phoneFit(){
     const ed=edPanOn();                 // the editor's pan: floor, fit, grow — see fitEdPan
     if(ed) edPanFloor();
     fitPortraitStack(sc,z,designW);
+    /* EVERY REFIT STARTS FROM THE WIDTH ZOOM. fitPortraitStack measures the
+       card as it stands and scales `z` by space/height — which is only right
+       when the card IS at `z`. Called again on a card already shrunk, it
+       measured a short card and gave a LARGER zoom than the room allowed
+       (traced 3 Sep at 390×740: 0.48 → 0.50 → 0.66, the tab's lower edge
+       63px under the deck). */
+    const refit=()=>{ sc.style.zoom=z; fitPortraitStack(sc,z,designW); };
     if(ed){ edPanGrow();
       // a size of his own can be bigger than the slack — the notation is
       // fitted again, against the deck as he set it
-      if(edPanSize!=null) fitPortraitStack(sc,z,designW);
+      if(edPanSize!=null) refit();
       /* …AND THE DECK PUSHES THE CARD, IT DOES NOT COVER IT (David, 3 Sep):
          a table that cannot zoom below its floor would run under the pinned
          deck, so the pan gives back exactly the overlap, and the card is
          fitted once more. Two rounds settle it; the release stores what
          this allowed, so the split he keeps is one that fits. */
-      for(let i=0;i<3;i++){
+      for(let i=0;i<6;i++){
         const svg=$("edPanHost")&&$("edPanHost").querySelector("svg"); if(!svg) break;
         const over=sc.getBoundingClientRect().bottom-($("transport").getBoundingClientRect().top-EDPAN_GAP);
         if(over<=0.5) break;
         const w=parseFloat(svg.style.maxWidth)||EDPAN_FLOOR, nw=Math.max(EDPAN_FLOOR,Math.floor(w-over));
         if(nw>=w) break;
-        svg.style.maxWidth=nw+"px"; fitPortraitStack(sc,z,designW);
+        const before=$("transport").getBoundingClientRect().top;
+        svg.style.maxWidth=nw+"px"; refit();
+        if(Math.abs($("transport").getBoundingClientRect().top-before)<0.5) break;   // the pan no longer moves the deck
       } }
     centrePortraitStack(wrap);
   }
@@ -16258,7 +16271,14 @@ function edPanGrow(){
      under it there is never any */
   const bar=deck.closest("#transport"), card=$("scorecard");
   const free=Math.max(0, bar.getBoundingClientRect().top-EDPAN_GAP-card.getBoundingClientRect().bottom);
-  let want=edPanSize!=null?edPanSize:EDPAN_FLOOR+free;
+  /* THE DECK'S SMALLEST IS THE TOUCH (David, 3 Sep: "the minimum size for
+     the deck should be the moment that the notation table reaches its
+     maximum size. It should not be possible to drag the deck's upper edge
+     lower … it should be stuck at that point"): the automatic size is that
+     moment — the pan grown until the deck meets the table at its full size —
+     and a size of his own may only be larger */
+  const touch=EDPAN_FLOOR+free;
+  let want=edPanSize!=null?Math.max(touch,edPanSize):touch;
   want=Math.round(Math.min(host.clientWidth,Math.max(EDPAN_FLOOR,want)));
   svg.style.maxWidth=want+"px";
   if(edPanSize!=null){                            // his size — but the notation keeps its floor
