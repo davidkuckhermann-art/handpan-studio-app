@@ -1359,6 +1359,8 @@ body.mkline .mkbox{top:auto; bottom:-1px; height:2px; background:var(--dixie);
 .slot{--symlh:1.02; display:flex; flex-direction:column-reverse; align-items:center; justify-content:flex-start;
   min-height:34px; border-radius:4px; padding:1px 0; position:relative}
 .slot.cursor{outline:2px solid var(--steel); outline-offset:0}
+/* one frame (David, 3 Sep): with a lane picked the cursor IS the lane's amber ring */
+.slot.cursor.lanepick{outline-color:transparent}
 /* the tab lane a tap picked for the next stroke — see laneHand */
 .tsyms.lane.pick{background:var(--dixie-soft); border-radius:4px; box-shadow:inset 0 0 0 2px var(--dixie)}
 /* The playback marker (16th/8th/strokes): ONE even rectangle over the covered
@@ -4121,21 +4123,23 @@ body.phone .gmini i{font-size:10px}
   .edslot{display:flex; flex-direction:column; align-items:center; justify-content:flex-end;
     min-height:40px; border-radius:6px; margin:1px; padding-bottom:1px}
   .edslot.cur{background:var(--dixie-soft); box-shadow:inset 0 0 0 2px var(--dixie)}
-  /* THE TAB'S HAND PICK FRAMES ITS HALF OF THE CELL (David, 3 Sep: "tapping
-     in the right and left hand range in tab editing should show in the
-     editing row a frame around the respective zone, not just in the main
-     notation tab"). A frame in the hand's own colour around the upper half
-     (green) or the lower half (black) of the cursor cell, inside the
-     cursor's amber ring — the same zone the score's lane tints. */
-  /* …and the row is taller in the tab (David, 3 Sep: "let's make the editing
-     row a bit taller in tab editing"): two zones want the room one did not */
+  /* THE TAB'S CELL IS TWO LANES (David, 3 Sep) — the green hand above, the
+     black below, each lane sized for its own count; the row is a little
+     taller in the tab for it ("let's make the editing row a bit taller").
+     ONE FRAME: a picked lane wears the cursor's amber ring and tint itself,
+     and the cell's ring stands down (.lanepick) — the frame is the zone, so
+     it cannot cut across a number. */
   body.phone.design-tab .edbeat{min-height:72px}
   body.phone.design-tab .edslot{min-height:58px}
-  .edslot.cur.pickR,.edslot.cur.pickL{position:relative}
-  .edslot.cur.pickR::before,.edslot.cur.pickL::before{content:""; position:absolute; left:3px; right:3px;
-    height:calc(50% - 4px); border-radius:5px; pointer-events:none; z-index:1}
-  .edslot.cur.pickR::before{top:3px; box-shadow:inset 0 0 0 2px var(--hand-r); background:rgba(70,153,87,.10)}
-  .edslot.cur.pickL::before{bottom:3px; box-shadow:inset 0 0 0 2px var(--hand-l); background:rgba(23,21,15,.07)}
+  .edslot.tab{justify-content:stretch; padding:2px 1px; gap:1px}
+  .edlane{flex:1 1 50%; min-height:0; width:100%; display:flex; flex-direction:column-reverse;
+    align-items:center; justify-content:center; border-radius:5px; position:relative}
+  .edlane .sym{font-size:22px}
+  .edlane .sym.d2{font-size:17px}
+  .edlane.ln2 .sym{font-size:14px}
+  .edlane.ln2 .sym.d2{font-size:11.5px}
+  .edlane.pick{background:var(--dixie-soft); box-shadow:inset 0 0 0 2px var(--dixie)}
+  .edslot.cur.lanepick{background:none; box-shadow:none}
   /* lane glyphs at finger scale — the score's own .sym classes, resized */
   .edslot .sym{font-size:24px}
   .edslot .sym.d2{font-size:20px}
@@ -11571,6 +11575,11 @@ function setView(v,opts){
      pixel), so a second pass after the browser has painted costs nothing
      when the first was right and corrects it when it was not. */
   if(PHONE&&!(opts&&opts.skipRender)) requestAnimationFrame(()=>{ try{ phoneFit(); }catch(e){} });
+
+  /* the editing row is built per skin (two lanes in the tab, one stack in the
+     table), so a skin change while editing rebuilds it — David, 3 Sep, the
+     lanes lingered after Tab → Table */
+  if(editing&&PHONE&&typeof paintEditDeck==="function") try{ paintEditDeck(); }catch(e){}
 }
 function render(){
   if(!piece.sections[viewSec]) viewSec=piece.arrangement[0];
@@ -13095,7 +13104,7 @@ function renderTableView(sc,lanes){
           if(editing&&rel===cursor) sl.classList.add("cursor");
           /* the tab's picked lane wears its tint while the pick stands */
           if(editing&&lanes&&rel===cursor){ const lh=laneHandHere();
-            if(lh) sl.children[lh==="R"?0:1].classList.add("pick"); }
+            if(lh){ sl.children[lh==="R"?0:1].classList.add("pick"); sl.classList.add("lanepick"); } }
           /* the tab's lanes pick the hand (see laneHand) — the phone never
              gets here, its capture handler stops the pointerdown and reads
              the lane itself */
@@ -16011,16 +16020,39 @@ function paintEditDeck(){
       const t=rel-bar*m.bp;
       const sl=document.createElement("div"); sl.className="edslot";
       const evs=byT.get(t)||[];
-      if(evs.length) sl.classList.add(evs.length===1?"n1":evs.length===2?"n2":"n3");
-      for(const ev of evs.slice(0,4).sort((a,c)=>(a.v==="field"?a.f:-1)-(c.v==="field"?c.f:-1))){
-        const g=glyphFor(ev,true), el=document.createElement("span");
-        el.className=g.cls+(ev.hand==="R"?" r":" l"); el.innerHTML=g.t; sl.appendChild(el);
+      const symEl=ev=>{ const g=glyphFor(ev,true), el=document.createElement("span");
+        el.className=g.cls+(ev.hand==="R"?" r":" l"); el.innerHTML=g.t; return el; };
+      const byF=(a,c)=>(a.v==="field"?a.f:-1)-(c.v==="field"?c.f:-1);
+      let lanes=null;
+      if(view==="tab"){
+        /* THE TAB'S CELL IS TWO LANES, LIKE THE NOTATION'S (David, 3 Sep, two
+           screenshots: the half-cell frames "cut off the numbers"). The cell
+           used to stack every glyph by field, so a half of it was not a
+           hand's zone and a frame around the half crossed the glyphs. Now the
+           green hand's glyphs stand in the upper lane and the black hand's in
+           the lower, each lane sized for its own count, exactly as the score's
+           tab slot draws them — and the pick can frame the lane that IS the
+           zone. The cell is a plain column (the score's slot is the reversed
+           one), so the upper lane — green — is appended first. */
+        sl.classList.add("tab"); lanes={};
+        for(const hand of ["R","L"]){
+          const ln=document.createElement("span"); ln.className="edlane"+(hand==="R"?" up":" dn");
+          const list=evs.filter(e=>(e.hand==="R")===(hand==="R")).slice(0,2).sort(byF);
+          ln.classList.add(list.length===1?"ln1":list.length>=2?"ln2":"ln0");
+          for(const ev of list) ln.appendChild(symEl(ev));
+          capUnderside(ln); sl.appendChild(ln); lanes[hand]=ln;
+        }
+      } else {
+        if(evs.length) sl.classList.add(evs.length===1?"n1":evs.length===2?"n2":"n3");
+        for(const ev of evs.slice(0,4).sort(byF)) sl.appendChild(symEl(ev));
+        capUnderside(sl);
       }
-      capUnderside(sl);
       if(rel===cursor){ sl.classList.add("cur");
-        /* the lane pick shows on the cell: a green cap for the upper half, a
-           black foot for the lower (see laneHand) */
-        const lh=laneHandHere(); if(lh) sl.classList.add(lh==="R"?"pickR":"pickL"); }
+        /* ONE FRAME (David, 3 Sep: "what are the two frames for … isn't one of
+           them enough?"): with a lane picked the cursor IS that lane — the
+           amber ring moves onto it and the cell's own ring stands down */
+        const lh=laneHandHere();
+        if(lh&&lanes){ sl.classList.add("lanepick"); lanes[lh].classList.add("pick"); } }
       /* THE EDITING FIELD PICKS THE HAND TOO, IN THE TAB (David, 3 Sep: "on
          mobile … in tab mode, I can click into the upper or the lower area
          of the editing field so that the hand gets defined like that") —
