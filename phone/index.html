@@ -12222,8 +12222,7 @@ function fitPortraitStack(sc,z,designW){
      3 Sep: "it can touch this lower frame of the notation table, or let's
      say almost touch it, give it 1, 2, or 3 pixels, but it should not go
      over it") — the 8px reserve is the reading rooms' */
-  const gapBelow=(typeof editing!=="undefined"&&editing&&PHONE)?EDPAN_GAP:8;
-  const space=innerHeight-top-barH-gapBelow-sdH;
+  const space=innerHeight-top-barH-8-sdH;
   if(space<=0) return;
   let h=sc.getBoundingClientRect().height;
   /* THE NOTATION HAS A CEILING, AND SCROLLS UNDER IT (David, 1–2 Sep, ABC'd).
@@ -12293,8 +12292,7 @@ function fitPortraitStack(sc,z,designW){
     /* the reading rooms stop at 0.3; the editor may go to 0.2 (David, 3 Sep,
        the tab's lower edge still under the deck — a four-row tab at 0.3 is
        taller than the smallest room the deck may leave) */
-    const zf=(typeof editing!=="undefined"&&editing&&PHONE)?0.2:0.3;
-    z=Math.max(zf,z*(space/h)); sc.style.zoom=z;
+    z=Math.max(0.3,z*(space/h)); sc.style.zoom=z;
     h=sc.getBoundingClientRect().height;
   }
   const box=panOn?$("panbox"):(chordRowOn?$("chordbox"):null);
@@ -12713,35 +12711,15 @@ function phoneFit(){
      unzoomed size (David, 26 Aug: "still not centered vertically"). */
   wrap.style.paddingTop="";
   if(!land){
-    const ed=edPanOn();                 // the editor's pan: floor, fit, grow — see fitEdPan
-    if(ed) edPanFloor();
-    fitPortraitStack(sc,z,designW);
-    /* EVERY REFIT STARTS FROM THE WIDTH ZOOM. fitPortraitStack measures the
-       card as it stands and scales `z` by space/height — which is only right
-       when the card IS at `z`. Called again on a card already shrunk, it
-       measured a short card and gave a LARGER zoom than the room allowed
-       (traced 3 Sep at 390×740: 0.48 → 0.50 → 0.66, the tab's lower edge
-       63px under the deck). */
-    const refit=()=>{ sc.style.zoom=z; fitPortraitStack(sc,z,designW); };
-    if(ed){ edPanGrow();
-      // a size of his own can be bigger than the slack — the notation is
-      // fitted again, against the deck as he set it
-      if(edPanSize!=null) refit();
-      /* …AND THE DECK PUSHES THE CARD, IT DOES NOT COVER IT (David, 3 Sep):
-         a table that cannot zoom below its floor would run under the pinned
-         deck, so the pan gives back exactly the overlap, and the card is
-         fitted once more. Two rounds settle it; the release stores what
-         this allowed, so the split he keeps is one that fits. */
-      for(let i=0;i<6;i++){
-        const svg=$("edPanHost")&&$("edPanHost").querySelector("svg"); if(!svg) break;
-        const over=sc.getBoundingClientRect().bottom-($("transport").getBoundingClientRect().top-EDPAN_GAP);
-        if(over<=0.5) break;
-        const w=parseFloat(svg.style.maxWidth)||EDPAN_FLOOR, nw=Math.max(EDPAN_FLOOR,Math.floor(w-over));
-        if(nw>=w) break;
-        const before=$("transport").getBoundingClientRect().top;
-        svg.style.maxWidth=nw+"px"; refit();
-        if(Math.abs($("transport").getBoundingClientRect().top-before)<0.5) break;   // the pan no longer moves the deck
-      } }
+    const ed=edPanOn();                 // the editor's split is its own (edFitSplit)
+    /* ONE MECHANISM (David, 3 Sep: "can't we just say the upper edge of the
+       deck pushes the lower edge of the notation frame? … three or four
+       mechanisms that all try to regulate this, and they interfere"). The
+       editor's split is edFitSplit alone: the deck's height from the size he
+       set, held between touching the full table and leaving the minimum
+       room; the notation fitted into the room above it. The reading rooms
+       keep fitPortraitStack. */
+    if(ed) edFitSplit(sc,z,designW); else fitPortraitStack(sc,z,designW);
     centrePortraitStack(wrap);
   }
   /* The header push that used to carry the leftover slack upward went with the
@@ -16247,60 +16225,59 @@ function edPanOn(){
   return PHONE&&!TABLET&&editing&&!document.body.classList.contains("drawer-open")
     &&!matchMedia("(orientation:landscape)").matches;
 }
-function edPanFloor(){
-  const host=$("edPanHost"), svg=host&&host.querySelector("svg");
-  if(svg) svg.style.maxWidth="224px";             // the deck at its smallest
-}
-/* THE DECK IS THE STUDENT'S TO SIZE (David, 3 Sep: "give the user the option
-   to resize the deck so that they can determine themselves how big they
-   want the pan to be and how big they want the notation to be? Only the
-   editing field itself should not change size"). Dragging the deck's grab
-   handle while editing sets `edPanSize`, the drawing's width in px, kept in
-   localStorage; the notation is then fitted against the deck at that size
-   (the lane keeps its own height either way). Without a stored size the
-   pan spends the slack as before. The notation is never squeezed under
-   EDPAN_MIN_SCORE px of room — a drag that would do it stops there. */
-/* 120px of room for the notation is the floor (David, 3 Sep, twice: first "a
-   sensible minimum size that still lets me see at least a tiny bit of
-   what's going on", then "the notation tables can go quite a bit smaller …
-   since you have the zoom of the edit row, it actually works with pretty
-   small tables, so please put their size limit much smaller"): a four-row
-   tab zooms to about 0.3 there, the fit's own floor, four rows still in. */
-const EDPAN_FLOOR=224, EDPAN_MIN_SCORE=120, EDPAN_GAP=2;   // the air between the card's bottom edge and the deck
+/* THE DECK IS THE STUDENT'S TO SIZE (David, 3 Sep): dragging the grab handle
+   while editing sets `edPanSize`, the pan drawing's width in px, kept in
+   localStorage; edFitSplit holds it within its bounds. The floors — 224px
+   of drawing, 80px of room for the notation and a zoom of 0.13 (two thirds
+   of the 120 and 0.2 they were: "let's say two-thirds of what they are now
+   can be the minimum size") — and the 2px of air between the card's bottom
+   edge and the deck. */
+const EDPAN_FLOOR=224, EDPAN_MIN_SCORE=80, EDPAN_GAP=2, EDPAN_ZOOM_FLOOR=0.13;
 let edPanSize=(()=>{ try{ const v=+localStorage.getItem("hps.edpan"); return v>=EDPAN_FLOOR?v:null; }catch(e){ return null; } })();
-function edPanGrow(){
-  const host=$("edPanHost"), deck=$("editdeck");
-  const svg=host&&host.querySelector("svg");
-  if(!svg||!deck||!deck.offsetParent) return;     // hidden deck measures as nothing
-  /* the slack is between the notation (fitted against the deck at its
-     floor) and the deck's top — the deck is pinned to the screen's edge, so
-     under it there is never any */
-  const bar=deck.closest("#transport"), card=$("scorecard");
-  const free=Math.max(0, bar.getBoundingClientRect().top-EDPAN_GAP-card.getBoundingClientRect().bottom);
-  /* THE DECK'S SMALLEST IS THE TOUCH (David, 3 Sep: "the minimum size for
-     the deck should be the moment that the notation table reaches its
-     maximum size. It should not be possible to drag the deck's upper edge
-     lower … it should be stuck at that point"): the automatic size is that
-     moment — the pan grown until the deck meets the table at its full size —
-     and a size of his own may only be larger */
-  const touch=EDPAN_FLOOR+free;
-  let want=edPanSize!=null?Math.max(touch,edPanSize):touch;
-  want=Math.round(Math.min(host.clientWidth,Math.max(EDPAN_FLOOR,want)));
-  svg.style.maxWidth=want+"px";
-  if(edPanSize!=null){                            // his size — but the notation keeps its floor
-    const wrap=$("scorewrap"), bar=$("transport");
-    const space=innerHeight-wrap.getBoundingClientRect().top-bar.offsetHeight-8-stripRestHeight($("sideDots"));
-    if(space<EDPAN_MIN_SCORE){ want=Math.max(EDPAN_FLOOR,want-(EDPAN_MIN_SCORE-space)); svg.style.maxWidth=want+"px"; }
+/* THE SPLIT, IN ONE PLACE (David, 3 Sep). Three facts and one rule.
+   Facts: the deck is pinned to the screen's bottom edge; its height is the
+   pan drawing's width plus a fixed rest (the lane, the palette, the
+   paddings); the notation card scales as a whole with its zoom.
+   Rule: the deck's height follows the size he set — no smaller than the
+   moment it touches the full-size table, no larger than leaves the table
+   its minimum room — and the notation is fitted into the room above it:
+   zoomed down as far as its floor, and past that its music scrolls inside
+   the frame. The card's bottom edge is always EDPAN_GAP above the deck.
+   Nothing else regulates the split. */
+function edFitSplit(sc,z,designW){
+  const bar=$("transport"), host=$("edPanHost"), mus=$("score");
+  const svg=host&&host.querySelector("svg"); if(!svg||!bar||!mus) return;
+  /* 1 · the notation at its full size: the width zoom, four rows at most */
+  sc.style.zoom=z; mus.style.maxHeight=""; mus.style.overflowY=""; mus.style.overflowX="";
+  const rows=mus.querySelectorAll(".nrow");
+  if(rows.length>4){
+    mus.style.maxHeight=((rows[3].getBoundingClientRect().bottom-mus.getBoundingClientRect().top)/z)+"px";
+    mus.style.overflowY="auto"; mus.style.overflowX="hidden";
   }
-  /* …AND THE BOTTOM ROW NEVER LEAVES THE SCREEN (David, 3 Sep, a screenshot
-     with the palette cut off at the bottom): whatever the size asked for, the
-     deck as a whole must fit under the notation's floor — measured, not
-     assumed, since the lane's height is the piece's */
-  { const padB=parseFloat(getComputedStyle(document.body).paddingBottom)||0;
-    const wrap=$("scorewrap");
-    const room=innerHeight-padB-wrap.getBoundingClientRect().top-EDPAN_MIN_SCORE-12;   // 12: the 8 the fit keeps, and rounding
-    const over=deck.closest("#transport").offsetHeight-room;
-    if(over>0){ want=Math.max(EDPAN_FLOOR,want-over); svg.style.maxWidth=want+"px"; } }
+  const cardTop=sc.getBoundingClientRect().top, fullH=sc.getBoundingClientRect().height;
+  /* 2 · the deck: its fixed rest, measured with the pan at its floor */
+  svg.style.maxWidth=EDPAN_FLOOR+"px";
+  const rest=bar.offsetHeight-svg.getBoundingClientRect().height;
+  const padB=parseFloat(getComputedStyle(document.body).paddingBottom)||0;
+  const avail=innerHeight-padB-rest-EDPAN_GAP-cardTop;     // for the pan and the card together
+  const touch=avail-fullH, most=avail-EDPAN_MIN_SCORE;
+  let P=edPanSize!=null?Math.max(edPanSize,touch):touch;
+  P=Math.min(P,most,host.clientWidth);
+  P=Math.max(EDPAN_FLOOR,Math.round(P));
+  svg.style.maxWidth=P+"px";
+  /* 3 · the notation into the room that is left */
+  const room=bar.getBoundingClientRect().top-EDPAN_GAP-cardTop;
+  /* two pixels of slack: a zoomed layout rounds each row, and a card zoomed
+     to the room exactly came out a pixel over — which tripped the scroll cap
+     below for that one pixel and cut the fourth row's edge */
+  const zoom=Math.max(EDPAN_ZOOM_FLOOR,z*Math.min(1,(room-2)/fullH));
+  sc.style.zoom=zoom;
+  const over=sc.getBoundingClientRect().bottom-(bar.getBoundingClientRect().top-EDPAN_GAP);
+  if(over>2.5){                                              // past the zoom floor: the music scrolls
+    const chrome=sc.getBoundingClientRect().height-mus.getBoundingClientRect().height;
+    mus.style.maxHeight=Math.max(24,(room-chrome)/zoom)+"px";
+    mus.style.overflowY="auto"; mus.style.overflowX="hidden";
+  }
 }
 function fitEdPan(){ if(edPanOn()) phoneFit(); }
 /* the lane's loop button is lit only while the loop IS the bar it shows, so
