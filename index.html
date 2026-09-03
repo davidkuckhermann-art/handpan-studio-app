@@ -6161,7 +6161,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <h3>Audio log</h3>
   <div style="font-size:13px; color:var(--ink3); margin:0 0 10px">What the sound engine did, newest at the bottom. Kept when the app is closed, so a dropout can be screenshotted afterwards.</div>
   <pre id="audioLogBody" style="white-space:pre-wrap; word-break:break-word; font-size:12px; line-height:1.5; max-height:52vh; overflow:auto; margin:0 0 12px; font-family:ui-monospace,Menlo,monospace"></pre>
-  <div class="row"><button class="ctl" id="audioLogClear">Clear</button><span class="spacer"></span><button class="ctl" id="audioLogClose">Close</button></div>
+  <div class="row"><button class="ctl" id="audioLogReload" title="Reopen the app — the one cure for an audio path iOS will not restart">Restart the app</button><button class="ctl" id="audioLogClear">Clear</button><span class="spacer"></span><button class="ctl" id="audioLogClose">Close</button></div>
 </dialog>
 
 <dialog id="setDlg">
@@ -7293,37 +7293,65 @@ function audioPathBroken(){
   }
   return null;
 }
-/* THE WATCHDOG RUNS FROM THE SCHEDULER — the one tick that already exists
-   while music is playing — and ONLY WITH THE APP ON SCREEN. Hidden, a paused
-   sink means the lock screen paused us, and parking that is the interruption
-   watcher's job; visible, it means the path died under us. One split, no
-   overlap, so the two can never fight over the same event. */
-let audioWatchAt=0, audioFixedAt=0, audioFixing=false;
+/* THE WATCHDOG NUDGES; IT DOES NOT REBUILD (David, 3 Sep, from the log this
+   very watchdog wrote — the first version DID rebuild, and it made his audio
+   substantially worse):
+
+     18:33:57  dropped out — sink paused / rebuilt
+     18:34:05  dropped out — sink paused / rebuilt
+     18:34:11  dropped out — sink paused / rebuilt
+     18:35:00  play rebuilt the path — clock dead   (×3)
+
+   Eight seconds, then six: that cadence is not iOS, it is the six-second
+   back-off of the version that rebuilt. Each of those lines is his music
+   being STOPPED. And the "clock dead" lines say why the rebuilds did not
+   help: a context and a media element created OUTSIDE a user gesture are not
+   reliably allowed to start on iOS, so every rebuild handed him a quieter app
+   than before. Rebuilding belongs where the gesture is — in Play — and Play
+   already does it.
+
+   What is left here is the smallest thing that can actually cure a paused
+   element: ask it to play again. `ensureSink()` does exactly that and touches
+   nothing else — no teardown, no new context, and the music never stops. Only
+   if three seconds of nudging change nothing does the transport stop, once,
+   so that the student's next press means Play and rebuilds the path in their
+   own gesture.
+
+   Visible only, as before: hidden, a paused sink is the lock screen's pause
+   and parking it is watchAudioInterruption's job. One split, no overlap. */
+let audioWatchAt=0, audioNudgeAt=0, audioBadSince=0, audioWhyLogged="";
 function audioWatch(){
-  if(audioFixing||!soundActive()) return;
-  if(document.visibilityState!=="visible") return;
-  const now=Date.now(); if(now-audioWatchAt<400) return; audioWatchAt=now;
-  /* ONE REBUILD PER DROP, AND NEVER A STORM. A rebuild stops the music, so
-     the watchdog normally falls silent by itself — but in follow mode the
-     video keeps `soundActive()` true, and a path that stays broken would
-     otherwise be rebuilt three times a second. Six seconds is long enough for
-     a new graph to prove itself and short enough to try again in a piece. */
-  if(now-audioFixedAt<6000) return;
-  const why=audioPathBroken(); if(!why) return;
-  audioFixing=true; audioFixedAt=now;
-  audioNote("dropped out — "+why);
-  /* stop and park where the music stood, rebuild the path, and SAY SO. The
-     music is not restarted behind his back: the drop is worth knowing about,
-     and Play now works because the path underneath it is new. */
-  const at=(lastPaint>=0)?lastPaint:loopedPulse(nextPulse);
-  try{ stop(); }catch(e){}
-  if(pendingStart==null&&!loopSec&&at>=0) pendingStart=at;
-  const done=m=>{ audioFixing=false; audioNote(m);
-    try{ toast("Audio dropped out — press play to continue"); }catch(e){} };
-  try{ reviveAudio().then(ok=>done("rebuilt"+(ok?"":" — clock still dead")),
-                          ()=>done("rebuild failed")); }
-  catch(e){ done("rebuild threw"); }
-  setTimeout(()=>{ audioFixing=false; },4000);      // never stuck, whatever happens
+  if(!soundActive()||document.visibilityState!=="visible") return;
+  const now=Date.now(); if(now-audioWatchAt<300) return; audioWatchAt=now;
+  const why=audioPathBroken();
+  if(!why){
+    if(audioBadSince){ audioNote("sound back"); audioBadSince=0; audioWhyLogged=""; }
+    return;
+  }
+  /* one line per episode, and again only when the reason itself changes: a
+     log that repeats itself every tick is a log with no history left in it */
+  if(!audioBadSince||why!==audioWhyLogged){
+    if(!audioBadSince) audioBadSince=now;
+    audioWhyLogged=why; audioNote("no sound — "+why);
+  }
+  /* THE END OF THE EPISODE IS ASKED FIRST. It used to be asked after the
+     nudge, behind that branch's `return` — so whenever the ticks happened to
+     fall further apart than the nudge's own 800 ms (a throttled tab, a busy
+     frame) the nudge answered every single time and three seconds never
+     arrived. A rule that depends on the cadence it is polled at is not a
+     rule; this one is asked on every tick, whatever the spacing. */
+  if(now-audioBadSince>3000){
+    audioNote("stopped it — press play to rebuild");
+    const at=(lastPaint>=0)?lastPaint:loopedPulse(nextPulse);
+    try{ stop(); }catch(e){}
+    if(pendingStart==null&&!loopSec&&at>=0) pendingStart=at;
+    audioBadSince=0; audioWhyLogged="";
+    try{ toast("Sound stopped — press play; if it stays quiet, restart the app"); }catch(e){}
+    return;
+  }
+  if(why==="sink paused"&&now-audioNudgeAt>800){
+    audioNudgeAt=now; try{ ensureSink(); }catch(e){}   // …which calls play() on it
+  }
 }
 /* ── THE AUDIO LOG (David, 3 Sep) ─────────────────────────────────────────
    A dropout that only happens on his phone, minutes apart, cannot be chased
@@ -7426,10 +7454,12 @@ function ensureSink(){
       .catch(()=>{ iosSink="failed"; });
   }catch(e){ iosSink="failed"; }
 }
+let ctxMade=0;               // how many contexts this page has built — see audioNote
 function ensureCtx(){
   if(ctx) return;
   setAudioSession();          // before the context exists, so iOS picks the media route
   ctx=new (window.AudioContext||window.webkitAudioContext)({latencyHint:"playback"});
+  ctxMade++;
   master=ctx.createGain(); master.gain.value=vol; master.connect(ctx.destination);
   limiter=ctx.createWaveShaper(); limiter.curve=softClipCurve(); limiter.oversample="2x";
   limiter.connect(master);
@@ -8950,12 +8980,30 @@ async function start(){
   /* …and if it still cannot prove the clock is moving, this press of play is
      the gesture that rebuilds it. Pressing play is what a student does when
      the sound has gone, so the cure sits exactly where they already reach. */
-  /* THE SAME QUESTION PLAY HAS ALWAYS ASKED, ASKED PROPERLY (3 Sep): a dead
-     path whose clock still counts used to pass here, and Play then scheduled
-     music into a graph nothing could hear — "the sound did not come back,
-     even after I tried to press play again". */
-  { const why=audioPathBroken();
-    if(why||!await clockAlive(120)){ audioNote("play rebuilt the path — "+(why||"clock dead")); await reviveAudio(); } }
+  /* PLAY HEALS IN THE ORDER THAT COSTS LEAST, AND REBUILDS LAST (David,
+     3 Sep, night: "the audio was completely gone and is also not coming back
+     when I press play. But it does come back after a reset"). A rebuild is
+     the one cure that cannot work twice: every `reviveAudio` builds a NEW
+     AudioContext, iOS allows only a handful per page, and once they are spent
+     every context after them is born dead — which is precisely an app that
+     only a relaunch can revive, and precisely why the more the old watchdog
+     rebuilt, the worse his audio got. So Play asks for the cheap cures first,
+     inside the gesture where iOS grants them, and keeps the rebuild for the
+     case where nothing else answered. */
+  { let why=audioPathBroken();
+    if(why){
+      try{ await ctx.resume(); }catch(e){}            // 1 · the engine, in the gesture
+      try{ ensureSink(); }catch(e){}                  // 2 · the element, in the gesture
+      await new Promise(r=>setTimeout(r,60));
+      why=audioPathBroken();
+    }
+    const dead=!await clockAlive(120);
+    if(why||dead){
+      audioNote("play: "+(why||"clock dead")+" — rebuilding (context #"+(ctxMade+1)+")");
+      await reviveAudio();
+      if(!await clockAlive(200)) audioNote("still dead after the rebuild — the page needs reopening");
+    } else if(audioBadSince) audioNote("play healed it without a rebuild");
+  }
   sinkClockReset();
   preloadBank();
   C=compile(piece);
@@ -28005,6 +28053,15 @@ if(PHONE){
     audioNote("log cleared"); $("audioLogBody").textContent=audioLogText();
   });
   $("audioLogClose").addEventListener("click",()=>$("audioLogDlg").close());
+  /* THE ONE CURE THAT ALWAYS WORKS, WITHOUT THE APP SWITCHER (David, 3 Sep:
+     "it does come back after a reset"). A reload frees every AudioContext the
+     page ever built, which is what the relaunch was really doing. */
+  $("audioLogReload").addEventListener("click",()=>{
+    audioNote("restarted from the audio log");
+    /* the piece saves itself on the way out — pagehide/beforeunload already
+       write hps.lastPiece, and a reload fires them */
+    location.reload();
+  });
   // the sheet's own buttons close it, so the change is visible behind it
   ["libBtn","shareBtn","setBtn"].forEach(id=>
     $(id).addEventListener("click",()=>$("menuDlg").close()));
