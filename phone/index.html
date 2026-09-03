@@ -4103,14 +4103,24 @@ body.phone .gmini i{font-size:10px}
      row should basically be fixed at the bottom of the screen … only the pan
      and the notation should change in size"): the bar takes the column's
      slack above it, so the palette row never moves with the split */
-  body.phone.editing:not(.drawer-open) #transport{margin-top:auto}
-  /* …RIGHT AT THE EDGE (David, 3 Sep: "it can sit right at the edge anyway
-     because we won't do any swiping there") — the bar's bottom padding drops
-     the safe-area inset while editing; a few pixels stay */
-  body.phone.editing:not(.drawer-open) #transport{padding-bottom:4px}
+  /* PINNED, NOT LAID OUT (David, 3 Sep, third time: "the bottom row of
+     buttons should always be fixed … it should never change position,
+     depending on what is on the table or depending on the split position.
+     Just stick it there"). A bar in the column could still be pushed past
+     the edge by a notation that cannot zoom below its floor, and stood at
+     different heights in Table and Tab. Fixed to the screen's bottom edge it
+     cannot move at all: the deck grows UPWARD with the split, the notation
+     is fitted into the room above it, and a table too tall for that room
+     goes under the deck rather than pushing it. The side insets are the
+     drawer's (the same bar, fixed, loses the body's padding). Right at the
+     edge — "we won't do any swiping there" — with 4px of air. */
+  body.phone.editing:not(.drawer-open) #transport{position:fixed; left:0; right:0; bottom:0; z-index:40;
+    margin:0; padding-bottom:4px;
+    padding-left:calc(20px + 2*env(safe-area-inset-left));
+    padding-right:calc(20px + 2*env(safe-area-inset-right))}
   /* the wrapper's 4px of padding and 6px of margin below the card are 10 against
      the fit's reserve of 8 — 2px the pinned deck was pushed past the edge */
-  body.phone.editing #scorewrap{margin-bottom:4px}
+  body.phone.editing #scorewrap{margin-bottom:2px}   /* 2, not 4: the zoomed card's border still pushed the deck 2px past the edge */
   #editdeck .lane{background:var(--card2); border:1px solid var(--rule);
     border-radius:12px; padding:6px 8px 8px; margin-bottom:7px}
   #edLaneHead{display:flex; align-items:center; gap:6px; margin-bottom:5px}
@@ -5511,6 +5521,10 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
          to the library once the header's Library button went, and it did not
          say so. Same handler, same dialog — the name is the change. -->
     <button class="ctl" id="spLoad">Open the Arrangement Library</button>
+    <!-- …and the scales beside it (David, 3 Sep: "on the right of that, create
+         a button that says Open the scale library, which leads to the scale
+         selector") — the same chooser the header's pan button opens -->
+    <button class="ctl" id="spScales">Open the Scale Library</button>
   </div>
   <h4 class="dsec later">Share &amp; files</h4>
   <div class="row" style="margin-top:0">
@@ -16215,10 +16229,13 @@ function edPanFloor(){
    (the lane keeps its own height either way). Without a stored size the
    pan spends the slack as before. The notation is never squeezed under
    EDPAN_MIN_SCORE px of room — a drag that would do it stops there. */
-/* 190px of room for the notation is the floor (David, 3 Sep: "a sensible
-   minimum size that still lets me see at least a tiny bit of what's going
-   on"): a four-row tab zooms to about 0.45 there — small, still legible. */
-const EDPAN_FLOOR=224, EDPAN_MIN_SCORE=190;
+/* 120px of room for the notation is the floor (David, 3 Sep, twice: first "a
+   sensible minimum size that still lets me see at least a tiny bit of
+   what's going on", then "the notation tables can go quite a bit smaller …
+   since you have the zoom of the edit row, it actually works with pretty
+   small tables, so please put their size limit much smaller"): a four-row
+   tab zooms to about 0.3 there, the fit's own floor, four rows still in. */
+const EDPAN_FLOOR=224, EDPAN_MIN_SCORE=120;
 let edPanSize=(()=>{ try{ const v=+localStorage.getItem("hps.edpan"); return v>=EDPAN_FLOOR?v:null; }catch(e){ return null; } })();
 function edPanGrow(){
   const host=$("edPanHost"), deck=$("editdeck");
@@ -26753,6 +26770,8 @@ function boot(){
   });
   $("spLoad").addEventListener("click",()=>{
     $("shareDlg").close(); renderLib(); openDlg($("libDlg")); });
+  $("spScales").addEventListener("click",()=>{
+    $("shareDlg").close(); openPanPick(true); });
   $("csFile").addEventListener("click",()=>{
     const s=ctxShareText(); if(!s) return;
     const a=document.createElement("a");
