@@ -1358,11 +1358,17 @@ body.mkline .mkbox{top:auto; bottom:-1px; height:2px; background:var(--dixie);
    down: the capsule is the glyphs' parent and cannot read their value. */
 .slot{--symlh:1.02; display:flex; flex-direction:column-reverse; align-items:center; justify-content:flex-start;
   min-height:34px; border-radius:4px; padding:1px 0; position:relative}
-.slot.cursor{outline:2px solid var(--steel); outline-offset:0}
-/* one frame (David, 3 Sep): with a lane picked the cursor IS the lane's amber ring */
-.slot.cursor.lanepick{outline-color:transparent}
+/* THE CURSOR IS THE EDITING ROW'S ORANGE (David, 3 Sep: "the selected notes
+   in the edit row are shown with an orange frame … let's use the same
+   orange frame also for the same selection in the notation table. The
+   notation table will have a larger blue frame that shows where the
+   notation row sits") — the same tint and ring as .edslot.cur; the blue
+   belongs to the row's window (paintEditWindow) alone. */
+.slot.cursor{outline:2px solid var(--dixie); outline-offset:-1px; background:var(--dixie-soft); border-radius:5px}
+/* one frame (David, 3 Sep): with a lane picked the cursor IS the lane's ring */
+.slot.cursor.lanepick{outline-color:transparent; background:none}
 /* the tab lane a tap picked for the next stroke — see laneHand */
-.tsyms.lane.pick{background:rgba(51,96,126,.09); border-radius:4px; box-shadow:inset 0 0 0 2px var(--steel)}   /* the cursor's blue, in the tab as in the table (David, 3 Sep) */
+.tsyms.lane.pick{background:var(--dixie-soft); border-radius:4px; box-shadow:inset 0 0 0 2px var(--dixie)}   /* the picked lane in the row's orange, as the row's own picked lane (David, 3 Sep) */
 /* The playback marker (16th/8th/strokes): ONE even rectangle over the covered
    slots as a full-height beat-cell overlay, so neighbouring symbols of
    different sizes never jag the box.
@@ -16309,42 +16315,55 @@ function edPanCornerCap(svg,P){
 function edFitSplit(sc,z,designW){
   const bar=$("transport"), host=$("edPanHost"), mus=$("score");
   const svg=host&&host.querySelector("svg"); if(!svg||!bar||!mus) return;
-  /* 1 · the notation at its full size: the width zoom, four rows at most */
-  sc.style.zoom=z; mus.style.maxHeight=""; mus.style.overflowY=""; mus.style.overflowX="";
+  /* THE CARD IS MEASURED AT EVERY ZOOM IT IS ASKED ABOUT, NEVER SCALED FROM
+     ONE. WebKit — the phone — draws no text under 9 real pixels: it ENLARGES
+     the font inside a zoomed card instead (Safari 26.5, 3 Sep, driven by
+     WebDriver at 393x793: the symbols' 20px read 22.5px at zoom 0.4, 30px at
+     0.3, 36px at 0.25; a row 66 layout px at zoom 0.7 was 104 at 0.25; four
+     rows bottom out near 26 real px each). So below zoom ≈0.45 the card's
+     real height is NOT fullH·zoom, and a fit that assumed it was came out
+     taller than its room, hit its own overlap check, capped the music and
+     scrolled — David's screenshots of 13:25 and 13:30, which Chromium (no
+     such clamp) could never reproduce. Chromium scales linearly and gets the
+     same answers from the measurement as it did from the arithmetic. */
+  mus.style.maxHeight=""; mus.style.overflowY=""; mus.style.overflowX="";
   const rows=mus.querySelectorAll(".nrow");
-  if(rows.length>4){
-    mus.style.maxHeight=((rows[3].getBoundingClientRect().bottom-mus.getBoundingClientRect().top)/z)+"px";
-    mus.style.overflowY="auto"; mus.style.overflowX="hidden";
-  }
-  const cardTop=sc.getBoundingClientRect().top, fullH=sc.getBoundingClientRect().height;
-  /* 2 · the deck: its fixed rest, measured with the pan at its floor */
+  /* past four rows the music scrolls — the notation's own rule — and the cap
+     is re-taken at whichever zoom the card stands, because on WebKit the
+     fourth row's bottom moves with the zoom too */
+  const capRows=()=>{ if(rows.length>4){ const zz=parseFloat(sc.style.zoom)||1;
+    mus.style.maxHeight=((rows[3].getBoundingClientRect().bottom-mus.getBoundingClientRect().top)/zz)+"px";
+    mus.style.overflowY="auto"; mus.style.overflowX="hidden"; } };
+  const realH=zz=>{ sc.style.zoom=zz; capRows(); return sc.getBoundingClientRect().height; };
+  const fullH=realH(z), minH=realH(EDPAN_ZOOM_FLOOR);   // the card as it stands, and at its smallest
+  sc.style.zoom=z; capRows();
+  const cardTop=sc.getBoundingClientRect().top;
   svg.style.maxWidth=EDPAN_FLOOR+"px";
   const rest=bar.offsetHeight-svg.getBoundingClientRect().height;
   const padB=parseFloat(getComputedStyle(document.body).paddingBottom)||0;
-  const avail=innerHeight-padB-rest-EDPAN_GAP-cardTop;     // for the pan and the card together
-  /* the deck's most: where the card, at its smallest zoom, would have to
-     start scrolling (David, 3 Sep: "at the point where the tables would
-     start scrolling, let's give them their lower size limit … they can go
-     as small as possible before, but they should not start scrolling") */
-  const touch=avail-fullH, most=avail-fullH*(EDPAN_ZOOM_FLOOR/z);
+  const avail=innerHeight-padB-rest-EDPAN_GAP-cardTop;
+  /* the deck's pan is held between TOUCH (meeting the full table) and MOST
+     (the table at its smallest still whole — David, 3 Sep: "once that is
+     reached, the deck is not allowed to extend further so that always 4 rows
+     can fully be displayed"); a screen too short for both lets the deck's
+     floor go before the table does */
+  const touch=avail-fullH, most=avail-minH;
   let P=edPanSize!=null?Math.max(edPanSize,touch):touch;
-  P=Math.min(P,most,host.clientWidth);
-  P=Math.max(EDPAN_FLOOR,Math.round(P));
-  P=edPanCornerCap(svg,P);
-  svg.style.maxWidth=P+"px";
-  /* 3 · the notation into the room that is left */
+  P=Math.min(P,most,host.clientWidth); P=Math.max(Math.min(EDPAN_FLOOR,most),Math.round(P));
+  P=edPanCornerCap(svg,P); svg.style.maxWidth=P+"px";
+  /* the card zoomed into the room above the deck, 2px of slack: the
+     arithmetic first (Chromium's exact answer, one measurement), and where
+     the engine disagrees — WebKit under the clamp, where a smaller zoom may
+     buy no height at all — the largest zoom that fits, found by bisection
+     between the floor and the arithmetic's answer (the floor fits by
+     construction: MOST was taken from it) */
   const room=bar.getBoundingClientRect().top-EDPAN_GAP-cardTop;
-  /* two pixels of slack: a zoomed layout rounds each row, and a card zoomed
-     to the room exactly came out a pixel over — which tripped the scroll cap
-     below for that one pixel and cut the fourth row's edge */
-  const zoom=Math.max(EDPAN_ZOOM_FLOOR,z*Math.min(1,(room-2)/fullH));
-  sc.style.zoom=zoom;
-  const over=sc.getBoundingClientRect().bottom-(bar.getBoundingClientRect().top-EDPAN_GAP);
-  if(over>2.5){                                              // past the zoom floor: the music scrolls
-    const chrome=sc.getBoundingClientRect().height-mus.getBoundingClientRect().height;
-    mus.style.maxHeight=Math.max(24,(room-chrome)/zoom)+"px";
-    mus.style.overflowY="auto"; mus.style.overflowX="hidden";
-  }
+  const fits=zz=>realH(zz)<=room;
+  let zoom=Math.max(EDPAN_ZOOM_FLOOR,z*Math.min(1,(room-2)/fullH));
+  if(zoom>EDPAN_ZOOM_FLOOR&&!fits(zoom)){ let lo=EDPAN_ZOOM_FLOOR, hi=zoom;
+    for(let i=0;i<7;i++){ const mid=(lo+hi)/2; if(fits(mid)) lo=mid; else hi=mid; }
+    zoom=lo; }
+  realH(zoom);
 }
 function fitEdPan(){ if(edPanOn()) phoneFit(); }
 /* the lane's loop button is lit only while the loop IS the bar it shows, so
