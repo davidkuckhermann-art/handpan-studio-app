@@ -4097,6 +4097,14 @@ body.phone .gmini i{font-size:10px}
   body.phone.editing #belowrow{display:none}
   body.phone.editing #prow1,body.phone.editing #prow2{display:none !important}
   body.phone.editing #editdeck{display:block}
+  /* THE DECK SITS ON THE BOTTOM EDGE while editing (David, 3 Sep: "the bottom
+     row should basically be fixed at the bottom of the screen … only the pan
+     and the notation should change in size"): the bar takes the column's
+     slack above it, so the palette row never moves with the split */
+  body.phone.editing:not(.drawer-open) #transport{margin-top:auto}
+  /* the wrapper's 4px of padding and 6px of margin below the card are 10 against
+     the fit's reserve of 8 — 2px the pinned deck was pushed past the edge */
+  body.phone.editing #scorewrap{margin-bottom:4px}
   #editdeck .lane{background:var(--card2); border:1px solid var(--rule);
     border-radius:12px; padding:6px 8px 8px; margin-bottom:7px}
   #edLaneHead{display:flex; align-items:center; gap:6px; margin-bottom:5px}
@@ -4115,13 +4123,20 @@ body.phone .gmini i{font-size:10px}
   #edCells{flex:1 1 auto; min-width:0; display:grid; background:var(--sc-bg);
     border:1px solid var(--sc-rule); border-radius:8px; overflow:hidden;
     font-family:Inter,-apple-system,sans-serif}
+  /* FIXED HEIGHTS (David, 3 Sep: "when I add a new stroke on top of an
+     existing one in the edit row, the separator changes position and
+     everything changes in size … these sizes should be fixed once the split
+     ratio is set"). The cell used to be a min-height that a stack could
+     exceed, and every extra glyph grew the lane, the deck and so the split.
+     Now the cell IS its height, clipped, and a stack fits by size — n4 for
+     four, and in the tab each lane sizes its own pair. */
   .edbeat{position:relative; border-right:1px solid var(--sc-rule);
-    min-height:54px; display:grid; padding:12px 1px 2px}
+    height:64px; display:grid; padding:12px 1px 2px}
   .edbeat:last-child{border-right:none}
   .edbeatnum{position:absolute; top:2px; left:4px; font-size:9px; font-weight:700;
     color:var(--sc-count); pointer-events:none}
   .edslot{display:flex; flex-direction:column; align-items:center; justify-content:flex-end;
-    min-height:40px; border-radius:6px; margin:1px; padding-bottom:1px}
+    height:48px; overflow:hidden; border-radius:6px; margin:1px; padding-bottom:1px}
   .edslot.cur{background:var(--dixie-soft); box-shadow:inset 0 0 0 2px var(--dixie)}
   /* THE TAB'S CELL IS TWO LANES (David, 3 Sep) — the green hand above, the
      black below, each lane sized for its own count; the row is a little
@@ -4129,15 +4144,15 @@ body.phone .gmini i{font-size:10px}
      ONE FRAME: a picked lane wears the cursor's amber ring and tint itself,
      and the cell's ring stands down (.lanepick) — the frame is the zone, so
      it cannot cut across a number. */
-  body.phone.design-tab .edbeat{min-height:72px}
-  body.phone.design-tab .edslot{min-height:58px}
+  body.phone.design-tab .edbeat{height:72px}
+  body.phone.design-tab .edslot{height:56px}
   .edslot.tab{justify-content:stretch; padding:2px 1px; gap:1px}
   .edlane{flex:1 1 50%; min-height:0; width:100%; display:flex; flex-direction:column-reverse;
     align-items:center; justify-content:center; border-radius:5px; position:relative}
   .edlane .sym{font-size:22px}
   .edlane .sym.d2{font-size:17px}
-  .edlane.ln2 .sym{font-size:14px}
-  .edlane.ln2 .sym.d2{font-size:11.5px}
+  .edlane.ln2 .sym{font-size:13px}
+  .edlane.ln2 .sym.d2{font-size:11px}
   .edlane.pick{background:var(--dixie-soft); box-shadow:inset 0 0 0 2px var(--dixie)}
   .edslot.cur.lanepick{background:none; box-shadow:none}
   /* lane glyphs at finger scale — the score's own .sym classes, resized */
@@ -4146,6 +4161,7 @@ body.phone .gmini i{font-size:10px}
   .edslot.n1 .sym{font-size:30px}
   .edslot.n2 .sym{font-size:19px}
   .edslot.n3 .sym{font-size:15px}
+  .edslot.n4 .sym{font-size:11.5px}
   /* THE .d2 PARTNERS the density ladder was missing (David, 31 Aug, from a
      16-field mutant: "in the editor field, the 2 digit numbers are not
      formatted correctly") — the n-rules sit later in the cascade, so a lone
@@ -4154,6 +4170,7 @@ body.phone .gmini i{font-size:10px}
   .edslot.n1 .sym.d2{font-size:23px}   /* measured: 26 still spilled a 16th's slot */
   .edslot.n2 .sym.d2{font-size:16px}
   .edslot.n3 .sym.d2{font-size:12.5px}
+  .edslot.n4 .sym.d2{font-size:10px}
   .edslot .sym.gh,.edslot .sym.pc,.edslot .sym.mu{font-size:21px}
   /* THE PAN TAKES EVERY SPARE PIXEL (David, 31 Aug: "a lot of space wasted
      on the bottom and on the sides… the tone fields on extended instruments
@@ -11606,7 +11623,7 @@ function render(){
   embedWatch();
   paintLoopFrame();     // the loop survives every repaint
   if(typeof cpCapRows==="function") cpCapRows();   // chord practice: four rows, then it scrolls
-  if(PHONE&&editing) edScrollToCursor();           // a scrolling frame keeps the cursor in view
+  if(PHONE&&editing){ paintEditWindow(); edScrollToCursor(); }   // the row's window framed; the cursor in view
   // the Hand keys light the hand the CURSOR's slot gets (a lane pick or the
   // chosen hand), so every cursor move — arrows included — repaints them
   if(editing&&typeof updateHandInd==="function") updateHandInd();
@@ -11748,6 +11765,9 @@ function stackBottom(){
   return b;
 }
 function centrePortraitStack(wrap){
+  /* the editor pins its deck to the bottom edge (see body.phone.editing
+     #transport) — the notation stays at the top and the slack lies between */
+  if(typeof editing!=="undefined"&&editing&&PHONE){ wrap.style.paddingTop=""; return; }
   const bar=$("transport"), card=$("scorecard"); if(!bar||!card) return;
   /* JAM IS TOP-ALIGNED (David, 28 Aug, with a screenshot: "the notation is too
      low on the screen"). Reading a piece, the notation is the whole content
@@ -16007,6 +16027,37 @@ function edWin(){
   let wb=m.beats; while(wb*m.sub>8&&wb>1) wb=Math.ceil(wb/2);
   return {m,winBeats:wb,winBP:wb*m.sub};
 }
+/* the pulses the editing row shows, section-relative: the cursor's bar, or
+   its window of it — one computation for the lane and for the notation's
+   frame around it */
+function edWindowRange(){
+  const sec=piece&&piece.sections[viewSec]; if(!sec) return null;
+  const {m,winBP}=edWin();
+  const bar=Math.floor(cursor/m.bp), inBar=cursor-bar*m.bp;
+  const from=bar*m.bp+Math.floor(inBar/winBP)*winBP;
+  return {from,to:Math.min(from+winBP,sec.bars.length*m.bp)};
+}
+/* A BLUE FRAME IN THE NOTATION AROUND WHAT THE EDITING ROW SHOWS (David,
+   3 Sep). The cursor's blue on the slot says where the next note goes; this
+   says which beats the row below is a magnified view of. Drawn on the beat
+   cells as inset shadows, so it needs no measuring and rides every repaint;
+   the ends carry the sides. */
+function paintEditWindow(){
+  const sc=$("score"); if(!sc) return;
+  sc.querySelectorAll(".beat.edwin").forEach(b=>{ b.classList.remove("edwin"); b.style.boxShadow=""; });
+  if(!PHONE||!editing||view==="flow") return;
+  const w=edWindowRange(); if(!w) return;
+  const cells=[...sc.querySelectorAll(".beat")].filter(b=>{
+    const sl=b.querySelector("[data-rel]"); if(!sl) return false;
+    const r=+sl.dataset.rel; return r>=w.from&&r<w.to; });
+  cells.forEach((b,i)=>{
+    b.classList.add("edwin");
+    const sh=["inset 0 2px 0 0 var(--steel)","inset 0 -2px 0 0 var(--steel)"];
+    if(i===0) sh.push("inset 2px 0 0 0 var(--steel)");
+    if(i===cells.length-1) sh.push("inset -2px 0 0 0 var(--steel)");
+    b.style.boxShadow=sh.join(",");
+  });
+}
 function paintEditDeck(){
   if(!PHONE||!editing) return;
   const sec=piece.sections[viewSec]; if(!sec) return;
@@ -16065,7 +16116,7 @@ function paintEditDeck(){
           capUnderside(ln); sl.appendChild(ln); lanes[hand]=ln;
         }
       } else {
-        if(evs.length) sl.classList.add(evs.length===1?"n1":evs.length===2?"n2":"n3");
+        if(evs.length) sl.classList.add(evs.length===1?"n1":evs.length===2?"n2":evs.length===3?"n3":"n4");
         for(const ev of evs.slice(0,4).sort(byF)) sl.appendChild(symEl(ev));
         capUnderside(sl);
       }
@@ -16156,7 +16207,7 @@ function edPanFloor(){
    (the lane keeps its own height either way). Without a stored size the
    pan spends the slack as before. The notation is never squeezed under
    EDPAN_MIN_SCORE px of room — a drag that would do it stops there. */
-const EDPAN_FLOOR=224, EDPAN_MIN_SCORE=96;
+const EDPAN_FLOOR=224, EDPAN_MIN_SCORE=130;   // 130: the frame's chrome and one row
 let edPanSize=(()=>{ try{ const v=+localStorage.getItem("hps.edpan"); return v>=EDPAN_FLOOR?v:null; }catch(e){ return null; } })();
 function edPanGrow(){
   const host=$("edPanHost"), deck=$("editdeck");
@@ -16171,6 +16222,15 @@ function edPanGrow(){
     const space=innerHeight-wrap.getBoundingClientRect().top-bar.offsetHeight-8-stripRestHeight($("sideDots"));
     if(space<EDPAN_MIN_SCORE){ want=Math.max(EDPAN_FLOOR,want-(EDPAN_MIN_SCORE-space)); svg.style.maxWidth=want+"px"; }
   }
+  /* …AND THE BOTTOM ROW NEVER LEAVES THE SCREEN (David, 3 Sep, a screenshot
+     with the palette cut off at the bottom): whatever the size asked for, the
+     deck as a whole must fit under the notation's floor — measured, not
+     assumed, since the lane's height is the piece's */
+  { const padB=parseFloat(getComputedStyle(document.body).paddingBottom)||0;
+    const wrap=$("scorewrap");
+    const room=innerHeight-padB-wrap.getBoundingClientRect().top-EDPAN_MIN_SCORE-12;   // 12: the 8 the fit keeps, and rounding
+    const over=deck.closest("#transport").offsetHeight-room;
+    if(over>0){ want=Math.max(EDPAN_FLOOR,want-over); svg.style.maxWidth=want+"px"; } }
 }
 function fitEdPan(){ if(edPanOn()) phoneFit(); }
 /* the lane's loop button is lit only while the loop IS the bar it shows, so
