@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Audio revival test</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+ :root{color-scheme:light dark}
+ body{margin:0;padding:14px;font:15px/1.45 -apple-system,system-ui,sans-serif;background:#f7f5f0;color:#1c1a17}
+ @media (prefers-color-scheme:dark){body{background:#191714;color:#efe9e0}}
+ h1{font-size:17px;margin:0 0 4px}
+ p.sub{margin:0 0 12px;font-size:13px;opacity:.7}
+ button{display:block;width:100%;margin:0 0 8px;padding:14px;font-size:16px;font-weight:600;
+   border-radius:12px;border:1px solid #b98a2d;background:#e5931522;color:inherit;-webkit-tap-highlight-color:transparent}
+ button.go{background:#e59315;color:#1c1a17;border-color:#e59315}
+ #state{font:12px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap;background:#0002;
+   border-radius:10px;padding:10px;margin:10px 0}
+ #log{font:12px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap;background:#0002;
+   border-radius:10px;padding:10px;max-height:38vh;overflow:auto}
+ .hint{font-size:13px;opacity:.75;margin:10px 0 6px}
+</style>
+</head>
+<body>
+<h1>Audio revival test</h1>
+<p class="sub">Nothing here touches Handpan Studio. It copies the app's audio path exactly, so we can find out what actually revives it on your phone.</p>
+
+<button id="start" class="go">1 · Start the tone</button>
+<p class="hint">Then: switch to Discord, record a voice message, come back here. The tone should be gone. Now try the buttons below <b>one at a time</b>, top to bottom, and stop as soon as the tone returns.</p>
+<button id="resume">2 · Resume only (no rebuild)</button>
+<button id="sinkonly">3 · New stream only, same engine</button>
+<button id="syncnew">4 · New engine, built inside this tap</button>
+<button id="oldway">5 · New engine, built after a wait (the old way)</button>
+<button id="clear">Clear the log</button>
+
+<div id="state"></div>
+<div id="log"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+let ctx=null, master=null, osc=null, sink=null, dest=null, made=0, playingSeen=0;
+const L=[];
+function log(s){ const d=new Date(), p=n=>String(n).padStart(2,"0");
+  L.push(p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds())+"  "+s);
+  if(L.length>60) L.shift(); $("log").textContent=L.join("\n"); $("log").scrollTop=1e6; }
+function setSession(t){ try{ if(navigator.audioSession){ navigator.audioSession.type=t; return t; } }catch(e){} return "none"; }
+
+/* the app's own path: master -> MediaStreamDestination -> <audio>, and master
+   deliberately NOT connected to ctx.destination */
+function makeSink(){
+  dest=ctx.createMediaStreamDestination();
+  const el=new Audio(); el.setAttribute("playsinline",""); el.srcObject=dest.stream;
+  el.addEventListener("playing",()=>{ playingSeen++; log("   sink reached 'playing' (#"+playingSeen+")");
+    try{ if(navigator.mediaSession){ navigator.mediaSession.metadata=new MediaMetadata({title:"Audio test",artist:"Handpan Studio"});
+      navigator.mediaSession.playbackState="playing"; log("   media session claimed"); } }catch(e){} });
+  el.addEventListener("pause",()=>log("   sink paused"));
+  const p=el.play(); if(p&&p.catch) p.catch(e=>log("   sink play() refused: "+e.name));
+  sink=el;
+  try{ master.disconnect(); }catch(e){}
+  master.connect(dest);
+}
+function makeEngine(){
+  setSession("playback");
+  ctx=new (window.AudioContext||window.webkitAudioContext)({latencyHint:"playback"});
+  made++;
+  master=ctx.createGain(); master.gain.value=0.07;
+  osc=ctx.createOscillator(); osc.type="sine"; osc.frequency.value=220;
+  osc.connect(master); osc.start();
+  makeSink();
+  log("engine #"+made+" built, state="+ctx.state);
+}
+function dropEngine(closeFirst){
+  const old=ctx;
+  try{ if(sink){ sink.pause(); sink.srcObject=null; } }catch(e){}
+  sink=null; ctx=null; master=null; osc=null; dest=null;
+  if(closeFirst){ try{ if(old&&old.state!=="closed") old.close(); }catch(e){} return null; }
+  return old;
+}
+$("start").addEventListener("click",()=>{
+  log("— TAP 1: start —");
+  if(ctx){ try{ ctx.close(); }catch(e){} }
+  ctx=null; sink=null; made=0; playingSeen=0;
+  makeEngine();
+  try{ ctx.resume(); }catch(e){}
+  log("   session type = "+setSession("playback"));
+});
+$("resume").addEventListener("click",()=>{
+  log("— TAP 2: resume only —");
+  if(!ctx){ log("   no engine at all"); return; }
+  try{ ctx.resume(); log("   resume() called, state="+ctx.state); }catch(e){ log("   resume threw "+e.name); }
+  if(sink&&sink.paused){ const p=sink.play(); if(p&&p.catch) p.catch(e=>log("   play() refused: "+e.name)); log("   sink.play() called"); }
+});
+$("sinkonly").addEventListener("click",()=>{
+  log("— TAP 3: new stream, same engine —");
+  if(!ctx||!master){ log("   no engine to reuse"); return; }
+  try{ if(sink){ sink.pause(); sink.srcObject=null; } }catch(e){}
+  try{ ctx.resume(); }catch(e){}
+  makeSink();
+  log("   new stream + element made, engine state="+ctx.state);
+});
+$("syncnew").addEventListener("click",()=>{
+  log("— TAP 4: new engine, inside the tap (close first) —");
+  dropEngine(true);
+  makeEngine();
+  try{ ctx.resume(); }catch(e){}
+});
+$("oldway").addEventListener("click",async ()=>{
+  log("— TAP 5: new engine, after a wait (the old way) —");
+  const old=dropEngine(false);
+  await new Promise(r=>setTimeout(r,800));            // what togglePlay awaits
+  makeEngine();                                        // new one built first…
+  try{ await ctx.resume(); }catch(e){}
+  try{ if(old&&old.state!=="closed") old.close(); }catch(e){}   // …old closed after
+  log("   built 800ms after the tap");
+});
+$("clear").addEventListener("click",()=>{ L.length=0; $("log").textContent=""; });
+
+let lastT=-1, lastEl=-1;
+setInterval(()=>{
+  let s="engine: ";
+  if(!ctx) s+="none";
+  else{
+    const t=ctx.currentTime;
+    s+=ctx.state+"   clock "+(t>lastT?"RUNNING":"FROZEN")+"  ("+t.toFixed(2)+")";
+    lastT=t;
+  }
+  s+="\nstream: ";
+  if(!sink) s+="none";
+  else{
+    const tr=(sink.srcObject&&sink.srcObject.getAudioTracks&&sink.srcObject.getAudioTracks()[0])||null;
+    s+=(sink.paused?"PAUSED":"playing")+"   its clock "+(sink.currentTime>lastEl?"running":"frozen")
+      +"  ("+sink.currentTime.toFixed(2)+")"+(tr?("   track "+tr.readyState+(tr.muted?" MUTED":"")):"   no track");
+    lastEl=sink.currentTime;
+  }
+  s+="\nengines built: "+made+"    'playing' fired: "+playingSeen;
+  $("state").textContent=s;
+},500);
+document.addEventListener("visibilitychange",()=>log(document.visibilityState==="visible"?"— back in the app —":"— app went to the background —"));
+log("ready. Tap 1 to start.");
+</script>
+</body>
+</html>
