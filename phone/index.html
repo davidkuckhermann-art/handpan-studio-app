@@ -1881,6 +1881,8 @@ dialog.flat#chordOvDlg[open]{top:6vh; height:88vh; max-height:88vh; overflow:hid
 #chordOvDlg .cohead{display:flex; align-items:center; gap:12px; padding:14px 18px 12px; border-bottom:1px solid var(--rule2)}
 #chordOvDlg .cohead h3{margin:0; font-size:19px; font-weight:800; letter-spacing:-.01em}
 #chordOvDlg .cosub{font-size:13px; color:var(--ink3); font-weight:600}
+#chordOvDlg .colab{font-size:12px; color:var(--ink3); font-weight:700; letter-spacing:.04em; white-space:nowrap}
+body.phone #chordOvDlg .colab{font-size:11px}
 #chordOvDlg .cobody{display:grid; grid-template-columns:400px 1fr; min-height:0}
 #chordOvDlg .copan{border-right:1px solid var(--rule2); padding:14px 18px 18px; display:flex; flex-direction:column;
   align-items:center; gap:10px; background:var(--card2); overflow:auto; min-height:0}
@@ -5589,9 +5591,10 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <div class="cohead">
     <h3 id="coTitle">Chords on your pan</h3><span class="cosub" id="coCounts"></span>
     <span class="spacer"></span>
-    <span class="pills" role="group" aria-label="Which chords">
-      <button id="coComplete" aria-pressed="true" title="Only the chords the pan has every note of">Complete only</button>
-      <button id="coAlmost" aria-pressed="false" title="…and the ones missing a single tone, dashed">Show almost</button></span>
+    <span class="colab">Incomplete chords</span>
+    <span class="pills" role="group" aria-label="Incomplete chords">
+      <button id="coComplete" aria-pressed="true" title="Only the chords the pan has every note of">Off</button>
+      <button id="coAlmost" aria-pressed="false" title="…and the ones missing a single tone, dashed, with what they miss">On</button></span>
     <button class="ctl" id="coClose">Close</button>
   </div>
   <div class="cobody">
@@ -5605,8 +5608,8 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
         <span class="cosub">Hear again</span>
       </div>
       <span class="pills" role="group" aria-label="What plays">
-        <button id="coVoiceSug" aria-pressed="true" title="The most common way to play the chord">Suggested voicing</button>
-        <button id="coVoiceAll" aria-pressed="false" title="Every field of the chord your pan has">Every note</button></span>
+        <button id="coVoiceAll" aria-pressed="true" title="Every field of the chord your pan has">Every note</button>
+        <button id="coVoiceSug" aria-pressed="false" title="The most common way to play the chord">Suggested voicing</button></span>
       <div class="cokeys"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> next chord &nbsp;&middot;&nbsp; <kbd>Space</kbd> hear again</div>
     </div>
     <div class="colist" id="coList"></div>
@@ -22397,8 +22400,9 @@ function cpNext(){
    dashed, as the jam shows them. The doors: the My pan sheet's bottom-left
    button on the desktop, the drawer's My pan row on the phone. The music
    underneath keeps its cursor and loop; if it was playing it stops. */
-let coCur=null, coVoice="sug", coAlmost=false, coPanFor=null, coTimers=[];
-let coPanId=null, coPanObj=null, coItems=[], coFromPicker=false, coPickFlag=false;
+let coCur=null, coVoice="all", coAlmost=false, coPanFor=null, coTimers=[];   // every note by default (David, 3 Sep)
+let coPanId=null, coPanObj=null, coItems=[], coFromPicker=false, coPickFlag=false, coFromMyPan=false;
+let coLive=[], coGen=0;             // the chord that is sounding, and which play asked for it
 const coWiredClose=new WeakSet();   // dialog nodes whose close is wired — a clone is a new node
 /* THE OVERVIEW'S PAN IS A SNAPSHOT (David, 3 Sep): it may be the picker's
    soft-selected build rather than the one you hold, so the chord table, the
@@ -22428,24 +22432,48 @@ function coGroupEl(pos){
   return host.querySelector(isBotPos(pos)?'.pvf[data-b="'+(botIdx(pos)-1)+'"]':'.pvf[data-f="'+pos+'"]');
 }
 function coClearTimers(){ for(const t of coTimers) clearTimeout(t); coTimers=[]; }
-function coStrike(pos,at){         // one field: the sound at `at`, the flash when it sounds
+/* THE PREVIOUS CHORD STOPS WHEN THE NEXT IS CHOSEN (David, 3 Sep): every
+   voice the sheet starts is kept, and the next play — or the sheet closing —
+   fades them out in 50 ms and stops them. Its own nodes rather than fire(),
+   so the transport's `live` is not mixed with the sheet's. */
+function coHush(){
+  coGen++; coClearTimers();
+  if(!ctx) return; const now=ctx.currentTime;
+  for(const v of coLive){ try{ v.g.gain.cancelScheduledValues(now); v.g.gain.setValueAtTime(v.g.gain.value,now);
+    v.g.gain.linearRampToValueAtTime(0,now+0.05); v.src.stop(now+0.06); }catch(e){} }
+  coLive=[];
+}
+/* THE RECORDED PAN, NOT THE SYNTH (David, 3 Sep: "please don't use a digital
+   sample, but use my recorded handpan samples here"). bankBuf answers null
+   until a note is decoded and the bank only warms the pan you hold, so a
+   note struck in the same tick came out synth. The play below decodes every
+   note of the voicing first (milliseconds, from data already in memory), then
+   schedules; the synth remains only for a pitch the bank does not have. */
+function coStrike(pos,at,buf){    // one field: the sound at `at`, the flash when it sounds
   const midi=coPanObj?coPanObj.posMidi(pos):myPan.posMidi(pos); if(midi==null) return;
   ensureCtx(); const now=ctx.currentTime, when=at==null?now+0.02:at;
-  const buf=bankBuf("o"+midi)||synthBuf(midi,"open");
-  fire(buf,when,evGain({v:"field",f:pos,hand:"L"}));
-  const g=coGroupEl(pos), ms=Math.max(0,(when-now)*1000);
-  coTimers.push(setTimeout(()=>pvFlash(g,["hT"]),ms));
+  buf=buf||bankBuf("o"+midi)||synthBuf(midi,"open"); if(!buf) return;
+  const src=ctx.createBufferSource(); src.buffer=buf;
+  const g=ctx.createGain(); g.gain.value=evGain({v:"field",f:pos,hand:"L"});
+  src.connect(g); g.connect(dry); g.connect(send); src.start(when);
+  const v={g,src}; coLive.push(v); src.onended=()=>{ const i=coLive.indexOf(v); if(i>=0) coLive.splice(i,1); };
+  const el=coGroupEl(pos), ms=Math.max(0,(when-now)*1000);
+  coTimers.push(setTimeout(()=>pvFlash(el,["hT"]),ms));
 }
 /* ONE FAST ARPEGGIO (David, 3 Sep: "playing all of the notes of the chord at
    the same time for chords with lots of tone fields doesn't sound good.
    Let's drop that option and simply go to a faster arpeggio") — the voicing
    upward, a fifth of a second a note, nothing struck together. */
-function coPlay(){
+async function coPlay(){
   if(!coCur) return;
-  coClearTimers();
-  const notes=coVoicing(coCur);
-  ensureCtx(); const t0=ctx.currentTime+0.05;
-  notes.forEach((f,i)=>coStrike(f,t0+i*0.2));
+  coHush(); const gen=coGen;
+  const notes=coVoicing(coCur), pan=coPanObj||myPan;
+  ensureCtx();
+  const ms=notes.map(f=>pan.posMidi(f));
+  try{ await Promise.all(ms.filter(m=>m!=null).map(m=>bankDecode("o"+m))); }catch(e){}
+  if(gen!==coGen) return;                       // a newer chord was asked for meanwhile
+  const t0=ctx.currentTime+0.05;
+  notes.forEach((f,i)=>coStrike(f,t0+i*0.2,ms[i]!=null?bankBuf("o"+ms[i]):null));
 }
 function coShow(c,hear){
   coCur=c;
@@ -22460,7 +22488,7 @@ function coShow(c,hear){
   for(const f of voicing){ const g=coGroupEl(f); if(g) g.classList.add("csug"); }
   $("coList").querySelectorAll(".jchord").forEach(b=>b.classList.toggle("sel",b.dataset.n===c.name));
   const sel=$("coList").querySelector(".jchord.sel"); if(sel&&sel.scrollIntoView) sel.scrollIntoView({block:"nearest"});
-  if(hear) coPlay();
+  if(hear) coPlay(); else coHush();
 }
 function coRenderList(){
   const L=$("coList"); L.innerHTML="";
@@ -22491,6 +22519,10 @@ function coOpen(id,fromPicker){
   if(playing) stop();
   if(PHONE) setDrawer(false);
   coFromPicker=!!fromPicker; coPickFlag=!!panPickThenMine;
+  /* opened from the My pan screen: that is where Close returns (David, 3 Sep) */
+  coFromMyPan=!fromPicker&&!!($("myPanDlg")&&$("myPanDlg").open);
+  coAlmost=false;                                   // incomplete chords off by default, every open
+  $("coComplete").setAttribute("aria-pressed","true"); $("coAlmost").setAttribute("aria-pressed","false");
   try{ $("myPanDlg").close(); }catch(e){}
   try{ $("panPickDlg").close(); }catch(e){}
   coPanId=(id&&panById(id))?id:myPanId;
@@ -22506,7 +22538,7 @@ function coOpen(id,fromPicker){
     host.addEventListener("pointerdown",e=>{        // a field on its own — delegated, see coWire
       const g=e.target.closest&&e.target.closest(".pvf"); if(!g) return;
       const pos=g.dataset.b!==undefined?botPos(+g.dataset.b+1):+g.dataset.f;
-      coClearTimers(); coStrike(pos); }); }
+      coHush(); coStrike(pos); }); }
   /* `close` does not reach the document, capture or not (measured 3 Sep), so
      the listener sits on the node that is open, wired the first time each
      node opens */
@@ -22528,7 +22560,8 @@ function coStep(dir){
 /* the sheet closed: back to the picker it came from, the soft-selected
    build still lit there */
 function coClosed(){
-  coClearTimers();
+  coHush();
+  if(coFromMyPan){ coFromMyPan=false; const mpd=$("myPanDlg"); if(mpd&&!mpd.open) try{ openDlg(mpd); }catch(e){} return; }
   if(!coFromPicker) return; coFromPicker=false;
   const keep=ppSoft;
   try{ openPanPick(coPickFlag); }catch(e){ return; }
