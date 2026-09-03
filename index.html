@@ -8943,6 +8943,42 @@ async function clockAlive(ms){
     await new Promise(r=>setTimeout(r,10));
   return ctx.currentTime>t;
 }
+/* ══════ THE CURE, FOUND BY TESTING IT ON HIS PHONE (David, 4 Sep) ═════════
+   The failure: after another app RECORDS (a Discord voice message), this
+   page's AudioContext keeps saying "running" while `currentTime` stops
+   advancing — and building a NEW context does not help either, because the
+   fault is below the JavaScript object. Only reopening the page brought sound
+   back.
+
+   A standalone test page (audio-test.html) offered five cures after a real
+   Discord recording, and David tried them in order on his iPhone. The answer,
+   in BOTH output designs — through the media element AND straight to
+   ctx.destination — was the same one:
+
+       suspend()  →  wait ~250 ms  →  resume()
+
+   That matters twice over. It revives the context we already have, so no new
+   one is spent and nothing is torn down; and because it works in both
+   designs, the MediaStreamDestination → <audio> bridge is NOT the culprit and
+   does not have to go — which is what would have cost the lock-screen
+   controls. A known WebKit failure with a known workaround, not a mistake in
+   this file.
+
+   The session type is re-declared in the middle of it: WebKit changed
+   something in Aug 2026 about that override being lost when iOS recomputes
+   the audio category, which is exactly what another app taking the microphone
+   causes. Every promise is raced against a timeout, because resume() is
+   documented to sometimes never resolve on iOS. */
+async function audioCycleRevive(){
+  if(!ctx) return false;
+  const race=(pr,ms)=>Promise.race([pr,new Promise(r=>setTimeout(r,ms))]);
+  try{ await race(ctx.suspend(),600); }catch(e){}
+  await new Promise(r=>setTimeout(r,250));
+  audioSessionSet=false; setAudioSession();      // re-declare "playback"
+  try{ await race(ctx.resume(),600); }catch(e){}
+  if(iosSink&&iosSink!=="failed"&&iosSink.paused){ sinkArm("play"); iosSink.play().catch(()=>{}); }
+  return clockAlive(200);
+}
 async function reviveAudio(){
   const old=ctx;
   stopSchedClock(); stopFollowCarry();     // both hold nodes of the dying context
@@ -8999,9 +9035,15 @@ async function start(){
     }
     const dead=!await clockAlive(120);
     if(why||dead){
-      audioNote("play: "+(why||"clock dead")+" — rebuilding (context #"+(ctxMade+1)+")");
-      await reviveAudio();
-      if(!await clockAlive(200)) audioNote("still dead after the rebuild — the page needs reopening");
+      /* CYCLE BEFORE REBUILDING — his phone says the cycle is what works, and
+         the rebuild stays the last resort it always was, now reached far less
+         often, which also stops the app spending contexts it cannot get back. */
+      if(await audioCycleRevive()) audioNote("play: "+(why||"clock dead")+" — suspend/resume brought it back");
+      else{
+        audioNote("play: "+(why||"clock dead")+" — cycle failed, rebuilding (context #"+(ctxMade+1)+")");
+        await reviveAudio();
+        if(!await clockAlive(200)) audioNote("still dead after the rebuild — the page needs reopening");
+      }
     } else if(audioBadSince) audioNote("play healed it without a rebuild");
   }
   sinkClockReset();
