@@ -888,8 +888,14 @@ body.phone .ib .iblab{display:none}
 /* bigger button, same head: the negative vertical margins keep the row's
    occupied height at 36px, so the notation below neither moves nor rescales
    (David, 26 Aug: "a bit bigger without changing size of notation") */
-#sctools .play{width:44px; height:44px; margin:-4px 0 -4px 2px}
-#sctools .play svg{width:19px; height:19px}
+/* A SIZE UP, IN THE SAME BOX (David, 3 Sep: "increase the size of the play
+   button without increasing the size of the table or the formatting"). The
+   head is sized by the button's MARGIN box, which stays 36px — 54 less 9 a
+   side, as 44 less 4 was — so the head, the card and the count row below do
+   not move; the circle simply reaches 5px further up and down into the
+   card's own padding. The same trick as the phone deck's button. */
+#sctools .play{width:54px; height:54px; margin:-9px 0 -9px 2px}
+#sctools .play svg{width:23px; height:23px}
 #handInd{z-index:3; width:40px; height:40px;
   border-radius:50%; display:grid; place-items:center; font-family:Inter,sans-serif;
   font-weight:700; font-size:15px; background:var(--card); border:2.5px solid var(--rule);
@@ -1231,6 +1237,20 @@ input[type=text]{width:auto}
 
 /* ---- the score ---- */
 #scorewrap{overflow-x:auto; padding-bottom:4px}
+/* THE TABLE STOPS GROWING AT 1200px (David, 3 Sep: "when in table or tab
+   notation, the horizontal width of the notation table can be limited to
+   approximately the size that you see on the screen now. If the app window
+   is wider than this, the notation doesn't have to grow any further, and it
+   can stay centered"). His screen was a 1264px window with a 1208px card,
+   so 1200 is that size. The row above it — Editing · Arrangement | Groove …
+   Done — takes the same width, so its ends stay on the card's corners.
+   Table and Tab only: Flow lays its systems out by width and may keep the
+   room. Not the phone, whose fit is its own; not full screen, where the
+   wrap IS the screen. */
+body:not(.phone):not(.fs).design-table #scorewrap,
+body:not(.phone):not(.fs).design-tab #scorewrap,
+body:not(.phone):not(.fs).design-table #viewrow,
+body:not(.phone):not(.fs).design-tab #viewrow{max-width:1200px; margin-left:auto; margin-right:auto}
 /* FULL-SCREEN NOTATION (30 Aug, David: "so that students can practice with
    their instruments and don't have to sit close to the monitor"). Desktop
    only — the phone's landscape view already IS the notation full-screen, and
@@ -1331,6 +1351,8 @@ body.mkline .mkbox{top:auto; bottom:-1px; height:2px; background:var(--dixie);
 .slot{--symlh:1.02; display:flex; flex-direction:column-reverse; align-items:center; justify-content:flex-start;
   min-height:34px; border-radius:4px; padding:1px 0; position:relative}
 .slot.cursor{outline:2px solid var(--steel); outline-offset:0}
+/* the tab lane a tap picked for the next stroke — see laneHand */
+.tsyms.lane.pick{background:var(--dixie-soft); border-radius:4px; box-shadow:inset 0 0 0 2px var(--dixie)}
 /* The playback marker (16th/8th/strokes): ONE even rectangle over the covered
    slots as a full-height beat-cell overlay, so neighbouring symbols of
    different sizes never jag the box.
@@ -4939,8 +4961,8 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
       <button class="pchoice" id="lcListen">
         <b>Chord practice<em class="exp">experimental</em><i class="sub">Listening mode</i></b>
         <span>The app hears your pan and waits for each note through the
-        microphone &mdash; every chord's arpeggio four times, then the next
-        chord.</span>
+        microphone &mdash; every chord's arpeggio, as many times as you set,
+        then the next chord.</span>
       </button>
     </div>
   </div>
@@ -11457,6 +11479,9 @@ function render(){
   embedWatch();
   paintLoopFrame();     // the loop survives every repaint
   if(typeof cpCapRows==="function") cpCapRows();   // chord practice: four rows, then it scrolls
+  // the Hand keys light the hand the CURSOR's slot gets (a lane pick or the
+  // chosen hand), so every cursor move — arrows included — repaints them
+  if(editing&&typeof updateHandInd==="function") updateHandInd();
 }
 /* ── THE WINDOW GROWS; THE MUSIC DOES NOT SHRINK ────────────────────────────
    David, 28 Aug: "I don't want to change player size, I'd like to extend the
@@ -12941,7 +12966,16 @@ function renderTableView(sc,lanes){
             capUnderside(sl);
           }
           if(editing&&rel===cursor) sl.classList.add("cursor");
-          if(editing) sl.addEventListener("pointerdown",()=>{ cursor=rel; render(); });
+          /* the tab's picked lane wears its tint while the pick stands */
+          if(editing&&lanes&&rel===cursor){ const lh=laneHandHere();
+            if(lh) sl.children[lh==="R"?0:1].classList.add("pick"); }
+          /* the tab's lanes pick the hand (see laneHand) — the phone never
+             gets here, its capture handler stops the pointerdown and reads
+             the lane itself */
+          if(editing&&lanes) sl.addEventListener("pointerdown",e=>{
+            pickLane(sl,e.clientX,e.clientY,rel);
+            cursor=rel; render(); updateHandInd(); });
+          else if(editing) sl.addEventListener("pointerdown",()=>{ cursor=rel; render(); });
           else sl.addEventListener("pointerdown",()=>seekToPulse(viewFromPulse()+rel));
           be.appendChild(sl);
         }
@@ -15345,6 +15379,35 @@ function updateLinkBtn(){
 
 /* ---------------- editor ---------------- */
 let selHand="alt", lastHand="R", selArt="open";
+/* THE TAB'S LANES PICK THE HAND (David, 3 Sep: "in edit mode, when tab
+   notation is selected … click the upper or lower area, and that will depend
+   on which hand plays the stroke"). A tap in a tab slot's upper lane says the
+   next stroke there is the green (left, stored "R") hand's; the lower lane,
+   the black hand's. It is a pick for THAT SLOT, not a change of the pills:
+   it is keyed to the table and pulse it was made at, so moving the cursor
+   anywhere else simply leaves it behind — and since the cursor no longer
+   steps on after a symbol (place), the pick HOLDS while you stack: three
+   taps on fields after one tap in the upper lane are three green notes.
+   In Alternate the pick also becomes the last hand played, so the alternation
+   carries on from it once the cursor moves. A hand pill or hand key pressed
+   after the pick wins, being the later word. */
+let laneHand=null;      // {sec, at, hand} or null
+function laneHandHere(){ return laneHand&&laneHand.sec===viewSec&&laneHand.at===cursor?laneHand.hand:null; }
+/* the hand the next symbol gets, as the Hand keys show it: the lane's pick
+   where one stands, otherwise the chosen hand (or "alt") */
+function effHand(){ return laneHandHere()||selHand; }
+/* WHICH LANE WAS TAPPED, from a tab slot and the point: the lane element under
+   the point if it is one of this slot's, or failing that (the slot's own
+   padding) the half of the slot the point is in. The first lane is the upper
+   one — green, stored "R". `at` is the pulse the pick is keyed to: the slot's
+   own on the desktop, the cell the phone's beat-grain tap lands on. */
+function pickLane(sl,x,y,at){
+  const el=document.elementFromPoint(x,y);
+  const ln=el&&el.closest&&el.closest(".tsyms.lane");
+  let up; if(ln&&ln.parentNode===sl) up=ln===sl.firstElementChild;
+  else { const r=sl.getBoundingClientRect(); up=y<r.top+r.height/2; }
+  laneHand={sec:viewSec,at,hand:up?"R":"L"};
+}
 /* ═════════ GLOBAL UNDO / REDO (30 Aug) ═════════
    TWO DOCUMENTS, TWO HISTORIES (David's call). The piece has one and the jam
    has its own, and the buttons show whichever room you are standing in. One
@@ -15402,16 +15465,28 @@ function paintUndo(){
   if(r) r.disabled=!h.r.length;
 }
 function snapshot(){ histPush("piece",JSON.stringify(piece)); }
-function nextHand(){ if(selHand!=="alt") return selHand;
+function nextHand(){
+  const lh=laneHandHere();
+  if(lh){ lastHand=lh; return lh; }   // the lane's word, for as long as the cursor stays
+  if(selHand!=="alt") return selHand;
   lastHand=lastHand==="L"?"R":"L"; return lastHand; }
-function updateHandInd(){ // the badge beside the notation: which hand the next symbol gets
-  const el=$("handInd"); if(!el) return;
-  el.classList.toggle("hidden",!editing);
-  if(!editing) return;
-  el.classList.remove("hand-L","hand-R");
-  if(selHand==="L"){ el.classList.add("hand-L"); el.textContent=handLetter("L"); }      // black = right hand
-  else if(selHand==="R"){ el.classList.add("hand-R"); el.textContent=handLetter("R"); } // green = left hand
-  else el.textContent="L·R";
+/* THE HAND SHOWS IN THE PAN TAB, NOT BESIDE PLAY (David, 3 Sep: "instead of
+   the left-right indicator right next to the play button, let's simply
+   indicate left and right in the pan tab below the notation"). The badge
+   (#handInd) stays in the DOM, hidden for good; what lights instead is the
+   Hand row the editor already has under the notation — Left · Right ·
+   Alternate on the desktop, the deck's pills on the phone — and it lights
+   the EFFECTIVE hand: a lane's pick while the cursor stands on it, the
+   chosen hand otherwise. So Alternate goes dark while a lane pick holds and
+   comes back when the cursor moves on. */
+function updateHandInd(){
+  const el=$("handInd"); if(el) el.classList.add("hidden");
+  const h=effHand();
+  const E=$("panbox");
+  if(E) for(const [k,v] of [["hR","R"],["hL","L"],["hA","alt"]]){
+    const b=E.querySelector('.key[data-k="'+k+'"]'); if(b) b.classList.toggle("on",h===v); }
+  if(PHONE&&typeof edPill==="function"&&$("edHandL")){
+    edPill("edHandL",h==="R"); edPill("edHandR",h==="L"); edPill("edHandA",h==="alt"); }
 }
 function slotEvents(loc){ return piece.sections[loc.sec].bars[loc.bar].filter(e=>e.t===loc.t); }
 function clearSlot(loc){ const bar=piece.sections[loc.sec].bars[loc.bar];
@@ -15424,6 +15499,14 @@ function viewLoc(){
 }
 function place(ev){
   const loc=viewLoc(); if(!loc){toast("No slot here");return;}
+  /* TWO FIELDS AT MOST IN THE TAB (David, 3 Sep: "when editing in tab mode,
+     two tone fields should be the maximum that one note plays
+     simultaneously"). The tab has one lane per hand and a hand strikes one
+     field, so a third field in a slot is something no pair of hands plays.
+     Fields only — a ghost or a percussion mark beside them is still fine —
+     and the table keeps its four. */
+  if(view==="tab"&&ev.v==="field"&&slotEvents(loc).filter(e=>e.v==="field").length>=2){
+    toast("In tab a note plays two fields at most"); return; }
   snapshot();
   const bar=piece.sections[loc.sec].bars[loc.bar];
   if(ev.v==="ghost") clearSlot(loc);
@@ -15431,7 +15514,11 @@ function place(ev){
   const cnt=slotEvents(loc).length;
   if(cnt>=4){ toast("A slot holds at most 4 symbols"); HIST.piece.u.pop(); paintUndo(); return; }
   bar.push(Object.assign({},ev,{t:loc.t}));
-  cursor=(cursor+1)%loc.pulses;
+  /* THE CURSOR STAYS (David, 3 Sep: "after you input a note, the input field
+     does not automatically progress to the next spot"). It used to step on
+     one pulse after every symbol, which made a two-hand stack a matter of
+     stepping back each time. Now the slot holds the cursor until you move it
+     — a tap, an arrow key — and the next symbol stacks where the last went. */
   refresh();
   if(ctx) fireEvent(Object.assign({},ev),ctx.currentTime+0.01);
 }
@@ -15495,8 +15582,8 @@ function editorKeys(e){
   else if(k==="s"){ placePerc("slap"); e.preventDefault(); }
   else if(k==="n"){ placePerc("knock"); e.preventDefault(); }
   else if(k==="."||k==="g"){ place({v:"ghost",hand:nextHand()}); e.preventDefault(); }
-  else if(k==="h"){ selHand=selHand==="L"?"R":selHand==="R"?"alt":"L"; renderEditbar(); }
-  else if(k===","){ selHand=selHand==="L"?"R":"L"; renderEditbar(); e.preventDefault(); }
+  else if(k==="h"){ laneHand=null; selHand=selHand==="L"?"R":selHand==="R"?"alt":"L"; renderEditbar(); }
+  else if(k===","){ laneHand=null; selHand=selHand==="L"?"R":"L"; renderEditbar(); e.preventDefault(); }
   else if(e.key==="ArrowRight"){ cursor=(cursor+1)%total; render(); e.preventDefault(); }
   else if(e.key==="ArrowLeft"){ cursor=(cursor-1+total)%total; render(); e.preventDefault(); }
   else if(e.key==="ArrowDown"){ cursor=(cursor+bp)%total; render(); e.preventDefault(); }
@@ -15573,8 +15660,16 @@ function edOpen(kind){          // "arr" | "grv"
   }
   if(grooveEdit){
     /* bench \u2192 the piece's editor: leave through the bench's own exit. If its
-       save question comes up, stop here \u2014 grooveEdit still standing is how we
-       know \u2014 and the student answers it, then knocks again. */
+       save question comes up, the door WAITS BEHIND IT (David, 3 Sep: "I get
+       the closing dialog, but then it goes back to practice mode or jam mode
+       instead of going directly to the arrangement editor") \u2014 the answer
+       finishes the bench, grooveEditFinish runs `afterEdit`, and that opens
+       the editor on whatever the bench left behind: the piece it stood on,
+       or the jam it came from (editBtn's own jam branch). Set only when the
+       question WILL be asked; the clean exit below opens the editor itself,
+       and a second opener from the timer would have been one too many.
+       Cancel (geCancel) clears it. */
+    if(grooveDirty()) afterEdit=()=>{ if(!editing) $("editBtn").click(); };
     $("editBtn").click();
     if(grooveEdit) return;
     if(!editing) $("editBtn").click();
@@ -15618,7 +15713,7 @@ function renderEditbar(){
   const E=$("panbox");
   const key=(id,label,on)=>'<button class="key'+(on?" on":"")+'" data-k="'+id+'">'+label+'</button>';
   const handPal='<div class="lab">Hand</div><div class="pal">'
-     +key("hR","Left",selHand==="R")+key("hL","Right",selHand==="L")+key("hA","Alternate",selHand==="alt")+'</div>';
+     +key("hR","Left",effHand()==="R")+key("hL","Right",effHand()==="L")+key("hA","Alternate",effHand()==="alt")+'</div>';
   // the workbench's live time row (26 Aug, David: "a time signature selector,
   // ideally above the groove editor") — rebuilt each render with the piece's
   // current values, wired below beside the keys
@@ -15705,6 +15800,7 @@ function renderEditbar(){
     } }
   E.querySelectorAll(".key").forEach(b=>b.addEventListener("click",()=>{
     const k=b.dataset.k;
+    if(k==="hL"||k==="hR"||k==="hA") laneHand=null;      // the pill after the lane wins
     if(k==="hL")selHand="L"; else if(k==="hR")selHand="R"; else if(k==="hA")selHand="alt";
     else if(k==="aO")selArt="open"; else if(k==="aM")selArt="mute"; else if(k==="aV")selArt="overtone";
     else if(k==="pg")place({v:"ghost",hand:nextHand()});
@@ -15811,7 +15907,7 @@ function paintEditDeck(){
   // = the LEFT hand (HANDOVER; same mapping as the desktop palette)
   // the flanking hand badges carry the human-facing letter, like the panel's lamps
   $("edHandL").textContent=handLetter("R"); $("edHandR").textContent=handLetter("L");
-  edPill("edHandL",selHand==="R"); edPill("edHandR",selHand==="L"); edPill("edHandA",selHand==="alt");
+  edPill("edHandL",effHand()==="R"); edPill("edHandR",effHand()==="L"); edPill("edHandA",effHand()==="alt");
   edPill("edArtO",selArt==="open"); edPill("edArtM",selArt==="mute"); edPill("edArtV",selArt==="overtone");
   // the input pan, drawn once per pan; its pv* ids are stripped so the reading
   // pan keeps sole ownership of them (the quiz's own trick)
@@ -20959,7 +21055,7 @@ function leavePractice(){ if(quizOn) leaveQuiz(); if(rqOn) leaveRhythmQuiz(); if
    counts four clicks, brings the next one. No scoring; portrait first. */
 var cpOn=false, cpStage=false, cpPrev=null, cpWas=null, cpSeq=null, cpSeqN=0, cpLastTpl=null, cpLastIdx=-1;
 var cpFour=false, cpFourIdx=-1;      // the four-pan view (desktop), and which chord its live pan shows
-var cpcfg={src:"common",key:"minor",bars:2,pattern:"cp-arp",arp:"sug",sev:"tri",sound:"play",bpm:60,voicing:"full",mode:"play"};
+var cpcfg={src:"common",key:"minor",bars:2,pattern:"cp-arp",arp:"sug",sev:"tri",sound:"play",bpm:60,voicing:"full",mode:"play",reps:4,lsrc:"walk"};
 /* HANDS ARE COLOUR TOKENS, NOT LETTERS (see handLetter): "L" = black = the
    RIGHT hand, "R" = green = the LEFT hand. David's sticking for the arpeggio
    is right · right · left (corrected three times, 2 Sep, because each session
@@ -20979,6 +21075,8 @@ function cpLoadCfg(){
   if(cpcfg.sev!=="7th") cpcfg.sev="tri";
   if(cpcfg.voicing!=="sug") cpcfg.voicing="full";
   if(cpcfg.mode!=="listen"||PHONE) cpcfg.mode="play";   // listening mode is the desktop's (3 Sep)
+  if(![1,2,3,4].includes(cpcfg.reps)) cpcfg.reps=4;     // listening: each chord's arpeggio, this many times
+  if(!["common","walk","random"].includes(cpcfg.lsrc)) cpcfg.lsrc="walk";   // listening: which chords, in what order
   cpcfg.bpm=Math.max(30,Math.min(200,+cpcfg.bpm||60));
   if(!cpcfg.pattern||(!/^cp-/.test(cpcfg.pattern)&&!allPats().some(p=>p.id===cpcfg.pattern))) cpcfg.pattern="cp-arp";
 }
@@ -20993,9 +21091,17 @@ function cpKeys(){
   if(h.major!=null) out.push({id:"major",root:h.major,label:spellPc(h.major)+" major"});
   return out;
 }
-function cpKey(){ const ks=cpKeys(); return (cpcfg.mode!=="listen"&&ks.find(k=>k.id===cpcfg.key))||ks[0]||null; }
-/* listening mode is always the walk through all the chords (David, 3 Sep) */
-const cpWalking=()=>cpcfg.src==="walk"||cpcfg.mode==="listen";
+function cpKey(){ const ks=cpKeys(); return ks.find(k=>k.id===cpcfg.key)||ks[0]||null; }
+/* LISTENING HAS ITS OWN SEQUENCE CHOICE (David, 3 Sep) — cpcfg.lsrc:
+   "common" (a four-chord progression, looped, Next brings another — as the
+   normal practice does), "walk" (the full sequence through every chord of
+   the key, as it always was), "random" (every chord once in the row list,
+   the ear jumping to a random one when a row is done). The repeat count
+   applies to all three. `cpWalking` is the "one endless sequence, no Next"
+   reading, which random shares with the walk. The key is honoured in
+   listening now that its card shows the Key row. */
+const cpWalking=()=>cpcfg.src==="walk"||(cpcfg.mode==="listen"&&cpcfg.lsrc!=="common");
+const cpRandomLs=()=>cpcfg.mode==="listen"&&cpcfg.lsrc==="random";
 const CP_MIN={0:"min",2:"dim",3:"maj",5:"min",7:"min",8:"maj",10:"maj"};
 const CP_MAJ={0:"maj",2:"min",4:"min",5:"maj",7:"maj",9:"min",11:"dim"};
 function cpRoman(iv,name){
@@ -21106,7 +21212,7 @@ function cpChallenge(){
 /* the sequence as the exercise plays it: the triads (kept in `tri` for the
    voicing) and, with Add 7th, the seventh chords where the pan has them */
 function cpMakeSeq(){
-  const seq=cpWalking()?cpWalk():cpcfg.src==="challenge"?cpChallenge():cpCommon(); if(!seq) return null;
+  const seq=cpWalking()?(cpRandomLs()?cpRandomSeq():cpWalk()):cpcfg.src==="challenge"?cpChallenge():cpCommon(); if(!seq) return null;
   seq.tri=seq.names.slice();
   if(cpcfg.sev==="7th"&&!seq.whole){
     seq.names=seq.tri.map(n=>cpSevName(n)||n);
@@ -21125,6 +21231,12 @@ function cpSevField(name7,fifthField){
 }
 /* ALL CHORDS: one sequence — home, next degree, home, next degree… — which
    loops until stopped and has no Next (David) */
+/* RANDOM (listening): every chord of the key once, home first; the ORDER is
+   the ear's business — lsChord is handed a random row when one is done */
+function cpRandomSeq(){
+  const sc=cpScaleChords(); if(!sc.length) return null;
+  return {names:sc.map(c=>c.name),romans:sc.map(c=>c.roman),label:"Random"};
+}
 function cpWalk(){
   const sc=cpScaleChords(); if(!sc.length) return null;
   const home=sc[0], names=[], romans=[];
@@ -21240,7 +21352,11 @@ function cpBuild(seq){
    The detector has its own AudioContext, so reviveAudio and the bank never
    touch it; its tick rides a ScriptProcessorNode because a hidden tab
    throttles timers (the bench's lesson). */
+/* HOW OFTEN EACH CHORD REPEATS is the student's (David, 3 Sep: "give the
+   user an option for how often each chord is repeated: 1, 2, 3, or 4
+   times") — cpcfg.reps, four by default as it always was. */
 const CP_LS_REPS=4;
+function cpReps(){ return [1,2,3,4].includes(cpcfg.reps)?cpcfg.reps:CP_LS_REPS; }
 const LS_DEF={fluxK:3,riseThr:11,weakThr:4,relDb:10,chordDb:5,floorDb:-65,delayMs:130,tune:0,fft:8192,look:2,attackTier:true};
 const LS_T=Object.assign({},LS_DEF);
 /* the eleven, as the bench names and explains them; the window below the chord row edits them */
@@ -21277,9 +21393,9 @@ function cpBuildListen(seq){
   const hand=(i,n)=>n===3?(i<2?"L":"R"):(i%2?"R":"L");     // right · right · left, as CP_ARP (tokens are colours)
   const sortP=fl=>fl.slice().sort((a,b)=>myPan.posMidi(a)-myPan.posMidi(b)).slice(0,8);
   const fields=seq.names.map(name=>sortP(cpcfg.arp==="all"?chordFields(name):cpSuggested(name)));
-  const width=CP_LS_REPS*Math.max(1,...fields.map(fl=>fl.length));
+  const width=cpReps()*Math.max(1,...fields.map(fl=>fl.length));
   const bars=seq.names.map((name,ci)=>{ const fl=fields[ci], n=fl.length, bar=[];
-    for(let r=0;r<CP_LS_REPS;r++) fl.forEach((f,i)=>bar.push(F(r*n+i,f,hand(i,n),r===0&&i===0?{chord:name}:null)));
+    for(let r=0;r<cpReps();r++) fl.forEach((f,i)=>bar.push(F(r*n+i,f,hand(i,n),r===0&&i===0?{chord:name}:null)));
     return bar; });
   const nm=seq.romans.join(" · "), k=cpKey();
   return {format:"hpd-1",id:"cp",title:"Chord practice · listening"+(k?" · "+k.label:""),author:"",writtenFor:myPanId,
@@ -21325,7 +21441,12 @@ function lsOnHits(midis){
     if(f!=null) pvFlashId(pvId(f),e&&e.midi===m?[e.hand==="R"?"hR":"hL"]:[]); });
   if(target<0) return;                       // a wrong note: the marker waits on
   lsCur.k=target+1;
-  if(lsCur.k>=n) lsChord((lsCur.ci+1)%piece.sections[piece.arrangement[0]].bars.length);   // the row done: the next chord, the first after the last
+  if(lsCur.k>=n){                        // the row done: the next chord
+    const N=piece.sections[piece.arrangement[0]].bars.length;
+    let nx=(lsCur.ci+1)%N;               // the next row, the first after the last
+    if(cpRandomLs()&&N>1){ do nx=Math.floor(Math.random()*N); while(nx===lsCur.ci); }   // Random: any other row
+    lsChord(nx);
+  }
   else lsPaint();
 }
 /* chord ci: its row scrolled to the top of the four the table shows (cpCapRows),
@@ -21348,7 +21469,7 @@ function lsPaint(){
   sc.querySelectorAll(".beat.nowbeat,.beat.lsrep").forEach(el=>el.classList.remove("nowbeat","lsrep"));
   sc.querySelectorAll(".slot.lsdone").forEach(el=>el.classList.remove("lsdone"));
   sc.querySelectorAll(".slot[data-rel]").forEach(sl=>{ const rel=+sl.dataset.rel, be=sl.parentNode, bi=Math.floor(rel/bp), k=rel-bi*bp;
-    const n=(bars[bi]||[]).length, step=Math.max(1,Math.round(n/CP_LS_REPS));
+    const n=(bars[bi]||[]).length, step=Math.max(1,Math.round(n/cpReps()));
     if(rel<at) sl.classList.add("lsdone");
     if(rel===at) be.classList.add("nowbeat");
     if(k>0&&k<n&&k%step===0) be.classList.add("lsrep"); });
@@ -21954,6 +22075,10 @@ function cpNext(){
   const seq=cpMakeSeq(); if(!seq) return;
   cpSeq=seq; cpSeqN++;
   const built=cpBuild(seq);
+  /* LISTENING'S NEXT (David, 3 Sep, Common chord progressions in listening
+     mode): no fade, no clicks, nothing to play — the new rows are written,
+     the ear goes back to the first note of the first chord, and waits */
+  if(cpcfg.mode==="listen"){ loadPiece(built); cpRenderBand(); lsReset(); toast(seq.label); return; }
   if(playing&&ctx&&C){
     const beat=60/effBpm(), t0=ctx.currentTime+JAM_REGEN_FADE;
     jamFadeLiveTo(t0);
@@ -21975,18 +22100,21 @@ function cpNext(){
 function renderCpSetup(){
   const box=$("cpsetup"); if(!box) return; box.innerHTML="";
   const set=(k,v)=>{ cpcfg[k]=v; cpSaveCfg(); renderCpSetup(); };
-  setupHead(box,"Chord practice");
-  const lede=document.createElement("p"); lede.className="lede";
   const ls=cpcfg.mode==="listen", src=ls?"walk":cpcfg.src;
-  lede.textContent=ls?"The app listens through the microphone and waits for you: each chord's arpeggio four times, then the next chord, through every chord of the key and round again."
+  setupHead(box,ls?"Chord practice · Listening mode":"Chord practice");
+  const lede=document.createElement("p"); lede.className="lede";
+  const timesTxt=cpcfg.reps===1?"once":cpcfg.reps===2?"twice":cpReps()+" times";
+  const lsTail=cpcfg.lsrc==="common"?"through a four-chord progression, round and round — Next brings another."
+    :cpcfg.lsrc==="random"?"then any other chord of the key, drawn at random.":"then the next chord, through every chord of the key and round again.";
+  lede.textContent=ls?"The app listens through the microphone and waits for you: each chord's arpeggio "+timesTxt+", "+lsTail
     :"The app builds a chord sequence from what your pan can play and writes it out. You play along until you press Next.";
   box.appendChild(lede);
-  /* LISTENING MODE, EXPERIMENTAL (David, 3 Sep) — the desktop's; the phone
-     keeps the card as it was */
-  if(!PHONE) qzChipRow(box,"Mode",[
-    {id:"play",label:"Play along",why:"The app plays the sequence at a tempo and you play with it."},
-    {id:"listen",label:"Listening mode · experimental",why:"The app hears your pan through the microphone and moves the marker only when you play the written note. New, and desktop only — expect rough edges."}],
-    cpcfg.mode,v=>set("mode",v));
+  /* THE MODE IS CHOSEN IN THE LEARN MENU, NOT HERE (David, 3 Sep: "let's not
+     add the option to switch between normal and listening mode after you
+     have selected chord practice already"). The two Learn cards — Chord
+     practice, and Chord practice · Listening mode — set cpcfg.mode on the
+     way in; this card only says which one it is (setupHead below). The
+     Mode chip row that stood here is gone. */
   const sect=title=>{ const sx=document.createElement("div"); sx.className="qsect";
     const hh=document.createElement("h4"); hh.className="jgroup"; hh.textContent=title; sx.appendChild(hh); box.appendChild(sx); return sx; };
   const keys=cpKeys(), key=cpKey();
@@ -22016,12 +22144,17 @@ function renderCpSetup(){
   hint.textContent=sc.length?(sc.length+(sevPal?" seventh chord":" complete triad")+(sc.length===1?"":"s")+(sevPal?" — the triads with their seventh where the pan has it.":(src==="challenge"?" — Challenge me reaches past them, sevenths and ninths included.":"."))):"This pan has no complete triad.";
   yours.appendChild(hint);
   const chords=sect("The chords");
+  if(ls) qzChipRow(chords,"Sequences",[
+    {id:"common",label:"Common chord progressions",why:"A four-chord progression a handpan plays most, looped until you press Next."},
+    {id:"walk",label:"Full chord sequence",why:"Home, the next degree, home, the next… every chord of the key, round and round."},
+    {id:"random",label:"Random",why:"Any chord of the key next, drawn at random once you have played the current one."}],
+    cpcfg.lsrc,v=>set("lsrc",v));
   if(!ls) qzChipRow(chords,"Sequences",[
     {id:"common",label:"Common sequences",why:"Progressions a handpan plays most, four boxes each. Next brings another."},
     {id:"challenge",label:"Challenge me",why:"Four chords from the jam's own Suggest with the spice at 75 — less obvious turns, still in the key."},
     {id:"walk",label:"All chords",why:"Home, the next degree, home, the next… every chord of the key once. It loops until you stop."}],
     cpcfg.src,v=>set("src",v));
-  if(!ls&&keys.length) qzChipRow(chords,"Key",keys.map(k=>({id:k.id,label:k.label})),cpcfg.key,v=>set("key",v));
+  if(keys.length) qzChipRow(chords,"Key",keys.map(k=>({id:k.id,label:k.label})),cpcfg.key,v=>set("key",v));
   if(cpcfg.src!=="challenge") qzChipRow(chords,"Chords",[   // Challenge's picks carry their sevenths and ninths themselves
     {id:"tri",label:"Basic triads",why:"Root, third and fifth."},
     {id:"7th",label:"Add 7th",why:"The seventh chord where your pan has the seventh: the pattern's top note plays the fifth one time round and skips to the seventh the next."}],
@@ -22032,6 +22165,12 @@ function renderCpSetup(){
       {id:"top",label:"Top only",why:"Only chords the top shell can play."}],
       topOnlyChords()?"top":"use",v=>{ try{ localStorage.setItem("hps.topchords",v==="top"?"1":"0"); }catch(e){} renderCpSetup(); });
   const round=sect(ls?"The arpeggio":"The round");
+  if(ls) qzChipRow(round,"Each chord",[
+    {id:1,label:"1×",why:"The arpeggio once, then the next chord."},
+    {id:2,label:"2×",why:"Twice through before the next chord."},
+    {id:3,label:"3×",why:"Three times through."},
+    {id:4,label:"4×",why:"Four times through — the longest row."}],
+    cpReps(),v=>set("reps",v));
   if(!ls) qzChipRow(round,"Bars per chord",[{id:1,label:"1"},{id:2,label:"2"},{id:4,label:"4"}],cpcfg.bars,v=>set("bars",v));
   const lib=!/^cp-/.test(cpcfg.pattern), libPat=lib?cpPat(cpcfg.pattern):null;
   if(!ls) qzChipRow(round,"Pattern",[
@@ -26015,6 +26154,7 @@ function boot(){
   $("pcChord").addEventListener("click",()=>{
     $("practiceDlg").close();
     if(cpOn) return;
+    cpcfg.mode="play"; cpSaveCfg();   // these doors mean the normal practice; Listening has its Learn card
     viaLearn(enterCp);
   });
   $("pcRhythm").addEventListener("click",()=>{
@@ -26025,6 +26165,7 @@ function boot(){
   $("cpModeBtn").addEventListener("click",()=>{
     $("menuDlg").close();
     if(cpOn) return;
+    cpcfg.mode="play"; cpSaveCfg();   // these doors mean the normal practice; Listening has its Learn card
     viaLearn(enterCp);
   });
   $("rqModeBtn").addEventListener("click",()=>{
@@ -26365,7 +26506,15 @@ function phoneTouchNav(){
       // an active loop downstream engages when the music runs into it —
       // cursor and playhead travel together on the phone.
       const c=cellAtPoint(e.clientX,e.clientY);
-      if(c){ cursor=c.from-viewFromPulse(); refresh(); seekToPulse(c.from); }
+      if(c){ cursor=c.from-viewFromPulse();
+        /* IN THE TAB THE LANE PICKS THE HAND here too (see laneHand): the
+           slot's own pointerdown never fires on the phone — this handler
+           stopped it — so the lane is read from the point, keyed to the cell
+           the cursor lands on */
+        const tel=document.elementFromPoint(e.clientX,e.clientY);
+        const tsl=tel&&tel.closest&&tel.closest(".slot.tcol[data-rel]");
+        if(tsl) pickLane(tsl,e.clientX,e.clientY,cursor);
+        refresh(); updateHandInd(); seekToPulse(c.from); }
       return;
     }
     const el=document.elementFromPoint(e.clientX,e.clientY);
@@ -26918,9 +27067,9 @@ if(PHONE){
   $("edDel").addEventListener("click",()=>{
     const loc=viewLoc(); if(loc){ snapshot(); clearSlot(loc); refresh(); } });
   // colour tokens: R = green = LEFT (the desktop palette's own mapping)
-  $("edHandL").addEventListener("click",()=>{ selHand="R"; paintEditDeck(); updateHandInd(); });
-  $("edHandR").addEventListener("click",()=>{ selHand="L"; paintEditDeck(); updateHandInd(); });
-  $("edHandA").addEventListener("click",()=>{ selHand="alt"; paintEditDeck(); updateHandInd(); });
+  $("edHandL").addEventListener("click",()=>{ laneHand=null; selHand="R"; paintEditDeck(); updateHandInd(); });
+  $("edHandR").addEventListener("click",()=>{ laneHand=null; selHand="L"; paintEditDeck(); updateHandInd(); });
+  $("edHandA").addEventListener("click",()=>{ laneHand=null; selHand="alt"; paintEditDeck(); updateHandInd(); });
   $("edArtO").addEventListener("click",()=>{ selArt="open"; paintEditDeck(); });
   $("edArtM").addEventListener("click",()=>{ selArt="mute"; paintEditDeck(); });
   $("edArtV").addEventListener("click",()=>{ selArt="overtone"; paintEditDeck(); });
