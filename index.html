@@ -11600,6 +11600,7 @@ function render(){
   embedWatch();
   paintLoopFrame();     // the loop survives every repaint
   if(typeof cpCapRows==="function") cpCapRows();   // chord practice: four rows, then it scrolls
+  if(PHONE&&editing) edScrollToCursor();           // a scrolling frame keeps the cursor in view
   // the Hand keys light the hand the CURSOR's slot gets (a lane pick or the
   // chosen hand), so every cursor move — arrows included — repaints them
   if(editing&&typeof updateHandInd==="function") updateHandInd();
@@ -12209,6 +12210,15 @@ function fitPortraitStack(sc,z,designW){
       const rows=mus.querySelectorAll(".nrow");
       if(rows.length>4)
         musCap=rows[3].getBoundingClientRect().bottom-mus.getBoundingClientRect().top;
+      /* THE EDITOR'S FRAME STOPS AT THE ROOM, TOO (David, 3 Sep, a screenshot
+         after sizing the deck himself: the notation zoomed down to a card
+         two fifths of the screen wide). With the deck his to size, the room
+         above it can be less than four rows — and the zoom below answered
+         that by shrinking the whole card, to 0.3 at the floor. The frame
+         keeps its width now and the music scrolls under a ceiling of what
+         is left, following the cursor (edScrollToCursor); the zoom is only
+         reached when even the frame's chrome does not fit. */
+      if(typeof editing!=="undefined"&&editing&&PHONE) musCap=Math.min(musCap,space-chrome);
     }
     if(musCap<Infinity&&mus.getBoundingClientRect().height>musCap+1){
       /* VERTICAL ONLY (David, 2 Sep: "it should only scroll vertically, not
@@ -12669,6 +12679,18 @@ function phoneFit(){
     const w=cb.offsetWidth;
     if(w>cw.clientWidth) cb.style.zoom=cw.clientWidth/w;
   }
+}
+/* THE FRAME FOLLOWS THE CURSOR when the music scrolls inside it (the editor
+   on the phone, with the deck sized so the frame is shorter than the table).
+   Rectangles, not scrollIntoView: that would drag the whole page. */
+function edScrollToCursor(){
+  const mus=$("score"); if(!mus||mus.scrollHeight<=mus.clientHeight+1) return;
+  const c=mus.querySelector(".slot.cursor"); if(!c) return;
+  const row=c.closest(".nrow")||c;
+  const m=mus.getBoundingClientRect(), r=row.getBoundingClientRect();
+  const zz=parseFloat($("scorecard").style.zoom)||1;
+  if(r.top<m.top) mus.scrollTop+=(r.top-m.top)/zz;
+  else if(r.bottom>m.bottom) mus.scrollTop+=(r.bottom-m.bottom)/zz;
 }
 /* A notation row carries its own pulse span (section-relative, like data-rel)
    and paints itself when it IS the loop — the class is applied at render, so
