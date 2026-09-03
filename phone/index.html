@@ -1362,7 +1362,7 @@ body.mkline .mkbox{top:auto; bottom:-1px; height:2px; background:var(--dixie);
 /* one frame (David, 3 Sep): with a lane picked the cursor IS the lane's amber ring */
 .slot.cursor.lanepick{outline-color:transparent}
 /* the tab lane a tap picked for the next stroke — see laneHand */
-.tsyms.lane.pick{background:var(--dixie-soft); border-radius:4px; box-shadow:inset 0 0 0 2px var(--dixie)}
+.tsyms.lane.pick{background:rgba(51,96,126,.09); border-radius:4px; box-shadow:inset 0 0 0 2px var(--steel)}   /* the cursor's blue, in the tab as in the table (David, 3 Sep) */
 /* The playback marker (16th/8th/strokes): ONE even rectangle over the covered
    slots as a full-height beat-cell overlay, so neighbouring symbols of
    different sizes never jag the box.
@@ -4104,6 +4104,10 @@ body.phone .gmini i{font-size:10px}
      and the notation should change in size"): the bar takes the column's
      slack above it, so the palette row never moves with the split */
   body.phone.editing:not(.drawer-open) #transport{margin-top:auto}
+  /* …RIGHT AT THE EDGE (David, 3 Sep: "it can sit right at the edge anyway
+     because we won't do any swiping there") — the bar's bottom padding drops
+     the safe-area inset while editing; a few pixels stay */
+  body.phone.editing:not(.drawer-open) #transport{padding-bottom:4px}
   /* the wrapper's 4px of padding and 6px of margin below the card are 10 against
      the fit's reserve of 8 — 2px the pinned deck was pushed past the edge */
   body.phone.editing #scorewrap{margin-bottom:4px}
@@ -8901,7 +8905,7 @@ function stop(){
   live=[];
   clearMarks();
   document.querySelectorAll(".chip.playing").forEach(el=>el.classList.remove("playing"));
-  if(pendingStart!=null){ if(!C) C=compile(piece); paintPulse(pendingStart); } // show where play will resume
+  if(pendingStart!=null&&!editing){ if(!C) C=compile(piece); paintPulse(pendingStart); } // show where play will resume — not in an editor, which starts at its table's top
   updatePlayBtn();          // …which repaints the lock screen and syncs the sink
   /* clearMarks() has just taken the grey away with everything else the clock
      owned — but a break set to every cycle is a fact about the SETTING, not
@@ -12243,15 +12247,12 @@ function fitPortraitStack(sc,z,designW){
       const rows=mus.querySelectorAll(".nrow");
       if(rows.length>4)
         musCap=rows[3].getBoundingClientRect().bottom-mus.getBoundingClientRect().top;
-      /* THE EDITOR'S FRAME STOPS AT THE ROOM, TOO (David, 3 Sep, a screenshot
-         after sizing the deck himself: the notation zoomed down to a card
-         two fifths of the screen wide). With the deck his to size, the room
-         above it can be less than four rows — and the zoom below answered
-         that by shrinking the whole card, to 0.3 at the floor. The frame
-         keeps its width now and the music scrolls under a ceiling of what
-         is left, following the cursor (edScrollToCursor); the zoom is only
-         reached when even the frame's chrome does not fit. */
-      if(typeof editing!=="undefined"&&editing&&PHONE) musCap=Math.min(musCap,space-chrome);
+      /* (The editor's frame stopped at the room here for an hour on 3 Sep —
+         David reverted it: "the tables should shrink. They should not
+         collapse, so you should still see the full four-line table. It
+         should only start scrolling vertically when there are more than
+         four rows." So the zoom below does the shrinking, as before, and the
+         deck's clamp keeps the shrunken table a sensible size.) */
     }
     if(musCap<Infinity&&mus.getBoundingClientRect().height>musCap+1){
       /* VERTICAL ONLY (David, 2 Sep: "it should only scroll vertically, not
@@ -16214,7 +16215,10 @@ function edPanFloor(){
    (the lane keeps its own height either way). Without a stored size the
    pan spends the slack as before. The notation is never squeezed under
    EDPAN_MIN_SCORE px of room — a drag that would do it stops there. */
-const EDPAN_FLOOR=224, EDPAN_MIN_SCORE=130;   // 130: the frame's chrome and one row
+/* 190px of room for the notation is the floor (David, 3 Sep: "a sensible
+   minimum size that still lets me see at least a tiny bit of what's going
+   on"): a four-row tab zooms to about 0.45 there — small, still legible. */
+const EDPAN_FLOOR=224, EDPAN_MIN_SCORE=190;
 let edPanSize=(()=>{ try{ const v=+localStorage.getItem("hps.edpan"); return v>=EDPAN_FLOOR?v:null; }catch(e){ return null; } })();
 function edPanGrow(){
   const host=$("edPanHost"), deck=$("editdeck");
@@ -25684,6 +25688,14 @@ function ppRow(p,scaleKey){
     nm.appendChild(bl);
   }
   row.append(chk,nm);
+  /* THE CHORDS OF THIS ROW (David, 3 Sep: "a small symbol with a note that is
+     left of the favorite symbol"): the overview on the build the row shows,
+     and back to the chooser when it closes */
+  const co=document.createElement("button");
+  co.type="button"; co.className="ppv ppco"; co.textContent="\u266a";
+  co.setAttribute("aria-label","Chords on "+p.name); co.title="Every chord "+p.name+" can play";
+  co.addEventListener("click",e=>{ e.stopPropagation(); coOpen(p.id,true); });
+  row.appendChild(co);
   /* HEART FIRST, THEN PREVIEW (David, 29 Aug: "exchange the positions of the
      preview and favourite buttons"). The heart marks the SCALE, so it only
      appears on a library row — a row in My pans is already the student's own
@@ -26228,7 +26240,7 @@ function boot(){
     updatePracticeBtn();   // …and the room lamps: Practice rests while Edit is lit
     if(editing) stampPieceSig();     // the piece as it was, for "did anything change"
     document.body.classList.toggle("editing",editing);
-    if(editing) fsLeave();      // the editors take no part in fullscreen
+    if(editing){ fsLeave(); try{ clearMarks(); }catch(e){} }   // the editors take no part in fullscreen, and show no playhead until Play
     /* THE EDITOR WORKS IN THE TAB TOO (David, 1 Sep: "let's have the editor
        work in tab as well"). It can, now that the tab IS the table — the
        cursor, the click-to-place and the ring are the one renderer's, so
@@ -27030,7 +27042,12 @@ function phoneTouchNav(){
         const tel=document.elementFromPoint(e.clientX,e.clientY);
         const tsl=tel&&tel.closest&&tel.closest(".slot.tcol[data-rel]");
         if(tsl) pickLane(tsl,e.clientX,e.clientY,cursor);
-        refresh(); updateHandInd(); seekToPulse(c.from); }
+        /* THE PLAYHEAD STAYS OUT OF IT (David, 3 Sep: "in editing mode, the
+           playhead marker should not be displayed … playback starts from the
+           beginning of the table, except if I set a specific loop" — which is
+           start()'s own rule for an editor). The tap places the cursor and
+           nothing seeks, as on the desktop. */
+        refresh(); updateHandInd(); }
       return;
     }
     const el=document.elementFromPoint(e.clientX,e.clientY);
