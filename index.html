@@ -18604,7 +18604,7 @@ function fitJamTitle(){
      mode 'Jam mode', not just 'Jam', when we have the space"), collapsing
      to "Jam" below when the header is short of room. */
   const phoneProper=PHONE&&!TABLET;
-  const first=phoneProper&&jam&&jam.slots&&jam.slots[0]&&jam.slots[0].chord;
+  const first=phoneProper&&jam&&jam.slots&&jamHomeChord(jam.slots);
   const want=phoneProper?(first?("Jam in "+first):"Jam"):"Jam mode";
   if(t.value!==want){ t.value=want; fitTitle(); }
   /* MEASURE THE HALF THE TITLE LIVES IN (2 Sep). The header's two halves are
@@ -19431,7 +19431,7 @@ function jamToPiece(){
     toast("Add a chord this pan can play first"); return;
   }
   const p=JSON.parse(JSON.stringify(built));
-  const first=jam.slots[0]&&jam.slots[0].chord;
+  const first=jamHomeChord(jam.slots);
   p.id="piece-"+Date.now().toString(36);
   p.title=first?("Jam in "+first):"My jam";
   p.author="";
@@ -25231,6 +25231,96 @@ function grooveEditFinish(save){
    the piece library and the groove list: saved here, on this device. */
 function savedJams(){ try{return JSON.parse(localStorage.getItem("hps.jams")||"[]")}catch(e){return[]} }
 function setSavedJams(l){ try{localStorage.setItem("hps.jams",JSON.stringify(l))}catch(e){} }
+/* ══════════ THE HARMONIC HOME OF A PROGRESSION (David, 3 Sep) ═════════════
+   "Would it be possible instead to name it after the root chord of the
+   sequence, which is not always the first chord?" — and, when I offered to
+   read the home off the PAN instead: "there's not one right answer for each
+   pan, because on the D you can play in D minor or in F major, but also in
+   A minor. It really depends on the chord progression."
+
+   So the home is a property of the progression, and this works it out. Two
+   findings from running it over his own jams and a set of classics before a
+   line of it shipped:
+
+   · THE LAST CHORD IS NOT THE HOME. That rule is true of written music and
+     false here, because a jam LOOPS: the last chord is usually the one
+     leading back. Weighted heavily it called C·Am·F·G a jam in G major.
+   · "usually a chord sequence starts with or ends with the root chord, but
+     it is not always the case" (his words) — so first and last are both
+     evidence and neither decides. What decides is the company they keep.
+
+   The signals, in one score per candidate root:
+     · does EVERY chord live in one scale on this root — the actual key test,
+       and worth the most. Handpan scales are modal, so a major home is tried
+       as ionian and mixolydian, a minor one as aeolian and dorian.
+     · it is the chord the loop lands on (first), or the one it ends on
+     · how much of the time it holds, and whether it comes round twice
+     · what moves INTO it, counting the turn from the last chord back to the
+       first: a fifth above (V→I) is the strongest, then ♭VII, ♭II, a step
+       down, iv
+     · a DIMINISHED chord is never the home ("it's pretty much never a
+       diminished chord … it's a very rare case in Phrygian or Locrian, let's
+       not worry about that")
+     · nor is a DOMINANT SEVENTH — found while testing: with the diminished
+       ruled out, C9 began winning its own progression on a D Kurd, and C9 is
+       exactly the chord pointing back at D.
+
+   Checked against the three jams from his phone: Gmin·Cmaj·Dmin·Gmin → Gmin
+   (unchanged); B♭maj·C9·Edim·Dmin → Dmin (was B♭maj); F♯dim·Amin7·Dmaj·Gmaj
+   → Gmaj (was F♯dim), which he confirmed by ear: "that is a G major".
+
+   AND IT ONLY OVERRULES THE FIRST CHORD WHEN IT IS SURE. Some progressions
+   genuinely have no single home and the top two come within a fraction of
+   each other; there the name stays as it was rather than flipping on a
+   coin. */
+const JAM_HOME_MODES={ maj:[[0,2,4,5,7,9,11],[0,2,4,5,7,9,10]],   // ionian, mixolydian
+                       min:[[0,2,3,5,7,8,10],[0,2,3,5,7,9,10]] }; // aeolian, dorian
+const JAM_HOME_SURE=0.75;        // how far ahead the winner must be to rename
+function jamChordParse(n){
+  const pcs=chordPCs(n); if(!pcs) return null;
+  const m=String(n).match(/^([A-Ga-g])([b♭#♯]?)\s*(maj|min|dim|m)?\s*(7♭5|7b5|9|7)?/);
+  if(!m) return null;
+  const q=(!m[3]||m[3]==="maj")?"maj":(m[3]==="dim"?"dim":"min");
+  // a major triad carrying a flat 7 is a dominant: C7, C9
+  const dom=q==="maj"&&!!m[4]&&m[4]!=="7♭5"&&m[4]!=="7b5";
+  return {root:pcs[0], q, dom, pcs};
+}
+function jamHomeChord(slots){
+  if(!slots||!slots.length) return null;
+  const ch=slots.map(s=>{ const p=jamChordParse(s.chord);
+    return p?Object.assign(p,{bars:s.bars||1,name:s.chord}):null; }).filter(Boolean);
+  if(!ch.length) return null;
+  const first=ch[0].name;
+  if(ch.length<2) return first;
+  const total=ch.reduce((a,c)=>a+c.bars,0)||1;
+  const cands=[...new Set(ch.map(c=>c.root))];
+  const sc={};
+  for(const r of cands){
+    const self=ch.find(c=>c.root===r);
+    let v=0;
+    if(self.q!=="dim"&&JAM_HOME_MODES[self.q].some(m=>{
+      const set=new Set(m.map(x=>(r+x)%12));
+      return ch.every(c=>c.pcs.every(p=>set.has(p))); })) v+=2.0;
+    if(ch[0].root===r) v+=1.2;
+    if(ch[ch.length-1].root===r) v+=1.0;
+    v+=1.5*ch.filter(c=>c.root===r).reduce((a,c)=>a+c.bars,0)/total;
+    if(ch.filter(c=>c.root===r).length>1) v+=0.6;
+    for(let i=0;i<ch.length;i++){
+      if(ch[i].root!==r) continue;
+      const d=((ch[(i-1+ch.length)%ch.length].root-r)+12)%12;   // the loop counts
+      if(d===7) v+=1.2; else if(d===10) v+=0.9; else if(d===1) v+=0.6;
+      else if(d===2) v+=0.5; else if(d===5) v+=0.4;
+    }
+    if(self.q==="dim") v-=3.0;
+    if(self.dom) v-=1.0;
+    sc[r]=v;
+  }
+  const rank=cands.slice().sort((a,b)=>sc[b]-sc[a]);
+  const win=ch.find(c=>c.root===rank[0]).name;
+  if(win===first) return first;
+  const margin=rank.length>1?sc[rank[0]]-sc[rank[1]]:9;
+  return margin>=JAM_HOME_SURE?win:first;      // unsure: leave the name alone
+}
 function jamDefaultName(){
   const c=jam.slots.map(s=>s.chord);
   if(!c.length) return "Empty jam";
@@ -25361,7 +25451,7 @@ function ctxShareText(){
     return g?{txt:"HPG1:"+enc(g), name:(g.name||"groove"), ext:"hpg"}:null;
   }
   const r=jamRecipe();
-  const first=r.slots[0]&&r.slots[0].chord;
+  const first=jamHomeChord(r.slots);
   return {txt:"HPJ1:"+enc(r), name:("Jam in "+(first||"D")), ext:"hpj"};
 }
 /* WHAT KIND OF FILE IS THIS, AND DOES IT BELONG HERE? (David, 27 Aug: "we
