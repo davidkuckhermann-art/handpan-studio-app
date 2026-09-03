@@ -6139,6 +6139,9 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <div class="drow hidden" id="mNotaRow"><span>Show notation</span><span id="mNota"></span></div>
   <div class="drow hidden"><span>All settings</span><span id="mSet"></span></div>
   <div id="mSettingsHost"></div>
+  <!-- the audio log: forty lines that survive a relaunch, so a dropout on his
+       phone is one screenshot instead of a guessing round (David, 3 Sep) -->
+  <div class="drow"><span>Audio log</span><span><button class="ctl" id="mAudioLog">Show</button></span></div>
   <div class="drow"><span>Tutorial notes</span>
     <span style="display:flex; gap:6px">
       <span class="pills tutpills" role="group" aria-label="Tutorial notes">
@@ -6152,6 +6155,13 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
        reached from the share sheet now, whichever room you are in -->
 
   <div class="row"><span class="spacer"></span><button class="ctl" id="menuClose">Close</button></div>
+</dialog>
+
+<dialog id="audioLogDlg">
+  <h3>Audio log</h3>
+  <div style="font-size:13px; color:var(--ink3); margin:0 0 10px">What the sound engine did, newest at the bottom. Kept when the app is closed, so a dropout can be screenshotted afterwards.</div>
+  <pre id="audioLogBody" style="white-space:pre-wrap; word-break:break-word; font-size:12px; line-height:1.5; max-height:52vh; overflow:auto; margin:0 0 12px; font-family:ui-monospace,Menlo,monospace"></pre>
+  <div class="row"><button class="ctl" id="audioLogClear">Clear</button><span class="spacer"></span><button class="ctl" id="audioLogClose">Close</button></div>
 </dialog>
 
 <dialog id="setDlg">
@@ -7227,6 +7237,116 @@ const sinkOurs=k=>{
   if(sinkExpect===k&&Date.now()-sinkExpectAt<4000){ sinkExpect=null; return true; }
   return false;
 };
+
+/* ══════════ IS SOUND ACTUALLY FLOWING? ONE QUESTION, TWO CALLERS ══════════
+   David, 3 Sep 2026: the sound stopped while he was using the app, on screen,
+   with nothing else making a noise — and PRESSING PLAY DID NOT BRING IT BACK.
+   Killing the app from the switcher and reopening it did, at once. So the
+   page's whole audio path was dead while the app believed it was fine.
+
+   It believed it because it only ever asked ONE thing: is the engine's clock
+   moving? (`clockAlive`, in start()). A path whose clock keeps counting while
+   nothing reaches the speaker passes that test every time — which is exactly
+   what iOS leaves behind when it resets media services under a live page: the
+   context ticks on, the stream to the speaker is gone, and no rebuild is ever
+   triggered. The Dynamic Island said the same thing in its own way: David's
+   app icon was replaced by a generic one, i.e. the media session the page had
+   claimed was no longer the page's.
+
+   So the question is asked properly, in one place, and both callers ask it:
+   the watchdog below (while the music is running) and Play (before it starts).
+   Sound is flowing when the ENGINE is live and the SINK is live; the sink's
+   own clock is the only proof the graph reaches the speaker, and it is the
+   clock the engine's does not speak for. */
+let sinkClockVal=-1, sinkClockAt=0, sinkClockSeen=false;
+const sinkClockReset=()=>{ sinkClockVal=-1; sinkClockAt=Date.now(); };
+function audioPathBroken(){
+  if(!ctx) return "no engine";
+  let st=""; try{ st=ctx.state; }catch(e){}
+  /* "suspended" is NOT broken — that is the lock screen's pause, and judging
+     it belongs to watchAudioInterruption alone (David, 1 Sep, option A).
+     Safari's own "interrupted" is a different animal: the session is gone and
+     resume() cannot bring it back, only a new graph can. */
+  if(st==="interrupted") return "engine interrupted";
+  const el=iosSink;
+  if(el&&el!=="failed"){
+    if(el.error) return "sink error "+((el.error&&el.error.code)||"");
+    let tr=null;
+    try{ tr=(el.srcObject&&el.srcObject.getAudioTracks&&el.srcObject.getAudioTracks()[0])||null; }catch(e){}
+    if(tr&&tr.readyState==="ended") return "stream ended";
+    /* the rest is only meaningful while the app is supposed to be sounding —
+       an element that should be quiet cannot be accused of being quiet. This
+       is why Play may ask the same question before it starts: `soundActive()`
+       is still false there, so only the hard signals above answer it. */
+    if(soundActive()){
+      if(el.paused) return "sink paused";
+      /* JUDGED ONLY ONCE THIS PLATFORM HAS BEEN SEEN TO ADVANCE IT. If some
+         engine never moves a MediaStream element's clock, `sinkClockSeen`
+         never turns true and this line can never accuse it — the guard
+         calibrates itself rather than trusting a claim about WebKit. */
+      const t=el.currentTime, now=Date.now();
+      if(t!==sinkClockVal){
+        if(sinkClockVal>=0&&t>sinkClockVal) sinkClockSeen=true;
+        sinkClockVal=t; sinkClockAt=now;
+      } else if(sinkClockSeen&&now-sinkClockAt>1500) return "sink clock stalled";
+    }
+  }
+  return null;
+}
+/* THE WATCHDOG RUNS FROM THE SCHEDULER — the one tick that already exists
+   while music is playing — and ONLY WITH THE APP ON SCREEN. Hidden, a paused
+   sink means the lock screen paused us, and parking that is the interruption
+   watcher's job; visible, it means the path died under us. One split, no
+   overlap, so the two can never fight over the same event. */
+let audioWatchAt=0, audioFixedAt=0, audioFixing=false;
+function audioWatch(){
+  if(audioFixing||!soundActive()) return;
+  if(document.visibilityState!=="visible") return;
+  const now=Date.now(); if(now-audioWatchAt<400) return; audioWatchAt=now;
+  /* ONE REBUILD PER DROP, AND NEVER A STORM. A rebuild stops the music, so
+     the watchdog normally falls silent by itself — but in follow mode the
+     video keeps `soundActive()` true, and a path that stays broken would
+     otherwise be rebuilt three times a second. Six seconds is long enough for
+     a new graph to prove itself and short enough to try again in a piece. */
+  if(now-audioFixedAt<6000) return;
+  const why=audioPathBroken(); if(!why) return;
+  audioFixing=true; audioFixedAt=now;
+  audioNote("dropped out — "+why);
+  /* stop and park where the music stood, rebuild the path, and SAY SO. The
+     music is not restarted behind his back: the drop is worth knowing about,
+     and Play now works because the path underneath it is new. */
+  const at=(lastPaint>=0)?lastPaint:loopedPulse(nextPulse);
+  try{ stop(); }catch(e){}
+  if(pendingStart==null&&!loopSec&&at>=0) pendingStart=at;
+  const done=m=>{ audioFixing=false; audioNote(m);
+    try{ toast("Audio dropped out — press play to continue"); }catch(e){} };
+  try{ reviveAudio().then(ok=>done("rebuilt"+(ok?"":" — clock still dead")),
+                          ()=>done("rebuild failed")); }
+  catch(e){ done("rebuild threw"); }
+  setTimeout(()=>{ audioFixing=false; },4000);      // never stuck, whatever happens
+}
+/* ── THE AUDIO LOG (David, 3 Sep) ─────────────────────────────────────────
+   A dropout that only happens on his phone, minutes apart, cannot be chased
+   by asking him what he saw. This is forty lines in localStorage — so it
+   SURVIVES the relaunch that cures the fault — written at the few decisive
+   moments only. Menu ▸ Settings ▸ Audio log; one screenshot settles the next
+   one. */
+const AUDIO_LOG_MAX=40;
+function audioNote(what){
+  try{
+    const d=new Date(), p=n=>String(n).padStart(2,"0");
+    const line=p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds())+"  "+what;
+    let a=[]; try{ a=JSON.parse(localStorage.getItem("hps.audiolog")||"[]"); }catch(e){ a=[]; }
+    if(!Array.isArray(a)) a=[];
+    a.push(line); if(a.length>AUDIO_LOG_MAX) a=a.slice(-AUDIO_LOG_MAX);
+    localStorage.setItem("hps.audiolog",JSON.stringify(a));
+  }catch(e){}
+}
+function audioLogText(){
+  try{ const a=JSON.parse(localStorage.getItem("hps.audiolog")||"[]");
+    return (Array.isArray(a)&&a.length)?a.join("\n"):"Nothing logged yet."; }
+  catch(e){ return "Nothing logged yet."; }
+}
 /* iOS audio, the whole trap in one place (David's phone, 26 Aug 2026):
    - Plain WebAudio obeys the hardware RINGER SWITCH — silent phone, silent app.
      That was "the app loads but no sound".
@@ -7284,6 +7404,7 @@ function ensureSink(){
          own sync — an armed token nobody spends is one that swallows the
          student's NEXT press, four seconds later */
       if(sinkOurs("pause")) return;
+      audioNote("iOS paused the sink"+(document.visibilityState==="hidden"?" (screen off)":" (on screen)"));
       if(!soundActive()||document.visibilityState!=="hidden") return;
       const at=(lastPaint>=0)?lastPaint:loopedPulse(nextPulse);
       try{ stop(); }catch(e){}
@@ -8358,6 +8479,7 @@ function loopedPulse(n){
   return loopSec.from+((n-loopSec.from)%span);
 }
 function sched(){
+  audioWatch();                      // is sound still reaching the speaker?
   if(!ctx||!C) return;
   // after a stall (hidden tab), resync instead of firing every missed pulse
   if(nextTime<ctx.currentTime-0.5) nextTime=ctx.currentTime+0.06;
@@ -8805,6 +8927,11 @@ async function reviveAudio(){
      session and iOS routes playback by it, so a context built after an
      interruption must not inherit "already done" from the one it replaces */
   audioSessionSet=false;
+  /* AND THE NEW SESSION MUST INTRODUCE ITSELF AGAIN. The metadata is only
+     rebuilt when its key changes, so a graph replaced under the same piece
+     came up with no title and no artwork — which is why iOS swapped David's
+     app icon for a generic one in the Dynamic Island (3 Sep). */
+  mediaMetaKey=null; sinkClockReset();
   ensureCtx(); ensureSink();
   try{ await ctx.resume(); }catch(e){}
   preloadBank();
@@ -8823,7 +8950,13 @@ async function start(){
   /* …and if it still cannot prove the clock is moving, this press of play is
      the gesture that rebuilds it. Pressing play is what a student does when
      the sound has gone, so the cure sits exactly where they already reach. */
-  if(!await clockAlive(120)) await reviveAudio();
+  /* THE SAME QUESTION PLAY HAS ALWAYS ASKED, ASKED PROPERLY (3 Sep): a dead
+     path whose clock still counts used to pass here, and Play then scheduled
+     music into a graph nothing could hear — "the sound did not come back,
+     even after I tried to press play again". */
+  { const why=audioPathBroken();
+    if(why||!await clockAlive(120)){ audioNote("play rebuilt the path — "+(why||"clock dead")); await reviveAudio(); } }
+  sinkClockReset();
   preloadBank();
   C=compile(piece);
   const beat=60/effBpm(); let t0=ctx.currentTime+0.12;
@@ -8922,6 +9055,7 @@ function watchAudioInterruption(){
          (Kept from the session that fixed blips: the clock is asked, never the
          state, once the context claims to be running again.) */
       if(ctx.state==="running"&&await clockAlive(200)) return;   // a blip — carry on
+      audioNote("audio taken away — parked (engine "+ctx.state+")");
       /* the marker is the honest resume point, but it is painted from rAF —
          which is already frozen by now, and has never run at all if the music
          was taken away in its first moments. The scheduler's own pulse stands
@@ -27861,6 +27995,16 @@ if(PHONE){
   });
   sheetSwipe($("menuDlg"),$("menuDlg").querySelector(".grab"));
   $("menuClose").addEventListener("click",()=>$("menuDlg").close());
+  audioNote("app opened");           // the line that marks a relaunch in the log
+  $("mAudioLog").addEventListener("click",()=>{
+    $("audioLogBody").textContent=audioLogText();
+    openDlg($("audioLogDlg"));
+  });
+  $("audioLogClear").addEventListener("click",()=>{
+    try{ localStorage.removeItem("hps.audiolog"); }catch(e){}
+    audioNote("log cleared"); $("audioLogBody").textContent=audioLogText();
+  });
+  $("audioLogClose").addEventListener("click",()=>$("audioLogDlg").close());
   // the sheet's own buttons close it, so the change is visible behind it
   ["libBtn","shareBtn","setBtn"].forEach(id=>
     $(id).addEventListener("click",()=>$("menuDlg").close()));
