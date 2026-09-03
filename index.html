@@ -7320,6 +7320,29 @@ function audioPathBroken(){
    Visible only, as before: hidden, a paused sink is the lock screen's pause
    and parking it is watchAudioInterruption's job. One split, no overlap. */
 let audioWatchAt=0, audioNudgeAt=0, audioBadSince=0, audioWhyLogged="";
+/* SET WHEN THE PATH IS KNOWN TO BE DEAD, SPENT BY THE NEXT PRESS. A rebuild
+   needs a finger, and we cannot tell synchronously whether the graph is dead —
+   the clock has to be watched for a moment. So the moment we DO know (the
+   watchdog gave up, or a Play found it still dead afterwards) is remembered,
+   and the student's next press rebuilds first thing, while iOS is still
+   listening. One context, only when something already proved it was needed. */
+let audioNeedsRebuild=false;
+/* Everything that needs the user's permission, done SYNCHRONOUSLY in the
+   click — before togglePlay awaits the sample bank. */
+function audioPreflight(){
+  try{
+    /* a press while the music runs means STOP — it needs no permission and
+       must not spend one of the page's few contexts */
+    if(playing) return;
+    if(audioNeedsRebuild){
+      audioNote("play: rebuilding in the press (context #"+(ctxMade+1)+")");
+      rebuildAudioNow(); return;
+    }
+    ensureCtx();
+    try{ ctx.resume(); }catch(e){}         // fired, not awaited: the press is short
+    ensureSink();                          // …which calls play() on a paused element
+  }catch(e){}
+}
 function audioWatch(){
   if(!soundActive()||document.visibilityState!=="visible") return;
   const now=Date.now(); if(now-audioWatchAt<300) return; audioWatchAt=now;
@@ -7342,6 +7365,7 @@ function audioWatch(){
      rule; this one is asked on every tick, whatever the spacing. */
   if(now-audioBadSince>3000){
     audioNote("stopped it — press play to rebuild");
+    audioNeedsRebuild=true;              // …and that press rebuilds inside itself
     const at=(lastPaint>=0)?lastPaint:loopedPulse(nextPulse);
     try{ stop(); }catch(e){}
     if(pendingStart==null&&!loopSec&&at>=0) pendingStart=at;
@@ -8943,7 +8967,20 @@ async function clockAlive(ms){
     await new Promise(r=>setTimeout(r,10));
   return ctx.currentTime>t;
 }
-async function reviveAudio(){
+/* THE REBUILD IS SYNCHRONOUS, BECAUSE A FINGER PRESS IS (David, 3 Sep, night:
+   "after tapping around a little bit using other applications, finally, our
+   application has lost its sound again, and it won't come back by pressing
+   play"). iOS grants a page permission to start audio only for a moment after
+   a real tap, and the old order spent it: the click awaited the sample bank
+   (up to 800 ms), then start() awaited resume, then a clock probe — the new
+   context and the new <audio> were finally built a second after the press,
+   with the permission long gone. So they came up mute, exactly like an app
+   only a relaunch could revive. Nothing here awaits: the new graph and its
+   element are made FIRST, the old context is closed afterwards and unwaited,
+   and `resume()` is fired rather than awaited. Called on its own inside the
+   press (audioPreflight), or from reviveAudio for the callers that want the
+   clock checked afterwards. */
+function rebuildAudioNow(){
   const old=ctx;
   stopSchedClock(); stopFollowCarry();     // both hold nodes of the dying context
   live=[];
@@ -8952,7 +8989,6 @@ async function reviveAudio(){
      would route the new graph into a stream nothing is listening to */
   try{ if(iosSink&&iosSink!=="failed"){ iosSink.pause(); iosSink.srcObject=null; } }catch(e){}
   iosSink=null;
-  try{ if(old&&old.state!=="closed") await old.close(); }catch(e){}
   /* the session type is declared again for the new graph: it is set once per
      session and iOS routes playback by it, so a context built after an
      interruption must not inherit "already done" from the one it replaces */
@@ -8962,9 +8998,16 @@ async function reviveAudio(){
      came up with no title and no artwork — which is why iOS swapped David's
      app icon for a generic one in the Dynamic Island (3 Sep). */
   mediaMetaKey=null; sinkClockReset();
-  ensureCtx(); ensureSink();
-  try{ await ctx.resume(); }catch(e){}
+  ensureCtx(); ensureSink();               // …both synchronous, both in the press
+  try{ ctx.resume(); }catch(e){}           // fired, never awaited
+  /* the old one goes AFTER the new one exists, and its close is not waited on:
+     awaiting it here is what used to push the new element past the gesture */
+  try{ if(old&&old.state!=="closed") old.close(); }catch(e){}
+  audioNeedsRebuild=false;
   preloadBank();
+}
+async function reviveAudio(){
+  rebuildAudioNow();
   return clockAlive(300);
 }
 async function start(){
@@ -8990,19 +9033,18 @@ async function start(){
      rebuilt, the worse his audio got. So Play asks for the cheap cures first,
      inside the gesture where iOS grants them, and keeps the rebuild for the
      case where nothing else answered. */
-  { let why=audioPathBroken();
-    if(why){
-      try{ await ctx.resume(); }catch(e){}            // 1 · the engine, in the gesture
-      try{ ensureSink(); }catch(e){}                  // 2 · the element, in the gesture
-      await new Promise(r=>setTimeout(r,60));
-      why=audioPathBroken();
-    }
-    const dead=!await clockAlive(120);
+  /* THE CHEAP CURES HAVE ALREADY RUN, IN THE PRESS ITSELF (audioPreflight).
+     What is left here is to find out whether they worked — which takes time,
+     and time is the one thing a gesture does not have. So a still-dead path is
+     REMEMBERED rather than rebuilt late: the next press rebuilds first thing,
+     while iOS is still listening. Rebuilding here, a second after the tap, is
+     what left David with an app only a relaunch could revive. */
+  { const why=audioPathBroken(), dead=!await clockAlive(120);
     if(why||dead){
-      audioNote("play: "+(why||"clock dead")+" — rebuilding (context #"+(ctxMade+1)+")");
-      await reviveAudio();
-      if(!await clockAlive(200)) audioNote("still dead after the rebuild — the page needs reopening");
-    } else if(audioBadSince) audioNote("play healed it without a rebuild");
+      audioNeedsRebuild=true;
+      audioNote("play: "+(why||"clock dead")+" — press play again to rebuild");
+      try{ toast("Sound is stuck — press play once more"); }catch(e){}
+    } else if(audioBadSince) audioNote("play healed it");
   }
   sinkClockReset();
   preloadBank();
@@ -26386,8 +26428,8 @@ function boot(){
   $("viewTable").addEventListener("click",()=>setView("table"));
   $("viewFlow").addEventListener("click",()=>setView("flow"));
   $("viewTab").addEventListener("click",()=>setView("tab"));
-  $("playBtn").addEventListener("click",()=>togglePlay());
-  { const lp=$("landPlay"); if(lp) lp.addEventListener("click",()=>togglePlay()); }
+  $("playBtn").addEventListener("click",()=>{ audioPreflight(); togglePlay(); });
+  { const lp=$("landPlay"); if(lp) lp.addEventListener("click",()=>{ audioPreflight(); togglePlay(); }); }
   tempoControl();
   iosSliders();          // every range the app has, or will ever build
   updatePlayBtn();   // the bigger icons from the first paint on
