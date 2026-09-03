@@ -3252,7 +3252,15 @@ body.mkline .flow .mkbox{top:auto; bottom:.06em; height:2px}
 /* the section name sits closer now that nothing hangs beneath it. SCOPED: the
    Table and Tab skins wear .secrow too, and their spacing is not in question. */
 body.design-flow #score .secrow{margin:6px 0 1px}
-.fprow{display:flex; gap:.16em; justify-content:space-around}
+/* THE GAP IS DECLARED ONCE, as --fGap, because the slot line below measures
+   half of it (David, 3 Sep: "the numbers sit on the separator lines instead
+   of between them"). The line's `left` referenced --fGap and nothing ever
+   set it — an undefined custom property makes the declaration invalid at
+   computed-value time, `left` fell back to auto, and an absolutely placed
+   pseudo-element with `left:auto` sits at its STATIC position, which in a
+   centred column is the middle of the position: under the glyph. Verified
+   on a 21px position: the line stood at 10px, the glyph's centre. */
+.fprow{--fGap:.16em; display:flex; gap:var(--fGap); justify-content:space-around}
 .fpos{display:flex; flex-direction:column; align-items:center; min-width:.88em}
 /* the badge's overhang, SCOPED TO FLOW. --btpad is global in this app and the
    phone narrows it twice over, so setting it at the root would have re-dressed
@@ -15499,14 +15507,16 @@ function viewLoc(){
 }
 function place(ev){
   const loc=viewLoc(); if(!loc){toast("No slot here");return;}
-  /* TWO FIELDS AT MOST IN THE TAB (David, 3 Sep: "when editing in tab mode,
-     two tone fields should be the maximum that one note plays
-     simultaneously"). The tab has one lane per hand and a hand strikes one
-     field, so a third field in a slot is something no pair of hands plays.
-     Fields only — a ghost or a percussion mark beside them is still fine —
-     and the table keeps its four. */
-  if(view==="tab"&&ev.v==="field"&&slotEvents(loc).filter(e=>e.v==="field").length>=2){
-    toast("In tab a note plays two fields at most"); return; }
+  /* TWO FIELDS AT MOST PER HAND IN THE TAB (David, 3 Sep: "two tone fields
+     should be the maximum that one note plays simultaneously" — and then:
+     "that was referring to each hand, so there can be two notes played in
+     the left hand and two notes in the right hand"). A lane is a hand, and
+     a hand covers two fields at most, so the third field in ONE lane is
+     refused; the other lane may still hold its two. Fields only — a ghost
+     or a percussion mark beside them is still fine — and the table keeps
+     its four. */
+  if(view==="tab"&&ev.v==="field"&&slotEvents(loc).filter(e=>e.v==="field"&&e.hand===ev.hand).length>=2){
+    toast("In tab a hand plays two fields at most"); return; }
   snapshot();
   const bar=piece.sections[loc.sec].bars[loc.bar];
   if(ev.v==="ghost") clearSlot(loc);
