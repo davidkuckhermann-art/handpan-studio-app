@@ -4065,6 +4065,9 @@ body.phone .gmini i{font-size:10px}
   .edslot{display:flex; flex-direction:column; align-items:center; justify-content:flex-end;
     min-height:40px; border-radius:6px; margin:1px; padding-bottom:1px}
   .edslot.cur{background:var(--dixie-soft); box-shadow:inset 0 0 0 2px var(--dixie)}
+  /* the tab's hand pick on the cell (laneHand): the picked half wears its hand's colour */
+  .edslot.cur.pickR{box-shadow:inset 0 0 0 2px var(--dixie), inset 0 5px 0 0 var(--hand-r)}
+  .edslot.cur.pickL{box-shadow:inset 0 0 0 2px var(--dixie), inset 0 -5px 0 0 var(--hand-l)}
   /* lane glyphs at finger scale — the score's own .sym classes, resized */
   .edslot .sym{font-size:24px}
   .edslot .sym.d2{font-size:20px}
@@ -12534,7 +12537,13 @@ function phoneFit(){
      in CSS instead cost two rounds — Safari centres a zoomed flex item by its
      unzoomed size (David, 26 Aug: "still not centered vertically"). */
   wrap.style.paddingTop="";
-  if(!land){ fitPortraitStack(sc,z,designW); centrePortraitStack(wrap); }
+  if(!land){
+    const ed=edPanOn();                 // the editor's pan: floor, fit, grow — see fitEdPan
+    if(ed) edPanFloor();
+    fitPortraitStack(sc,z,designW);
+    if(ed) edPanGrow();
+    centrePortraitStack(wrap);
+  }
   /* The header push that used to carry the leftover slack upward went with the
      cap that created it. What is left is a placement, not a fit: the card's
      height is already decided, and centreLandStage only says where in the
@@ -15900,8 +15909,19 @@ function paintEditDeck(){
         el.className=g.cls+(ev.hand==="R"?" r":" l"); el.innerHTML=g.t; sl.appendChild(el);
       }
       capUnderside(sl);
-      if(rel===cursor) sl.classList.add("cur");
-      sl.addEventListener("pointerdown",()=>{ cursor=rel; refresh(); });
+      if(rel===cursor){ sl.classList.add("cur");
+        /* the lane pick shows on the cell: a green cap for the upper half, a
+           black foot for the lower (see laneHand) */
+        const lh=laneHandHere(); if(lh) sl.classList.add(lh==="R"?"pickR":"pickL"); }
+      /* THE EDITING FIELD PICKS THE HAND TOO, IN THE TAB (David, 3 Sep: "on
+         mobile … in tab mode, I can click into the upper or the lower area
+         of the editing field so that the hand gets defined like that") —
+         the cell's upper half is the green hand, the lower the black, the
+         same pick the score's lanes make, keyed to this slot. */
+      sl.addEventListener("pointerdown",e=>{
+        if(view==="tab"){ const r=sl.getBoundingClientRect();
+          laneHand={sec:viewSec,at:rel,hand:e.clientY<r.top+r.height/2?"R":"L"}; }
+        cursor=rel; refresh(); });
       be.appendChild(sl);
     }
     box.appendChild(be);
@@ -15943,20 +15963,36 @@ function paintEditDeck(){
    224px is a floor; this measures how much empty page lies under the deck and
    gives exactly that to the pan — width-capped by the row, so a tall phone
    ends with the chips at the bottom and the pan as big as both axes allow. */
-function fitEdPan(){
-  if(!PHONE||TABLET||!editing) return;
-  if(document.body.classList.contains("drawer-open")) return;
+/* THE NOTATION IS FITTED FIRST, THE PAN TAKES WHAT IS LEFT (David, 3 Sep:
+   "every time I click into the editing field, the notation decreases in
+   size, and the pan on the bottom increases in size until the notation is
+   very small"). The old fitEdPan measured the slack under the deck "from the
+   floor" — but the notation above had ALREADY been fitted against the deck
+   at its grown size (fitPortraitStack budgets the screen minus the bar), so
+   every tap went: notation shrinks by what the pan took → more slack under
+   the deck → the pan takes that too → and round again, down to the
+   notation's minimum zoom. Now one fit does the three steps in order, inside
+   phoneFit's portrait branch: the pan to its floor, the notation to its best
+   size against the smallest deck, then the pan into the slack that is
+   genuinely left, then the centring. The same input gives the same output,
+   however many times it runs. `fitEdPan` keeps its name for its callers and
+   simply asks for that fit. */
+function edPanOn(){
+  return PHONE&&!TABLET&&editing&&!document.body.classList.contains("drawer-open")
+    &&!matchMedia("(orientation:landscape)").matches;
+}
+function edPanFloor(){
+  const host=$("edPanHost"), svg=host&&host.querySelector("svg");
+  if(svg) svg.style.maxWidth="224px";             // the deck at its smallest
+}
+function edPanGrow(){
   const host=$("edPanHost"), deck=$("editdeck");
   const svg=host&&host.querySelector("svg");
   if(!svg||!deck||!deck.offsetParent) return;     // hidden deck measures as nothing
-  /* measured from the CSS floor every time, never from the size it is already
-     wearing: growing from the current size would creep upward across repeated
-     fits, since each pass shrinks the notation above by what the last pass
-     gave the drawing */
-  svg.style.maxWidth="224px";                     // measure the slack from the floor
   const free=Math.max(0, innerHeight-deck.getBoundingClientRect().bottom-10);
   svg.style.maxWidth=Math.round(Math.min(host.clientWidth,224+free))+"px";
 }
+function fitEdPan(){ if(edPanOn()) phoneFit(); }
 /* the lane's loop button is lit only while the loop IS the bar it shows, so
    a hand-drawn loop elsewhere turns it off by itself (David, 27 Aug) */
 /* Save · Load · Undo live in the view row while a groove is being written,
