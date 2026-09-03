@@ -9041,12 +9041,24 @@ async function start(){
     }
     const dead=!await clockAlive(120);
     if(why||dead){
-      /* CYCLE BEFORE REBUILDING — his phone says the cycle is what works, and
-         the rebuild stays the last resort it always was, now reached far less
-         often, which also stops the app spending contexts it cannot get back. */
-      if(await audioCycleRevive()) audioNote("play: "+(why||"clock dead")+" — suspend/resume brought it back");
-      else{
-        audioNote("play: "+(why||"clock dead")+" — cycle failed, rebuilding (context #"+(ctxMade+1)+")");
+      /* ═══ THE STATE LIES, SO ASK ANYWAY ═══════════════════════════════════
+         David, 4 Sep, running the test page from the HOME SCREEN: "Mode A now
+         already brings back audio with 2 — resume only." Which exposes the
+         real fault in this file, not in WebKit: the block above resumes only
+         `if(ctx.state!=="running")`, and the whole failure is a context that
+         SAYS running while its clock is frozen. So `resume()` was never
+         reached in exactly the case that needed it, and Play went straight to
+         rebuilding — spending a context to do what one resume would have done.
+         Now the cheapest cure is tried first and unconditionally, then the
+         cycle, then the rebuild. (Safari needed the cycle, the installed app
+         needs only the resume — this order serves both.) */
+      let fixed=false;
+      try{ await Promise.race([ctx.resume(),new Promise(r=>setTimeout(r,600))]); }catch(e){}
+      try{ ensureSink(); }catch(e){}
+      if(await clockAlive(150)){ fixed=true; audioNote("play: "+(why||"clock dead")+" — resume brought it back"); }
+      if(!fixed&&await audioCycleRevive()){ fixed=true; audioNote("play: "+(why||"clock dead")+" — suspend/resume brought it back"); }
+      if(!fixed){
+        audioNote("play: "+(why||"clock dead")+" — resume and cycle failed, rebuilding (context #"+(ctxMade+1)+")");
         await reviveAudio();
         if(!await clockAlive(200)) audioNote("still dead after the rebuild — the page needs reopening");
       }
