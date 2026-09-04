@@ -2302,12 +2302,9 @@ body.phone.cp #panwrap{flex:1 1 auto; min-height:0}
    under four small chord boxes. The slack belongs to the row, as it does in
    practice — that is what puts the dots just above the deck. */
 body.phone.cp #cpband{flex:0 0 auto; min-height:0}
-/* …and the band runs compact, the chord card's own phone sizes a step down */
+/* the head is the band's own — the sizes below it are practice's, shared in
+   the portrait block (search "CHORD PRACTICE'S BAND WEARS THE SAME SIZES") */
 body.phone #cpband .cphead{margin-bottom:5px}
-body.phone #cpband .cname{font-size:16px}
-body.phone #cpband .cchip{padding:4px 8px 5px; border-radius:9px}
-body.phone #cpband .cchip .sym{font-size:max(11px,calc(14px*var(--cs,1)))}
-body.phone #cpband .chordrow{gap:9px}
 /* the setup is taller than a phone, and the page cannot scroll: it scrolls
    INSIDE itself with Start pinned to its own bottom (the quiz setup's rule) */
 body.phone #cpwrap{margin:0}
@@ -2317,9 +2314,11 @@ body.phone #cpsetup{padding:14px 14px 0; margin-top:2px;
 body.phone #cpsetup .cpstart{position:sticky; bottom:0; margin:14px 0 0;
   box-shadow:0 -8px 12px -8px rgba(var(--sh),.18), var(--raise)}
 body.phone #cpsetup::after{content:""; display:block; height:12px}
-/* a SHORT phone (SE, 667pt): the Table's four rows plus the boxes left the pan
-   52px tall — the band keeps its names and Next and gives up the boxes */
-@media (max-height:700px){ body.phone #cpband .cchip{display:none} body.phone #cpband .cname{font-size:15px} }
+/* A SHORT PHONE KEEPS ITS BOXES NOW. It used to give them up — "the Table's
+   four rows plus the boxes left the pan 52px tall" — because the band and the
+   pan shared one row. They are pages now, so the boxes have the room; only
+   the names step down. */
+@media (max-height:700px){ body.phone #cpband .cname{font-size:16px} }
 .pvf.clit.csug .pvbase{fill:var(--sc-band)}
 /* a held chord written once (David, 2 Sep): repeat barlines on the bar, the
    count only past one repetition; the first and last cells make room for the dots */
@@ -4052,11 +4051,20 @@ body.phone .gmini i{font-size:10px}
   body.phone #belowrow{gap:8px}
   /* the two companion cards were sized for a desktop — trim them or the pan
      cannot fit under the notation at all (measured: 227 + 172 + 385 > screen) */
-  body.phone #chordbox{padding:9px 13px 11px}
-  body.phone #chordbox .cchip{padding:6px 10px 7px; border-radius:11px}
-  body.phone #chordbox .cname{font-size:18px}
-  body.phone #chordbox .sym{font-size:max(12px,calc(19px*var(--cs,1)))}
-  body.phone #chordbox .chordrow{gap:11px}
+  /* CHORD PRACTICE'S BAND WEARS THE SAME SIZES (David, 4 Sep: "when there is
+     space, the chord boxes can be bigger… please check the rules that we use
+     in practice and adapt the same formatting rules for the chord tab"). It
+     used to carry its own set, a step smaller, from when it shared the row
+     with the pan and had half the height. It is a page of its own now, so it
+     joins these rather than copying them — one place to change, both rooms
+     following. (`--cs`, the ratio of the fewest notes to this chord's, is
+     what keeps a three, four and five-note box close in size; that part the
+     band already had.) */
+  body.phone #chordbox, body.phone #cpband{padding:9px 13px 11px}
+  body.phone #chordbox .cchip, body.phone #cpband .cchip{padding:6px 10px 7px; border-radius:11px}
+  body.phone #chordbox .cname, body.phone #cpband .cname{font-size:18px}
+  body.phone #chordbox .sym, body.phone #cpband .sym{font-size:max(12px,calc(19px*var(--cs,1)*var(--cfit,1)))}
+  body.phone #chordbox .chordrow, body.phone #cpband .chordrow{gap:11px}
   body.phone #pvwrap:not(.sides) #pvsvg{width:min(100%,calc(260px*var(--panfit,1)))}
   /* the stroke badges are what stand between the drawing and the card's edge,
      so they run slim on the phone — every px they give back is drawing */
@@ -13107,6 +13115,7 @@ function phoneFit(){
        keep fitPortraitStack. */
     if(ed) edFitSplit(sc,z,designW); else fitPortraitStack(sc,z,designW);
     centrePortraitStack(wrap);
+    try{ fitChordRows(); }catch(e){}      // the companion's boxes take the width they have
   }
   /* The header push that used to carry the leftover slack upward went with the
      cap that created it. What is left is a placement, not a fit: the card's
@@ -15417,6 +15426,54 @@ function paintSidePills(){
    companion card. Chords · Pan · nothing — the third only where Flow spends
    the height it frees (David's own 30 Aug reasoning: Table and Tab are
    width-fitted, bare buys them nothing, so they keep two dots). */
+/* ══ THE CHORD BOXES USE THE WIDTH THEY HAVE ══════════════════════════════
+   David, 4 Sep: "when there is space, the chord boxes can be bigger… of
+   course, when the all-chords practice mode is selected, then the chord boxes
+   can be smaller, but as long as they have space, they can use that space."
+
+   `--cs` already balances the boxes against EACH OTHER — the fewest notes in
+   the row against this chord's. What was missing is the row against its
+   ROOM: four chords on a page to themselves were drawn at the same size as
+   eight squeezed under a notation. `--cfit` is that second factor, measured
+   rather than guessed: set it to 1, ask the row what it needs, and scale by
+   what it has. Two more passes settle it, because the padding and the gaps do
+   not scale with the type, so one division overshoots.
+
+   Both rooms, one function (David's rule of the same evening): practice's
+   chord card and chord practice's band draw the same `.chordrow`. The CSS
+   floor still outranks all of it — past `max(12px,…)` a long progression
+   stops shrinking and scrolls instead. */
+const CFIT_MIN=0.65, CFIT_MAX=1.45;
+function fitChordRow(row){
+  if(!row||!row.children.length) return;
+  /* MEASURED AGAINST THE CONTAINER, NOT ITSELF. The row shrink-wraps its
+     chips, so its own clientWidth IS its content width — comparing the two
+     said "you fit exactly" every time and the boxes never grew. The room to
+     spend is the card's content box. */
+  const host=row.closest("#cpband,#chordwrap")||row.parentElement||row, hcs=getComputedStyle(host);
+  const avail=host.clientWidth-(parseFloat(hcs.paddingLeft)||0)-(parseFloat(hcs.paddingRight)||0);
+  /* AND THE NEED IS THE BOXES, NOT THE ROW. In practice the row shrink-wraps,
+     in chord practice it stretches to the card — so `scrollWidth` answers a
+     different question in each room, and in the stretched one it always said
+     "exactly full". Adding the boxes and the gaps between them is the same
+     measurement in both. */
+  const gapPx=parseFloat(getComputedStyle(row).columnGap||getComputedStyle(row).gap)||0;
+  const kids=[...row.children];
+  const measure=()=>kids.reduce((a,k)=>a+k.getBoundingClientRect().width,0)+gapPx*Math.max(0,kids.length-1);
+  row.style.setProperty("--cfit","1");
+  for(let i=0;i<3;i++){
+    const need=measure();
+    if(!avail||!need) return;
+    const cur=parseFloat(row.style.getPropertyValue("--cfit"))||1;
+    const want=Math.max(CFIT_MIN,Math.min(CFIT_MAX,cur*(avail*0.98)/need));
+    if(Math.abs(want-cur)<0.01) break;
+    row.style.setProperty("--cfit",want.toFixed(3));
+  }
+}
+function fitChordRows(){
+  if(!PHONE) return;                       // the desktop's card has room to spare
+  document.querySelectorAll("#chordbox .chordrow, #cpband .chordrow").forEach(fitChordRow);
+}
 function paintSideDots(){
   const d=$("sideDots"); if(!d) return;
   const idx=chordRowOn?0:(panOn?1:2);
