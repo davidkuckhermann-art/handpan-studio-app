@@ -6733,11 +6733,10 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
      or keep it and edit that instead. The wording is filled in per case, so
      one dialog serves the arrangement and the groove. -->
 <dialog id="edSwapDlg">
-  <h3 id="edSwapTitle">Should the current arrangement be overwritten?</h3>
+  <h3 id="edSwapTitle"></h3>
   <p class="hint" style="margin:8px 0 0; max-width:46ch" id="edSwapWhat"></p>
   <div class="row" style="margin:14px 0 0; flex-wrap:wrap">
-    <button class="ctl on" id="edSwapSave">Save current arrangement</button>
-    <button class="ctl" id="edSwapNew">Open new arrangement</button>
+    <button class="ctl on" id="edSwapNew"></button>
     <span class="spacer"></span>
     <button class="ctl" id="edSwapCancel">Cancel</button>
   </div>
@@ -16602,13 +16601,19 @@ function edImportNow(kind){    // "jam" | "practice"
   setTimeout(()=>toast(kind==="jam"?"Arrangement imported from jam mode"
                                    :"Arrangement imported from practice mode"),60);
 }
+/* the name of the thing being imported, before it is imported: a jam has not
+   become a piece yet, so it is asked for its own name */
+function edSrcName(kind){
+  if(kind==="jam") return (typeof jamDefaultName==="function"&&jamDefaultName())||"the jam";
+  return (piece&&piece.title)||"the current arrangement";
+}
 function openEdSwapDlg(kind){
   const held=edWouldReplace();
-  $("edSwapTitle").textContent="Should the current arrangement be overwritten?";
-  $("edSwapSave").textContent="Save current arrangement";
-  $("edSwapNew").textContent="Open new arrangement";
-  $("edSwapWhat").textContent="The editor is holding "+(held&&held.title?"\u201c"+held.title+"\u201d":"an arrangement")
-    +". Opening the "+(kind==="jam"?"jam\u2019s tables":"arrangement you are practising")+" replaces it.";
+  const a=held&&held.title?"\u201c"+held.title+"\u201d":"an arrangement";
+  const b="\u201c"+edSrcName(kind)+"\u201d";
+  $("edSwapTitle").textContent="Arrangement "+a+" is currently present in the editor.";
+  $("edSwapWhat").textContent="";
+  $("edSwapNew").textContent="Override "+a+" and import "+b;
   edSwapKind=kind; edSwapIsGroove=false;
   openDlg($("edSwapDlg"));
 }
@@ -16644,11 +16649,16 @@ function grvImportNow(kind){    // "jam" | "new"
 }
 function openGrvSwapDlg(kind){
   const held=grvWouldReplace();
-  $("edSwapTitle").textContent="Should the current groove be overwritten?";
-  $("edSwapSave").textContent="Save current groove";
-  $("edSwapNew").textContent=kind==="jam"?"Open new groove":"Start a new groove";
-  $("edSwapWhat").textContent="The bench is holding "+(held&&held.name?"\u201c"+held.name+"\u201d":"a groove")
-    +". "+(kind==="jam"?"Opening the jam\u2019s groove replaces it.":"Starting a new groove replaces it.");
+  const a=held&&held.name?"\u201c"+held.name+"\u201d":"a groove";
+  const src=kind==="jam"?(jamGrooveOpts()||{}).name:null;
+  $("edSwapTitle").textContent="Groove "+a+" is currently present in the editor.";
+  $("edSwapWhat").textContent="";
+  /* a bench holding an edited copy of the very groove being imported would
+     otherwise read "Override X and import X" — same name, two different bars */
+  const same=src&&held&&src===held.name;
+  $("edSwapNew").textContent=kind==="jam"
+    ?("Override "+a+" and import "+(src&&!same?"\u201c"+src+"\u201d":"the jam\u2019s groove"))
+    :("Override "+a+" and start a new groove");
   edSwapKind=kind; edSwapIsGroove=true;
   openDlg($("edSwapDlg"));
 }
@@ -16692,8 +16702,21 @@ function edOpen(kind){          // "arr" | "grv"
     if(!editing) $("editBtn").click();
     return;
   }
-  if(edHasWork()){ if(!editing) $("editBtn").click(); return; }
-  edNewArrangement();
+  /* EVERY ARRANGEMENT DOOR EXCEPT THE PENCIL IS NAVIGATION: the top nav, the
+     Arrangement half of the in-editor switch, the phone's menu row. Each
+     brings back what the editor was holding and imports nothing, so `edNavOnly`
+     stands the pencil's import guard down for the one click that follows. */
+  const held=edDocWork();
+  if(held&&(jamOn||!piece||edSig(held)!==edSig(piece))){
+    if(jamOn) leaveJam();
+    loadPiece(JSON.parse(JSON.stringify(held)));
+  }
+  edNavOnly=true;
+  try{
+    if(edHasWork()){ if(!editing) $("editBtn").click(); }
+    else edNewArrangement();
+  } finally { setTimeout(()=>{ edNavOnly=false; },300); }
+  return;
 }
 let edPending=null;
 function grooveRefOpts(sel){
@@ -25852,6 +25875,7 @@ function grooveExit(save){
    the exit is asked first, then the door opens on the answer. */
 let afterEdit=null;
 let edSwapGo=false;            // the swap dialog's own answers pass the guard
+let edNavOnly=false;           // …and so does a door that is navigating, not importing
 function runAfterEdit(){ const f=afterEdit; afterEdit=null; if(f) setTimeout(f,0); }
 /* SAVE THE PIECE AS IT STANDS, to the library. Lifted out of #exSave's own
    listener on 30 Aug so the new-editor path can offer the same thing — one
@@ -27090,9 +27114,14 @@ function boot(){
      jam it carries the jam along silently — jamToPiece copies into a new
      piece, so nothing is overwritten. The which-editor question lives inside
      the mode now, as the Arrangement | Groove switch in the view row. */
+  /* NAVIGATION DOES NOT IMPORT (David, 4 Sep: "navigating to the editor
+     through the top nav menu should not replace the arrangement that it
+     holds … navigation should then simply go to the editor, which contains
+     the piece that it held before"). The jam line that used to sit here
+     carried the jam in — that is the pencil's job now, and only the
+     pencil's. */
   $("navEdit").addEventListener("click",()=>{
     if(editing){ $("editBtn").click(); return; }
-    if(jamOn){ edFromJam(); return; }   // the groove rides along, as from the pencil
     if(learnOn) leaveLearn();
     if(cpOn) leaveCp();
     edOpen(localStorage.getItem("hps.edLast")==="grv"?"grv":"arr");
@@ -27128,50 +27157,11 @@ function boot(){
      held last") — so it is not a way out of the door, it is the answer "no,
      do not overwrite": the held arrangement is loaded and the editor opens on
      it. A jam is left first, or its own piece would come back underneath. */
-  $("edSwapCancel").addEventListener("click",()=>edSwapThen(()=>{
-    if(edSwapIsGroove){
-      const g=grvDocWork(); if(!g) return;
-      startGrooveEdit(Object.assign({},g,{origin:"menu"}));
-      setTimeout(()=>toast("Kept the groove the bench was holding"),80);
-      return;
-    }
-    const held=edDocWork(); if(!held) return;
-    if(jamOn) leaveJam();
-    loadPiece(JSON.parse(JSON.stringify(held)));
-    if(!editing) $("editBtn").click();
-    setTimeout(()=>toast("Kept the arrangement the editor was holding"),60);
-  }));
-  /* SAVE FIRST: the held arrangement is loaded so the save sheet has
-     something to name, and the import waits behind the sheet — savePieceToLibrary
-     runs it once the student has actually saved. Closing the sheet without
-     saving drops the pending import rather than performing it silently. */
-  $("edSwapSave").addEventListener("click",()=>edSwapThen(()=>{
-    /* A GROOVE IS SAVED WHERE GROOVES LIVE — the bench has to be standing for
-       the saver to read it, so the held groove is re-opened, saved to My
-       grooves under the name in the title, and the import follows. */
-    if(edSwapIsGroove){
-      const g=grvDocWork(); if(!g) return;
-      const kind=edSwapKind;
-      startGrooveEdit(Object.assign({},g,{origin:"menu"}));
-      setTimeout(()=>{
-        grooveSaveNow(true);
-        edSwapGo=true;
-        try{ grvImportNow(kind); } finally { setTimeout(()=>{ edSwapGo=false; },300); }
-      },260);
-      return;
-    }
-    const held=edDocWork(); if(!held) return;
-    /* THE SOURCE IS TAKEN FIRST. Saving means loading the held arrangement so
-       the sheet has something to name — which REPLACES the very arrangement
-       we were about to import. Measured before this line: the editor opened
-       on the piece that had just been saved, not on the one asked for. A jam
-       is not serialised, it is simply re-entered. */
-    const src=edSwapKind==="jam"?{kind:"jam"}:{kind:"practice",piece:JSON.stringify(piece)};
-    if(jamOn) leaveJam();
-    loadPiece(JSON.parse(JSON.stringify(held)));
-    edAfterSave=()=>edImportSource(src);
-    openShareForContext();
-  }));
+  /* CANCEL STANDS DOWN, and that is new (David, 4 Sep). It used to open the
+     editor on the held arrangement, because there was no other way to reach
+     it; the top navigation is that way now — it never imports — so Cancel can
+     mean what it says and leave you where you were. */
+  $("edSwapCancel").addEventListener("click",()=>{ $("edSwapDlg").close(); });
   /* A SHEET CLOSED WITHOUT SAVING DROPS THE PENDING IMPORT rather than
      performing it silently — but the savers close the sheet themselves, so
      the drop waits a tick and edRunAfterSave has already taken the job. */
@@ -27403,7 +27393,7 @@ function boot(){
        with work in it, and only for the arrangement editor — the bench has
        its own door. `edSwapGo` lets the dialog's own three answers back
        through this same path, so the editor is opened in one place. */
-    if(!editing&&!grooveEdit&&!edSwapGo){
+    if(!editing&&!grooveEdit&&!edSwapGo&&!edNavOnly){
       if(edWouldReplace()){ openEdSwapDlg(jamOn?"jam":"practice"); return; }
       /* nothing to displace: the import is silent except for saying where it
          came from (David: "a pop-up stating Arrangement imported from
