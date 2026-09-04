@@ -16437,6 +16437,30 @@ function viewLoc(){
   return {sec:viewSec,bar,t:cursor%m.bp,pulses:bars.length*m.bp};
 }
 function place(ev){
+  /* ═══ ONE HYPOTHESIS, TWO HALVES — both are needed (David, 4 Sep) ═══
+     His sequence is what settled it: started the app IN edit mode and every
+     stroke sounded; went to practice and touched the pan, whose FIRST touch
+     clipped; came back to edit and the sound was gone for good, while practice
+     kept working.
+     That is this file's own trap, already written down a few lines above
+     `ensureSink` for the pan tap and the chord overview — "EVERY ONE-SHOT
+     SOUND HAS TO WAKE THE PATH FIRST" — and the editor was the door it was
+     never applied to. `ensureCtx` connects master straight to
+     `ctx.destination`; the FIRST successful `ensureSink` does
+     `master.disconnect(); master.connect(dest)` and from then on the hidden
+     <audio> element is the only way out. So before anything wakes the path the
+     editor sounds perfectly, the rewiring cuts the note ringing at that moment
+     (his clipped first touch), and afterwards `sinkSync` pauses that element
+     whenever the transport is not sounding — which, in the editor, is always.
+     HALF ONE is here: reopen and hold the element, before `snapshot()` and
+     `refresh()`, where practice's `panSoundField` has always had it.
+     HALF TWO is in `paintEditDeck`: the tap must fire on RELEASE, because iOS
+     grants no permission on a press, and both `el.play()` and `ctx.resume()`
+     need that permission. Each half alone was tried and each alone failed —
+     the wake with no gesture could not reopen the element, and the gesture
+     with no wake resumed the engine into an element still closed, which is
+     why that round was silent rather than merely unreliable. */
+  if(IOS||FRAMED_SAFARI){ wakeAudio(); preloadBank(); }
   const loc=viewLoc(); if(!loc){toast("No slot here");return;}
   /* TWO FIELDS AT MOST PER HAND IN THE TAB (David, 3 Sep: "two tone fields
      should be the maximum that one note plays simultaneously" — and then:
@@ -16462,6 +16486,33 @@ function place(ev){
      — a tap, an arrow key — and the next symbol stacks where the last went. */
   refresh();
   if(ctx) fireEvent(Object.assign({},ev),ctx.currentTime+0.01);
+  if(IOS||FRAMED_SAFARI) edSoundWatch();
+}
+/* THE WITNESS, AND IT SPEAKS FOR THE GOOD TAPS TOO. The first version of this
+   only spoke on failure, so there was nothing to compare a failure against.
+   It now writes the first three healthy taps of a session as a baseline and
+   then falls quiet, and names BOTH states on every line — the engine and the
+   element — because the whole fault lives in the gap between them. It waits
+   260ms because `resume()` and `play()` are promises and reading them at once
+   would libel a path that is on its way back. Diagnostic only: it changes
+   nothing, and it is not the fix. */
+let edTapOk=0, edSilentLast=0;
+function edSoundWatch(){
+  setTimeout(()=>{
+    try{
+      const eng=ctx?ctx.state:"none";
+      const snk=(iosSink==="failed")?"failed":(!iosSink?"none":(iosSink.paused?"paused":"playing"));
+      const bad=(eng!=="running")||snk==="paused"||snk==="failed";
+      if(!bad){
+        if(edTapOk>=3) return;              // a baseline, not a diary
+        edTapOk++; audioNote("editor tap ok — engine "+eng+", sink "+snk); return;
+      }
+      const now=Date.now();
+      if(now-edSilentLast<4000) return;     // one line per episode, not per tap
+      edSilentLast=now;
+      audioNote("editor tap silent — engine "+eng+", sink "+snk);
+    }catch(e){}
+  },260);
 }
 /* which fields of a drawn pan carry the reference chord — the same test
    placeField makes when a field is tapped, made once for the whole drawing */
@@ -17086,9 +17137,15 @@ function paintEditDeck(){
     host.innerHTML=panViewSVG(srcPan,"Tap a field to place it",{under:true});
     markChordTones(host);
     host.querySelectorAll("[id]").forEach(el=>el.removeAttribute("id"));
+    /* HALF TWO of the hypothesis above. `paintEditDeck` is phone-only
+       (`if(!PHONE||!editing) return`), so the desktop cannot be touched from
+       here. panTapWire is the wiring every other pan in the app already uses:
+       on the phone it fires on pointerUP, which is the event iOS accepts as
+       permission to start or resume sound, and it brings a 10px move-cancel
+       so dragging across the pan no longer writes the fields it passes. */
     host.querySelectorAll(".pvf").forEach(g=>{
       const pos=g.dataset.b!==undefined?botPos(+g.dataset.b+1):+g.dataset.f;
-      g.addEventListener("pointerdown",()=>{ placeField(pos); pvFlash(g,["hT"]); });
+      panTapWire(g,()=>{ placeField(pos); pvFlash(g,["hT"]); });
     });
   }
   fitEdPan();
