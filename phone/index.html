@@ -7470,10 +7470,22 @@ function ensureSink(){
    all. `panSoundField` and its neighbours have always done these three lines
    inline; the chord overview did `ensureCtx()` and nothing else, which is
    exactly the silence he reported. New sound entry points call this. */
+/* IT ALSO SAYS HOW LONG THE FIRST NOTE MUST WAIT (David, 4 Sep: "the very
+   first chord I play starts with a weird kind of distortion… it sounds like
+   the sample is cut in the middle of the waveform"). Whenever the transport
+   is idle the sink element is PAUSED, and `play()` only gets it running a
+   moment later — a note scheduled before then is delivered into a stream
+   that is still starting, which is precisely a sound cut off mid-waveform,
+   and precisely why only the FIRST one is wrong. So the wake reports a lead,
+   spent once by the note that woke it and zero for every note after. */
+const SINK_LEAD=0.12;
 function wakeAudio(){
   ensureCtx();
+  let lead=0;
+  try{ if(iosSink&&iosSink!=="failed"&&iosSink.paused) lead=SINK_LEAD; }catch(e){}
   try{ ensureSink(); }catch(e){}
   try{ ctx.resume().catch(()=>{}); }catch(e){}
+  return lead;
 }
 let ctxMade=0;               // how many contexts this page has built — see audioNote
 function ensureCtx(){
@@ -14065,20 +14077,20 @@ function pvRightHTML(){
 /* a tapped field, underside field or badge sounds — from the card or the ring.
    The flash goes by id so the twin lights too. */
 function panSoundField(f){
-  ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
+  const lead=wakeAudio(); preloadBank();
   const midi=myPan.midiFor(f); if(midi==null) return;
-  fire(bankBuf("o"+midi)||synthBuf(midi,"open"),ctx.currentTime+0.01,1);
+  fire(bankBuf("o"+midi)||synthBuf(midi,"open"),ctx.currentTime+0.01+lead,1);
   pvFlashId("pvf"+f,["hT"]);
 }
 function panSoundBottom(i){
-  ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
+  const lead=wakeAudio(); preloadBank();
   const midi=myPan.botMidiFor(i); if(midi==null) return;
-  fire(bankBuf("o"+midi)||synthBuf(midi,"open"),ctx.currentTime+0.01,1);
+  fire(bankBuf("o"+midi)||synthBuf(midi,"open"),ctx.currentTime+0.01+lead,1);
   pvFlashId("pvb"+i,["hT"]);
 }
 function panSoundPerc(s,id){
-  ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
-  fire(bankBuf("p_"+s+"R")||percBuf(s),ctx.currentTime+0.01,0.9);
+  const lead=wakeAudio(); preloadBank();
+  fire(bankBuf("p_"+s+"R")||percBuf(s),ctx.currentTime+0.01+lead,0.9);
   pvFlashId(id||("pvp-"+s),["hT"]);
 }
 /* POCKET ZONES fix (David, 31 Aug: "the pan tab triggers tone fields when I
@@ -22854,7 +22866,26 @@ function coHush(){
   for(const v of coLive){ try{ v.g.gain.cancelScheduledValues(now); v.g.gain.setValueAtTime(v.g.gain.value,now);
     v.g.gain.linearRampToValueAtTime(0,now+0.05); v.src.stop(now+0.06); }catch(e){} }
   coLive=[];
+  coHearSync();
 }
+/* THE BUTTON SAYS WHAT IT WILL DO (David, 4 Sep: "have the play button change
+   to stop when a sound is playing and allow me to interrupt the existing
+   arpeggio"). It follows `coLive`, which holds every voice still ringing —
+   the arpeggio's notes and a single field tapped on the overview's pan alike
+   — so it shows Stop for exactly as long as something is sounding, and
+   pressing it then cuts the sound instead of stacking another chord on top. */
+const CO_PLAY_ICON='<svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.6l13 7.4-13 7.4z"/></svg>';
+const CO_STOP_ICON='<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
+function coSounding(){ return coLive.length>0; }
+function coHearSync(){
+  const b=$("coHear"); if(!b) return;
+  const on=coSounding();
+  const want=on?CO_STOP_ICON:CO_PLAY_ICON;
+  if(b.dataset.face!==(on?"stop":"play")){ b.dataset.face=on?"stop":"play"; b.innerHTML=want; }
+  b.title=on?"Stop":"Hear it again — the arpeggio";
+  b.setAttribute("aria-label",on?"Stop":"Hear again");
+}
+function coHearToggle(){ if(coSounding()) coHush(); else coPlay(); }
 /* THE RECORDED PAN, NOT THE SYNTH (David, 3 Sep: "please don't use a digital
    sample, but use my recorded handpan samples here"). bankBuf answers null
    until a note is decoded and the bank only warms the pan you hold, so a
@@ -22863,12 +22894,18 @@ function coHush(){
    schedules; the synth remains only for a pitch the bank does not have. */
 function coStrike(pos,at,buf){    // one field: the sound at `at`, the flash when it sounds
   const midi=coPanObj?coPanObj.posMidi(pos):myPan.posMidi(pos); if(midi==null) return;
-  wakeAudio(); const now=ctx.currentTime, when=at==null?now+0.02:at;
+  /* only a note that schedules ITSELF wakes the path and pays the lead; the
+     arpeggio's notes arrive with a time already computed from coPlay's own
+     wake, so they neither wake it again nor wait twice */
+  const lead=at==null?wakeAudio():0;
+  const now=ctx.currentTime, when=at==null?now+0.02+lead:at;
   buf=buf||bankBuf("o"+midi)||synthBuf(midi,"open"); if(!buf) return;
   const src=ctx.createBufferSource(); src.buffer=buf;
   const g=ctx.createGain(); g.gain.value=evGain({v:"field",f:pos,hand:"L"});
   src.connect(g); g.connect(dry); g.connect(send); src.start(when);
-  const v={g,src}; coLive.push(v); src.onended=()=>{ const i=coLive.indexOf(v); if(i>=0) coLive.splice(i,1); };
+  const v={g,src}; coLive.push(v);
+  src.onended=()=>{ const i=coLive.indexOf(v); if(i>=0) coLive.splice(i,1); coHearSync(); };
+  coHearSync();
   const el=coGroupEl(pos), ms=Math.max(0,(when-now)*1000);
   coTimers.push(setTimeout(()=>pvFlash(el,["hT"]),ms));
 }
@@ -22880,12 +22917,13 @@ async function coPlay(){
   if(!coCur) return;
   coHush(); const gen=coGen;
   const notes=coVoicing(coCur), pan=coPanObj||myPan;
-  wakeAudio();
+  const lead=wakeAudio();
   const ms=notes.map(f=>pan.posMidi(f));
   try{ await Promise.all(ms.filter(m=>m!=null).map(m=>bankDecode("o"+m))); }catch(e){}
   if(gen!==coGen) return;                       // a newer chord was asked for meanwhile
-  const t0=ctx.currentTime+0.05;
+  const t0=ctx.currentTime+0.05+lead;
   notes.forEach((f,i)=>coStrike(f,t0+i*0.2,ms[i]!=null?bankBuf("o"+ms[i]):null));
+  coHearSync();
 }
 function coShow(c,hear){
   coCur=c;
@@ -22964,6 +23002,7 @@ function coOpen(id,fromPicker){
      chord overview in the scales selector is opened"). The chord is still
      selected and drawn on the pan — only the sound waits to be asked for. */
   if(coCur) coShow(coCur,false);
+  coHearSync();
   openDlg(d);
   try{ d.focus(); }catch(e){}
 }
@@ -23000,7 +23039,7 @@ function coWire(){
          throttled document (a locked phone, the test pane) can hold it for a
          second — coClosed is idempotent, so the event's own call is harmless */
       case "coClose": coClearTimers(); $("chordOvDlg").close(); coClosed(); break;
-      case "coHear": coPlay(); break;
+      case "coHear": coHearToggle(); break;
       case "coComplete": coAlmost=false; pill("coComplete","coAlmost"); $("chordOvDlg").classList.add("hidealmost");
         if(coCur&&coCur.miss){ const v=coVisible(); if(v[0]) coShow(v[0],false); } break;
       case "coAlmost": coAlmost=true; pill("coAlmost","coComplete"); $("chordOvDlg").classList.remove("hidealmost"); break;
@@ -23014,7 +23053,7 @@ function coWire(){
     const d=$("chordOvDlg"); if(!d||!d.open) return;
     if(e.key==="ArrowRight"){ coStep(1); e.preventDefault(); e.stopPropagation(); }
     else if(e.key==="ArrowLeft"){ coStep(-1); e.preventDefault(); e.stopPropagation(); }
-    else if(e.key===" "){ coPlay(); e.preventDefault(); e.stopPropagation(); }
+    else if(e.key===" "){ coHearToggle(); e.preventDefault(); e.stopPropagation(); }
   },true);
 }
 /* ---- the setup card: your chords, "The chords", "The round", Start ---- */
