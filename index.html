@@ -15474,12 +15474,24 @@ function fitChordRow(row){
   const gapPx=parseFloat(getComputedStyle(row).columnGap||getComputedStyle(row).gap)||0;
   const kids=[...row.children];
   const measure=()=>kids.reduce((a,k)=>a+k.getBoundingClientRect().width,0)+gapPx*Math.max(0,kids.length-1);
+  /* AND THE HEIGHT IS A LIMIT TOO (David, 4 Sep, All chords with eight notes
+     a chord: the boxes "extend downwards too far, so they get cut off"). The
+     first version measured width alone, which is only half the room — a box
+     grows downward with every note in it, and eight notes at the width fit's
+     ceiling ran clean past the bottom of the page. The budget is from the
+     row's top to the bottom of the area it lives in; whichever of the two
+     limits is tighter decides. */
+  const area=row.closest("#belowrow")||host;
   row.style.setProperty("--cfit","1");
   for(let i=0;i<3;i++){
     const need=measure();
     if(!avail||!need) return;
     const cur=parseFloat(row.style.getPropertyValue("--cfit"))||1;
-    const want=Math.max(CFIT_MIN,Math.min(CFIT_MAX,cur*(avail*0.98)/need));
+    const byW=(avail*0.98)/need;
+    const tall=Math.max(0,...[...kids].map(k=>k.getBoundingClientRect().height));
+    const budget=area.getBoundingClientRect().bottom-row.getBoundingClientRect().top-4;
+    const byH=tall>0&&budget>0?budget/tall:Infinity;
+    const want=Math.max(CFIT_MIN,Math.min(CFIT_MAX,cur*Math.min(byW,byH)));
     if(Math.abs(want-cur)<0.01) break;
     row.style.setProperty("--cfit",want.toFixed(3));
   }
