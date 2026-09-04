@@ -7481,6 +7481,7 @@ function ensureSink(){
    evidence from the device, not another guess at the number. */
 function wakeAudio(){
   ensureCtx();
+  try{ sinkHold(); }catch(e){}     // …and hold it open until the note has rung
   try{ ensureSink(); }catch(e){}
   try{ ctx.resume().catch(()=>{}); }catch(e){}
 }
@@ -10449,12 +10450,43 @@ function parkHere(){
    `playing`. Mute and unmute never touched it. Same expression updatePlayBtn
    had used for its icon since August; now it is the one truth. */
 function soundActive(){ return playing||(typeof follow!=="undefined"&&follow&&vidPlaying); }
+/* ══ THE ROUTE STAYS OPEN WHILE ANYTHING IS SOUNDING, NOT ONLY THE TRANSPORT ══
+   David, 4 Sep, the observation that solved it: "while a playback is running,
+   I can also play on the pan, and it will sound. As soon as the playback
+   stops, the pan stops sounding. Every time I press a tone field on the pan,
+   in the Dynamic Island the icon of the app briefly becomes visible and then
+   directly fades out again."
+
+   That is this function, caught in the act. On the phone the master gain
+   reaches the speaker ONLY through the sink element. A tap wakes it —
+   `wakeAudio` → `ensureSink` → `play()`, which is the icon appearing — and
+   then the next `updatePlayBtn` runs `sinkSync`, which asks `soundActive()`,
+   hears "the transport is not playing", and PAUSES the element again. The
+   icon fades, and the tap is cut off or never heard at all. It also explains
+   the first sound being "cut in the middle of the waveform": it was, by this.
+   And it is why the pan sounds perfectly while a piece plays.
+
+   `soundActive()` answers whether the TRANSPORT is sounding, which is the
+   right question for the lock screen's glyph and the wrong one for the route.
+   So a one-shot voice holds the route open for as long as it can ring, and
+   the hold expiring re-asks the question. No second regulator: this is the
+   same one, told what "sounding" actually means. */
+let sinkHoldUntil=0, sinkHoldT=null;
+const SINK_HOLD=5;                 // seconds; a pan sample rings about 4.5
+function sinkHold(){
+  sinkHoldUntil=Date.now()+SINK_HOLD*1000;
+  clearTimeout(sinkHoldT);
+  sinkHoldT=setTimeout(()=>{ sinkHoldT=null; sinkSync(); },SINK_HOLD*1000+80);
+}
 function sinkSync(){
   if(!iosSink||iosSink==="failed") return;
   const active=soundActive();
   try{
     if(active&&iosSink.paused){ sinkArm("play"); iosSink.play().catch(()=>{}); }
-    else if(!active&&!iosSink.paused){ sinkArm("pause"); iosSink.pause(); }
+    else if(!active&&!iosSink.paused){
+      if(Date.now()<sinkHoldUntil) return;      // a tapped note is still ringing
+      sinkArm("pause"); iosSink.pause();
+    }
   }catch(e){}
 }
 function mediaSessionState(){
