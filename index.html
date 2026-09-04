@@ -7454,6 +7454,21 @@ function ensureSink(){
       .catch(()=>{ iosSink="failed"; });
   }catch(e){ iosSink="failed"; }
 }
+/* EVERY ONE-SHOT SOUND HAS TO WAKE THE PATH FIRST (David, 4 Sep: "the pan
+   doesn't create any sounds when I touch it, and also in the chord overview
+   in the scales menu, there is no sound when the different chords are
+   played"). On the phone the master gain reaches the speaker ONLY through the
+   <audio> sink, and `sinkSync` PAUSES that element whenever the transport is
+   not sounding — so a tap or a preview made without waking it goes into a
+   stream nobody is listening to, and a suspended context does not sound at
+   all. `panSoundField` and its neighbours have always done these three lines
+   inline; the chord overview did `ensureCtx()` and nothing else, which is
+   exactly the silence he reported. New sound entry points call this. */
+function wakeAudio(){
+  ensureCtx();
+  try{ ensureSink(); }catch(e){}
+  try{ ctx.resume().catch(()=>{}); }catch(e){}
+}
 let ctxMade=0;               // how many contexts this page has built — see audioNote
 function ensureCtx(){
   if(ctx) return;
@@ -22842,7 +22857,7 @@ function coHush(){
    schedules; the synth remains only for a pitch the bank does not have. */
 function coStrike(pos,at,buf){    // one field: the sound at `at`, the flash when it sounds
   const midi=coPanObj?coPanObj.posMidi(pos):myPan.posMidi(pos); if(midi==null) return;
-  ensureCtx(); const now=ctx.currentTime, when=at==null?now+0.02:at;
+  wakeAudio(); const now=ctx.currentTime, when=at==null?now+0.02:at;
   buf=buf||bankBuf("o"+midi)||synthBuf(midi,"open"); if(!buf) return;
   const src=ctx.createBufferSource(); src.buffer=buf;
   const g=ctx.createGain(); g.gain.value=evGain({v:"field",f:pos,hand:"L"});
@@ -22859,7 +22874,7 @@ async function coPlay(){
   if(!coCur) return;
   coHush(); const gen=coGen;
   const notes=coVoicing(coCur), pan=coPanObj||myPan;
-  ensureCtx();
+  wakeAudio();
   const ms=notes.map(f=>pan.posMidi(f));
   try{ await Promise.all(ms.filter(m=>m!=null).map(m=>bankDecode("o"+m))); }catch(e){}
   if(gen!==coGen) return;                       // a newer chord was asked for meanwhile
@@ -22939,7 +22954,10 @@ function coOpen(id,fromPicker){
   if(!coCur||!coItems.some(c=>c.name===coCur.name)) coCur=vis[0]||coItems[0]||null;
   else coCur=coItems.find(c=>c.name===coCur.name);
   coRenderList();
-  if(coCur) coShow(coCur,true);
+  /* IT OPENS SILENT (David, 4 Sep: "please don't autoplay a chord when the
+     chord overview in the scales selector is opened"). The chord is still
+     selected and drawn on the pan — only the sound waits to be asked for. */
+  if(coCur) coShow(coCur,false);
   openDlg(d);
   try{ d.focus(); }catch(e){}
 }
