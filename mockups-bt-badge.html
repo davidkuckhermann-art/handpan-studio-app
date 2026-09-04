@@ -72,6 +72,14 @@
     border-radius:.26em; background:var(--badge-fill);
     box-shadow:var(--badge-line,none)}
 
+  /* THE TIGHT ROW, at the size it really is: measured in the app at 393px,
+     16ths with one bar to a row — badges 17.2px wide with 2.8px between them.
+     Rendered at true scale, so the picket-fence question can be looked at
+     rather than argued about. */
+  .tight{display:flex; border-radius:6px; overflow:hidden;
+    border:1px solid var(--sheet-rule); width:max-content; max-width:100%}
+  .tight .slot{width:20px; height:34px; border-right:1px solid var(--sheet-rule)}
+  .tight .sym{font-size:13px; padding-inline:0; width:17.2px; text-align:center}
   .figs{margin:12px 0 0; border-top:1px solid var(--pg-rule); padding-top:9px}
   table{width:100%; border-collapse:collapse; font-size:11.5px}
   th{text-align:left; font-weight:700; color:var(--pg-ink3); padding:2px 0;
@@ -94,6 +102,9 @@ fill had. On a banded beat the badge measures <b>1.05</b> against its slot, wher
 means identical.</p>
 <p class="lede">An edge does not wash out. That is the difference between the options
 below, more than the hue is.</p>
+<p class="lede"><b>Every option also carries a tight row</b>, at true size: sixteenths with
+one bar to a row on this phone, which measures 17.2px badges with 2.8px between them. That
+is the crowding to judge, and it is where a full box turns into a fence.</p>
 <p class="note">Every colour is the app's own token. Every number is computed from the
 same values that paint the swatches. Scroll: each option is shown on all three score
 sheets, with a plain slot, a normal note, a slot under the marker, and a banded beat.</p>
@@ -121,10 +132,11 @@ const OPTIONS=[
  {k:"a", name:"A · Today",                    desc:"Fill only, no outline. The one you are looking at now.", fill:"under", line:null},
  {k:"b", name:"B · Outline, the score's grey", desc:"1px of the tone the score already uses for bar numbers. The conservative choice: no new hue enters the app.", fill:"under", line:"bn"},
  {k:"c", name:"C · Outline, firmer",           desc:"The same idea one step darker, if B still disappears.", fill:"under", line:"firm"},
- {k:"d", name:"D · Violet outline",            desc:"Violet edge, the beige ground kept. Best separation of the seven, on every sheet.", fill:"under", line:"violet", pick:true},
+ {k:"d", name:"D · Violet outline",            desc:"Violet edge, the beige ground kept. Best separation of the seven — but look at its tight row: twelve full boxes in a fence.", fill:"under", line:"violet"},
  {k:"e", name:"E · Violet fill",               desc:"A violet ground instead of the beige, no outline.", fill:"violetSoft", line:null},
  {k:"f", name:"F · Violet, both",              desc:"Violet ground and violet edge together.", fill:"violetSoft", line:"violet"},
- {k:"g", name:"G · Deeper fill, no colour",    desc:"A markedly darker neutral ground. Depth instead of hue.", fill:"deep", line:null}
+ {k:"g", name:"G · Deeper fill, no colour",    desc:"A markedly darker neutral ground. Depth instead of hue.", fill:"deep", line:null},
+ {k:"h", name:"H · Violet, long edges only",   desc:"Top and bottom violet, no sides. Identical numbers to D, because the colour and the grounds are the same — only the sides are gone, and the sides are the part that crowds a neighbour.", fill:"under", line:"violet", sides:false, pick:true}
 ];
 
 /* ── colour maths ─────────────────────────────────────────────────────── */
@@ -135,6 +147,15 @@ const lum=c=>{const a=c.map(v=>{v/=255; return v<=0.03928?v/12.92:Math.pow((v+0.
   return .2126*a[0]+.7152*a[1]+.0722*a[2];};
 const cr=(a,b)=>{const L1=lum(a),L2=lum(b); return (Math.max(L1,L2)+.05)/(Math.min(L1,L2)+.05);};
 const f2=n=>n.toFixed(2);
+
+/* the box-shadow for an option: a full ring, or only the long edges */
+function lineFor(opt,sh){
+  if(!opt.line) return "none";
+  const c=sh[opt.line];
+  return opt.sides===false
+    ? "inset 0 1px 0 0 "+c+", inset 0 -1px 0 0 "+c
+    : "inset 0 0 0 1px "+c;
+}
 
 /* the visible edge of the badge on one ground: the better of
    (outline against the slot) and (outline against the fill) — an outline is
@@ -173,7 +194,7 @@ for(const opt of OPTIONS){
     strip.style.setProperty("--sheet-dixie",sh.dixie);
     strip.style.setProperty("--sheet-wash","rgba("+sh.wash.join(",")+","+sh.washA+")");
     strip.style.setProperty("--badge-fill",sh[opt.fill]);
-    strip.style.setProperty("--badge-line",opt.line?("inset 0 0 0 1px "+sh[opt.line]):"none");
+    strip.style.setProperty("--badge-line", lineFor(opt,sh));
 
     const slots=[
       {cls:"",        html:'<span class="sym bt">1</span>'},
@@ -187,6 +208,27 @@ for(const opt of OPTIONS){
       strip.appendChild(d);
     }
     card.appendChild(strip);
+
+    /* the crowded case, on the paper sheet only — one row is enough to judge it */
+    if(sh.id==="paper"){
+      const tn=document.createElement("div");
+      tn.className="sheetname"; tn.textContent="Tight · 16ths, one bar to a row · true size";
+      card.appendChild(tn);
+      const tight=document.createElement("div");
+      tight.className="strip tight";
+      for(const n of ["--sheet-bg","--sheet-rule","--sheet-ink","--sheet-band","--sheet-dixie"])
+        tight.style.setProperty(n, strip.style.getPropertyValue(n));
+      tight.style.setProperty("--sheet-wash", strip.style.getPropertyValue("--sheet-wash"));
+      tight.style.setProperty("--badge-fill", sh[opt.fill]);
+      tight.style.setProperty("--badge-line", lineFor(opt,sh));
+      for(let i=0;i<12;i++){
+        const d=document.createElement("div");
+        d.className="slot"+(i>=6&&i<=8?" marked":"");
+        d.innerHTML='<span class="sym bt">'+((i%2)+1)+"</span>";
+        tight.appendChild(d);
+      }
+      card.appendChild(tight);
+    }
 
     rows.push({sheet:sh.name,
       plain:  edgeOn(sh,opt,sh.bg,false),
@@ -225,7 +267,17 @@ tail.innerHTML="<b>Read E before you decide about violet.</b> A violet GROUND is
   +"<br><br>The trade is that violet would be a new hue in an app where colour means "
   +"state — lit, focused, correct, wrong. As an outline it never has to compete with "
   +"those, because the marker washes over it rather than replacing it. But it is a "
-  +"door opened, and B is the same idea with no new door.";
+  +"door opened, and B is the same idea with no new door."
+  +"<br><br><b>On tight spaces.</b> The concern is real and the tight rows show it: a "
+  +"full box around every badge reads as a fence once neighbours are under 3px apart. "
+  +"H drops the two side edges and keeps the long ones, which costs nothing measurable "
+  +"— the numbers are identical to D, because the colour and the grounds have not "
+  +"changed — and the row goes quiet again. The badge is a wide, short shape; its long "
+  +"edges are what the eye reads, and its short ones are what collide. "
+  +"<br><br>One case is deliberately not shown, because no outline could save it: two "
+  +"bars to a row at eighths or finer squeezes the badge to 5.9px and the digits "
+  +"already overlap into a smear. That is a density problem the notation has today, "
+  +"with or without an edge.";
 out.appendChild(tail);
 </script>
 </body></html>
