@@ -3629,7 +3629,7 @@ html.player #mLib, html.player #mShare, html.player #mSet,
    a lesson plays on the teacher's feel, not on one a student has nudged */
 html.player #swingRow, html.player #feelRow,
 html.player #dsFeel, html.player #dwFeel,
-html.player #spGoWrap, html.player #csGoWrap,
+html.player #spGoWrap, html.player #csGoWrap, html.player #spEdWrap,
 /* THE AUTHORING BARS TOO (28 Aug). Player mode hid the Video sync BUTTON but
    not the bar it opens, and the bar shows itself the moment a timecode
    arrives — so every student in a lesson was given the tempo-map editor, and
@@ -5719,6 +5719,21 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
       <button class="ctl on" id="spSave" style="flex:1; justify-content:center; text-align:center">Save</button>
       <button class="ctl hidden" id="spEdit">Edit this piece</button>
       <button class="ctl" id="spNew" style="flex:1; justify-content:center; text-align:center">New piece…</button>
+    </div>
+  </div>
+  <!-- THE PIECE'S DOOR INTO THE EDITOR (David, 4 Sep), the twin of the jam
+       sheet's #csGoWrap: "when you're in practice mode, you're working on a
+       composition … at the very bottom it should also have the Edit option.
+       There should be basically one option: send current arrangement to the
+       arrangement editor." A jam has two doors because it carries two things,
+       chords and a groove; a piece carries one. This is an IMPORTER, so it
+       goes through the pencil's own guard and can raise the override dialog —
+       and it is the phone's way back in, the pencil being hidden there. -->
+  <div id="spEdWrap">
+    <div class="shsep"></div>
+    <h4 class="dsec">Edit</h4>
+    <div class="row" style="margin-top:0; gap:8px">
+      <button class="ctl" id="spToArr" style="flex:1; justify-content:center; text-align:center">Send current arrangement to the arrangement editor</button>
     </div>
   </div>
   <div class="row"><span class="spacer"></span><button class="ctl" id="shareClose">Close</button></div>
@@ -16569,6 +16584,17 @@ function edHasWork(){
    sitting. Persisting it would raise the question on a fresh launch about an
    arrangement nobody remembers leaving there. */
 let edDoc=null;               // the arrangement the editor holds, serialised
+/* THE ROOM THE EDITOR WAS OPENED OVER (David, 4 Sep). Once navigation stopped
+   handing practice's composition to the editor, the editor had to stop taking
+   practice's SEAT as well: there is one live `piece`, so opening a different
+   document in the editor overwrites what practice was reading, and the way
+   back showed an empty table where the composition had been (measured: "Let
+   It Be", 293 notes, came back as "Untitled", 0). The groove bench has always
+   solved this by carrying `prevPiece` and putting it back on the way out;
+   this is that same carrier for the arrangement editor, set ONLY where the
+   door actually displaces something. An import clears it on purpose — the
+   imported arrangement IS the room's own, so there is nothing to give back. */
+let edPrev=null;
 let edAfterSave=null;         // what to do once the save sheet has been used
 function edStash(){
   if(grooveEdit||!piece||piece.id==="jam"||piece.id==="groove-edit") return;
@@ -16604,6 +16630,7 @@ function edImportSource(src){
   edImportNow("practice"); release();
 }
 function edImportNow(kind){    // "jam" | "practice"
+  edPrev=null;                 // the imported arrangement IS the room's own
   if(kind==="jam"){ edFromJam(); }
   else if(!editing){ $("editBtn").click(); }
   setTimeout(()=>toast(kind==="jam"?"Arrangement imported from jam mode"
@@ -16714,15 +16741,36 @@ function edOpen(kind){          // "arr" | "grv"
      Arrangement half of the in-editor switch, the phone's menu row. Each
      brings back what the editor was holding and imports nothing, so `edNavOnly`
      stands the pencil's import guard down for the one click that follows. */
+  /* …AND NAVIGATION BRINGS NOTHING WITH IT (David, 4 Sep, second pass:
+     "whenever I navigate from practice to edit or from jam mode to edit,
+     there is still stuff being imported into the editors automatically —
+     this should not happen"). The first pass stopped the door RESTORING the
+     wrong thing but left it ADOPTING the room it came from, by two separate
+     routes, both of which read the live `piece` instead of the editor's own
+     document:
+       · `edHasWork()` asks whether THE CURRENT PIECE has notes in it, so
+         from practice it said yes about the composition on screen and the
+         editor opened on that;
+       · from a jam, jam was left only when there was something to restore,
+         so with an empty editor the click fell through to editBtn's own
+         `if(jamOn) edFromJam()` and converted the jam.
+     The editor's document is now the only thing consulted: it comes back if
+     there is one, and if there is not, the editor opens EMPTY. Practice is
+     left the same way in both branches — leaveJam first, always — because
+     "what the editor held" can never be "whatever room you were standing
+     in". The pencil and the two library doors are how a room gets in. */
   const held=edDocWork();
-  if(held&&(jamOn||!piece||edSig(held)!==edSig(piece))){
-    if(jamOn) leaveJam();
-    loadPiece(JSON.parse(JSON.stringify(held)));
-  }
   edNavOnly=true;
+  /* captured only where the seat is actually taken: when the editor already
+     holds what practice is reading, nothing is displaced and giving the piece
+     back on the way out would undo the very edits just made */
+  const keepRoom=()=>{ if(!editing) edPrev={piece:JSON.parse(JSON.stringify(piece)), bpm}; };
   try{
-    if(edHasWork()){ if(!editing) $("editBtn").click(); }
-    else edNewArrangement();
+    if(jamOn) leaveJam();
+    if(held){
+      if(!piece||edSig(held)!==edSig(piece)){ keepRoom(); loadPiece(JSON.parse(JSON.stringify(held))); }
+      if(!editing) $("editBtn").click();
+    }else{ keepRoom(); edNewArrangement(); }
   } finally { setTimeout(()=>{ edNavOnly=false; },300); }
   return;
 }
@@ -26157,6 +26205,10 @@ function openShareForContext(){
        embed there is no author, so the block stays away */
     $("spGoWrap").style.display=document.documentElement.classList.contains("player")?"none":"";
     $("spEdit").textContent=editing?"Keep writing":"Edit this piece";
+    /* the door is a way IN, so it stands down once you are through it — from
+       inside the editor there is nothing to send anywhere */
+    $("spEdWrap").style.display=
+      (editing||document.documentElement.classList.contains("player"))?"none":"";
     openDlg($("shareDlg")); return;
   }
   const groove=c==="groove";
@@ -27469,6 +27521,15 @@ function boot(){
     // student's answer when the dialog drove the exit, and an untouched
     // groove needs no asking, so it simply leaves without saving
     if(!editing&&grooveEdit) grooveEditFinish(grooveExitGo==="save");
+    /* …and the arrangement editor gives back the room it was opened over, at
+       the same point in the exit the bench does — after `editing` has flipped
+       and the body class is off, so the piece paints into practice and not
+       into the editor being taken down. */
+    if(!editing&&!grooveEdit&&edPrev){
+      const pv=edPrev; edPrev=null;
+      loadPiece(pv.piece);
+      if(pv.bpm){ bpm=pv.bpm; const bi=$("bpm"); if(bi) bi.value=bpm; }
+    }
     saveRoom();        // updatePracticeBtn never hears about the editor
   });
   document.addEventListener("keydown",e=>{
@@ -28057,8 +28118,21 @@ function boot(){
   { const lg=$("landGenBtn"); if(lg) lg.addEventListener("click",()=>jamGenerate()); }
   /* the same two actions the share sheet's top row offers — one pair of
      functions, called from both places (28 Aug) */
-  $("csToArr").addEventListener("click",()=>{ $("ctxShareDlg").close(); jamToPiece(); });
-  $("csToGroove").addEventListener("click",()=>{ $("ctxShareDlg").close(); editThisGroove(); });
+  /* THE THREE IMPORT DOORS ALL WALK THE SAME PATH (David, 4 Sep). These two
+     predate the editors' own documents and went STRAIGHT to the conversion —
+     jamToPiece / editThisGroove — so a jam sent to the editor overwrote
+     whatever was being written there without a word, which is the very thing
+     the 4 Sep override dialog exists to prevent. They now knock on the same
+     doors the pencil knocks on: editBtn carries the arrangement guard, edOpen
+     the bench's. No new logic, and one place still decides. */
+  $("csToArr").addEventListener("click",()=>{ $("ctxShareDlg").close();
+    if(!editing) $("editBtn").click(); });
+  $("csToGroove").addEventListener("click",()=>{ $("ctxShareDlg").close(); edOpen("grv"); });
+  /* …and the piece's own door, the same guard from the other room. On the
+     phone this is the ONLY importer: body.phone hides #editBtn, which a
+     programmatic click still reaches. */
+  $("spToArr").addEventListener("click",()=>{ $("shareDlg").close();
+    if(!editing) $("editBtn").click(); });
   // the same two doors, opened from the header's Edit button
   $("jeArr").addEventListener("click",()=>{ $("jamEditDlg").close(); jamToPiece(); });
   $("jeGroove").addEventListener("click",()=>{ $("jamEditDlg").close(); editThisGroove(); });
@@ -29975,13 +30049,27 @@ if(PHONE){
     }
     const roomNow2=()=>((typeof editing!=="undefined"&&editing)?2
       :(jamOn?1:((quizOn||rqOn||cpOn)?3:0)));
+    // …and WHICH editor, read the same guarded way (this panel is built at boot)
+    const gedNow=()=>!!(typeof grooveEdit!=="undefined"&&grooveEdit);
     const scrim=document.createElement("div"); scrim.id="roomScrim";
     const drop=document.createElement("div"); drop.id="roomDrop";
     drop.setAttribute("role","menu");
     drop.innerHTML=
       '<button class="drow" role="menuitem" data-r="0">Practice<span class="whisper">read &amp; play</span></button>'
       +'<button class="drow" role="menuitem" data-r="1">Jam<span class="whisper">chords &amp; grooves</span></button>'
-      +'<button class="drow" role="menuitem" data-r="2">Edit<span class="whisper">write</span></button>'
+      +'<div class="dsep"></div>'
+      /* EDIT NAMES ITS TWO ROOMS, the way Learn names its four (David, 4 Sep:
+         "add the arrangement editor and groove editor as options below the
+         edit options, similar to how Learn has several things to choose
+         from … we need to distinguish here"). One row called Edit could not
+         say which editor it would open, and the groove bench had no door in
+         this panel at all — it was two taps deep in the sheet, which is why
+         he could not find it. The parent goes inert exactly as Learn's does:
+         with children present a clickable parent is a third answer nobody
+         asked for. */
+      +'<div class="drow" aria-hidden="true" style="pointer-events:none">Edit<span class="whisper">write</span></div>'
+      +'<button class="drow child" role="menuitem" data-r="7">Arrangement editor</button>'
+      +'<button class="drow child" role="menuitem" data-r="8">Groove editor</button>'
       +'<div class="dsep"></div>'
       +'<div class="drow" aria-hidden="true" style="pointer-events:none">Learn</div>'
       +'<button class="drow child" role="menuitem" data-r="3">Find the chord</button>'
@@ -29998,7 +30086,9 @@ if(PHONE){
       const left=Math.max(8,Math.min(innerWidth-w-8,Math.round(r.left+r.width/2-w/2)));
       drop.style.left=left+"px"; drop.style.top=Math.round(r.bottom+8)+"px";
       drop.style.setProperty("--notch",Math.round(r.left+r.width/2-left)+"px");
-      const cur=roomNow2(), on=cur===3?(rqOn?"4":cpOn?"6":(qzKind()==="name"?"5":"3")):String(cur);
+      /* room 2 is now two rows, so it lights the editor you are actually in */
+      const cur=roomNow2(), on=cur===3?(rqOn?"4":cpOn?"6":(qzKind()==="name"?"5":"3"))
+        :cur===2?(gedNow()?"8":"7"):String(cur);
       drop.querySelectorAll(".drow[data-r]").forEach(b=>
         b.classList.toggle("on",b.dataset.r===on));
     }
@@ -30009,9 +30099,16 @@ if(PHONE){
       const i=+b.dataset.r;
       roomDropOpen(false);
       if(i===roomNow2()&&i<3) return;        // the cards always ENTER, never eject
+      /* …and the same rule for the two editor rows, which room 2 alone could
+         not express: the editor you are standing in does nothing, the other
+         one opens. Straight to edOpen, the navigation door — it carries what
+         the editor was holding and imports nothing (David, 4 Sep). */
+      if(i===7||i===8){ if(roomNow2()===2&&gedNow()===(i===8)) return; }
       if(i===0) $("navArr").click();
       else if(i===1) $("jamModeBtn").click();
       else if(i===2) $("navEdit").click();
+      else if(i===7) edOpen("arr");
+      else if(i===8) edOpen("grv");
       else if(i===3) $("pcQuiz").click();    // it closes practiceDlg itself — a no-op here
       else if(i===5) $("pcName").click();
       else if(i===6) $("pcChord").click();
