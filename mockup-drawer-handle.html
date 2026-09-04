@@ -32,6 +32,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
   border-radius:10px;border:1px solid var(--rule);background:var(--card);color:var(--ink2)}
 .seg button.on{background:var(--dixie-soft);border-color:var(--dixie);color:var(--ink)}
 #note{font-size:12.5px;color:var(--ink3);margin:8px 2px 0;min-height:32px}
+#meas{font:12px/1.4 ui-monospace,Menlo,monospace;color:var(--ink3);margin:2px 2px 0}
 
 /* ── the fake notation, so the handle is judged in place ─────── */
 #stage{flex:1;min-height:0;padding:8px 12px;overflow:hidden}
@@ -46,12 +47,16 @@ body{margin:0;background:var(--bg);color:var(--ink);
 #deck{position:fixed;left:0;right:0;bottom:0;background:var(--card);
   border-top:1px solid var(--rule);border-radius:16px 16px 0 0;
   padding:0 16px calc(6px + env(safe-area-inset-bottom));z-index:20}
-#grip{display:grid;place-items:center;touch-action:none;cursor:grab;
-  padding:9px 0 5px;gap:3px}
+/* THE APP'S OWN BOX: a fixed 22px strip with the content centred in it
+   (body.phone #drawerGrip{height:22px; place-items:center}). Today's bar uses
+   4 of those 22, so a chevron — or a chevron AND a bar — fits inside without
+   costing a single pixel. That is the whole point of this mockup. */
+#grip{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:22px;margin:-2px 0 2px;touch-action:none;cursor:grab;gap:2px}
 #grip i{display:block;width:40px;height:4px;border-radius:2px;background:var(--rule);
   transition:width .18s,height .18s,background .18s,transform .18s}
-#grip svg{display:block;width:22px;height:11px;color:var(--ink3);
-  transition:transform .18s,color .18s,opacity .18s;opacity:0;height:0}
+#grip svg{display:block;width:22px;height:0;color:var(--ink3);
+  transition:transform .18s,color .18s,opacity .18s;opacity:0}
 #grip span{font-size:11.5px;font-weight:600;letter-spacing:.03em;color:var(--ink3);
   text-transform:uppercase;opacity:0;height:0;overflow:hidden;transition:opacity .18s}
 #grip.press i{background:var(--ink3)}
@@ -59,11 +64,12 @@ body{margin:0;background:var(--bg);color:var(--ink);
 /* variants */
 body[data-v="bold"] #grip i{width:56px;height:6px;background:var(--ink3)}
 body[data-v="chev"] #grip i{width:0;height:0}
-body[data-v="chev"] #grip svg{opacity:1;height:11px}
-body[data-v="both"] #grip svg{opacity:1;height:11px}
-body[data-v="both"] #grip i{width:48px;height:5px;background:var(--ink3)}
+body[data-v="chev"] #grip svg{opacity:1;height:10px}
+body[data-v="both"] #grip svg{opacity:1;height:8px}
+body[data-v="both"] #grip i{width:44px;height:4px;background:var(--ink3)}
 body[data-v="word"] #grip i{width:48px;height:5px;background:var(--ink3)}
-body[data-v="word"] #grip span{opacity:1;height:14px}
+body[data-v="word"] #grip i{width:0;height:0}
+body[data-v="word"] #grip span{opacity:1;height:13px}
 body.open #grip svg{transform:rotate(180deg)}
 
 #bar{display:flex;align-items:center;gap:10px;padding-bottom:4px}
@@ -96,6 +102,7 @@ body.open #shade{opacity:1;pointer-events:auto}
   </div>
   <button id="peekBtn">▲ Play the one-time peek</button>
   <div id="note"></div>
+  <div id="meas"></div>
 </div>
 
 <div id="stage">
@@ -131,15 +138,22 @@ const $=s=>document.querySelector(s);
 const NOTES={
   now:"What the app has today: a 40×4 bar in the iOS grabber style. Tap or swipe both work already — it just doesn't look like a control.",
   bold:"The same idea, bigger and darker. Cheapest change, no new meaning: the shape still reads as decoration.",
-  chev:"A chevron says 'there is more above this'. Most meaning per pixel, and it turns over when the drawer is open.",
-  both:"Chevron and bar together — the arrow explains, the bar still says 'draggable'.",
-  word:"Unambiguous, but it costs vertical space in the deck, and the drawer means something different in each room."
+  chev:"A chevron says 'there is more above this', and it turns over when the drawer is open. It sits INSIDE the strip the bar already occupies — no extra height.",
+  both:"Chevron and bar together, both inside the same strip — the arrow explains, the bar still says 'draggable'. Still no extra height.",
+  word:"The word replaces the bar, so even this fits the strip — but it is louder, and the drawer means something different in each room."
 };
 function setV(v){ document.body.dataset.v=v;
   document.querySelectorAll(".seg button").forEach(b=>b.classList.toggle("on",b.dataset.v===v));
   $("#note").textContent=NOTES[v]; }
 document.querySelectorAll(".seg button").forEach(b=>b.addEventListener("click",()=>setV(b.dataset.v)));
 setV("now");
+/* the promise, measured every half second rather than asserted */
+setInterval(()=>{
+  const d=document.getElementById("deck").getBoundingClientRect();
+  const g=document.getElementById("grip").getBoundingClientRect();
+  document.getElementById("meas").textContent=
+    "handle "+Math.round(g.height)+"px   ·   whole deck "+Math.round(d.height)+"px   (unchanged by every option)";
+},500);
 
 const panel=$("#panel"), grip=$("#grip");
 function open(on){
