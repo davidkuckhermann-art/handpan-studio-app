@@ -6731,6 +6731,24 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <span class="spacer"></span><button class="ctl" id="exStay">Keep editing</button></div>
 </dialog>
 
+<!-- THE EDITOR HOLDS ITS OWN ARRANGEMENT (David, 4 Sep). Opening the editor
+     from Practice or from a jam brings that arrangement in — and if the
+     editor already holds a DIFFERENT one, that one would be lost without a
+     word, which is what this asks about. Three answers, his: save the one
+     that is in there (the save sheet opens so it can be named), replace it,
+     or keep it and edit that instead. The wording is filled in per case, so
+     one dialog serves the arrangement and the groove. -->
+<dialog id="edSwapDlg">
+  <h3 id="edSwapTitle">Should the current arrangement be overwritten?</h3>
+  <p class="hint" style="margin:8px 0 0; max-width:46ch" id="edSwapWhat"></p>
+  <div class="row" style="margin:14px 0 0; flex-wrap:wrap">
+    <button class="ctl on" id="edSwapSave">Save current arrangement</button>
+    <button class="ctl" id="edSwapNew">Open new arrangement</button>
+    <span class="spacer"></span>
+    <button class="ctl" id="edSwapCancel">Cancel</button>
+  </div>
+</dialog>
+
 <!-- the raw safe-area insets, readable: `env()` cannot be queried directly and
      every other element already has other numbers folded into its padding -->
 <div id="safeprobe" aria-hidden="true"></div>
@@ -14964,7 +14982,12 @@ function openPanMenu(){ paintPanMenu(); openDlg($("panMenuDlg")); }
     renderPanPanel(); paintPanMenu(); };   // …and renderPanPanel repaints whichever pan is up
   on("pmNums",()=>setLabels("num"));
   on("pmNotes",()=>setLabels("note"));
-  const zoomBy=d=>{ panZoom=Math.max(.7,Math.min(1.4,Math.round((panZoom+d)*10)/10));
+  /* 140 → 150 ON THE DESKTOP (David, 4 Sep: "increase the maximum zoom on
+     desktop for pan tab to 150"). The phone keeps 140: its ceiling is the
+     card, not the setting, and a step it cannot show is a step that does
+     nothing when pressed. */
+  const ZMAX=(PHONE&&!TABLET)?1.4:1.5;
+  const zoomBy=d=>{ panZoom=Math.max(.7,Math.min(ZMAX,Math.round((panZoom+d)*10)/10));
     try{localStorage.setItem("hps.panzoom",panZoom)}catch(e){}
     renderPanPanel(); paintPanMenu(); };
   on("pmZoomDn",()=>zoomBy(-.1));
@@ -16527,6 +16550,106 @@ function edHasWork(){
   return Object.keys(piece.sections||{}).some(nm=>
     (piece.sections[nm].bars||[]).some(b=>b&&b.length));
 }
+/* ═══════ WHAT THE EDITOR IS HOLDING (David, 4 Sep) ═══════
+   Until now there was one `piece`: opening the editor from a jam replaced
+   whatever you had been writing, silently. The editor keeps its own document
+   now — stashed on the way out, offered back when you decline an import —
+   and the door asks before that document is replaced.
+   IN MEMORY, NOT STORED: "what the editor held last" is a fact about this
+   sitting. Persisting it would raise the question on a fresh launch about an
+   arrangement nobody remembers leaving there. */
+let edDoc=null;               // the arrangement the editor holds, serialised
+let edAfterSave=null;         // what to do once the save sheet has been used
+function edStash(){
+  if(grooveEdit||!piece||piece.id==="jam"||piece.id==="groove-edit") return;
+  try{ edDoc=JSON.stringify(piece); }catch(e){}
+}
+function edDocWork(){
+  if(!edDoc) return null;
+  try{ const p=JSON.parse(edDoc);
+    const any=Object.keys(p.sections||{}).some(nm=>(p.sections[nm].bars||[]).some(b=>b&&b.length));
+    return any?p:null;
+  }catch(e){ return null; }
+}
+/* the same document, by what a student would call the same: its music, its
+   order and its name. A piece re-loaded from the library compares equal. */
+const edSig=p=>JSON.stringify([p.sections,p.arrangement,p.title]);
+function edWouldReplace(){
+  const held=edDocWork(); if(!held) return null;
+  if(!jamOn&&piece&&edSig(held)===edSig(piece)) return null;   // it IS what is here
+  return held;
+}
+/* bring a source back and open the editor on it, with the door's guard held
+   open across the whole move — a jam has to be re-entered before it can be
+   converted, which is a tick or two of its own */
+function edImportSource(src){
+  edSwapGo=true;
+  const release=()=>setTimeout(()=>{ edSwapGo=false; },300);
+  if(src.kind==="jam"){
+    if(!jamOn) enterJam();
+    setTimeout(()=>{ edImportNow("jam"); release(); },140);
+    return;
+  }
+  try{ loadPiece(JSON.parse(src.piece)); }catch(e){}
+  edImportNow("practice"); release();
+}
+function edImportNow(kind){    // "jam" | "practice"
+  if(kind==="jam"){ edFromJam(); }
+  else if(!editing){ $("editBtn").click(); }
+  setTimeout(()=>toast(kind==="jam"?"Arrangement imported from jam mode"
+                                   :"Arrangement imported from practice mode"),60);
+}
+function openEdSwapDlg(kind){
+  const held=edWouldReplace();
+  $("edSwapTitle").textContent="Should the current arrangement be overwritten?";
+  $("edSwapSave").textContent="Save current arrangement";
+  $("edSwapNew").textContent="Open new arrangement";
+  $("edSwapWhat").textContent="The editor is holding "+(held&&held.title?"\u201c"+held.title+"\u201d":"an arrangement")
+    +". Opening the "+(kind==="jam"?"jam\u2019s tables":"arrangement you are practising")+" replaces it.";
+  edSwapKind=kind; edSwapIsGroove=false;
+  openDlg($("edSwapDlg"));
+}
+let edSwapKind="practice";
+/* ═══════ WHAT THE BENCH IS HOLDING (David, 4 Sep) ═══════
+   The same rule as the arrangement, one floor down: the bench keeps the
+   groove it last held, and the door asks before that groove is replaced.
+   Stashed as a PATTERN — the same object the saver builds — so the stash
+   carries the edits and re-opens through startGrooveEdit like any other
+   groove, rather than through a second way of restoring a bench. */
+let grvDoc=null;
+function grvStash(){
+  if(!grooveEdit) return;
+  const g=grooveAsPattern({quiet:true});
+  if(g) grvDoc=g;
+}
+function grvDocWork(){ return (grvDoc&&grvDoc.ev&&grvDoc.ev.length)?grvDoc:null; }
+function grvWouldReplace(){
+  const held=grvDocWork(); if(!held) return null;
+  if(jamOn){ const src=jamGrooveOpts();
+    if(src&&src.id&&src.id===held.id&&JSON.stringify(src.ev)===JSON.stringify(held.ev)) return null; }
+  return held;
+}
+function grvImportNow(kind){    // "jam" | "new"
+  if(kind==="jam"){
+    const o=jamGrooveOpts();
+    if(!o){ toast("This pan has no full chord to write a groove on"); return; }
+    startGrooveEdit(o);
+    setTimeout(()=>toast("Groove imported from jam mode"),80);
+    return;
+  }
+  edNewGroove();
+}
+function openGrvSwapDlg(kind){
+  const held=grvWouldReplace();
+  $("edSwapTitle").textContent="Should the current groove be overwritten?";
+  $("edSwapSave").textContent="Save current groove";
+  $("edSwapNew").textContent=kind==="jam"?"Open new groove":"Start a new groove";
+  $("edSwapWhat").textContent="The bench is holding "+(held&&held.name?"\u201c"+held.name+"\u201d":"a groove")
+    +". "+(kind==="jam"?"Opening the jam\u2019s groove replaces it.":"Starting a new groove replaces it.");
+  edSwapKind=kind; edSwapIsGroove=true;
+  openDlg($("edSwapDlg"));
+}
+let edSwapIsGroove=false;
 function edOpen(kind){          // "arr" | "grv"
   if(cpOn) leaveCp();   // chord practice's piece is generated — the editor opens on the student's own
   /* NO QUESTIONS ON THE WAY IN (David, 31 Aug \u2014 Zones stage 1, "clean cut"):
@@ -16538,6 +16661,12 @@ function edOpen(kind){          // "arr" | "grv"
   try{ localStorage.setItem("hps.edLast",kind); }catch(e){}
   if(kind==="grv"){
     if(grooveEdit){ if(!editing) $("editBtn").click(); return; }
+    /* THE BENCH'S OWN GROOVE IS NOT REPLACED WITHOUT ASKING (David, 4 Sep).
+       No jam means nothing to import, so the question is only worth asking
+       when there is a groove on the bench to lose — with no jam the answer
+       "open new" starts a blank one, which is the old behaviour. */
+    if(!edSwapGo&&grvWouldReplace()){ openGrvSwapDlg(jamOn?"jam":"new"); return; }
+    if(jamOn&&!edJamGroove){ grvImportNow("jam"); return; }
     /* the groove carried in from a jam opens here, once — startGrooveEdit
        leaves the arrangement editor for itself (leaveEditingThen) */
     if(edJamGroove){ const g=edJamGroove; edJamGroove=null; startGrooveEdit(g); return; }
@@ -25500,6 +25629,24 @@ function grooveSaveNow(quietEmpty){
   if(!grooveEdit) return null;
   // whatever is on the bench is now the saved state, so leaving asks nothing
   setTimeout(()=>{ if(grooveEdit) grooveEdit.sig0=grooveSig(); },0);
+  const g=grooveAsPattern({quietEmpty});
+  if(!g) return null;
+  const l=userGrooves();
+  const i=l.findIndex(x=>x.id===g.id);
+  if(i>=0) l[i]=g; else l.push(g);
+  setUserGrooves(l);
+  grooveEdit.id=g.id;
+  toast("Saved: "+g.name);
+  return g.id;
+}
+/* THE BENCH AS A PATTERN, and nothing else (4 Sep). Lifted whole out of the
+   saver so the bench can also be STASHED — "the groove the editor held last"
+   has to carry the edits, and re-deriving them a second way is how two
+   readings of one bar start to disagree. `quiet` is the stash: it wants the
+   answer, not the complaint. */
+function grooveAsPattern(opts){
+  if(!grooveEdit) return null;
+  const quiet=opts&&opts.quiet;
   const gbars=(piece.sections.Groove&&piece.sections.Groove.bars)||[[]];
   const gbp=piece.meter[0]*piece.sub;
   const bar=gbars.flatMap((b,bi)=>b.map(e=>Object.assign({},e,{t:e.t+bi*gbp})));
@@ -25511,7 +25658,8 @@ function grooveSaveNow(quietEmpty){
   const used=[...new Set(bar.filter(e=>e.v==="field").map(e=>e.f))]
     .sort((a,b)=>myPan.midiFor(a)-myPan.midiFor(b));
   if(used.length>JV_TOK.length){
-    toast("A groove carries at most "+JV_TOK.length+" voices"); return null; }
+    if(!quiet) toast("A groove carries at most "+JV_TOK.length+" voices");
+    return null; }
   /* A NOTE'S RANK IS THE VOICE IT IS, not the order it was written in. Writing
      D3 and F4 on Dmin — the outer pair of the wide D·1·6 — used to save as
      ranks 1 and 3, the low and MIDDLE voices, so the groove came back as
@@ -25536,7 +25684,9 @@ function grooveSaveNow(quietEmpty){
       :e.v==="perc"?[e.t,patTok(e),e.hand]
       :[e.t,rankOf.get(e.f),e.hand])
     .filter(x=>x[1]).sort((a,b)=>a[0]-b[0]);
-  if(!ev.length){ toast(quietEmpty?"Empty bar — groove not saved":"Empty bar — nothing to save"); return null; }
+  if(!ev.length){
+    if(!quiet) toast((opts&&opts.quietEmpty)?"Empty bar — groove not saved":"Empty bar — nothing to save");
+    return null; }
   const name=($("title").value||"").trim()||"My groove";
   const l=userGrooves();
   // no pinned id (fresh bench, or undo past a Load) — a groove with this NAME
@@ -25547,12 +25697,7 @@ function grooveSaveNow(quietEmpty){
   const g={id, name, user:true,
     meter:piece.meter, sub:piece.sub, bpr:1, bars:gbars.length, ev, ref:grooveEdit.ref};
   if(piece.unit&&piece.unit!==4) g.unit=piece.unit;
-  const i=l.findIndex(x=>x.id===g.id);
-  if(i>=0) l[i]=g; else l.push(g);
-  setUserGrooves(l);
-  grooveEdit.id=g.id;
-  toast("Saved: "+name);
-  return g.id;
+  return g;
 }
 /* LOAD another groove into the workbench, in place. A user groove loads as
    itself (Save keeps working on it); a BUILT-IN loads as a starting point —
@@ -25703,6 +25848,7 @@ function grooveExit(save){
    opens; something changed, and the same Save/Discard question that guards
    the exit is asked first, then the door opens on the answer. */
 let afterEdit=null;
+let edSwapGo=false;            // the swap dialog's own answers pass the guard
 function runAfterEdit(){ const f=afterEdit; afterEdit=null; if(f) setTimeout(f,0); }
 /* SAVE THE PIECE AS IT STANDS, to the library. Lifted out of #exSave's own
    listener on 30 Aug so the new-editor path can offer the same thing — one
@@ -25714,6 +25860,18 @@ function savePieceToLibrary(){
   if(i>=0) l[i]=piece; else l.push(JSON.parse(JSON.stringify(piece)));
   setSaved(l);
   toast("Saved to library");
+  /* …and if an import was waiting on this save, it happens now (David, 4 Sep:
+     "Save current arrangement" then the new one opens). Cleared first, so a
+     second save cannot run it twice. */
+  edRunAfterSave();
+}
+/* the one place the waiting import is taken up, so the two savers cannot
+   drift into doing it differently */
+function edRunAfterSave(){
+  const go=edAfterSave; edAfterSave=null;
+  if(!go) return;
+  try{ $("shareDlg").close(); }catch(e){}
+  setTimeout(go,150);
 }
 function pieceDirty(){
   if(!editSig0) return false;
@@ -25735,6 +25893,9 @@ function leaveEditingThen(go){
   $("editBtn").click(); runAfterEdit();     // untouched piece: straight through
 }
 function grooveEditFinish(save){
+  /* what the bench held, before it is taken down — this is the groove the
+     door offers back when an import is declined */
+  grvStash();
   const savedId=save?grooveSaveNow(true):null;
   const ge=grooveEdit; grooveEdit=null;
   document.body.classList.remove("gedit");
@@ -26953,6 +27114,65 @@ function boot(){
     edOpen("grv"); });
   /* "Open it" carries on with what is already there — which for a piece means
      simply entering the editor, and for a groove bench means staying put. */
+  /* THE SWAP DIALOG'S THREE ANSWERS (David, 4 Sep). Each ends by letting the
+     door's guard through once, so the same editBtn path opens the editor and
+     nothing is duplicated here. */
+  const edSwapThen=fn=>{ $("edSwapDlg").close(); edSwapGo=true;
+    try{ fn(); } finally { setTimeout(()=>{ edSwapGo=false; },0); } };
+  $("edSwapNew").addEventListener("click",()=>edSwapThen(()=>
+    edSwapIsGroove?grvImportNow(edSwapKind):edImportNow(edSwapKind)));
+  /* CANCEL KEEPS WHAT THE EDITOR HAD ("declining gives you what the editor
+     held last") — so it is not a way out of the door, it is the answer "no,
+     do not overwrite": the held arrangement is loaded and the editor opens on
+     it. A jam is left first, or its own piece would come back underneath. */
+  $("edSwapCancel").addEventListener("click",()=>edSwapThen(()=>{
+    if(edSwapIsGroove){
+      const g=grvDocWork(); if(!g) return;
+      startGrooveEdit(Object.assign({},g,{origin:"menu"}));
+      setTimeout(()=>toast("Kept the groove the bench was holding"),80);
+      return;
+    }
+    const held=edDocWork(); if(!held) return;
+    if(jamOn) leaveJam();
+    loadPiece(JSON.parse(JSON.stringify(held)));
+    if(!editing) $("editBtn").click();
+    setTimeout(()=>toast("Kept the arrangement the editor was holding"),60);
+  }));
+  /* SAVE FIRST: the held arrangement is loaded so the save sheet has
+     something to name, and the import waits behind the sheet — savePieceToLibrary
+     runs it once the student has actually saved. Closing the sheet without
+     saving drops the pending import rather than performing it silently. */
+  $("edSwapSave").addEventListener("click",()=>edSwapThen(()=>{
+    /* A GROOVE IS SAVED WHERE GROOVES LIVE — the bench has to be standing for
+       the saver to read it, so the held groove is re-opened, saved to My
+       grooves under the name in the title, and the import follows. */
+    if(edSwapIsGroove){
+      const g=grvDocWork(); if(!g) return;
+      const kind=edSwapKind;
+      startGrooveEdit(Object.assign({},g,{origin:"menu"}));
+      setTimeout(()=>{
+        grooveSaveNow(true);
+        edSwapGo=true;
+        try{ grvImportNow(kind); } finally { setTimeout(()=>{ edSwapGo=false; },300); }
+      },260);
+      return;
+    }
+    const held=edDocWork(); if(!held) return;
+    /* THE SOURCE IS TAKEN FIRST. Saving means loading the held arrangement so
+       the sheet has something to name — which REPLACES the very arrangement
+       we were about to import. Measured before this line: the editor opened
+       on the piece that had just been saved, not on the one asked for. A jam
+       is not serialised, it is simply re-entered. */
+    const src=edSwapKind==="jam"?{kind:"jam"}:{kind:"practice",piece:JSON.stringify(piece)};
+    if(jamOn) leaveJam();
+    loadPiece(JSON.parse(JSON.stringify(held)));
+    edAfterSave=()=>edImportSource(src);
+    openShareForContext();
+  }));
+  /* A SHEET CLOSED WITHOUT SAVING DROPS THE PENDING IMPORT rather than
+     performing it silently — but the savers close the sheet themselves, so
+     the drop waits a tick and edRunAfterSave has already taken the job. */
+  $("shareDlg").addEventListener("close",()=>{ setTimeout(()=>{ edAfterSave=null; },0); });
   $("edKeepOpen").addEventListener("click",()=>{
     $("edKeepDlg").close();
     if(!editing) $("editBtn").click();
@@ -27170,6 +27390,24 @@ function boot(){
   // webfonts land after first paint and change the measurement
   if(document.fonts&&document.fonts.ready) document.fonts.ready.then(fitTitle);
   $("editBtn").addEventListener("click",()=>{
+    /* ═══ THE EDITOR'S OWN ARRANGEMENT IS NOT REPLACED WITHOUT ASKING ═══
+       (David, 4 Sep.) FIRST, above the jam branch below — a jam converts
+       itself into a piece on the way into the editor, so asking after that
+       would be asking once the answer no longer mattered, and the dialog
+       would have said "practice" for a jam because jamOn is already false by
+       then. Measured before it moved: the wording and the toast both lied.
+       Only on the way IN, only when the editor holds a DIFFERENT arrangement
+       with work in it, and only for the arrangement editor — the bench has
+       its own door. `edSwapGo` lets the dialog's own three answers back
+       through this same path, so the editor is opened in one place. */
+    if(!editing&&!grooveEdit&&!edSwapGo){
+      if(edWouldReplace()){ openEdSwapDlg(jamOn?"jam":"practice"); return; }
+      /* nothing to displace: the import is silent except for saying where it
+         came from (David: "a pop-up stating Arrangement imported from
+         practice mode / from jam mode") */
+      if(jamOn){ edImportNow("jam"); return; }
+      setTimeout(()=>toast("Arrangement imported from practice mode"),60);
+    }
     /* IN A JAM, EDIT ASKS WHAT (David, 29 Aug). Guarded on jamOn, which is
        already false by the time jamToPiece() reaches its own
        `$("editBtn").click()` — it calls leaveJam() first — so that path still
@@ -27192,6 +27430,9 @@ function boot(){
        become the only exit. Same shape as the groove branch above it, and the
        same 27 Aug rule: nothing changed, nothing to ask. */
     if(editing&&!grooveEdit&&!editExitGo&&pieceDirty()){ openDlg($("editExitDlg")); return; }
+    /* …and on the way OUT the editor remembers what it was holding, which is
+       what "the one the editor held last" means when an import is declined. */
+    if(editing&&!grooveEdit) edStash();
     if(!editing) navPush("edit",jamOn?"the jam":"Practice",()=>$("editBtn").click());
     else navDrop("edit");
     editing=!editing; $("editBtn").classList.toggle("on",editing); paintEditDoors();
@@ -27771,6 +28012,11 @@ function boot(){
     if(i>=0)l[i]=piece; else l.push(JSON.parse(JSON.stringify(piece)));
     setSaved(l); renderLib();
     $("shareDlg").close(); toast("Saved: "+(piece.title||"Untitled"));
+    /* …and if an import was waiting on this save, it runs now (David, 4 Sep:
+       "Save current arrangement", then the new one opens). This sheet keeps
+       its own saver — savePieceToLibrary is the exit dialog's — so the
+       continuation is planted in both rather than in one and assumed. */
+    edRunAfterSave();
   });
   $("spLoad").addEventListener("click",()=>{
     $("shareDlg").close(); renderLib(); openDlg($("libDlg")); });
