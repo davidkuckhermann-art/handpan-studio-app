@@ -16467,7 +16467,59 @@ function place(ev){
      stepping back each time. Now the slot holds the cursor until you move it
      — a tap, an arrow key — and the next symbol stacks where the last went. */
   refresh();
-  if(ctx) fireEvent(Object.assign({},ev),ctx.currentTime+0.01);
+  /* THE EDITOR WAKES THE AUDIO LIKE EVERY OTHER SOUNDING DOOR (David, 4 Sep:
+     "the pan sound in the editor is unreliable — sometimes it's there,
+     sometimes it disappears"). It was the ONE tap-to-sound door in the app
+     that fired straight into the graph: `panSoundField`, `panSoundBottom`,
+     `panSoundPerc` and the chord overview all open with `wakeAudio()`, and
+     this line opened with `if(ctx)` — which SKIPS when there is no context
+     rather than building one. Measured: a tap on the reading card calls
+     wakeAudio once, the same field placed in the editor calls it zero times.
+     So a placement sounded only while something else happened to be holding
+     the path open, which is exactly "sometimes".
+     Three of wakeAudio's four jobs are the ones missing here, and each is a
+     way to be silent: `ensureCtx` builds the context that `if(ctx)` merely
+     stepped around — on the phone the warm-up waits for the first touch, so
+     an editor placement as the first touch was silent and stayed silent;
+     `sinkHold`/`ensureSink` keep the iOS <audio> bridge playing, and this
+     file already says that leaving it paused "would silence a context that
+     is running"; and its `ctx.resume()` is UNCONDITIONAL, where `fire`'s own
+     nudge is gated on `state!=="running"` — and the 4 Sep finding was that
+     the state lies, reporting running while nothing is audible.
+     No new mechanism: the door now opens the way the other doors open. */
+  wakeAudio(); preloadBank();
+  fireEvent(Object.assign({},ev),ctx.currentTime+0.01);
+  edSoundWatch();
+}
+/* …AND IF IT STILL DOES NOT SOUND, THE APP SAYS SO. The wake above closes a
+   real gap, but it was NOT shown to be the cause of David's report: on this
+   Mac's Chromium a placement into a suspended context came back on both
+   builds, because `fire`'s own nudge succeeds once there is user activation.
+   So rather than guess again, the door writes its own conditions into the
+   audio log — the same log the 4 Sep session built because it is the only
+   witness that survives a relaunch. It speaks ONLY when the note could not
+   have been heard, so the log stays readable, and it waits a moment because
+   `resume()` is a promise and reading the state straight away would libel a
+   context that is on its way back. Next time it goes quiet the log will say
+   whether the engine was asleep, the iOS sink was paused, or neither — and
+   "neither" would itself be the finding, because it would rule out this
+   whole path. */
+let edSilentLast=0;
+function edSoundWatch(){
+  setTimeout(()=>{
+    try{
+      const why=[];
+      if(!ctx) why.push("no engine");
+      else if(ctx.state!=="running") why.push("engine "+ctx.state);
+      if(iosSink&&iosSink!=="failed"&&iosSink.paused) why.push("sink paused");
+      if(iosSink==="failed") why.push("sink failed");
+      if(!why.length) return;
+      const now=Date.now();
+      if(now-edSilentLast<4000) return;      // one line per episode, not per tap
+      edSilentLast=now;
+      audioNote("editor tap silent — "+why.join(", "));
+    }catch(e){}
+  },260);
 }
 /* which fields of a drawn pan carry the reference chord — the same test
    placeField makes when a field is tapped, made once for the whole drawing */
