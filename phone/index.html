@@ -16446,23 +16446,6 @@ function viewLoc(){
   return {sec:viewSec,bar,t:cursor%m.bp,pulses:bars.length*m.bp};
 }
 function place(ev){
-  /* FIRST, BEFORE ANY WORK — that is the whole of it (David, 4 Sep: "still
-     the same issues in edit mode. Why does the pan work in practice mode, but
-     not in edit mode?"). The answer is the ORDER, and his question is what
-     found it. Practice's `panSoundField` opens with `wakeAudio()` and then
-     sounds the note: two statements, nothing in between. The editor took the
-     same tap and did `snapshot()` — a serialisation of the whole piece — then
-     mutated the bar, then `refresh()`, a full redraw of the notation and the
-     pan, and only THEN asked iOS to un-pause the sink. `ensureSink` ends in
-     `el.play()`, and on iOS that is a gesture-gated call: reached at the far
-     end of a long task it is refused, and a refused play leaves the element
-     paused, which on that platform is silence for everything.
-     It is also why it was intermittent rather than dead — the length of that
-     task rides on how much there was to redraw.
-     So the wake moves to the first line, where practice has always had it.
-     Not a second regulator for the case: the same call, at the point the
-     working path already proved is the right one. */
-  if(IOS||FRAMED_SAFARI){ wakeAudio(); preloadBank(); }
   const loc=viewLoc(); if(!loc){toast("No slot here");return;}
   /* TWO FIELDS AT MOST PER HAND IN THE TAB (David, 3 Sep: "two tone fields
      should be the maximum that one note plays simultaneously" — and then:
@@ -17139,9 +17122,28 @@ function paintEditDeck(){
     host.innerHTML=panViewSVG(srcPan,"Tap a field to place it",{under:true});
     markChordTones(host);
     host.querySelectorAll("[id]").forEach(el=>el.removeAttribute("id"));
+    /* THROUGH panTapWire, THE WIRING THE READING CARD ALREADY USES (David,
+       4 Sep). His log, on the build that carries its own stamp:
+           20:49:24  app opened — build Sep 4 08:47 PM
+           20:49:27  editor tap silent — engine suspended
+       ENGINE SUSPENDED — so the context was asleep and the resume was being
+       REFUSED, which is a question about the EVENT, not about the audio code.
+       On WebKit the activation that may start or resume sound comes from
+       pointerUP / touchend / click; pointerDOWN does not carry it. The reading
+       card fires on pointerup — panTapWire, written for the swipe threshold —
+       and its taps have always sounded. Play is a button click and has always
+       sounded. This line was the one place that fired on pointerdown, so its
+       resume was never permitted and the engine stayed suspended.
+       It matches his words exactly: "the first tone I click comes out delayed,
+       and afterwards the sound disappears" — the first tap rides a context
+       still awake from the gesture that opened the editor, and once that
+       lapses nothing on this pan can wake it again.
+       panTapWire also brings the 10px move-cancel, so dragging across the pan
+       no longer writes the fields it passes. The desktop keeps its own
+       down-fire binding, untouched: David saw no fault there. */
     host.querySelectorAll(".pvf").forEach(g=>{
       const pos=g.dataset.b!==undefined?botPos(+g.dataset.b+1):+g.dataset.f;
-      g.addEventListener("pointerdown",()=>{ placeField(pos); pvFlash(g,["hT"]); });
+      panTapWire(g,()=>{ placeField(pos); pvFlash(g,["hT"]); });
     });
   }
   fitEdPan();
