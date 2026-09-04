@@ -8582,15 +8582,18 @@ function setSheet(v){
   loadHandCol(); applyHandColors(); paintThemeUI();
 }
 /* the served file's own Last-Modified, read back as a build stamp */
-function paintVersion(){
-  const el=$("setVer"); if(!el) return;
+function buildStamp(){
   let out=document.lastModified;
   try{
     const d=new Date(document.lastModified);
     if(!isNaN(d)) out=d.toLocaleDateString(undefined,{day:"numeric",month:"short"})
       +" "+d.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});
   }catch(e){}
-  el.textContent=out||"unknown";
+  return out||"unknown";
+}
+function paintVersion(){
+  const el=$("setVer"); if(!el) return;
+  el.textContent=buildStamp();
 }
 function paintThemeUI(){
   const sel=$("themeSel");
@@ -16437,6 +16440,23 @@ function viewLoc(){
   return {sec:viewSec,bar,t:cursor%m.bp,pulses:bars.length*m.bp};
 }
 function place(ev){
+  /* FIRST, BEFORE ANY WORK — that is the whole of it (David, 4 Sep: "still
+     the same issues in edit mode. Why does the pan work in practice mode, but
+     not in edit mode?"). The answer is the ORDER, and his question is what
+     found it. Practice's `panSoundField` opens with `wakeAudio()` and then
+     sounds the note: two statements, nothing in between. The editor took the
+     same tap and did `snapshot()` — a serialisation of the whole piece — then
+     mutated the bar, then `refresh()`, a full redraw of the notation and the
+     pan, and only THEN asked iOS to un-pause the sink. `ensureSink` ends in
+     `el.play()`, and on iOS that is a gesture-gated call: reached at the far
+     end of a long task it is refused, and a refused play leaves the element
+     paused, which on that platform is silence for everything.
+     It is also why it was intermittent rather than dead — the length of that
+     task rides on how much there was to redraw.
+     So the wake moves to the first line, where practice has always had it.
+     Not a second regulator for the case: the same call, at the point the
+     working path already proved is the right one. */
+  if(IOS||FRAMED_SAFARI){ wakeAudio(); preloadBank(); }
   const loc=viewLoc(); if(!loc){toast("No slot here");return;}
   /* TWO FIELDS AT MOST PER HAND IN THE TAB (David, 3 Sep: "two tone fields
      should be the maximum that one note plays simultaneously" — and then:
@@ -16461,47 +16481,6 @@ function place(ev){
      stepping back each time. Now the slot holds the cursor until you move it
      — a tap, an arrow key — and the next symbol stacks where the last went. */
   refresh();
-  /* THE EDITOR WAKES THE AUDIO LIKE EVERY OTHER SOUNDING DOOR (David, 4 Sep:
-     "the pan sound in the editor is unreliable — sometimes it's there,
-     sometimes it disappears"). It was the ONE tap-to-sound door in the app
-     that fired straight into the graph: `panSoundField`, `panSoundBottom`,
-     `panSoundPerc` and the chord overview all open with `wakeAudio()`, and
-     this line opened with `if(ctx)` — which SKIPS when there is no context
-     rather than building one. Measured: a tap on the reading card calls
-     wakeAudio once, the same field placed in the editor calls it zero times.
-     So a placement sounded only while something else happened to be holding
-     the path open, which is exactly "sometimes".
-     Three of wakeAudio's four jobs are the ones missing here, and each is a
-     way to be silent: `ensureCtx` builds the context that `if(ctx)` merely
-     stepped around — on the phone the warm-up waits for the first touch, so
-     an editor placement as the first touch was silent and stayed silent;
-     `sinkHold`/`ensureSink` keep the iOS <audio> bridge playing, and this
-     file already says that leaving it paused "would silence a context that
-     is running"; and its `ctx.resume()` is UNCONDITIONAL, where `fire`'s own
-     nudge is gated on `state!=="running"` — and the 4 Sep finding was that
-     the state lies, reporting running while nothing is audible.
-     No new mechanism: the door now opens the way the other doors open. */
-  /* WHERE THE SINK EXISTS, THE EDITOR MUST OPEN IT (David, 4 Sep, with the
-     audio log off his iPhone — and then: "there was no issue on desktop, only
-     iphone. Please revert changes if you changed anything for desktop").
-     His log named the cause in its own words:
-         no sound — sink paused
-         iOS paused the sink (on screen)
-     On iOS every voice leaves through a MediaStream and an <audio> element
-     (ensureSink: `master.disconnect(); master.connect(dest)`), so a PAUSED
-     element is total silence however healthy the context is. Two things then
-     pause it and neither is watched while you edit: our own `sinkSync`, which
-     pauses whenever `soundActive()` is false and no hold is standing — and
-     editing is exactly "not sounding" — and iOS itself, as his log shows.
-     `audioWatch` would notice and repair it, but its first line is
-     `if(!soundActive()...) return`, so during editing nobody is looking.
-     Hence: sound after Play or after a tap on the reading card, which hold
-     the sink for SINK_HOLD seconds, and silence once that lapses. That is
-     "sometimes it's there, sometimes it disappears", exactly.
-     GATED TO THE PLATFORMS THAT HAVE A SINK — the same test ensureSink makes
-     — because David saw no fault on the desktop and asked for it to stay as
-     it was. On desktop this line is again the bare fire it has always been. */
-  if(IOS||FRAMED_SAFARI){ wakeAudio(); preloadBank(); }
   if(ctx) fireEvent(Object.assign({},ev),ctx.currentTime+0.01);
   if(IOS||FRAMED_SAFARI) edSoundWatch();
 }
@@ -29092,7 +29071,15 @@ if(PHONE){
   });
   sheetSwipe($("menuDlg"),$("menuDlg").querySelector(".grab"));
   $("menuClose").addEventListener("click",()=>$("menuDlg").close());
-  audioNote("app opened");           // the line that marks a relaunch in the log
+  /* THE RELAUNCH LINE NAMES THE BUILD (David, 4 Sep). His log screenshot said
+     "19:35:34 app opened" and the fix had gone live at 19:47 — so the session
+     he was reporting on could not have contained it, and neither of us could
+     see that from the log alone. The stamp is already computed for the
+     settings sheet; putting it on this line means every future screenshot
+     says which code it is, and a stale copy reports the OLD time, which is
+     exactly the fault worth revealing. A log annotation only — no behaviour
+     changes on any platform. */
+  audioNote("app opened — build "+buildStamp());
   $("mAudioLog").addEventListener("click",()=>{
     $("audioLogBody").textContent=audioLogText();
     openDlg($("audioLogDlg"));
