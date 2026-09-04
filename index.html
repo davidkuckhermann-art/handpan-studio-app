@@ -4698,9 +4698,6 @@ body.phone #pvsvg{margin:0 auto}
    firing on every double tap meant for the loop (David, 26 Aug) */
 body.phone,body.phone *{touch-action:manipulation}
 body.phone #score{position:relative}      /* the loop frame is placed against it */
-/* landRowCap hands the rows a height sideways so six of them fill the frame;
-   unset everywhere else, where the rows size themselves as they always have */
-#score .nrow{min-height:var(--landrow,0)}
 /* the play button rides inside the notation frame, top right (David, 26 Aug).
    It sits in #scorewrap, NOT in the zoomed #score, so it keeps its real size at
    any zoom — phoneFit() anchors it to the CARD's corner, not the wrapper's, or
@@ -12175,9 +12172,12 @@ embedWatch();
    one size across the whole piece; shorter tables simply sit centred with a
    little air. Measured off-screen and cached — this runs inside render(). */
 let natCache={key:"",h:0};
-function pieceNaturalHeight(W){
+/* `cap`, when given, stops the height at that many rows — landscape shows six
+   and scrolls the rest, and the rows it never shows must not scale the ones it
+   does (see "THE SIX ALSO DECIDE THE SCALE" at landRowCap). */
+function pieceNaturalHeight(W,cap){
   const names=Object.keys(piece.sections);
-  const key=view+"|"+(view==="flow"?flowSize+"|"+(flowAll?"a|":""):"")+Math.round(W)+"|"+(piece.title||"")+"|"+names.join(",");
+  const key=view+"|"+(view==="flow"?flowSize+"|"+(flowAll?"a|":""):"")+Math.round(W)+"|"+(cap||0)+"|"+(piece.title||"")+"|"+names.join(",");
   if(natCache.key===key) return natCache.h;
   const tmp=document.createElement("div");
   tmp.className="score";
@@ -12191,7 +12191,7 @@ function pieceNaturalHeight(W){
       viewSec=nm; tmp.innerHTML="";
       if(view==="flow") renderFlowView(tmp);   // tmp carries a width, so the packer can measure there
       else renderTableView(tmp,view==="tab");
-      h=Math.max(h,tmp.scrollHeight);
+      h=Math.max(h,tmp.scrollHeight-(cap?rowsBeyond(tmp,cap):0));   // tmp is unzoomed
     }
   }catch(e){}
   viewSec=save; tmp.remove();
@@ -12944,35 +12944,42 @@ function landRefs(){
 
    Written in UNZOOMED px because #score sits inside the zoomed card, exactly
    as fitPortraitStack writes its own cap; and taken from the sixth row's
-   bottom, so the cap lands on a row boundary rather than mid-glyph. */
+   bottom, so the cap lands on a row boundary rather than mid-glyph.
+
+   THE SIX ALSO DECIDE THE SCALE (David, 4 Sep: "the idea is not that the
+   notation shrinks down to 6 rows, but that these 6 rows fill the full
+   vertical space… We don't want to waste any space", and then, with a six-row
+   table filling perfectly beside an eight-row one that did not: "the notation
+   rows keep shrinking for 7- and 8-row tables instead of staying at the size
+   that 6 rows need"). The landscape zoom is availH / the piece's natural
+   height, and that natural height counted EVERY row — so a seventh and eighth
+   row scaled the whole table down and the six that are shown came out short
+   inside the band, with the card's centring splitting the leftover into a
+   white bar above and below. So the height the zoom is taken from stops at
+   the sixth row (`rowsBeyond` below): six rows are then exactly the band, and
+   nothing is left over to centre. A first attempt gave the ROWS the missing
+   height instead (a `--landrow` min-height) — a second regulator beside the
+   zoom, and it is gone; the zoom was the thing that was wrong. */
 const LAND_ROWS=6;
+/* the real height of the rows past the cap — what the scale must not count.
+   The cap is the TABLE skins' (David said "the notation table"); Flow keeps its
+   own window and is passed 0, so nothing about it changes. */
+function rowsBeyond(el,cap){
+  if(!cap) return 0;
+  const rows=el.querySelectorAll(".nrow");
+  if(rows.length<=cap) return 0;
+  return Math.max(0,rows[rows.length-1].getBoundingClientRect().bottom
+                   -rows[cap-1].getBoundingClientRect().bottom);
+}
 function landRowCap(sc){
   const mus=$("score"); if(!mus) return;
-  mus.style.removeProperty("--landrow");
   const rows=mus.querySelectorAll(".nrow");
   if(!rows.length) return;
-  const z=parseFloat(sc.style.zoom)||1;
-  /* THE SIX FILL THE FRAME (David, 4 Sep: "the idea is not that the notation
-     shrinks down to 6 rows, but that these 6 rows fill the full vertical space
-     in the notation window… We don't want to waste any space"). Capping alone
-     left the card at the band's height with the music sitting short inside it.
-     The rows cannot be made to fill by ZOOMING — sideways the zoom is already
-     pinned by the table's width (measured 0.336 on an eight-beat table at
-     845x393), so raising it would push the notation off the sides. They are
-     given the height instead: the room below the music's top, divided by six,
-     written per row in unzoomed px because #score sits inside the zoomed card.
-     Fewer than six rows share the same room, so a short piece fills it too. */
-  const cardBottom=sc.getBoundingClientRect().bottom;
-  const musTop=mus.getBoundingClientRect().top;
-  const room=cardBottom-musTop-2;
-  const show=Math.min(LAND_ROWS,rows.length);
-  if(room>0&&show>0){
-    const per=(room/show)/z;
-    if(per>0&&isFinite(per)) mus.style.setProperty("--landrow",per.toFixed(2)+"px");
-  }
   if(rows.length<=LAND_ROWS){ mus.style.maxHeight=""; mus.style.overflowY=""; return; }
   /* …and past six it scrolls, the cut taken from the sixth row's bottom so it
      lands on a row boundary rather than mid-glyph */
+  const z=parseFloat(sc.style.zoom)||1;
+  const musTop=mus.getBoundingClientRect().top;
   const cut=rows[LAND_ROWS-1].getBoundingClientRect().bottom;
   mus.style.maxHeight=((cut-musTop)/z)+"px";
   mus.style.overflowY="auto"; mus.style.overflowX="hidden";
@@ -13055,8 +13062,7 @@ function phoneFit(){
      them mid-row with no way to scroll (David, 30 Aug: "on mobile, the table
      and tab notations are messed up now"). Cleared before anything else, so
      no path can leave it behind. */
-  if(view!=="flow"){ const m=$("score"); m.style.maxHeight=""; m.style.minHeight="";
-    m.style.removeProperty("--landrow"); }   // the landscape row height never survives into portrait
+  if(view!=="flow"){ const m=$("score"); m.style.maxHeight=""; m.style.minHeight=""; }
   /* AND THE LANDSCAPE BOX IS RELEASED BEFORE ANYTHING IS MEASURED. It is a
      min-height on the CARD, and the natural height below is read off
      `sc.scrollHeight` — a box left over from the last fit would be measured as
@@ -13074,6 +13080,7 @@ function phoneFit(){
      glyphs are set smaller, where he asked for it. */
   const designW=540;
   const land=matchMedia("(orientation:landscape)").matches;
+  const landCap=view==="flow"?0:LAND_ROWS;   // the six-row scale is the tables'
   const hdr=document.querySelector("header");
   hdr.style.marginTop="";              // measure from a clean slate every time
   if(!land) document.body.style.paddingBottom="";   // landSymmetry's lever, released
@@ -13137,7 +13144,11 @@ function phoneFit(){
     sc.style.width=W+"px";             // measure the height at full width
     for(let i=0;i<2;i++){              // the narrower card can reflow slightly
       // the TALLEST table decides the scale, so every table reads the same size
-      const natH=Math.max(sc.scrollHeight,pieceNaturalHeight(parseFloat(sc.style.width)||W));
+      // — but only down to its sixth row, which is all that is ever shown
+      // (LAND_ROWS; see "THE SIX ALSO DECIDE THE SCALE" at landRowCap)
+      const zz=parseFloat(sc.style.zoom)||1;
+      const natH=Math.max(sc.scrollHeight-rowsBeyond(sc,landCap)/zz,
+                          pieceNaturalHeight(parseFloat(sc.style.width)||W,landCap));
       if(natH<=0) break;
       /* THE FLOOR HAD TO COME DOWN. Tab wanted 0.327 here and was clamped at
          0.35, which is why it alone overflowed the band and slid 2px under
@@ -13164,7 +13175,9 @@ function phoneFit(){
      fits ended up needing: stop refining the model, take the overflow back
      out of the result. */
   if(land&&landH>0) for(let i=0;i<4;i++){
-    const over=sc.getBoundingClientRect().height-landH;
+    // the rows past the sixth are not part of the card the student sees, so
+    // they must not be taken back out of the zoom either
+    const over=sc.getBoundingClientRect().height-rowsBeyond(sc,landCap)-landH;
     if(over<=0.5) break;
     z=Math.max(0.2,z*(landH/(landH+over)));
     sc.style.zoom=z;
