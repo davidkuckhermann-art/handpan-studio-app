@@ -4708,12 +4708,16 @@ body.phone #score{position:relative}      /* the loop frame is placed against it
    It sits in #scorewrap, NOT in the zoomed #score, so it keeps its real size at
    any zoom — phoneFit() anchors it to the CARD's corner, not the wrapper's, or
    it floats off to the side whenever the card is narrower than the screen. */
-body.phone #scorewrap>#playBtn{position:absolute; top:6px; right:6px; z-index:4; width:30px; height:30px;
+/* 30px WAS THE OLD CALL AND HE HAS CHANGED IT (David, 4 Sep: "can you please
+   also increase the size of the play button that hovers over the notation?").
+   It used to be kept small so it covered as little of the notation as
+   possible, with an invisible 44px target around it; sideways it read as an
+   afterthought beside a full-width table. 44px visual, the deck's own base
+   size, with the target grown to match rather than shrunk to it. */
+body.phone #scorewrap>#playBtn{position:absolute; top:6px; right:6px; z-index:4; width:44px; height:44px;
   box-shadow:0 0 0 3px var(--sc-bg), 0 2px 8px -2px rgba(var(--dixie-rgb),.7)}
-body.phone #scorewrap>#playBtn svg{width:14px; height:14px}
-/* the visual stays small so it doesn't cover the notation, but the thumb gets
-   a 44px target — the iOS minimum */
-body.phone #scorewrap>#playBtn::after{content:""; position:absolute; inset:-7px; border-radius:50%}
+body.phone #scorewrap>#playBtn svg{width:19px; height:19px}
+body.phone #scorewrap>#playBtn::after{content:""; position:absolute; inset:-6px; border-radius:50%}
 /* The loop is ONE frame around the whole span, not a ring per row (David,
    26 Aug). It lives inside #score so it scales with the notation, and it is
    pointer-transparent — the gesture layer hit-tests its edges itself. Drag
@@ -12933,6 +12937,29 @@ function landRefs(){
    Measured, not constant, because the leads differ by device — the safe-area
    insets and the bar's own padding are not the same on every phone, which is
    why a pair of constants could look even here and lopsided on his. */
+/* SIX ROWS SIDEWAYS, THEN IT SCROLLS (David, 4 Sep: "one general thing about
+   the notation table in landscape view on mobile: let's limit the height.
+   Let's limit the rows to six, and everything above will be scrollable
+   vertically"). The same rule portrait has had since 1 Sep — there four rows,
+   the frame stops growing and the music scrolls inside it — said in
+   landscape's own number. Six is what the wide band holds without the card
+   pushing past the screen.
+
+   Written in UNZOOMED px because #score sits inside the zoomed card, exactly
+   as fitPortraitStack writes its own cap; and taken from the sixth row's
+   bottom, so the cap lands on a row boundary rather than mid-glyph. */
+const LAND_ROWS=6;
+function landRowCap(sc){
+  const mus=$("score"); if(!mus) return;
+  const rows=mus.querySelectorAll(".nrow");
+  if(rows.length<=LAND_ROWS) return;              // it fits — leave it alone
+  const z=parseFloat(sc.style.zoom)||1;
+  const top=mus.getBoundingClientRect().top;
+  const cut=rows[LAND_ROWS-1].getBoundingClientRect().bottom;
+  mus.style.maxHeight=((cut-top)/z)+"px";
+  mus.style.overflowY="auto"; mus.style.overflowX="hidden";
+  mus.style.webkitOverflowScrolling="touch";
+}
 function centreLandStage(wrap,sc){
   if(!matchMedia("(orientation:landscape)").matches) return;
   const r=landRefs();
@@ -13169,7 +13196,9 @@ function phoneFit(){
      cap that created it. What is left is a placement, not a fit: the card's
      height is already decided, and centreLandStage only says where in the
      band it sits. */
-  if(land){ wrap.style.paddingTop=LAND_TOP+"px"; centreLandStage(wrap,sc); }
+  if(land){ wrap.style.paddingTop=LAND_TOP+"px";
+    landRowCap(sc);                 // …six rows at most, and the card centred on what is left
+    centreLandStage(wrap,sc); }
   // anchor the play button to the CARD's top-right, not the wrapper's — when
   // the card is narrower than the screen the two are far apart
   anchorWrapControls(wrap,sc);
