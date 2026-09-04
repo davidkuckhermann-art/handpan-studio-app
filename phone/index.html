@@ -4704,6 +4704,9 @@ body.phone #pvsvg{margin:0 auto}
    firing on every double tap meant for the loop (David, 26 Aug) */
 body.phone,body.phone *{touch-action:manipulation}
 body.phone #score{position:relative}      /* the loop frame is placed against it */
+/* landRowCap hands the rows a height sideways so six of them fill the frame;
+   unset everywhere else, where the rows size themselves as they always have */
+#score .nrow{min-height:var(--landrow,0)}
 /* the play button rides inside the notation frame, top right (David, 26 Aug).
    It sits in #scorewrap, NOT in the zoomed #score, so it keeps its real size at
    any zoom — phoneFit() anchors it to the CARD's corner, not the wrapper's, or
@@ -12951,12 +12954,33 @@ function landRefs(){
 const LAND_ROWS=6;
 function landRowCap(sc){
   const mus=$("score"); if(!mus) return;
+  mus.style.removeProperty("--landrow");
   const rows=mus.querySelectorAll(".nrow");
-  if(rows.length<=LAND_ROWS) return;              // it fits — leave it alone
+  if(!rows.length) return;
   const z=parseFloat(sc.style.zoom)||1;
-  const top=mus.getBoundingClientRect().top;
+  /* THE SIX FILL THE FRAME (David, 4 Sep: "the idea is not that the notation
+     shrinks down to 6 rows, but that these 6 rows fill the full vertical space
+     in the notation window… We don't want to waste any space"). Capping alone
+     left the card at the band's height with the music sitting short inside it.
+     The rows cannot be made to fill by ZOOMING — sideways the zoom is already
+     pinned by the table's width (measured 0.336 on an eight-beat table at
+     845x393), so raising it would push the notation off the sides. They are
+     given the height instead: the room below the music's top, divided by six,
+     written per row in unzoomed px because #score sits inside the zoomed card.
+     Fewer than six rows share the same room, so a short piece fills it too. */
+  const cardBottom=sc.getBoundingClientRect().bottom;
+  const musTop=mus.getBoundingClientRect().top;
+  const room=cardBottom-musTop-2;
+  const show=Math.min(LAND_ROWS,rows.length);
+  if(room>0&&show>0){
+    const per=(room/show)/z;
+    if(per>0&&isFinite(per)) mus.style.setProperty("--landrow",per.toFixed(2)+"px");
+  }
+  if(rows.length<=LAND_ROWS){ mus.style.maxHeight=""; mus.style.overflowY=""; return; }
+  /* …and past six it scrolls, the cut taken from the sixth row's bottom so it
+     lands on a row boundary rather than mid-glyph */
   const cut=rows[LAND_ROWS-1].getBoundingClientRect().bottom;
-  mus.style.maxHeight=((cut-top)/z)+"px";
+  mus.style.maxHeight=((cut-musTop)/z)+"px";
   mus.style.overflowY="auto"; mus.style.overflowX="hidden";
   mus.style.webkitOverflowScrolling="touch";
 }
@@ -13037,7 +13061,8 @@ function phoneFit(){
      them mid-row with no way to scroll (David, 30 Aug: "on mobile, the table
      and tab notations are messed up now"). Cleared before anything else, so
      no path can leave it behind. */
-  if(view!=="flow"){ const m=$("score"); m.style.maxHeight=""; m.style.minHeight=""; }
+  if(view!=="flow"){ const m=$("score"); m.style.maxHeight=""; m.style.minHeight="";
+    m.style.removeProperty("--landrow"); }   // the landscape row height never survives into portrait
   /* AND THE LANDSCAPE BOX IS RELEASED BEFORE ANYTHING IS MEASURED. It is a
      min-height on the CARD, and the natural height below is read off
      `sc.scrollHeight` — a box left over from the last fit would be measured as
