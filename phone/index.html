@@ -16487,23 +16487,39 @@ function place(ev){
      nudge is gated on `state!=="running"` — and the 4 Sep finding was that
      the state lies, reporting running while nothing is audible.
      No new mechanism: the door now opens the way the other doors open. */
-  wakeAudio(); preloadBank();
-  fireEvent(Object.assign({},ev),ctx.currentTime+0.01);
-  edSoundWatch();
+  /* WHERE THE SINK EXISTS, THE EDITOR MUST OPEN IT (David, 4 Sep, with the
+     audio log off his iPhone — and then: "there was no issue on desktop, only
+     iphone. Please revert changes if you changed anything for desktop").
+     His log named the cause in its own words:
+         no sound — sink paused
+         iOS paused the sink (on screen)
+     On iOS every voice leaves through a MediaStream and an <audio> element
+     (ensureSink: `master.disconnect(); master.connect(dest)`), so a PAUSED
+     element is total silence however healthy the context is. Two things then
+     pause it and neither is watched while you edit: our own `sinkSync`, which
+     pauses whenever `soundActive()` is false and no hold is standing — and
+     editing is exactly "not sounding" — and iOS itself, as his log shows.
+     `audioWatch` would notice and repair it, but its first line is
+     `if(!soundActive()...) return`, so during editing nobody is looking.
+     Hence: sound after Play or after a tap on the reading card, which hold
+     the sink for SINK_HOLD seconds, and silence once that lapses. That is
+     "sometimes it's there, sometimes it disappears", exactly.
+     GATED TO THE PLATFORMS THAT HAVE A SINK — the same test ensureSink makes
+     — because David saw no fault on the desktop and asked for it to stay as
+     it was. On desktop this line is again the bare fire it has always been. */
+  if(IOS||FRAMED_SAFARI){ wakeAudio(); preloadBank(); }
+  if(ctx) fireEvent(Object.assign({},ev),ctx.currentTime+0.01);
+  if(IOS||FRAMED_SAFARI) edSoundWatch();
 }
-/* …AND IF IT STILL DOES NOT SOUND, THE APP SAYS SO. The wake above closes a
-   real gap, but it was NOT shown to be the cause of David's report: on this
-   Mac's Chromium a placement into a suspended context came back on both
-   builds, because `fire`'s own nudge succeeds once there is user activation.
-   So rather than guess again, the door writes its own conditions into the
-   audio log — the same log the 4 Sep session built because it is the only
-   witness that survives a relaunch. It speaks ONLY when the note could not
-   have been heard, so the log stays readable, and it waits a moment because
-   `resume()` is a promise and reading the state straight away would libel a
-   context that is on its way back. Next time it goes quiet the log will say
-   whether the engine was asleep, the iOS sink was paused, or neither — and
-   "neither" would itself be the finding, because it would rule out this
-   whole path. */
+/* …AND IF IT STILL DOES NOT SOUND, THE APP SAYS SO. The wake above should be
+   the cure — David's own log named the sink — but this is the second attempt
+   at a fault nobody could reproduce on this Mac, so the door keeps writing
+   its conditions into the audio log rather than trusting that. It speaks ONLY
+   when the note could not have been heard, so the log stays readable, and it
+   waits a moment because `resume()` is a promise and reading the state
+   straight away would libel a context that is on its way back. If a line ever
+   appears now it will say which of the two it was, engine or sink — and it
+   runs only where the sink exists, the desktop having no fault to report. */
 let edSilentLast=0;
 function edSoundWatch(){
   setTimeout(()=>{
