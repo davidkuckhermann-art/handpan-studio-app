@@ -2903,7 +2903,16 @@ body.phone .edhint{max-width:292px}
 body.haspan:not(.phone):not(.editing) #belowrow{display:flex; align-items:flex-start;
   justify-content:space-between; flex-wrap:nowrap}
 body.haspan:not(.phone):not(.editing) #chordwrap{flex:0 0 auto}
-body.haspan:not(.phone):not(.editing) #panwrap{flex:0 1 auto; min-width:0}
+/* THE PAN HANGS ON THE RIGHT EDGE, whether or not the chord card is there
+   (David, 4 Sep: "when I switch off the Chords tab, the Pan tab should stay
+   on the right side instead of moving over to the left"). `space-between`
+   says "chords left, pan right" only while there are TWO cards; with one it
+   means "at the start", so switching the chords off threw the pan across the
+   window — measured at 1501px wide: the card went from 793 to 151. A margin
+   states the intent instead of inferring it from how many children there
+   happen to be, so it holds in every room that hides the chord card — the
+   tablet's own rule above has said it this way since 31 Aug. */
+body.haspan:not(.phone):not(.editing) #panwrap{flex:0 1 auto; min-width:0; margin-left:auto}
 #arrbox{flex:0 1 auto; padding:14px 18px 16px}
 .arrline{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:5px 0}
 #arrbox .chip{font-size:15.5px; padding:7px 17px;      /* the arrangement reads at a glance (David, 26 Aug) */
@@ -3107,6 +3116,17 @@ html.player #landClose{left:auto; right:calc(50px + env(safe-area-inset-right))}
 /* One .ib icon button in the corner gap the pan's circle leaves free — the
    text pill was wider than the gap and sat on the pan (David, 26 Aug). */
 #panmenu,#pancustom{position:absolute; top:8px; right:8px; z-index:2; width:28px; height:28px}
+/* the customiser's own two, running back from the tick (David, 4 Sep) — the
+   glyphs are the header's, so one pair teaches the other */
+#panbox .pchist{position:absolute; top:8px; z-index:2; width:28px; height:28px;
+  font-size:15px; line-height:1; color:var(--ink2)}
+#panbox #pcRedo{right:42px}
+#panbox #pcUndo{right:76px}
+#panbox .pchist:disabled{opacity:.35}
+/* Reset in the corner the circle leaves empty, as far from the tick as the
+   card allows — undoing a layout and throwing it away should not be neighbours */
+#panbox #pcReset{position:absolute; left:8px; bottom:8px; z-index:2;
+  padding:5px 10px; font-size:12.5px}
 /* the extend button takes the OTHER corner the circle leaves free (2 Sep) */
 #panbig{position:absolute; top:8px; left:8px; z-index:2; width:28px; height:28px}
 #panbig svg{width:15px; height:15px}
@@ -3134,8 +3154,14 @@ html.player #landClose{left:auto; right:calc(50px + env(safe-area-inset-right))}
 /* the two corner buttons are absolutely positioned over this row's right end,
    so the bar reserves their width — without it the phone ran "Reset" straight
    under them and half the button was unreachable */
+/* THE SENTENCE SITS ON THE CARD'S OWN CENTRE (David, 4 Sep: "please center
+   that explanation horizontally"). Reserving the corner buttons' width on the
+   RIGHT ONLY moved the centre of what was left half that reserve to the left —
+   measured at 56px, which is exactly half of 112. Padding both sides by the
+   same reserve keeps the text clear of the buttons AND leaves the midpoint
+   where the card's midpoint is. The phone never draws this row at all. */
 #pcbar{display:flex; align-items:center; gap:10px; justify-content:center; flex-wrap:wrap;
-  margin-top:8px; padding-right:44px; font-size:12.5px; color:var(--ink2)}
+  margin-top:8px; padding:0 112px; font-size:12.5px; color:var(--ink2)}
 #pcbar .ctl{padding:5px 10px; font-size:12.5px}
 body.phone #pcbar{font-size:11.5px}
 /* customising: the fields are handles, so they say so and stop inviting a tap */
@@ -8243,7 +8269,11 @@ let panOrient=localStorage.getItem("hps.panorient")==="1"?"1":"2";   // 2 centre
    with no idea why */
 let panCustom=false;
 function setPanCustom(v){
+  const was=panCustom;
   panCustom=!!v;
+  // a sitting at a time: opening starts an empty stack, and either way the
+  // buttons now speak for whichever document this room is standing in
+  if(panCustom&&!was) histClear("pan"); else paintUndo();
   if(!panCustom) setSuggest(false);
   if(panCustom&&panMode!=="strokes") setPanMode("strokes");   // chords paints over the drag
   else renderPanPanel();
@@ -14497,6 +14527,25 @@ function renderPanPanelInner(){
       +' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
     cz.addEventListener("click",()=>setPanCustom(false));
     box.appendChild(cz);
+    /* UNDO AND REDO BESIDE THE TICK (David, 4 Sep). They drive the same
+       doUndo/doRedo as the header's pair — while the customiser is open
+       histRoom() answers "pan", so both pairs are already talking about the
+       layout — and they are here because this is where the hand is: the
+       header is a long way from a field you have just dragged. Reading order
+       left to right is undo, redo, done, so from the right edge they run
+       backwards: the tick at 8, redo at 42, undo at 76. */
+    const hb=(id,glyph,title,fn)=>{
+      const b=document.createElement("button");
+      b.id=id; b.className="ib pchist"; b.type="button";
+      b.textContent=glyph; b.title=title; b.setAttribute("aria-label",title);
+      b.addEventListener("click",fn);
+      box.appendChild(b);
+    };
+    hb("pcRedo","\u21bb","Redo",doRedo);
+    hb("pcUndo","\u21ba","Undo",doUndo);
+    /* the pair is rebuilt with the card, so their enabled state is painted
+       here rather than waiting for the next history event */
+    paintUndo();
   }else{
     const mn=document.createElement("button");
     mn.id="panmenu"; mn.className="ib";
@@ -14542,10 +14591,17 @@ function renderPanPanelInner(){
     /* the phone drops the sentence entirely: with two buttons AND the 78px the
        corner buttons reserve, keeping it wrapped Reset onto a second line and
        pushed the pan down. The toast has already said what to do. */
-    bar.innerHTML=(PHONE?"":'<span>Drag a field to where it sits on your pan</span>')
-      +'<button class="ctl" id="pcSuggest">Suggest\u2026</button>'
-      +'<button class="ctl" id="pcReset">Reset</button>';
-    box.appendChild(bar);
+    /* SUGGEST IS GONE (David, 4 Sep: "let's get rid of the suggest option in
+       the pan layout editor") and RESET HAS LEFT THIS ROW for the card's
+       bottom-left corner — the corner the drawing's circle leaves empty, and
+       far from the tick, which is what a destructive button wants. The row is
+       now only the sentence, so on the phone, which never showed it, there is
+       no row at all rather than an empty one taking height. */
+    bar.innerHTML=PHONE?"":'<span>Drag a field to where it sits on your pan</span>';
+    if(!PHONE) box.appendChild(bar);
+    const rs=document.createElement("button");
+    rs.className="ctl"; rs.id="pcReset"; rs.type="button"; rs.textContent="Reset";
+    box.appendChild(rs);
   }
   box.classList.toggle("customising",panCustom);
   const wrap=document.createElement("div"); wrap.id="pvwrap";
@@ -14827,6 +14883,7 @@ function wirePanDrag(box){
        and a customised pan stops following the orientation toggle, which is
        a setting quietly going dead for a reason nobody could see. */
     if(!shifted) return;
+    panSnapshot();                 // one drag, one step back
     const all=panLayouts(), id=myPan.pan.id, L={f:{},b:{}};
     items.forEach(it=>{ const t=it.key[0]==="b"?L.b:L.f;
       t[it.key.slice(1)]={x:it.x,y:it.y}; });
@@ -14843,6 +14900,7 @@ function wirePanDrag(box){
   svg.addEventListener("pointercancel",drop);
   const rb=$("pcReset");
   if(rb) rb.addEventListener("click",()=>{
+    panSnapshot();
     const all=panLayouts(); delete all[myPan.pan.id]; setPanLayouts(all);
     renderPanPanel();
     /* "the standard circle" is a lie on a mutant: reset hands it back to the
@@ -14850,8 +14908,6 @@ function wirePanDrag(box){
     toast(mutantCount(myPan)?"Layout reset — back to the standard layout for this pan"
                             :"Layout reset — back to the standard circle");
   });
-  const sb=$("pcSuggest");
-  if(sb) sb.addEventListener("click",()=>setSuggest(true));
 }
 /* the pane only ever appears while customising, and closing the customiser
    closes it too — it is one task, not two */
@@ -16209,10 +16265,21 @@ function pickLane(sl,x,y,at){
    stack already did. It is not clever, and for a piece of this size it is
    free: an 80-deep history of a long arrangement is a few hundred KB, held
    only in memory. Nothing is persisted — see loadPiece and enterJam. */
-const HIST={piece:{u:[],r:[]},jam:{u:[],r:[]}};
+/* …AND A THIRD DOCUMENT WHILE THE PAN IS BEING DRAWN (David, 4 Sep: "undos
+   should be possible when changing the layout of a pan in the Pan tab"). A
+   layout is not the piece and not the jam — it belongs to the INSTRUMENT and
+   outlives both — so it gets its own stack rather than a second meaning for
+   an existing one. Nothing else changes: the buttons and Cmd-Z already ask
+   histRoom() which document they are looking at, and while the customiser is
+   open the answer is the layout. The stack is cleared when the customiser
+   opens, so undo can walk back through this sitting and no further — the same
+   rule the other two follow when their document is loaded afresh. */
+const HIST={piece:{u:[],r:[]},jam:{u:[],r:[]},pan:{u:[],r:[]}};
 const HIST_CAP=80;
-const histRoom=()=>jamOn?"jam":"piece";
-const histState=r=>JSON.stringify(r==="jam"?jam:piece);
+const histRoom=()=>panCustom?"pan":(jamOn?"jam":"piece");
+const panLayoutState=()=>JSON.stringify((myPan&&myPan.pan&&panLayouts()[myPan.pan.id])||null);
+function panSnapshot(){ histPush("pan",panLayoutState()); }
+const histState=r=>r==="pan"?panLayoutState():JSON.stringify(r==="jam"?jam:piece);
 function histPush(room,state){
   const h=HIST[room];
   h.u.push(state); if(h.u.length>HIST_CAP) h.u.shift();
@@ -16225,6 +16292,16 @@ function histClear(room){ HIST[room].u.length=0; HIST[room].r.length=0; paintUnd
    from inside applyJam(), which a restore also runs, so jamLast is planted
    first and the commit sees nothing to record. */
 function histApply(room,json){
+  /* a layout of `null` is the pan wearing no layout at all — the state Reset
+     leaves behind — so undo restores the absence as faithfully as a position */
+  if(room==="pan"){
+    const all=panLayouts(), id=myPan.pan.id, L=JSON.parse(json);
+    if(L) all[id]=L; else delete all[id];
+    setPanLayouts(all);
+    renderPanPanel();
+    if(document.body.classList.contains("suggesting")) paintSuggestPane();
+    return;
+  }
   if(room==="jam"){ jam=JSON.parse(json); jamLast=json; applyJam(); return; }
   piece=JSON.parse(json);
   // structure is undoable (the Piece sheet) — the restored piece may not
@@ -16249,9 +16326,13 @@ function doRedo(){
   paintUndo();
 }
 function paintUndo(){
-  const h=HIST[histRoom()], u=$("undoBtn"), r=$("redoBtn");
-  if(u) u.disabled=!h.u.length;
-  if(r) r.disabled=!h.r.length;
+  /* BOTH PAIRS, ONE PAINTER (David, 4 Sep, when the customiser grew its own
+     undo and redo beside the Done tick). Naming the ids here rather than
+     giving each caller its own painter is what keeps the header and the pan
+     card from ever disagreeing about whether there is anything to undo. */
+  const h=HIST[histRoom()];
+  for(const id of ["undoBtn","pcUndo"]){ const b=$(id); if(b) b.disabled=!h.u.length; }
+  for(const id of ["redoBtn","pcRedo"]){ const b=$(id); if(b) b.disabled=!h.r.length; }
 }
 function snapshot(){ histPush("piece",JSON.stringify(piece)); }
 function nextHand(){
@@ -27002,6 +27083,7 @@ function boot(){
     paintOrient(); renderPanPanel(); if(editing) refresh();
   };
   $("sgRoll").addEventListener("click",()=>{
+    panSnapshot();                 // …and back out of a suggestion you disliked
     const r=suggestLayout();
     renderPanPanel(); paintSuggestPane();
     const c=r.cyclops||[];
@@ -27010,6 +27092,7 @@ function boot(){
                  :"A layout for this scale — press again for another");
   });
   $("sgReset").addEventListener("click",()=>{
+    panSnapshot();
     const all=panLayouts(); delete all[myPan.pan.id]; setPanLayouts(all);
     renderPanPanel(); toast("Back to the standard circle");
   });
