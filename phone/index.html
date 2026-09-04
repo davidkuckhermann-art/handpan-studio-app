@@ -8588,18 +8588,15 @@ function setSheet(v){
   loadHandCol(); applyHandColors(); paintThemeUI();
 }
 /* the served file's own Last-Modified, read back as a build stamp */
-function buildStamp(){
+function paintVersion(){
+  const el=$("setVer"); if(!el) return;
   let out=document.lastModified;
   try{
     const d=new Date(document.lastModified);
     if(!isNaN(d)) out=d.toLocaleDateString(undefined,{day:"numeric",month:"short"})
       +" "+d.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});
   }catch(e){}
-  return out||"unknown";
-}
-function paintVersion(){
-  const el=$("setVer"); if(!el) return;
-  el.textContent=buildStamp();
+  el.textContent=out||"unknown";
 }
 function paintThemeUI(){
   const sel=$("themeSel");
@@ -16471,33 +16468,6 @@ function place(ev){
      — a tap, an arrow key — and the next symbol stacks where the last went. */
   refresh();
   if(ctx) fireEvent(Object.assign({},ev),ctx.currentTime+0.01);
-  if(IOS||FRAMED_SAFARI) edSoundWatch();
-}
-/* …AND IF IT STILL DOES NOT SOUND, THE APP SAYS SO. The wake above should be
-   the cure — David's own log named the sink — but this is the second attempt
-   at a fault nobody could reproduce on this Mac, so the door keeps writing
-   its conditions into the audio log rather than trusting that. It speaks ONLY
-   when the note could not have been heard, so the log stays readable, and it
-   waits a moment because `resume()` is a promise and reading the state
-   straight away would libel a context that is on its way back. If a line ever
-   appears now it will say which of the two it was, engine or sink — and it
-   runs only where the sink exists, the desktop having no fault to report. */
-let edSilentLast=0;
-function edSoundWatch(){
-  setTimeout(()=>{
-    try{
-      const why=[];
-      if(!ctx) why.push("no engine");
-      else if(ctx.state!=="running") why.push("engine "+ctx.state);
-      if(iosSink&&iosSink!=="failed"&&iosSink.paused) why.push("sink paused");
-      if(iosSink==="failed") why.push("sink failed");
-      if(!why.length) return;
-      const now=Date.now();
-      if(now-edSilentLast<4000) return;      // one line per episode, not per tap
-      edSilentLast=now;
-      audioNote("editor tap silent — "+why.join(", "));
-    }catch(e){}
-  },260);
 }
 /* which fields of a drawn pan carry the reference chord — the same test
    placeField makes when a field is tapped, made once for the whole drawing */
@@ -17122,28 +17092,9 @@ function paintEditDeck(){
     host.innerHTML=panViewSVG(srcPan,"Tap a field to place it",{under:true});
     markChordTones(host);
     host.querySelectorAll("[id]").forEach(el=>el.removeAttribute("id"));
-    /* THROUGH panTapWire, THE WIRING THE READING CARD ALREADY USES (David,
-       4 Sep). His log, on the build that carries its own stamp:
-           20:49:24  app opened — build Sep 4 08:47 PM
-           20:49:27  editor tap silent — engine suspended
-       ENGINE SUSPENDED — so the context was asleep and the resume was being
-       REFUSED, which is a question about the EVENT, not about the audio code.
-       On WebKit the activation that may start or resume sound comes from
-       pointerUP / touchend / click; pointerDOWN does not carry it. The reading
-       card fires on pointerup — panTapWire, written for the swipe threshold —
-       and its taps have always sounded. Play is a button click and has always
-       sounded. This line was the one place that fired on pointerdown, so its
-       resume was never permitted and the engine stayed suspended.
-       It matches his words exactly: "the first tone I click comes out delayed,
-       and afterwards the sound disappears" — the first tap rides a context
-       still awake from the gesture that opened the editor, and once that
-       lapses nothing on this pan can wake it again.
-       panTapWire also brings the 10px move-cancel, so dragging across the pan
-       no longer writes the fields it passes. The desktop keeps its own
-       down-fire binding, untouched: David saw no fault there. */
     host.querySelectorAll(".pvf").forEach(g=>{
       const pos=g.dataset.b!==undefined?botPos(+g.dataset.b+1):+g.dataset.f;
-      panTapWire(g,()=>{ placeField(pos); pvFlash(g,["hT"]); });
+      g.addEventListener("pointerdown",()=>{ placeField(pos); pvFlash(g,["hT"]); });
     });
   }
   fitEdPan();
@@ -29079,15 +29030,7 @@ if(PHONE){
   });
   sheetSwipe($("menuDlg"),$("menuDlg").querySelector(".grab"));
   $("menuClose").addEventListener("click",()=>$("menuDlg").close());
-  /* THE RELAUNCH LINE NAMES THE BUILD (David, 4 Sep). His log screenshot said
-     "19:35:34 app opened" and the fix had gone live at 19:47 — so the session
-     he was reporting on could not have contained it, and neither of us could
-     see that from the log alone. The stamp is already computed for the
-     settings sheet; putting it on this line means every future screenshot
-     says which code it is, and a stale copy reports the OLD time, which is
-     exactly the fault worth revealing. A log annotation only — no behaviour
-     changes on any platform. */
-  audioNote("app opened — build "+buildStamp());
+  audioNote("app opened");           // the line that marks a relaunch in the log
   $("mAudioLog").addEventListener("click",()=>{
     $("audioLogBody").textContent=audioLogText();
     openDlg($("audioLogDlg"));
