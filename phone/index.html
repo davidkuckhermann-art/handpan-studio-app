@@ -2217,7 +2217,13 @@ body.cp:not(.phone) #chordwrap{display:none !important}
 #cpband .cphead .name{font-size:13px; font-weight:700; color:var(--ink2); flex:1; min-width:0;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 #cpband .cphead .ctl{white-space:nowrap; font-weight:800}
-#cpband .chordrow{justify-content:flex-start; flex-wrap:nowrap; overflow-x:auto; overflow-y:hidden;
+/* CENTRED WHEN THEY FIT (David, 4 Sep: "if there is enough space, those
+   chords should be centered horizontally in their frame"). `safe` is the
+   whole point: a plain `center` would centre an overflowing row too and put
+   its first chord out of reach on the left, where nothing can scroll back to
+   it. With `safe`, the row centres while it fits and falls back to the start
+   the moment it does not. */
+#cpband .chordrow{justify-content:safe center; flex-wrap:nowrap; overflow-x:auto; overflow-y:hidden;
   scrollbar-width:none; padding:2px 1px 4px}
 #cpband .chordrow::-webkit-scrollbar{display:none}
 #cpband .cchip.cpon{background:var(--sc-band)}
@@ -2282,11 +2288,12 @@ body:not(.lslive) .qlisten{opacity:.35}   /* the mic not open yet, or refused: t
 #cpband .lstune .foot{grid-column:1/-1; display:flex; justify-content:space-between; align-items:center; gap:10px;
   font-size:11.5px; color:var(--ink3); margin-top:2px}
 body.phone #cpband{margin:0; width:100%; padding:7px 8px 8px; flex:none}
-/* on the phone the band and the pan card STACK under the notation — the
-   below-row is a side-by-side flex row everywhere else, and a jam never
-   showed two things in it (its pan is hidden there) */
-body.phone.cp #belowrow{flex-direction:column; flex-wrap:nowrap; align-items:stretch; justify-content:flex-start}
+/* THE BAND AND THE PAN ARE PAGES NOW, NOT A STACK (David, 4 Sep). They used
+   to sit one above the other here — a column only chord practice had — so
+   each got about half the height and the pan came out at 152px where every
+   other room gives it 295. One at a time, swiped, like the rest of the app. */
 body.phone.cp #panwrap{flex:1 1 auto; min-height:0}
+body.phone.cp #cpband{flex:1 1 auto; min-height:0; overflow-y:auto}
 /* …and the band runs compact, the chord card's own phone sizes a step down */
 body.phone #cpband .cphead{margin-bottom:5px}
 body.phone #cpband .cname{font-size:16px}
@@ -15461,20 +15468,30 @@ function syncBare(){
    wiped phone: fresh boot pan, one jam visit, chords ever after). */
 function sideSticks(){ return !(PHONE&&jamOn); }
 function setChords(v){ chordRowOn=v;
-  /* chord practice on the desktop: the pill shows and hides the BAND, which is
-     this room's chord tab; nothing is stored — the room's choice is its own */
-  if(typeof cpOn!=="undefined"&&cpOn&&cpStage&&!PHONE){
+  /* IN CHORD PRACTICE THE BAND *IS* THE CHORD TAB — on the phone as well now
+     (David, 4 Sep: "in chord practice, still on mobile, can you fix the area
+     below the notation? It should have the same setup as the other pages of
+     the app, where you can swipe between the chord tab and the pan tab").
+     The desktop has worked this way since the room was built; the phone was
+     stacking the band and the pan instead, which gave each of them half the
+     height and left the dots describing companions that were not on screen.
+     Only the desktop returns early — it shows both at once, so it has a pill
+     rather than a page. Nothing is stored either way: the room's choice is
+     its own and must not leak into the reading rooms. */
+  const inCp=(typeof cpOn!=="undefined"&&cpOn&&cpStage);
+  if(inCp){ const b=$("cpband"); if(b) b.classList.toggle("hidden",!v); }
+  if(inCp&&!PHONE){
     $("chordBtn").classList.toggle("on",v); $("chordBtn").setAttribute("aria-pressed",v?"true":"false");
-    const b=$("cpband"); if(b) b.classList.toggle("hidden",!v);
     return; }
-  if(sideSticks()&&!sideQuiet) try{localStorage.setItem("hps.chords",v?"1":"0")}catch(e){}
+  if(sideSticks()&&!sideQuiet&&!inCp) try{localStorage.setItem("hps.chords",v?"1":"0")}catch(e){}
   $("chordBtn").classList.toggle("on",v);
   $("chordBtn").setAttribute("aria-pressed",v?"true":"false");
   if(v&&PHONE&&!TABLET&&panOn) setPan(false);   // a tablet holds both, like the desktop
   if(PHONE){ placeJamPanel(); paintSidePills(); }
   render(); }
 function setPan(v){ if(!v) panCustom=false; panOn=v;
-  if(sideSticks()&&!sideQuiet) try{localStorage.setItem("hps.pan",v?"1":"0")}catch(e){}
+  const inCp=(typeof cpOn!=="undefined"&&cpOn&&cpStage);   // …and neither does this one
+  if(sideSticks()&&!sideQuiet&&!inCp) try{localStorage.setItem("hps.pan",v?"1":"0")}catch(e){}
   $("panBtn").classList.toggle("on",v);
   $("panBtn").setAttribute("aria-pressed",v?"true":"false");
   document.body.classList.toggle("haspan",v);   // the row aligns right while it shows
@@ -22496,7 +22513,13 @@ function cpRenderBand(){
   }
   if(!cpWalking()){
     const nx=document.createElement("button"); nx.className="ctl"; nx.id="cpNextBtn";
-    nx.textContent="Next ▸"; nx.title="The next sequence — after a fade and four clicks";
+    /* THE SAME DIE AS JAM'S GENERATE (David, 4 Sep: "instead of 'Next' on the
+       label of the button that generates a new sequence, let's use the dice
+       symbol that we already use in Jam mode, to be consistent"). It is the
+       same action — cpNext calls cpMakeSeq, jam's genBtn calls jamGenerate —
+       so it should not wear two different names. */
+    nx.textContent="🎲"; nx.title="A fresh chord sequence — after a fade and four clicks";
+    nx.setAttribute("aria-label",nx.title);
     nx.addEventListener("click",cpNext); head.appendChild(nx);
   }
   const gear=document.createElement("button"); gear.className="ib"; gear.id="cpSetBtn";
@@ -22825,7 +22848,11 @@ function cpStart(){
   bpm=cpcfg.bpm; $("bpm").value=bpm;
   panMode="both";                         // the chord lit and the strokes over it — held, not stored; leaveCp puts it back
   sideQuiet=true;
-  try{ setPan(true); if(!PHONE) setChords(true); else if(TABLET) setChords(false); } finally{ sideQuiet=false; }
+  /* THE CHORDS SHOW FIRST (David, 4 Sep). The desktop holds both, a tablet
+     holds the pan with the band beside it; the phone opens on the chord page
+     and swipes to the pan — setChords turns the pan off for us. */
+  try{ if(PHONE&&!TABLET) setChords(true);
+       else { setPan(true); setChords(!PHONE); } } finally{ sideQuiet=false; }
   placeCpBand();
   cpRenderBand();
   if(PHONE){ setDrawer(false); placeDrawer(); phoneFit(); }
