@@ -6004,8 +6004,8 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <h3>Chord practice</h3>
   <div class="drow"><span>Boxes</span>
     <span class="pills" role="group" aria-label="Chord boxes">
-      <button id="cpvFull" title="Every field of the chord your pan has">Full chords</button>
-      <button id="cpvSug" title="The three or four notes the simple arpeggio proposes">Suggested voicing</button></span></div>
+      <button id="cpvFull" title="Every field of the chord your pan has — drawn here and played by the arpeggio">Full chords</button>
+      <button id="cpvSug" title="The three or four suggested notes — drawn here and played by the arpeggio">Suggested voicing</button></span></div>
   <div class="row" style="margin:12px 0 0">
     <button class="ctl" id="cpmSettings">Practice Settings</button>
     <span class="spacer"></span>
@@ -21841,7 +21841,15 @@ function leavePractice(){ if(quizOn) leaveQuiz(); if(rqOn) leaveRhythmQuiz(); if
    counts four clicks, brings the next one. No scoring; portrait first. */
 var cpOn=false, cpStage=false, cpPrev=null, cpWas=null, cpSeq=null, cpSeqN=0, cpLastTpl=null, cpLastIdx=-1;
 var cpFour=false, cpFourIdx=-1;      // the four-pan view (desktop), and which chord its live pan shows
-var cpcfg={src:"common",key:"minor",bars:2,pattern:"cp-arp",arp:"sug",sev:"tri",sound:"play",bpm:60,voicing:"full",mode:"play",reps:4,lsrc:"walk"};
+/* ONE SETTING FOR WHAT IS PLAYED AND WHAT IS DRAWN (David, 4 Sep: "this
+   option should also toggle the notes that are being played, not just the
+   chord tab display. These two things should be connected"). There used to be
+   two: `arp` chose the arpeggio's notes and `voicing` chose the chord tab's
+   boxes, and their defaults DISAGREED — it played the three suggested while
+   drawing the whole chord. `arp` is now the only one, and its default is the
+   full chord, which is the drawing he chose to keep. `voicing` survives only
+   as something to migrate from, in cpLoadCfg. */
+var cpcfg={src:"common",key:"minor",bars:2,pattern:"cp-arp",arp:"all",sev:"tri",sound:"play",bpm:60,mode:"play",reps:4,lsrc:"walk"};
 /* HANDS ARE COLOUR TOKENS, NOT LETTERS (see handLetter): "L" = black = the
    RIGHT hand, "R" = green = the LEFT hand. David's sticking for the arpeggio
    is right · right · left (corrected three times, 2 Sep, because each session
@@ -21857,9 +21865,16 @@ function cpLoadCfg(){
   if(cpcfg.key!=="major") cpcfg.key="minor";
   if(![1,2,4].includes(cpcfg.bars)) cpcfg.bars=2;
   if(!["play","click","silent"].includes(cpcfg.sound)) cpcfg.sound="play";
-  if(cpcfg.arp!=="all") cpcfg.arp="sug";
+  /* A CONFIG SAVED BEFORE THE MERGE CARRIES BOTH. The DRAWING is the one to
+     keep: its default was the full chord, which is what David chose for the
+     merged setting, so anyone who never touched either menu lands where he
+     asked. Someone who had asked for the suggested voicing keeps that. */
+  if(typeof cpcfg.voicing==="string"){
+    cpcfg.arp=cpcfg.voicing==="sug"?"sug":"all";
+    delete cpcfg.voicing;
+  }
+  if(cpcfg.arp!=="sug") cpcfg.arp="all";
   if(cpcfg.sev!=="7th") cpcfg.sev="tri";
-  if(cpcfg.voicing!=="sug") cpcfg.voicing="full";
   if(cpcfg.mode!=="listen"||PHONE) cpcfg.mode="play";   // listening mode is the desktop's (3 Sep)
   if(![1,2,3,4].includes(cpcfg.reps)) cpcfg.reps=4;     // listening: each chord's arpeggio, this many times
   if(!["common","walk","random"].includes(cpcfg.lsrc)) cpcfg.lsrc="walk";   // listening: which chords, in what order
@@ -22550,7 +22565,7 @@ function cpRenderBand(){
   const row=document.createElement("div"); row.className="chordrow";
   /* the boxes show every field of the chord, or only the suggested voicing —
      the three or four notes the simple arpeggio proposes (David, 2 Sep) */
-  const boxFields=n=>cpcfg.voicing==="sug"?cpSuggested(n).slice().sort((a,b)=>myPan.posMidi(a)-myPan.posMidi(b)):chordFields(n);
+  const boxFields=n=>cpcfg.arp==="sug"?cpSuggested(n).slice().sort((a,b)=>myPan.posMidi(a)-myPan.posMidi(b)):chordFields(n);
   const counts=cpSeq.names.map(n=>Math.max(1,boxFields(n).length)), fewest=Math.min(...counts);
   cpSeq.names.forEach((n,i)=>{
     const w=document.createElement("div"); w.className="cchipwrap";
@@ -22773,17 +22788,25 @@ function enterCp(){
 /* ⚙ on the band: a small sheet — the boxes' voicing and the way to the settings */
 function cpOpenMenu(){
   if(!cpOn) return;
-  const F=$("cpvFull"), S=$("cpvSug");
-  if(F) F.setAttribute("aria-pressed",String(cpcfg.voicing!=="sug"));
-  if(S) S.setAttribute("aria-pressed",String(cpcfg.voicing==="sug"));
+  cpPaintVoicing();
   openDlg($("cpMenuDlg"));
 }
-function cpSetVoicing(v){
-  cpcfg.voicing=v==="sug"?"sug":"full"; cpSaveCfg();
+function cpPaintVoicing(){
   const F=$("cpvFull"), S=$("cpvSug");
-  if(F) F.setAttribute("aria-pressed",String(cpcfg.voicing!=="sug"));
-  if(S) S.setAttribute("aria-pressed",String(cpcfg.voicing==="sug"));
-  cpRenderBand();
+  if(F) F.setAttribute("aria-pressed",String(cpcfg.arp!=="sug"));
+  if(S) S.setAttribute("aria-pressed",String(cpcfg.arp==="sug"));
+}
+/* …and changing it here changes what SOUNDS, not only what is drawn. The
+   notes live in the built piece, so the sequence on screen is rebuilt from
+   the same chords — the way Next rebuilds a new one — with no label toast and
+   without starting a transport the student had stopped. */
+function cpSetVoicing(v){
+  const want=v==="sug"?"sug":"all";
+  const changed=cpcfg.arp!==want;
+  cpcfg.arp=want; cpSaveCfg();
+  cpPaintVoicing();
+  if(changed&&cpOn&&cpStage&&cpSeq&&!cpWalking()) cpApply(cpSeq,{announce:false,autoplay:false});
+  else cpRenderBand();
 }
 /* the sheet's Settings: back to the setup with the round kept; Start builds afresh */
 function cpOpenSetup(){
@@ -22870,11 +22893,17 @@ function cpNext(){
   if(!cpOn||!cpStage||cpWalking()) return;
   const seq=cpMakeSeq(); if(!seq) return;
   cpSeq=seq; cpSeqN++;
+  cpApply(seq,{announce:true,autoplay:true});
+}
+/* PUTTING A SEQUENCE ON SCREEN AND IN THE EAR — one way, two callers: Next
+   with a fresh sequence, and the voicing switch with the same one rebuilt. */
+function cpApply(seq,opt){
+  const announce=!opt||opt.announce!==false, autoplay=!opt||opt.autoplay!==false;
   const built=cpBuild(seq);
   /* LISTENING'S NEXT (David, 3 Sep, Common chord progressions in listening
      mode): no fade, no clicks, nothing to play — the new rows are written,
      the ear goes back to the first note of the first chord, and waits */
-  if(cpcfg.mode==="listen"){ loadPiece(built); cpRenderBand(); lsReset(); toast(seq.label); return; }
+  if(cpcfg.mode==="listen"){ loadPiece(built); cpRenderBand(); lsReset(); if(announce) toast(seq.label); return; }
   if(playing&&ctx&&C){
     const beat=60/effBpm(), t0=ctx.currentTime+JAM_REGEN_FADE;
     jamFadeLiveTo(t0);
@@ -22889,8 +22918,8 @@ function cpNext(){
     clearMarks();
   } else loadPiece(built);
   cpRenderBand();
-  toast(seq.label);
-  if(!playing) cpPlayWithCount();
+  if(announce) toast(seq.label);
+  if(!playing&&autoplay) cpPlayWithCount();
 }
 /* ---------------- THE CHORD OVERVIEW (David, 3 Sep, ABC'd on
    mockups-chord-overview.html: "It looks beautiful how you laid it out.
@@ -23219,12 +23248,15 @@ function renderCpSetup(){
     {id:"cp-arp",label:"Simple arpeggio",why:"The chord upward in eighth notes, then a pause."},
     {id:"lib",label:(libPat?libPat.name:"Groove library")+" ▾",why:"Any groove from the library."}],
     lib?"lib":cpcfg.pattern,v=>{ if(v==="lib") openGrooveDlg(); else set("pattern",v); });
-  // only with the simple arpeggio (David, 2 Sep): which notes it runs up
-  if(ls||cpcfg.pattern==="cp-arp")
-    qzChipRow(round,"Arpeggio notes",[
-      {id:"sug",label:cpcfg.sev==="7th"?"The four suggested":"The three suggested",why:"The most common way to play the chord — the fields drawn deeper on the pan."},
-      {id:"all",label:"Every note of the chord",why:"Every field of the chord your pan has, lowest to highest, up to eight."}],
-      cpcfg.arp,v=>set("arp",v));
+  /* IT GOVERNS THE DRAWING TOO, SO IT IS ALWAYS OFFERED (David, 4 Sep). It
+     used to appear only with the simple arpeggio, because it only chose the
+     notes that arpeggio ran up; now it also chooses the boxes the chord tab
+     draws, which every pattern has. With a groove there is simply no arpeggio
+     for it to act on. The same choice sits in the band's own menu. */
+  qzChipRow(round,"Chord notes",[
+    {id:"sug",label:cpcfg.sev==="7th"?"The four suggested":"The three suggested",why:"The most common way to play the chord — the fields drawn deeper on the pan. The chord tab draws these, and the simple arpeggio runs up these."},
+    {id:"all",label:"Every note of the chord",why:"Every field of the chord your pan has, lowest to highest, up to eight — drawn in the chord tab, and played by the simple arpeggio."}],
+    cpcfg.arp,v=>set("arp",v));
   if(!ls) qzChipRow(round,"Sound",[
     {id:"play",label:"Play the notation",why:"You hear what is written and play along."},
     {id:"click",label:"Click only",why:"A metronome on the beats, the pan silent."},
