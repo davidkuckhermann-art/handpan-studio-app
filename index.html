@@ -13853,7 +13853,15 @@ function undersideGeom(P,under){
   const LOWBUMP=1.5;
   const rad=b=>{
     const low=b.midi<P.ding?LOWBUMP:0;
-    if(PHONE) return 24+low;                 // uniform: there is no room to say more
+    /* THE PHONE DOES NOT TAKE THE BUMP (David, 4 Sep: "the bottom note size
+       change did not arrive on mobile — it's ok, let's drop it on mobile").
+       It DID arrive; it simply could not be seen, and the measurement says why:
+       the phone draws the pan through fitPortraitStack at a scale of ~0.52
+       (538 design units into 281px), so 1.5 units of radius reach the glass as
+       0.78px — 1.57px of diameter. Below what a bump is for. Half a pixel of
+       geometry is not worth a branch in the sizing, so the phone keeps its
+       uniform 24 and the ramp stays a desktop rule, where a unit is a pixel. */
+    if(PHONE) return 24;                     // uniform: there is no room to say more
     /* "on desktop you can make bass bottom notes bigger" and later "make the
        low ones a bit bigger still" (David). Ramped from the ding, so it reads
        the same on any instrument rather than against whatever bottoms this one
@@ -16568,13 +16576,10 @@ function edNewGroove(){
 /* Is there work in an editor worth offering to keep? A groove bench always
    counts — it is a document in its own right — and a piece counts when it has
    a single note in it or a name of its own. */
-function edHasWork(){
-  if(grooveEdit) return true;
-  if(!piece) return false;
-  if(pieceDirty&&pieceDirty()) return true;
-  return Object.keys(piece.sections||{}).some(nm=>
-    (piece.sections[nm].bars||[]).some(b=>b&&b.length));
-}
+/* edHasWork stood here and asked whether THE CURRENT PIECE had anything in
+   it. That question is what made navigation adopt the room it came from, and
+   nothing asks it any more (4 Sep) — the editor's own document is the only
+   thing the door consults now. Removed so it cannot be reached for again. */
 /* ═══════ WHAT THE EDITOR IS HOLDING (David, 4 Sep) ═══════
    Until now there was one `piece`: opening the editor from a jam replaced
    whatever you had been writing, silently. The editor keeps its own document
@@ -16593,8 +16598,13 @@ let edDoc=null;               // the arrangement the editor holds, serialised
    solved this by carrying `prevPiece` and putting it back on the way out;
    this is that same carrier for the arrangement editor, set ONLY where the
    door actually displaces something. An import clears it on purpose — the
-   imported arrangement IS the room's own, so there is nothing to give back. */
-let edPrev=null;
+   imported arrangement IS the room's own, so there is nothing to give back.
+   NAMED edRoomBack, not edPrev: there is already a button with id="edPrev"
+   (the "earlier in the piece" arrow), and a bare global of that name is the
+   ELEMENT unless a script-scope binding shadows it. Nothing here reached for
+   the element by its bare name, so nothing was broken — but a variable that
+   quietly shadows a control is a trap laid for the next reader. */
+let edRoomBack=null;
 let edAfterSave=null;         // what to do once the save sheet has been used
 function edStash(){
   if(grooveEdit||!piece||piece.id==="jam"||piece.id==="groove-edit") return;
@@ -16618,19 +16628,15 @@ function edWouldReplace(){
 /* bring a source back and open the editor on it, with the door's guard held
    open across the whole move — a jam has to be re-entered before it can be
    converted, which is a tick or two of its own */
-function edImportSource(src){
-  edSwapGo=true;
-  const release=()=>setTimeout(()=>{ edSwapGo=false; },300);
-  if(src.kind==="jam"){
-    if(!jamOn) enterJam();
-    setTimeout(()=>{ edImportNow("jam"); release(); },140);
-    return;
-  }
-  try{ loadPiece(JSON.parse(src.piece)); }catch(e){}
-  edImportNow("practice"); release();
-}
+/* edImportSource lived here: the "save the held arrangement first, then
+   import" path of the three-answer swap dialog. That dialog became two
+   answers on 4 Sep and nothing has called this since. REMOVED rather than
+   left lying, because it held the only `edSwapGo=true` outside a finally —
+   its release rode on a callback, so one throw would have pinned the flag
+   true and silently disabled the override dialog for the rest of the
+   session. A dead function that can do that is worse than no function. */
 function edImportNow(kind){    // "jam" | "practice"
-  edPrev=null;                 // the imported arrangement IS the room's own
+  edRoomBack=null;             // the imported arrangement IS the room's own
   if(kind==="jam"){ edFromJam(); }
   else if(!editing){ $("editBtn").click(); }
   setTimeout(()=>toast(kind==="jam"?"Arrangement imported from jam mode"
@@ -16764,7 +16770,7 @@ function edOpen(kind){          // "arr" | "grv"
   /* captured only where the seat is actually taken: when the editor already
      holds what practice is reading, nothing is displaced and giving the piece
      back on the way out would undo the very edits just made */
-  const keepRoom=()=>{ if(!editing) edPrev={piece:JSON.parse(JSON.stringify(piece)), bpm}; };
+  const keepRoom=()=>{ if(!editing) edRoomBack={piece:JSON.parse(JSON.stringify(piece)), bpm}; };
   try{
     if(jamOn) leaveJam();
     if(held){
@@ -25921,8 +25927,12 @@ function openGrooveExitDlg(){
 function grooveExit(save){
   $("grooveExitDlg").close();
   grooveExitGo=save?"save":"drop";
-  $("editBtn").click();     // the guard stands aside and the normal exit runs
-  grooveExitGo=null;
+  /* in a finally: if the exit ever threw, a flag left set would tell the
+     bench's guard that a dialog is already driving, and the "keep this
+     groove?" question would never be asked again this session — losing work
+     silently, which is the one thing that guard exists to prevent */
+  try{ $("editBtn").click(); }   // the guard stands aside and the normal exit runs
+  finally { grooveExitGo=null; }
 }
 /* SWITCHING ROOMS WHILE EDITING (David, 27 Aug): it used to refuse — "Leave
    editing first" — which made the student do the leaving by hand and then
@@ -27055,6 +27065,18 @@ function renderPanPick(){
    chooser inside #myPanDlg both still open the picker plainly, and neither
    should chain a dialog behind it. */
 let panPickThenMine=false;
+/* THE FLAG DIES WITH THE PICKER IT WAS SET FOR. It is cleared when a pan is
+   actually chosen, so abandoning the picker used to leave it standing true.
+   Harmless today — choosePan has one caller, the picker's own rows, and every
+   route into the picker runs the line below, which resets it — but "harmless
+   because only one caller exists" is a fact about today's callers. The flag
+   describes THIS picker session, so it ends when the session does. */
+(function(){
+  const bind=()=>{ const d=document.getElementById("panPickDlg");
+    if(d) d.addEventListener("close",()=>{ panPickThenMine=false; }); };
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",bind);
+  else bind();          // this script runs below the markup, so normally straight away
+})();
 function openPanPick(fromDoor){
   panPickThenMine=!!fromDoor;
   /* open on the pan you are actually holding — its scale's row shows the
@@ -27525,8 +27547,8 @@ function boot(){
        the same point in the exit the bench does — after `editing` has flipped
        and the body class is off, so the piece paints into practice and not
        into the editor being taken down. */
-    if(!editing&&!grooveEdit&&edPrev){
-      const pv=edPrev; edPrev=null;
+    if(!editing&&!grooveEdit&&edRoomBack){
+      const pv=edRoomBack; edRoomBack=null;
       loadPiece(pv.piece);
       if(pv.bpm){ bpm=pv.bpm; const bi=$("bpm"); if(bi) bi.value=bpm; }
     }
