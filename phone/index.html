@@ -28251,79 +28251,47 @@ function setDrawer(on){
      — reduced-motion turns the transition off, and then transitionend never
      comes at all */
   const gen=++drawerGen;          // a later toggle wins; this one goes quiet
-  const grow=(from,to,after)=>{
-    let done=false;
-    const finish=()=>{ if(done) return; done=true;
-      ex.removeEventListener("transitionend",onEnd);
-      if(gen!==drawerGen) return;  // superseded — leave the new state alone
-      after(); };
-    const onEnd=e=>{ if(e.target===ex&&e.propertyName==="height") finish(); };
-    ex.addEventListener("transitionend",onEnd);
-    ex.style.transition="none"; ex.style.height=from+"px";
-    ex.getBoundingClientRect();                // let the browser take that in
-    ex.style.transition=""; ex.style.height=to+"px";
-    drawerT=setTimeout(finish,300);
-  };
-  /* THE DECK AND THE DRAWER TRADE PLACES IN ONE MOVE (David, 27 Aug: the old
-     way "looks a bit strange … the drawer animates down and then suddenly the
-     deck is back"). Both heights are driven together, in opposite directions,
-     over the same duration — so the bar's total height barely changes and it
-     reads as one surface turning over rather than two things taking turns.
-     Nothing pops at the end, because neither side is restored by a callback:
-     they simply arrive. */
-  const dk=$("editdeck"), wasEditing=editing&&!!dk;
-  /* THE EDITOR'S BAR SLIDES TO ITS NEW HEIGHT — ONE NUMBER (David, 3 Sep,
-     evening: "just a smooth animation to the proper size, and it doesn't
-     overextend"). The deck and the drawer used to be driven in opposite
-     directions at once, and wherever their two curves disagreed the bar's
-     top edge went past its resting place and came back, with a 4px step at
-     the end where the drawer's padding gave way to the pinned bar's. Now
-     the content switches underneath at once — the drawer shown or hidden by
-     the class, the deck at its natural height — and only the bar's own
-     height moves, from what it was to what it is, clipped on the way. The
-     reading rooms keep the panel's own grow: their bar has no deck to trade. */
+  /* ONE MOTION FOR EVERY ROOM (David, 4 Sep: "when you switch back from
+     drawer to deck, right at the beginning of the animation, there is a
+     flash … it flashes up larger than it is for a quick moment, and then it
+     shrinks").
+
+     The editor was given `slideBar` on 3 Sep and the reading rooms were left
+     on the old `grow`, which is where the flash lived. Closing there ran
+     `drawerTakeBar(false)` FIRST — the tempo row, the play button and the
+     arrangement chips came home to the resting bar — and only then shrank the
+     panel. For those frames the bar held BOTH the restored rows and a
+     full-height panel, so it stood taller than either state it was moving
+     between. That is the flash, and it was in the code rather than in the eye.
+
+     So both rooms now move the same way, which is also the rule: the content
+     switches underneath at once — controls handed over, the class on or off,
+     the panel at its natural height — and only the bar's own height slides
+     from what it was to what it is, clipped on the way. Nothing can flash
+     larger than its endpoints when nothing else moves.
+
+     `phoneFit()` is called inside the switch in both directions. It costs
+     nothing in the editor, whose own guard stands still while the drawer is
+     open, and in the reading rooms it lands before the slide instead of after
+     it, so the card is already right when the bar starts moving. */
   if(on){
-    if(wasEditing){
-      slideBar(gen,()=>{
-        drawerTakeBar(true);
-        document.body.classList.add("drawer-open");
-        sh.classList.remove("hidden");
-        fitDrawerTopRow(); fitFeelRow(); fitPanRow(); fitSpiceRow();
-        ex.style.transition=""; ex.style.height="";   // the panel at its natural height, at once
-      });
-      requestAnimationFrame(()=>sh.classList.add("lit"));
-      return;
-    }
-    drawerTakeBar(true);
-    document.body.classList.add("drawer-open");
-    sh.classList.remove("hidden");
-    /* the label has to be settled BEFORE the natural height is read — and it
-       can only be measured once the panel is displayed, which the class above
-       has just done */
-    fitDrawerTopRow(); fitFeelRow(); fitPanRow(); fitSpiceRow();
-    ex.style.height="auto";                     // measure the natural height…
-    const h=ex.offsetHeight;
-    grow(0,h,()=>{ ex.style.height="auto"; phoneFit(); });
+    slideBar(gen,()=>{
+      drawerTakeBar(true);
+      document.body.classList.add("drawer-open");
+      sh.classList.remove("hidden");
+      /* the labels have to be settled BEFORE the natural height is read — and
+         they can only be measured once the panel is displayed, which the class
+         above has just done */
+      fitDrawerTopRow(); fitFeelRow(); fitPanRow(); fitSpiceRow();
+      ex.style.transition=""; ex.style.height="";     // its natural height, at once
+      phoneFit();
+    });
     requestAnimationFrame(()=>sh.classList.add("lit"));
   } else {
     sh.classList.remove("lit");
     tr.scrollTop=0;                 // start the move from the top, not at the end
-    if(wasEditing){
-      slideBar(gen,()=>{
-        drawerTakeBar(false);
-        document.body.classList.remove("drawer-open");
-        ex.style.transition=""; ex.style.height="";
-        sh.classList.add("hidden");
-        /* the notation did not move while the drawer was up (phoneFit stands
-           still then), so this fit finds the same inputs and the same deck;
-           it runs for whatever the drawer changed — a pan, a skin */
-        phoneFit();
-      });
-      return;
-    }
-    const h=ex.offsetHeight;
-    drawerTakeBar(false);
-    grow(h,0,()=>{
+    slideBar(gen,()=>{
+      drawerTakeBar(false);
       document.body.classList.remove("drawer-open");
       ex.style.transition=""; ex.style.height="";
       sh.classList.add("hidden");
