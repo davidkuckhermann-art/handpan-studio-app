@@ -7470,22 +7470,19 @@ function ensureSink(){
    all. `panSoundField` and its neighbours have always done these three lines
    inline; the chord overview did `ensureCtx()` and nothing else, which is
    exactly the silence he reported. New sound entry points call this. */
-/* IT ALSO SAYS HOW LONG THE FIRST NOTE MUST WAIT (David, 4 Sep: "the very
-   first chord I play starts with a weird kind of distortion… it sounds like
-   the sample is cut in the middle of the waveform"). Whenever the transport
-   is idle the sink element is PAUSED, and `play()` only gets it running a
-   moment later — a note scheduled before then is delivered into a stream
-   that is still starting, which is precisely a sound cut off mid-waveform,
-   and precisely why only the FIRST one is wrong. So the wake reports a lead,
-   spent once by the note that woke it and zero for every note after. */
-const SINK_LEAD=0.12;
+/* A LEAD ON THE FIRST NOTE WAS TRIED HERE AND REVERTED (4 Sep). The theory
+   was sound — the sink element is paused whenever the transport is idle, so
+   the note that wakes it can be delivered into a stream still starting, which
+   is what David heard as a first chord "cut in the middle of the waveform".
+   Making that note wait 120ms silenced the pan tab and the chord overview
+   COMPLETELY on his phone, so it came out whole rather than being tuned; the
+   click is the lesser fault. The Mac cannot test it either way — `ensureSink`
+   returns early where there is no iOS sink — so the next attempt needs
+   evidence from the device, not another guess at the number. */
 function wakeAudio(){
   ensureCtx();
-  let lead=0;
-  try{ if(iosSink&&iosSink!=="failed"&&iosSink.paused) lead=SINK_LEAD; }catch(e){}
   try{ ensureSink(); }catch(e){}
   try{ ctx.resume().catch(()=>{}); }catch(e){}
-  return lead;
 }
 let ctxMade=0;               // how many contexts this page has built — see audioNote
 function ensureCtx(){
@@ -14077,20 +14074,20 @@ function pvRightHTML(){
 /* a tapped field, underside field or badge sounds — from the card or the ring.
    The flash goes by id so the twin lights too. */
 function panSoundField(f){
-  const lead=wakeAudio(); preloadBank();
+  wakeAudio(); preloadBank();
   const midi=myPan.midiFor(f); if(midi==null) return;
-  fire(bankBuf("o"+midi)||synthBuf(midi,"open"),ctx.currentTime+0.01+lead,1);
+  fire(bankBuf("o"+midi)||synthBuf(midi,"open"),ctx.currentTime+0.01,1);
   pvFlashId("pvf"+f,["hT"]);
 }
 function panSoundBottom(i){
-  const lead=wakeAudio(); preloadBank();
+  wakeAudio(); preloadBank();
   const midi=myPan.botMidiFor(i); if(midi==null) return;
-  fire(bankBuf("o"+midi)||synthBuf(midi,"open"),ctx.currentTime+0.01+lead,1);
+  fire(bankBuf("o"+midi)||synthBuf(midi,"open"),ctx.currentTime+0.01,1);
   pvFlashId("pvb"+i,["hT"]);
 }
 function panSoundPerc(s,id){
-  const lead=wakeAudio(); preloadBank();
-  fire(bankBuf("p_"+s+"R")||percBuf(s),ctx.currentTime+0.01+lead,0.9);
+  wakeAudio(); preloadBank();
+  fire(bankBuf("p_"+s+"R")||percBuf(s),ctx.currentTime+0.01,0.9);
   pvFlashId(id||("pvp-"+s),["hT"]);
 }
 /* POCKET ZONES fix (David, 31 Aug: "the pan tab triggers tone fields when I
@@ -22894,11 +22891,10 @@ function coHearToggle(){ if(coSounding()) coHush(); else coPlay(); }
    schedules; the synth remains only for a pitch the bank does not have. */
 function coStrike(pos,at,buf){    // one field: the sound at `at`, the flash when it sounds
   const midi=coPanObj?coPanObj.posMidi(pos):myPan.posMidi(pos); if(midi==null) return;
-  /* only a note that schedules ITSELF wakes the path and pays the lead; the
-     arpeggio's notes arrive with a time already computed from coPlay's own
-     wake, so they neither wake it again nor wait twice */
-  const lead=at==null?wakeAudio():0;
-  const now=ctx.currentTime, when=at==null?now+0.02+lead:at;
+  /* only a note that schedules ITSELF wakes the path; the arpeggio's notes
+     arrive with a time already computed from coPlay's own wake */
+  if(at==null) wakeAudio();
+  const now=ctx.currentTime, when=at==null?now+0.02:at;
   buf=buf||bankBuf("o"+midi)||synthBuf(midi,"open"); if(!buf) return;
   const src=ctx.createBufferSource(); src.buffer=buf;
   const g=ctx.createGain(); g.gain.value=evGain({v:"field",f:pos,hand:"L"});
@@ -22917,11 +22913,11 @@ async function coPlay(){
   if(!coCur) return;
   coHush(); const gen=coGen;
   const notes=coVoicing(coCur), pan=coPanObj||myPan;
-  const lead=wakeAudio();
+  wakeAudio();
   const ms=notes.map(f=>pan.posMidi(f));
   try{ await Promise.all(ms.filter(m=>m!=null).map(m=>bankDecode("o"+m))); }catch(e){}
   if(gen!==coGen) return;                       // a newer chord was asked for meanwhile
-  const t0=ctx.currentTime+0.05+lead;
+  const t0=ctx.currentTime+0.05;
   notes.forEach((f,i)=>coStrike(f,t0+i*0.2,ms[i]!=null?bankBuf("o"+ms[i]):null));
   coHearSync();
 }
