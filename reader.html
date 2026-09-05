@@ -537,17 +537,17 @@ function analyzeTab(item){
       const beatX=[x0,...inside.filter(t=>tallSet.has(Math.round(t))),x0+width];
       const perBeat=[]; for(let k=1;k<beatX.length;k++) perBeat.push(Math.max(1,Math.round((beatX[k]-beatX[k-1])/slot)));
       const modal=perBeat.length>1?median(perBeat):perBeat[0];
-      const edges=[x0]; let irregular=false;
+      const edges=[x0]; let irregular=false; const folded=[];
       for(let k=1;k<beatX.length;k++){ const n=perBeat[k-1]; const bx0=beatX[k-1]; const cs=[]; for(let j=0;j<n;j++) cs.push([bx0+j*slot,bx0+(j+1)*slot]);
         let drop=-1;
-        if(n>modal){ for(let j=n-1;j>=0;j--){ const occupied=byLine[ri].some(c=>c.cx>=cs[j][0]&&c.cx<cs[j][1]); if(!occupied){ drop=j; break; } } if(drop<0) irregular=true; }
+        if(n>modal){ for(let j=n-1;j>=0;j--){ const occupied=byLine[ri].some(c=>c.cx>=cs[j][0]&&c.cx<cs[j][1]); if(!occupied){ drop=j; break; } } if(drop<0) irregular=true; else folded.push(Math.max(0,edges.length-1+Math.max(0,drop-1))); }
         cs.forEach((cell,j)=>{ if(j===drop) return; edges.push(cell[1]); });
         if(drop===0) edges[edges.length-n+1]=cs[0][1];             // an empty first column folds into the next
       }
       /* a folded column widens its neighbour's edge, so the edges must stay ascending */
       for(let k=1;k<edges.length;k++) if(edges[k]<edges[k-1]) edges[k]=edges[k-1];
       const spb=edges.length-1;
-      rowBars.push({x0,x1:x0+width,spb,s0,row:ri,slot,edges,counts:beatX.length-1,irregular}); s0+=spb;
+      rowBars.push({x0,x1:x0+width,spb,s0,row:ri,slot,edges,counts:beatX.length-1,irregular,folded}); s0+=spb;
     }
     if(!rowBars.length) return;
     const R={base:ly+1.6*H, top:ly-2.2*H, line:ly, segs:[{x0:rowBars[0].x0,x1:rowBars[rowBars.length-1].x1}], comps:[], H, bars:rowBars};
@@ -835,7 +835,8 @@ function readTable(item){
         if(top&&pendingRoll.kind==="roll") top.roll=true; else if(top){ top.bar=true; cell.q=true; } else cell.q=true; }
       if(cell.evs.length>4) cell.q=true;
     }
-    if(R.bars) for(const B of R.bars) if(B.irregular) for(let s=B.s0;s<B.s0+B.spb;s++) cells[s].q=true;
+    if(R.bars) for(const B of R.bars){ if(B.irregular) for(let s=B.s0;s<B.s0+B.spb;s++) cells[s].q=true;
+      for(const f of (B.folded||[])) if(cells[B.s0+f]){ cells[B.s0+f].q=true; cells[B.s0+f].fold=true; } }
     rows.push({cells,H,top:R.top,base:R.base,bars:R.bars,segs:R.segs});
   }
   item.read=rows; item.status="read";
@@ -1046,7 +1047,7 @@ function paintCheck(){
     rowCells.forEach((cell,si0)=>{ const si=si0+off; const sl=document.createElement("div"); const spb=an.style==="tab"?R.bars[0].spb:an.N/an.bpr;
       sl.className="slot"+(cell.q?" q":"")+(cell.evs.length>1?" n"+Math.min(4,cell.evs.length):"")+(((si0+1)%spb===0&&si0<rowCells.length-1)?" bar":((si0+1)%an.sub===0&&si0<rowCells.length-1)?" beat":"");
       sl.innerHTML=[...cell.evs].sort((a,b)=>(a.v==="field"?(typeof a.f==="string"?-0.5:a.f):-1)-(b.v==="field"?(typeof b.f==="string"?-0.5:b.f):-1)).map(glyphHTML).join("");
-      sl.title=(cell.q?"The reader is unsure here. ":"")+"Click to change this position";
+      sl.title=(cell.fold?"The tab drew an extra empty column in this beat; it was folded into this position. If the bar really is longer, add the position by hand. ":cell.q?"The reader is unsure here. ":"")+"Click to change this position";
       sl.addEventListener("click",e=>openPop(it,ri,si,sl)); read.appendChild(sl); });
     pair.appendChild(read); host.appendChild(pair);
   });
