@@ -1807,6 +1807,41 @@ body:not(.phone) .beat.tbeat{padding:5px 1px 4px}
    gives back the 12px it reserved for it, so the table stands shorter */
 body.editing .chordlab{display:none}
 body.editing .slot.haschord{padding-top:1px}
+/* THE PHONE'S TABLE HAS NO CHORD ROW, AND THE STACKS TAKE ITS ROOM (David,
+   5 Sep: "on mobile, let's get rid of the chord names and that whole chord
+   name row in the notation table, and use the additional space for the
+   letters and symbols, especially. Chords with several notes on top of each
+   other are very small right now in table view"). The renderer writes
+   neither the label nor the 12px reserve on a phone (renderTableView,
+   `noNames`); this ladder spends that height on the stacked glyphs. The
+   numbers keep the ROWS where they were: a two-note slot stood 12 + 2×20×1.02
+   = 52.8px of glyph and reserve and now stands 2×25×1.02 = 51; a three-note
+   slot 12 + 3×16×1.08 = 63.8 and now 3×20×1.08 = 64.8. So a row holding a
+   chord is as tall as before with the chord a quarter larger. Single notes
+   keep 37 — they were already the biggest glyph their column can hold — and
+   the .d2 and ghost sizes scale with their stack (×1.25) so a two-digit field
+   still fits its share.
+   AND THE ROWS STAY EVEN: without the reserve a row of single notes would
+   stand 12px shorter than a row holding a chord, and the rows would walk up
+   and down the page — the very thing the reserve was kept for (David, 31 Aug:
+   "let's keep vertical spacing the same, even when there is no chord
+   playing"). So every reading slot on the phone stands at least as tall as a
+   two-note stack (2×25×1.02 + 2 = 53px); measured at 393×845, every row is
+   44.5px as before, single notes and two-note chords alike, and the table is
+   the height it was. Three-note rows are taller, as they always were.
+   The editor is out of this floor on purpose: it dropped the reserve to stand
+   shorter (3 Sep, above) and its rows are the deck's to fit. The tab's cells
+   (.tcol) keep their own height.
+   A real phone only: a tablet keeps the names, the tab has its own ladder
+   (.lane), and chord practice's listen table sizes by the column
+   (body.cplisten, higher specificity by its id). */
+body.phone:not(.tablet):not(.editing) #score .slot:not(.tcol){min-height:53px}
+body.phone:not(.tablet) .slot.n2 .sym{font-size:25px}
+body.phone:not(.tablet) .slot.n2 .sym.d2{font-size:21px}
+body.phone:not(.tablet) .slot.n3 .sym{font-size:20px}
+body.phone:not(.tablet) .slot.n3 .sym.d2{font-size:17px}
+body.phone:not(.tablet) .slot.n2 .sym.gh{font-size:22.5px}
+body.phone:not(.tablet) .slot.n3 .sym.gh{font-size:18px}
 
 /* ---- chord row ---- */
 /* no margin of its own: the distance to the notation frame is #belowrow's
@@ -13886,7 +13921,16 @@ function renderTableView(sc,lanes){
       const bi=draw[k].bi, D=draw[k], reps=D.n, bar=sec.bars[bi];
       const byT=new Map();
       for(const ev of bar){ if(!byT.has(ev.t)) byT.set(ev.t,[]); byT.get(ev.t).push(ev); }
-      const bc=lanes?null:barChordLabel(bar);   // no chord names in the tab, by David's call
+      /* THE PHONE'S TABLE CARRIES NO CHORD NAMES (David, 5 Sep: "on mobile,
+         let's get rid of the chord names and that whole chord name row in the
+         notation table, and use the additional space for the letters and
+         symbols" — the chord card under the notation already says them). The
+         tablet and the desktop keep them: "we have that luxury". Chord
+         practice's LISTEN table keeps its own column-sized label (its rule
+         is body.cplisten's, 4 Sep). The room the name took goes to the
+         stacked glyphs — see `body.phone:not(.tablet) .slot.n2` in the sheet. */
+      const noNames=lanes||(PHONE&&!TABLET&&!(typeof lsOn!=="undefined"&&lsOn));
+      const bc=noNames?null:barChordLabel(bar);   // no chord names in the tab, by David's call
       /* minmax(0,1fr), NOT 1fr (David, 29 Aug: "on mobile, there are some
          issues in the notation now with uneven cells"). A bare `1fr` is
          `minmax(auto,1fr)`, so a column can never shrink below its content's
@@ -13953,8 +13997,9 @@ function renderTableView(sc,lanes){
                piece it is. The class name is older than its job: it means the row
                that HOLDS ROOM for a chord name, not the row that has one.
                THE TAB TAKES NO RESERVE AT ALL (David, 1 Sep: "chords are hidden
-               in tab and the space should not be reserved") — hence this branch. */
-            if(t===0) sl.classList.add("haschord");
+               in tab and the space should not be reserved") — hence this branch.
+               AND NEITHER DOES THE PHONE'S TABLE (5 Sep, see noNames above). */
+            if(t===0&&!noNames) sl.classList.add("haschord");
             if(t===0&&bc){
               const cl=document.createElement("div");
               cl.className="chordlab"+(bc.inf?" inf":"");
