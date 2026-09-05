@@ -119,7 +119,7 @@
   .read .slot.sel{box-shadow:inset 0 0 0 2px var(--dixie)}
   .read .slot.cur{box-shadow:inset 0 -4px 0 0 var(--dixie)}
   .read .slot.sel.cur{box-shadow:inset 0 0 0 2px var(--dixie), inset 0 -4px 0 0 var(--dixie)}
-  .read .slot.play{background:var(--dixie-soft)}
+  .read .slot.play{background:var(--dixie-soft); box-shadow:inset 0 0 0 2px var(--dixie)}
   .read .slot.play.q{background:var(--violet-soft)}
   .sym{font-weight:700; font-size:22px; line-height:1.02; color:var(--hand-l); font-variant-numeric:tabular-nums}
   .sym.r{color:var(--hand-r)}
@@ -945,10 +945,19 @@ async function playFromCursor(){
   startFollow();
 }
 function playerStop(){ appEval("if(playing) stop();"); stopFollow(); }
-/* the app's playhead, mirrored onto the grid */
-function startFollow(){ stopFollow(); followTimer=setInterval(()=>{ const it=CUR; if(!it||STEP!=="check"||playerScope!==it){ stopFollow(); return; }
-  const on=appEval("playing"), p=appEval("lastPaint"); document.querySelectorAll("#pairs .slot.play").forEach(el=>el.classList.remove("play"));
-  if(!on){ stopFollow(); return; } const el=slotEl(it,p); if(el) el.classList.add("play"); },80); }
+/* THE PLAYHEAD, mirrored onto the grid. Not the app's own lastPaint: that is
+   written by its requestAnimationFrame, which WebKit stops for a frame that
+   is scrolled out of view — so the mirror stood still while the music played
+   (David, 5 Sep). The pulse sounding NOW is read the way the app's own tick
+   reads it: the last scheduled stroke whose time has come, against the audio
+   clock. That needs no frame to be drawn. */
+const NOW_PULSE="(function(){ if(!playing||!ctx) return -1; const now=ctx.currentTime; for(let i=fired.length-1;i>=0;i--) if(fired[i].at<=now) return fired[i].pi; return -1; })()";
+let lastShown=-1;
+function startFollow(){ stopFollow(); lastShown=-1; followTimer=setInterval(()=>{ const it=CUR; if(!it||STEP!=="check"||playerScope!==it){ stopFollow(); return; }
+  const on=appEval("playing"); if(!on){ stopFollow(); return; }
+  const p=appEval(NOW_PULSE); if(p===lastShown||p<0) return;
+  document.querySelectorAll("#pairs .slot.play").forEach(el=>el.classList.remove("play"));
+  const el=slotEl(it,p); if(el){ el.classList.add("play"); if(lastShown<0||Math.floor(p/64)!==Math.floor(lastShown/64)) el.scrollIntoView({block:"nearest"}); } lastShown=p; },40); }
 function stopFollow(){ clearInterval(followTimer); followTimer=null; document.querySelectorAll("#pairs .slot.play").forEach(el=>el.classList.remove("play")); }
 
 
