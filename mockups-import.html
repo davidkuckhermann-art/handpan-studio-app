@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Import from a screenshot</title>
+<!--
+  MOCKUP ONLY — nothing here ships. The app is untouched at frozen 0.31.
+
+  David, 5 Sep 2026: "An import function where people can take screenshots of
+  the notation tables from the videos and then have them imported into the app
+  as part of the app experience … tell me about potential limitations and which
+  requirements the screenshots would have in order to be recognized properly."
+
+  The video tables are a Motion title (FINAL-CUT.md): monospaced text in
+  LoopiejuiceMono, 16 characters to a row, up to four rows, four beat columns
+  of four slots, black = right hand, green = left hand, an orange-red accent,
+  a dark-brown rounded frame, and an amber beat marker placed by hand. That is
+  why a screenshot of one is close to ideal reading material — and why every
+  requirement below is really "let the template be visible".
+
+  Page tokens are the app's own; violet is used for everything the READER
+  says (a found table, an uncertain slot), because it is the one hue the
+  notation has never used and so cannot be mistaken for a note or a marker.
+-->
+<style>
+  :root{
+    --pg:#FBF9F6; --pg-card:#FFFFFF; --pg-ink:#1E1B16; --pg-ink2:#5E5749;
+    --pg-ink3:#8D8578; --pg-rule:#E4DCD0; --pg-soft:#F1EDE6;
+    --amber:#E59315; --amber-ink:#A9660A; --amber-soft:#FDF3E4;
+    --violet:#6E5A8C; --violet-soft:#EAE4F0;
+    --green:#469957; --ok:#3F8C50; --ok-soft:#EDF4EE; --bad:#BF5346; --bad-soft:#F8E8E5;
+    --sc-bg:#FFFFFF; --sc-ink:#17150F; --sc-rule:#D9D2C6; --sc-edge:#6B4A38; --sc-band:#FBE7C6;
+    color-scheme:light dark;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --pg:#15130F; --pg-card:#1D1A15; --pg-ink:#F4EFE5; --pg-ink2:#A9A08E;
+      --pg-ink3:#847C6E; --pg-rule:#332E27; --pg-soft:#231F19;
+      --amber:#F0A63C; --amber-ink:#F0A63C; --amber-soft:#3A2A10;
+      --violet:#A491C4; --violet-soft:#2E2738;
+      --green:#5FBE76; --ok:#5FBE76; --ok-soft:#17281B; --bad:#E0796B; --bad-soft:#3A1F1B;
+      --sc-bg:#211D17; --sc-ink:#F3EDE1; --sc-rule:#423A30; --sc-edge:#8A7A6A; --sc-band:#382A13 }
+  }
+  :root[data-theme="dark"]{
+    --pg:#15130F; --pg-card:#1D1A15; --pg-ink:#F4EFE5; --pg-ink2:#A9A08E;
+    --pg-ink3:#847C6E; --pg-rule:#332E27; --pg-soft:#231F19;
+    --amber:#F0A63C; --amber-ink:#F0A63C; --amber-soft:#3A2A10;
+    --violet:#A491C4; --violet-soft:#2E2738;
+    --green:#5FBE76; --ok:#5FBE76; --ok-soft:#17281B; --bad:#E0796B; --bad-soft:#3A1F1B;
+    --sc-bg:#211D17; --sc-ink:#F3EDE1; --sc-rule:#423A30; --sc-edge:#8A7A6A; --sc-band:#382A13 }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--pg); color:var(--pg-ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding:16px 14px calc(40px + env(safe-area-inset-bottom));
+    max-width:640px; margin-inline:auto; -webkit-text-size-adjust:100%}
+  h1{font-size:20px; margin:0 0 6px; letter-spacing:-.01em; text-wrap:balance}
+  h2{font-size:16px; margin:30px 0 4px; letter-spacing:-.01em}
+  h3{font-size:14px; margin:14px 0 4px}
+  .lede{color:var(--pg-ink2); font-size:13.5px; margin:0 0 6px}
+  .lede b{color:var(--pg-ink)}
+  .note{color:var(--pg-ink3); font-size:12px; margin:8px 0 14px}
+  .rule{font-size:13.5px; padding:10px 12px; border-left:3px solid var(--violet);
+    background:var(--violet-soft); border-radius:0 8px 8px 0; margin:12px 0 18px}
+  code{font:600 12px ui-monospace,Menlo,monospace; background:var(--pg-soft); padding:1px 4px; border-radius:4px}
+  .tag{display:inline-block; font-size:10.5px; font-weight:700; letter-spacing:.06em;
+    text-transform:uppercase; border-radius:999px; padding:2px 8px; vertical-align:2px}
+  .tag.amber{color:var(--amber-ink); background:var(--amber-soft)}
+  .tag.ok{color:var(--ok); background:var(--ok-soft)}
+  .tag.bad{color:var(--bad); background:var(--bad-soft)}
+  .tag.vio{color:var(--violet); background:var(--violet-soft)}
+
+  /* ── the door: the share dialog's row, and the phone sheet's row ─────── */
+  .dlg{background:var(--pg-card); border:1px solid var(--pg-rule); border-radius:12px; padding:10px 12px; margin:8px 0}
+  .dlg h4{font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--pg-ink3); margin:0 0 6px}
+  .row{display:flex; flex-wrap:wrap; gap:6px}
+  .ctl{font-size:12.5px; font-weight:600; padding:6px 10px; border-radius:8px;
+    border:1px solid var(--pg-rule); background:var(--pg-card); color:var(--pg-ink2)}
+  .ctl.on{background:var(--pg-ink); color:var(--pg); border-color:var(--pg-ink)}
+  .ctl.new{border:1.5px dashed var(--violet); color:var(--violet)}
+  .drow{display:flex; justify-content:space-between; align-items:center; font-size:13px; padding:8px 0; border-top:1px solid var(--pg-rule)}
+  .drow:first-of-type{border-top:none}
+
+  /* ── phone screens ───────────────────────────────────────────────────── */
+  .screens{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; margin:10px 0}
+  .phone{background:var(--pg-card); border:1px solid var(--pg-rule); border-radius:22px; padding:10px 10px 12px; position:relative}
+  .phone .bar{display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:600; margin:2px 4px 10px}
+  .phone .bar .x{color:var(--pg-ink3); font-weight:400}
+  .phone .step{font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--violet); font-weight:700}
+  .phone h5{font-size:15px; margin:0 4px 4px; letter-spacing:-.01em}
+  .phone p{font-size:12px; color:var(--pg-ink2); margin:0 4px 10px}
+  .btns{display:flex; gap:6px; margin:10px 4px 0}
+  .btn{flex:1; text-align:center; font-size:13px; font-weight:600; padding:9px 8px; border-radius:10px;
+    border:1px solid var(--pg-rule); color:var(--pg-ink2); background:var(--pg-card)}
+  .btn.on{background:var(--pg-ink); color:var(--pg); border-color:var(--pg-ink)}
+  .drop{margin:0 4px; border:1.5px dashed var(--pg-rule); border-radius:12px; padding:22px 12px; text-align:center;
+    color:var(--pg-ink2); font-size:13px; background:var(--pg)}
+  .drop b{display:block; color:var(--pg-ink); font-size:14px; margin-bottom:2px}
+  .tips{margin:10px 4px 0; padding:0 0 0 16px; font-size:11.5px; color:var(--pg-ink3)}
+  .tips li{margin:0 0 2px}
+  .chips{display:flex; flex-wrap:wrap; gap:5px; margin:8px 4px}
+  .chip{font-size:11px; font-weight:600; padding:4px 8px; border-radius:999px; background:var(--pg-soft); color:var(--pg-ink2)}
+  .chip.vio{background:var(--violet-soft); color:var(--violet)}
+  .chip.ok{background:var(--ok-soft); color:var(--ok)}
+
+  /* the simulated video frame with the template's table in it */
+  .frame{position:relative; margin:0 4px; aspect-ratio:16/9; border-radius:8px; overflow:hidden;
+    background:radial-gradient(120% 90% at 30% 40%, #3b3129 0%, #1d1815 60%, #100d0b 100%)}
+  .frame .glow{position:absolute; left:6%; top:18%; width:26%; height:70%; border-radius:50%;
+    background:radial-gradient(circle, rgba(196,150,90,.35), rgba(196,150,90,0) 70%)}
+  .vt{position:absolute; left:33%; top:16%; width:60%; background:#F4EFE5; border:2px solid #42250F;
+    border-radius:6px; padding:3px 0; font:700 7.5px/1 ui-monospace,Menlo,monospace; color:#1a1610}
+  .vt .vrow{display:grid; grid-template-columns:repeat(16,1fr); height:16px; align-items:center; position:relative}
+  .vt .vrow+.vrow{border-top:1px solid rgba(66,37,15,.35)}
+  .vt .vc{text-align:center; position:relative; height:100%; display:flex; align-items:center; justify-content:center}
+  .vt .vc.g{color:#3CA643}
+  .vt .vc.st{flex-direction:column; font-size:6px; line-height:1; gap:1px}
+  .vt .vc.st .g{color:#3CA643}
+  .vt .vc:nth-child(4n)::after{content:""; position:absolute; right:0; top:-3px; bottom:-3px; width:1px; background:#42250F}
+  .vt .vc:nth-child(16)::after{display:none}
+  .vt .mk{position:absolute; left:25%; width:25%; top:0; bottom:0; background:rgba(229,147,21,.45); border:1px solid #E59315; border-radius:2px}
+  .vt .sec{position:absolute; left:-22%; top:2px; font:italic 10px/1 "Snell Roundhand","Brush Script MT",cursive; color:#F4EFE5}
+  .frame .scrub{position:absolute; left:4%; right:4%; bottom:7%; height:2px; background:rgba(255,255,255,.35)}
+  .frame .scrub i{position:absolute; left:0; top:0; height:100%; width:38%; background:#fff}
+  .frame .scrub b{position:absolute; left:38%; top:-4px; width:10px; height:10px; border-radius:50%; background:#fff}
+  .frame .ctrls{position:absolute; left:4%; bottom:14%; display:flex; gap:6px}
+  .frame .ctrls span{width:12px; height:12px; border-radius:3px; background:rgba(255,255,255,.55)}
+  /* the reader's frame: violet, with corner handles and the beat lines it found */
+  .found{position:absolute; left:calc(33% - 3px); top:calc(16% - 3px); width:calc(60% + 6px); height:calc(4*16px + 8px + 6px);
+    border:1.5px solid var(--violet); border-radius:7px; box-shadow:0 0 0 2px rgba(110,90,140,.25)}
+  .found i{position:absolute; width:9px; height:9px; background:var(--violet); border:1.5px solid #fff; border-radius:2px}
+  .found i:nth-child(1){left:-5px; top:-5px} .found i:nth-child(2){right:-5px; top:-5px}
+  .found i:nth-child(3){left:-5px; bottom:-5px} .found i:nth-child(4){right:-5px; bottom:-5px}
+  .found u{position:absolute; top:0; bottom:0; width:1px; background:var(--violet); opacity:.6}
+  .frame.small .vt{left:40%; width:30%; top:30%; font-size:4px}
+  .frame.small .vt .vrow{height:8px}
+  .frame.small .vt .vc.st{font-size:3.5px}
+  .frame.cut .vt{left:58%; width:60%}
+  .frame.ctrl .vt{top:32%}
+  .frame.ctrl .scrub{bottom:38%; height:3px}
+  .frame.ctrl .ctrls{bottom:44%}
+  .frame.ctrl .ctrls span{width:16px; height:16px}
+  .frame.blur .vt{filter:blur(1.2px); opacity:.8; transform:translateX(6%) skewX(-6deg)}
+  .frame.angle{background:#d8d2c6}
+  .frame.angle .vt{transform:perspective(200px) rotateY(-22deg) rotateX(4deg); left:36%; top:18%}
+  .frame.angle::after{content:""; position:absolute; inset:0;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.05) 0 1px, transparent 1px 3px)}
+  .frame.portrait{aspect-ratio:9/16; width:58%; margin-inline:auto; background:#0e0c0a}
+  .frame.portrait .band{position:absolute; left:0; right:0; top:34%; height:32%;
+    background:radial-gradient(120% 90% at 30% 40%, #3b3129 0%, #1d1815 60%, #100d0b 100%)}
+  .frame.portrait .vt{left:35%; width:58%; top:40%; font-size:3.2px}
+  .frame.portrait .vt .vrow{height:6px}
+  .frame.portrait .vt .vc.st{font-size:2.6px}
+  .frame.portrait .vt .vc:nth-child(4n)::after{top:-2px; bottom:-2px}
+
+  /* the Check screen: source strip over the app's own row, slot for slot */
+  .pair{margin:0 4px 8px}
+  .src{display:grid; grid-template-columns:repeat(16,1fr); height:22px; align-items:center; background:#F4EFE5;
+    border:1px solid #42250F; border-radius:4px 4px 0 0; font:700 9px/1 ui-monospace,Menlo,monospace; color:#1a1610}
+  .src span{text-align:center; position:relative; display:flex; align-items:center; justify-content:center; height:100%}
+  .src span.g{color:#3CA643}
+  .src span.st{flex-direction:column; font-size:7px; gap:1px}
+  .src span.st .g{color:#3CA643}
+  .src span:nth-child(4n):not(:last-child)::after{content:""; position:absolute; right:0; top:0; bottom:0; width:1px; background:#42250F}
+  .read{display:grid; grid-template-columns:repeat(16,1fr); background:var(--sc-bg); border:1px solid var(--sc-rule);
+    border-top:none; border-radius:0 0 4px 4px; overflow:hidden}
+  .read .slot{position:relative; height:32px; display:flex; flex-direction:column-reverse; align-items:center;
+    justify-content:center; border-right:1px solid var(--sc-rule)}
+  .read .slot:nth-child(4n){border-right:1.5px solid var(--sc-edge)}
+  .read .slot:last-child{border-right:none}
+  .read .slot.q{box-shadow:inset 0 0 0 1.5px var(--violet); background:var(--violet-soft)}
+  .read .slot.q::after{content:"?"; position:absolute; right:1px; top:0; font-size:8px; font-weight:800; color:var(--violet)}
+  .read .slot.sel{box-shadow:inset 0 0 0 2px var(--amber)}
+  .sym{font-weight:700; font-size:13px; line-height:1.02; color:var(--sc-ink); font-variant-numeric:tabular-nums; width:100%; text-align:center}
+  .sym.r{color:var(--green)}
+  .sym.gh{font-size:11px}
+  .read .slot.n2 .sym,.read .slot.n3 .sym{font-size:9.5px}
+  .rowlab{display:flex; justify-content:space-between; font-size:10.5px; color:var(--pg-ink3); margin:0 0 2px}
+  .rowlab b{color:var(--pg-ink); font-weight:600}
+  .keys{display:grid; grid-template-columns:repeat(8,1fr); gap:4px; margin:8px 4px 0}
+  .key{height:30px; display:flex; align-items:center; justify-content:center; border:1px solid var(--pg-rule);
+    border-radius:7px; font-size:13px; font-weight:700; color:var(--pg-ink); background:var(--pg)}
+  .key.g{color:var(--green)} .key.on{background:var(--pg-ink); color:var(--pg); border-color:var(--pg-ink)}
+  .key.dim{color:var(--pg-ink3); font-weight:600; font-size:12px}
+  .sum{display:flex; justify-content:space-between; align-items:center; margin:2px 4px 8px; font-size:12px; color:var(--pg-ink2)}
+  .sum b{color:var(--pg-ink)}
+
+  /* the Place screen */
+  .field{display:flex; justify-content:space-between; align-items:center; padding:9px 4px; border-top:1px solid var(--pg-rule); font-size:13px}
+  .field:first-of-type{border-top:none}
+  .field .k{color:var(--pg-ink3)}
+  .field .v{font-weight:600}
+  .field .v.sel::after{content:" ▾"; color:var(--pg-ink3); font-weight:400}
+  .radio{margin:4px 4px 0; font-size:12.5px}
+  .radio div{padding:6px 0; display:flex; gap:8px; align-items:flex-start; color:var(--pg-ink2)}
+  .radio i{width:14px; height:14px; border-radius:50%; border:1.5px solid var(--pg-ink3); flex:0 0 14px; margin-top:3px}
+  .radio div.on{color:var(--pg-ink)} .radio div.on i{border-color:var(--pg-ink); box-shadow:inset 0 0 0 3.5px var(--pg-ink)}
+  .arr{display:flex; gap:4px; margin:6px 4px 0}
+  .arr span{font-size:11px; font-weight:700; padding:3px 8px; border-radius:999px; background:var(--pg-soft); color:var(--pg-ink2)}
+  .arr span.new{background:var(--violet); color:#fff}
+
+  /* the process: a real sequence, so numbers are information here */
+  .proc{counter-reset:s; list-style:none; padding:0; margin:8px 0 0}
+  .proc li{position:relative; padding:0 0 10px 34px; font-size:13px; color:var(--pg-ink2)}
+  .proc li::before{counter-increment:s; content:counter(s); position:absolute; left:0; top:1px; width:22px; height:22px;
+    border-radius:50%; background:var(--violet-soft); color:var(--violet); font-size:11px; font-weight:800;
+    display:flex; align-items:center; justify-content:center}
+  .proc b{color:var(--pg-ink); font-weight:600}
+
+  /* the requirements gallery */
+  .gal{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin:10px 0}
+  .gcard{background:var(--pg-card); border:1px solid var(--pg-rule); border-radius:12px; padding:8px 8px 10px}
+  .gcard .frame{margin:0 0 8px}
+  .gcard h4{font-size:12.5px; margin:0 0 2px; display:flex; justify-content:space-between; align-items:center; gap:6px}
+  .gcard p{font-size:11.5px; color:var(--pg-ink2); margin:0}
+
+  table{width:100%; border-collapse:collapse; font-size:12.5px; margin:8px 0 0}
+  th{text-align:left; font-weight:700; color:var(--pg-ink3); padding:4px 6px 4px 0;
+    font-size:10.5px; letter-spacing:.04em; text-transform:uppercase; border-bottom:1px solid var(--pg-rule)}
+  td{padding:6px 6px 6px 0; color:var(--pg-ink2); vertical-align:top; border-bottom:1px solid var(--pg-rule)}
+  td:first-child{color:var(--pg-ink); font-weight:600}
+  .tblwrap{overflow-x:auto}
+  .engines{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin:10px 0}
+  .eng{background:var(--pg-card); border:1px solid var(--pg-rule); border-radius:12px; padding:12px}
+  .eng.pick{box-shadow:0 0 0 2px var(--amber) inset}
+  .eng h4{font-size:13.5px; margin:0 0 4px}
+  .eng p{font-size:12px; color:var(--pg-ink2); margin:0 0 6px}
+  .eng ul{margin:0; padding-left:16px; font-size:11.5px; color:var(--pg-ink2)}
+  .eng li{margin:0 0 2px}
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important} }
+</style>
+</head>
+<body>
+
+<h1>Import from a screenshot</h1>
+<p class="lede">A student pauses a lesson, screenshots the notation table, and
+opens it in the app: the table is <b>found, read, checked and placed</b> into a
+piece they can play, slow down, loop and take to their own pan.</p>
+<div class="rule">Why this can work well: the tables in the videos are the app's
+own notation drawn by one fixed template — one monospaced font, a known grid,
+two hand colours, a dark frame. A screenshot of one is close to ideal reading
+material. Every requirement on this page comes down to <b>let the template be
+visible</b>, and every limitation is a place where a video departs from it.</div>
+
+<h2>The door</h2>
+<p class="lede">The same dialog that opens files and pastes codes. On the desktop
+an image can also be dropped onto the notation or pasted with ⌘V; on the phone
+the button opens Photos, where screenshots already are.</p>
+<div class="dlg">
+  <h4>Share &amp; files · desktop dialog</h4>
+  <div class="row"><span class="ctl">Copy code</span><span class="ctl">Copy link</span><span class="ctl">Save .hps file</span><span class="ctl">Open file…</span><span class="ctl new">Import a screenshot…</span></div>
+</div>
+<div class="dlg">
+  <h4>⋮ sheet · phone</h4>
+  <div class="drow"><span>Load/save</span><span style="color:var(--pg-ink3)">Open · Save · Code · Link</span></div>
+  <div class="drow"><span>From a screenshot</span><span class="ctl new" style="padding:4px 8px">Import…</span></div>
+</div>
+
+<h2>The four steps, on the phone</h2>
+<p class="note">Drawn at phone width. The reader's own marks are violet — the
+found table, the beat lines it decided on, a slot it is unsure of — because
+violet is the one hue the notation never uses.</p>
+<div class="screens">
+
+  <div class="phone">
+    <div class="bar"><span class="step">1 · Pick</span><span class="x">✕</span></div>
+    <h5>Import a screenshot</h5>
+    <p>One table per screenshot. You can add more afterwards.</p>
+    <div class="drop"><b>Choose a screenshot</b>from Photos or Files</div>
+    <div class="btns"><span class="btn">Take a photo of a screen</span></div>
+    <ul class="tips">
+      <li>Pause the video and go fullscreen first</li>
+      <li>Tap once so the controls hide, then screenshot</li>
+      <li>The whole table, with a little room around it</li>
+    </ul>
+  </div>
+
+  <div class="phone">
+    <div class="bar"><span class="step">2 · Found</span><span class="x">✕</span></div>
+    <h5>Is this the table?</h5>
+    <p>Drag a corner if the frame is off. The lines are the counts it found.</p>
+    <div class="frame">
+      <div class="glow"></div>
+      <div class="vt" id="vt1"></div>
+      <div class="found"><i></i><i></i><i></i><i></i><u style="left:25%"></u><u style="left:50%"></u><u style="left:75%"></u></div>
+      <div class="scrub"><i></i><b></b></div>
+    </div>
+    <div class="chips"><span class="chip vio">4 rows</span><span class="chip vio">16 slots a row</span><span class="chip vio">4 counts × 4</span><span class="chip">Section A</span></div>
+    <div class="btns"><span class="btn">Not this table</span><span class="btn on">Read it</span></div>
+  </div>
+
+  <div class="phone">
+    <div class="bar"><span class="step">3 · Check</span><span class="x">✕</span></div>
+    <h5>Read side by side</h5>
+    <p>The screenshot's row above, the app's reading below, slot for slot. Tap any slot to change it.</p>
+    <div class="sum"><span><b>62 of 64</b> slots certain</span><span class="chip vio" style="margin:0">2 to check</span></div>
+    <div id="pairs"></div>
+    <div class="keys" id="keys"></div>
+    <div class="btns"><span class="btn">Back</span><span class="btn on">Looks right</span></div>
+  </div>
+
+  <div class="phone">
+    <div class="bar"><span class="step">4 · Place</span><span class="x">✕</span></div>
+    <h5>Where it goes</h5>
+    <p>The table becomes a section you can play now and edit later.</p>
+    <div class="field"><span class="k">Name</span><span class="v">A3</span></div>
+    <div class="field"><span class="k">Written for</span><span class="v sel">D Kurd 9</span></div>
+    <div class="field"><span class="k">Time</span><span class="v sel">4/4 · 4 per count</span></div>
+    <div class="field"><span class="k">Tempo</span><span class="v">— set it when you play</span></div>
+    <div class="radio">
+      <div class="on"><i></i><span>Add to <b>Composition 2</b> as the next table of A</span></div>
+      <div><i></i><span>Start a new piece</span></div>
+    </div>
+    <div class="arr"><span>A1</span><span>A2</span><span class="new">A3</span></div>
+    <div class="btns"><span class="btn">Add another screenshot</span><span class="btn on">Add to piece</span></div>
+  </div>
+</div>
+<p class="lede">After <b>Add to piece</b> the arrangement editor opens on the new
+table with the cursor on its first slot — the reading is a draft the student
+owns from that moment, and every correction is the editor's ordinary work.
+"Add another screenshot" loops back to Pick and appends in order, so a
+four-table section is four screenshots and one Place.</p>
+
+<h2>What the reader does</h2>
+<p class="lede">Nothing here needs a server. It runs in the page on a canvas, in
+well under a second, and it is deterministic: the same screenshot reads the
+same way twice.</p>
+<ol class="proc">
+  <li><b>Find the frame.</b> The table is a light rounded rectangle with a dark-brown border on a video that is mostly darker and softer. Its four corners are the whole calibration; everything after this works in table coordinates.</li>
+  <li><b>Fix the grid.</b> Rows from the height (the template's row is a constant share of the table width); slots from the <b>pitch of the glyphs</b>, which is one monospace advance, so a 12-slot triplet row and a 16-slot row are told apart without reading the header; counts from the vertical lines. The chips on screen 2 are this step's answer, and the student confirms it.</li>
+  <li><b>Read each cell.</b> Colour first: black, green or orange-red ink says the hand. Then the shape: the cell's ink is matched against the template's own glyphs (D, 1–9, M, ^, °, T, K, the dot, the tilde) rendered once from the notation font — a lookup, not a guess. Two or three small blobs stacked in one cell are a chord; a number on a grey disc is an underside note.</li>
+  <li><b>Score every slot.</b> A match that is not clearly better than its runner-up is marked uncertain, and that is what screen 3 shows in violet — the app never silently commits a doubtful cell.</li>
+  <li><b>Build the events.</b> Each cell becomes the app's own events at its t: the stack is same-t events, the hand is the colour token, K keeps its glyph — the transcription rulebook (<code>TRANSCRIPTION.md</code>) as code.</li>
+  <li><b>Match the catalogue, if there is one.</b> Optional but powerful: the string of cells is a fingerprint, and if it lands near a table David has already blessed, the app offers the verified piece instead of its own reading. See the engines below.</li>
+</ol>
+
+<h2>What a screenshot needs to be</h2>
+<p class="lede">Six frames a student might actually take. The verdicts are what
+the reader would say about them.</p>
+<div class="gal" id="gal"></div>
+
+<h3>The requirements, as the app would state them to a student</h3>
+<ul class="tips" style="font-size:13px; color:var(--pg-ink2); margin:6px 0 0">
+  <li><b>Fullscreen and landscape</b>, the video filling the phone. In the inline portrait player the table is a third of the width and its chord digits are five pixels tall.</li>
+  <li><b>Paused</b>, on a frame where the table is fully on screen and not animating in or out.</li>
+  <li><b>Controls hidden</b> — tap once after pausing. The scrubber crosses exactly where the table sits in many lessons.</li>
+  <li><b>The whole table</b> in the picture with a little dark around it. A cropped table still reads, but only the slots it can see.</li>
+  <li><b>A screenshot, not a photo, when possible.</b> A photo of a screen works with a perspective fix, but expect more slots to check.</li>
+  <li><b>One table per screenshot.</b> Lessons that show two tables at once need two screenshots, or a crop.</li>
+</ul>
+
+<h2>Limitations, honestly</h2>
+<div class="tblwrap">
+<table>
+  <tr><th>Where</th><th>What it means</th><th>What the app does</th></tr>
+  <tr><td>Three generations of notation</td><td>Older lessons use underlines instead of grid cells (v1); Level 1 draws offbeats as raised green with a beats-only header; the current v2 template is the one this reader is built on.</td><td>Build for v2. v1 and Level 1 are separate readers or a vision model (below); until then those lessons say "this table is an older style".</td></tr>
+  <tr><td>The grid is finer than the header</td><td>The rulebook's first rule: a header counting eighths can sit over sixteenths. A reader that trusts the header writes the wrong rhythm.</td><td>Slots come from glyph pitch and the vertical lines, never from the header, and the guess is shown for confirmation on screen 2.</td></tr>
+  <tr><td>Tempo</td><td>Not in the table. Nothing in a screenshot says how fast.</td><td>The student sets it when they play; Video sync later can take it from the lesson.</td></tr>
+  <tr><td>Section names and chord names</td><td>The letter is handwritten (Caveat); chord names sit above the table in some lessons. Both are readable but far less reliably than the cells.</td><td>Read as a suggestion, shown editable on screen 4. A wrong section letter costs one tap; a wrong cell costs a wrong note.</td></tr>
+  <tr><td>Small marks</td><td>The roll tilde, the mute's small m, a knock's ring — a few pixels tall at video scale.</td><td>Scored uncertain more often; the violet slots exist for these.</td></tr>
+  <tr><td>The amber marker</td><td>One count sits under a translucent wash in almost every screenshot.</td><td>Harmless: the ink stays dark or green under it. Colour is classified by hue, not brightness.</td></tr>
+  <tr><td>Night Shift, True Tone, HDR</td><td>The whole screenshot shifts warm; greens drift toward olive.</td><td>Hue-based hands survive this. What does not survive is compression at small sizes — see fullscreen above.</td></tr>
+  <tr><td>Longer tables than four rows</td><td>The videos cap at four rows; the app does not.</td><td>Several screenshots append to one section; the arrangement row shows them landing.</td></tr>
+  <tr><td>The pan</td><td>A piece must carry its pan, or it silently becomes D Kurd on another device.</td><td>"Written for" on screen 4, defaulting to the student's own pan and flagged when the lesson is known to be another.</td></tr>
+  <tr><td>Two bars to a row, odd meters</td><td>A 2/4 row holds two bars; 3/4 in eighths is 12 slots.</td><td>The counts the lines give, times the slots per count, name the meter; two bars per row is the one case that needs the student to say so.</td></tr>
+  <tr><td>Flams</td><td>The videos have no flam glyph yet.</td><td>Once the app's drawing is chosen, the template follows and the reader learns it — <a href="mockups-flams.html">the flam study</a>.</td></tr>
+</table>
+</div>
+
+<h2>Three engines, and which to build first</h2>
+<div class="engines">
+  <div class="eng pick">
+    <h4>On-device reader <span class="tag amber">first</span></h4>
+    <p>Canvas and template matching, in the page. No server, no cost, no key, works inside the Kajabi embed and offline.</p>
+    <ul><li>Deterministic and fast</li><li>Built for the v2 template only</li><li>Needs a set of real student screenshots to tune the thresholds — thirty would do</li><li>Roughly the size of one of the app's skins</li></ul>
+  </div>
+  <div class="eng">
+    <h4>The blessed catalogue <span class="tag ok">with it</span></h4>
+    <p>David's own transcriptions of his lessons, shipped with the app as a few kilobytes of fingerprints and pieces.</p>
+    <ul><li>Every lesson he has blessed imports perfectly, whatever the screenshot quality</li><li>Uses the reader as the key, so it needs the reader first</li><li>Bootstrapped in the studio, where a vision model can do the first pass</li><li>New lessons should carry their piece as a code under the video — then no screenshot is needed at all</li></ul>
+  </div>
+  <div class="eng">
+    <h4>Vision model <span class="tag vio">later</span></h4>
+    <p>Claude reads the screenshot with the rulebook as its instructions and returns events.</p>
+    <ul><li>Handles every generation, handwriting, chord names, odd frames</li><li>Needs a small server holding the key, behind the embed's gate</li><li>A few cents and several seconds per screenshot</li><li>Can misread confidently — the very rhythms the rulebook records — so the Check step stays</li></ul>
+  </div>
+</div>
+<p class="lede">The Pick–Found–Check–Place flow is the same whichever engine
+reads the cells, so it is built once. The on-device reader goes in first
+because it needs nothing that does not exist yet; the catalogue turns it from
+"usually right" into "right on every lesson he has looked at"; the vision
+model waits for a backend and earns its place on the older lessons.</p>
+
+<script>
+/* the table the screens show: Composition 2, A3 — a sixteenth grid, two chords,
+   ghost dots on the offbeats; [glyph, hand] or a stack [[g,h],[g,h]] */
+const ROWS=[
+ [["D","b"],["•","g"],["3","b"],["•","g"],["6","g"],["•","b"],["1","g"],["•","b"],[["3","b"],["1","b"]],["•","g"],["3","b"],["•","g"],["6","g"],["•","b"],["1","g"],["•","b"]],
+ [["D","b"],["•","g"],["3","b"],["•","g"],["6","g"],["•","b"],["1","g"],["•","b"],[["3","b"],["1","b"]],["•","g"],["3","b"],["•","g"],["8","g"],["•","b"],["1","g"],["•","b"]],
+ [["D","b"],["•","g"],["2","b"],["•","g"],["6","g"],["•","b"],["1","g"],["•","b"],[["4","b"],["2","b"]],["•","g"],["2","b"],["•","g"],["6","g"],["•","b"],["1","g"],["•","b"]],
+ [["D","b"],["•","g"],["3","b"],["•","g"],["6","g"],["•","b"],["1","g"],["•","b"],[["5","b"],["3","b"]],["•","g"],["3","b"],["•","g"],["7","g"],["^","b"],["1","g"],["•","b"]]
+];
+function videoTable(host,rows,marker){
+  rows.forEach((r,ri)=>{
+    const row=document.createElement("div"); row.className="vrow";
+    r.forEach(c=>{
+      const el=document.createElement("span");
+      if(Array.isArray(c[0])){ el.className="vc st"; c.slice().reverse().forEach(x=>{ const s=document.createElement("span"); s.className=x[1]==="g"?"g":""; s.textContent=x[0]; el.appendChild(s); }); }
+      else{ el.className="vc"+(c[1]==="g"?" g":""); el.textContent=c[0]; }
+      row.appendChild(el);
+    });
+    if(marker&&ri===0){ const m=document.createElement("i"); m.className="mk"; row.appendChild(m); }
+    host.appendChild(row);
+  });
+}
+document.querySelectorAll(".vt").forEach(v=>videoTable(v,ROWS,true));
+/* the section letter, handwritten beside the table, as the template draws it */
+document.getElementById("vt1").insertAdjacentHTML("afterbegin",'<span class="sec">A3</span>');
+
+/* Check: two rows shown, the second with the two uncertain slots (a tilde and a
+   faint dot) and the selected one under the keys */
+(function(){
+  const host=document.getElementById("pairs");
+  const show=[{n:1,r:ROWS[0],q:[]},{n:2,r:ROWS[1],q:[9,12],sel:12}];
+  for(const s of show){
+    const pair=document.createElement("div"); pair.className="pair";
+    pair.innerHTML=`<div class="rowlab"><b>Row ${s.n}</b><span>${s.q.length?s.q.length+" to check":"certain"}</span></div>`;
+    const src=document.createElement("div"); src.className="src";
+    s.r.forEach(c=>{ const el=document.createElement("span");
+      if(Array.isArray(c[0])){ el.className="st"; c.slice().reverse().forEach(x=>{ const t=document.createElement("span"); t.className=x[1]==="g"?"g":""; t.textContent=x[0]; el.appendChild(t); }); }
+      else{ el.className=c[1]==="g"?"g":""; el.textContent=c[0]; }
+      src.appendChild(el); });
+    const read=document.createElement("div"); read.className="read";
+    s.r.forEach((c,i)=>{ const sl=document.createElement("div");
+      sl.className="slot"+(s.q.includes(i)?" q":"")+(s.sel===i?" sel":"");
+      const evs=Array.isArray(c[0])?c:[c];
+      sl.classList.add(evs.length===1?"n1":evs.length===2?"n2":"n3");
+      for(const e of evs){ const y=document.createElement("span");
+        y.className="sym"+(e[1]==="g"?" r":"")+(e[0]==="•"?" gh":""); y.textContent=e[0]; sl.appendChild(y); }
+      read.appendChild(sl); });
+    pair.appendChild(src); pair.appendChild(read); host.appendChild(pair);
+  }
+  const keys=document.getElementById("keys");
+  [["D"],["1"],["2"],["3"],["4"],["5"],["6"],["7"],["8","","on"],["9"],["•","dim"],["^","dim"],["T","dim"],["K","dim"],["°","dim"],["M","dim"]]
+   .forEach(k=>{ const el=document.createElement("span"); el.className="key"+(k[1]?" "+k[1]:"")+(k[2]?" "+k[2]:""); el.textContent=k[0]; keys.appendChild(el); });
+})();
+
+/* the gallery: six frames a student might take */
+(function(){
+  const G=[
+   {cls:"", ok:true, name:"Fullscreen, paused, controls hidden", desc:"The table is a third of the frame; a chord digit is about 12 px on a phone. Reads clean."},
+   {cls:"ctrl", ok:false, name:"Controls still showing", desc:"The scrubber and play buttons sit across the lower rows. One tap hides them; screenshot after that."},
+   {cls:"portrait", ok:false, name:"Inline portrait player", desc:"The video is letterboxed in a third of the height. Stacked digits are ~5 px tall and the hands' colours smear."},
+   {cls:"cut", ok:false, name:"Table cut off", desc:"The right edge is off screen. The visible slots read; the rest cannot, and the frame is found from three corners."},
+   {cls:"blur", ok:false, name:"Mid-animation", desc:"The title is flying in or out. Pause on a still frame with the table standing."},
+   {cls:"angle", ok:null, name:"A photo of a laptop screen", desc:"Perspective and moiré. It reads after a corner fix, with more slots to check. A screenshot is always better."}
+  ];
+  const host=document.getElementById("gal");
+  for(const g of G){
+    const box=document.createElement("div"); box.className="gcard";
+    const fr=document.createElement("div"); fr.className="frame "+g.cls;
+    if(g.cls==="portrait") fr.innerHTML='<div class="band"></div>'; else fr.innerHTML='<div class="glow"></div>';
+    const vt=document.createElement("div"); vt.className="vt"; videoTable(vt,ROWS,true); fr.appendChild(vt);
+    if(g.cls!=="angle") fr.insertAdjacentHTML("beforeend",'<div class="ctrls"><span></span><span></span></div><div class="scrub"><i></i><b></b></div>');
+    if(g.cls===""){ fr.querySelector(".ctrls").remove(); fr.querySelector(".scrub").remove(); }
+    box.appendChild(fr);
+    const tag=g.ok===true?'<span class="tag ok">reads</span>':g.ok===false?'<span class="tag bad">retake</span>':'<span class="tag amber">with help</span>';
+    box.insertAdjacentHTML("beforeend",`<h4><span>${g.name}</span>${tag}</h4><p>${g.desc}</p>`);
+    host.appendChild(box);
+  }
+})();
+</script>
+</body></html>
