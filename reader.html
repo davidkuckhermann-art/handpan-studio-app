@@ -495,7 +495,10 @@ function analyzeTab(item){
   const H=median(comps.filter(c=>c.h>6).map(c=>c.h))||30;
   comps=comps.filter(c=>c.area>=0.05*H*H&&c.area/(c.w*c.h)>=0.15);   // a thread (the selection box's edge) is not a glyph
   const flip=!!item.tabFlip;
-  for(const c of comps){ c.green=c.blue!==flip; }                  // blue = the left hand = the green token, unless flipped
+  /* David, 5 Sep: "for all these tab notations, usually left is the top hand,
+     and right is the bottom hand" — so orange above is the left hand (the
+     app's green) and blue below the right (black), unless flipped */
+  for(const c of comps){ c.green=(!c.blue)!==flip; }
   const rows=[], bars=[], tempos=[]; let s0=0, sw=0;
   lines.forEach((ly,ri)=>{
     const band=[Math.max(0,Math.floor(ly-1.7*H)),Math.min(h-1,Math.ceil(ly+1.7*H))];
@@ -775,7 +778,7 @@ function readTable(item){
           if(c.parts){ const txt=c.parts.map(p=>matchGlyph(bitmapOf(p,w),["0","1","2","3","4","5","6","7","8","9"],ATLAS2)[0].g).join("");
             const ev={v:"field",f:+txt,hand,_g:txt,_conf:1,_margin:1,_rel:rel}; if(!(+txt>=1&&+txt<=40)) cell.q=true; cell.evs.push(ev); continue; }
           const m=matchGlyph(bm,rel<0.6?["*"]:["D","1","2","3","4","5","6","7","8","9","*"],ATLAS2); const g=m[0].g;
-          if(g==="*"){ cell.q=true; continue; }               // the asterisk: meaning still to be asked, the position is flagged
+          if(g==="*") continue;                               // the asterisk: meaning unknown, ignored for now (David, 5 Sep)
           const other=m.find(x=>x.g!==g); const margin=other?m[0].score-other.score:1, conf=m[0].shape;
           const ev=g==="D"?{v:"field",f:0,hand}:{v:"field",f:+g,hand}; ev._g=g; ev._conf=conf; ev._margin=margin; ev._rel=rel;
           if(conf<0.55||margin<0.04) cell.q=true; cell.evs.push(ev); continue; }
@@ -965,7 +968,7 @@ function paintFound(){
     chip(`${an.bars[0]?an.bars[0].spb:"?"} positions a bar`,"vio","Positions in the first bar, counted from its tick marks.");
     const cB2=chip(`counts a bar <input type="number" id="cB" min="1" max="16" value="${an.beats}">`,"vio","How many counts one bar has: the top number of the time signature. The tab does not say; 4 is assumed when the positions divide by 4.");
     chip(`${an.sub} per count`,"vio","Positions inside one count, from the positions a bar and the counts a bar.");
-    const sw=chip(`<label><input type="checkbox" id="cFlip" ${it.tabFlip?"checked":""}> orange = left hand</label>`,"", "Orange above the line is taken as the right hand (black in the app) and blue below as the left (green). Tick this if it is the other way round.");
+    const sw=chip(`<label><input type="checkbox" id="cFlip" ${it.tabFlip?"checked":""}> top = right hand</label>`,"", "In tabs the hand above the line is usually the left (green in the app) and the one below the right (black). Tick this if this tab has them the other way round.");
     if(an.tempos.length) chip(`tempo ${an.tempos.map(t=>t.bpm).join(" · ")}`,"","Tempo marks read above the systems, in order. The first becomes the piece's tempo; the app holds one tempo per piece.");
     cB2.querySelector("input").addEventListener("change",()=>{ const B=+$("cB").value||an.beats; an.beats=B; an.sub=Math.max(1,Math.round((an.bars[0]?an.bars[0].spb:16)/B)); paintFound(); });
     $("cFlip").addEventListener("change",e=>{ it.tabFlip=e.target.checked; analyze(it); paintFound(); });
