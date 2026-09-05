@@ -293,6 +293,8 @@ function longestRunRow(cls,w,h,y,pred){ let best=0,run=0; for(let x=0;x<w;x++){ 
    ═══════════════════════════════════════════════════════════════════════ */
 function findFrame(cls,w,h){
   const isF=c=>c===FRAME||c===INK;
+  let fmax=0; for(let x=0;x<w;x+=2){ const r=longestRunCol(cls,w,h,x,c=>c===FRAME); if(r>fmax) fmax=r; }
+  if(fmax<h*0.15) return null;                                // no frame line: the picture is the frame (a Flow screenshot)
   const colRun=new Float32Array(w), rowRun=new Float32Array(h);
   let cmax=0,rmax=0;
   for(let x=0;x<w;x++){ colRun[x]=longestRunCol(cls,w,h,x,isF); if(colRun[x]>cmax)cmax=colRun[x]; }
@@ -585,7 +587,7 @@ function analyzeFlow(item,frame){
   lines=lines.filter(ly=>ticksAcross(ly)>=8&&comps.filter(c=>Math.abs(c.cy-ly)<2.5*H0&&c.h>0.5*H0).length>=4);
   comps=comps.filter(c=>lines.some(ly=>Math.abs(c.cy-ly)<2.5*H0));
   const H=rowHeight(comps.filter(c=>c.h>8))||H0;
-  comps=comps.filter(c=>c.area>=0.05*H*H&&c.area/(c.w*c.h)>=0.15);
+  comps=comps.filter(c=>c.area>=0.015*H*H&&c.area/(c.w*c.h)>=0.15);   // a ghost dot is small but solid; a thread is neither
   const rows=[], bars=[]; let s0=0, sw=0;
   lines.forEach((ly,ri)=>{
     const band=[Math.max(0,Math.floor(ly-2.3*H)),Math.min(h-1,Math.ceil(ly+1.8*H))];
@@ -594,7 +596,7 @@ function analyzeFlow(item,frame){
     /* the lane line's own extent is the row's */
     let lx0=-1,lx1=-1; for(let x=frame.x0;x<=frame.x1;x++){ let f=false; for(let y=Math.floor(ly)-1;y<=Math.ceil(ly)+1;y++) if(cls[y*w+x]===FAINT) f=true; if(f){ if(lx0<0) lx0=x; lx1=x; } }
     const barX=[], beatX=[], posX=[];
-    const touches=x=>{ for(const y of [Math.round(ly)-6,Math.round(ly)-5,Math.round(ly)-4]){ const c=cls[y*w+x]; if(c===FAINT||c===INK||c===GREY||c===OTHER) return true; } return false; };
+    const touches=x=>{ for(const y of [Math.round(ly)-6,Math.round(ly)-5,Math.round(ly)-4,Math.round(ly)-3]){ const c=cls[y*w+x]; if(c===FAINT||c===INK||c===GREY||c===OTHER) return true; } return false; };
     for(let x=lx0;x<=lx1;x++){ if(!touches(x)) continue; const dark=runIn(x,c=>c!==BG&&c!==FAINT), faint=runIn(x,c=>c===FAINT);
       if(dark>=1.6*H) barX.push(x); else if(faint>=1.1*H) beatX.push(x); else if(faint>=0.3*H) posX.push(x); }
     const barsX=cluster(barX), beats=cluster(beatX), poss=cluster(posX);
@@ -620,7 +622,7 @@ function analyzeFlow(item,frame){
   for(const R of rows){ const merged=[];
     for(const lane of ["up","down"]){ const list=R.comps.filter(c=>c.lane===lane).sort((a,b)=>a.cx-b.cx); const out=[];
       for(const c of list){ const L=out[out.length-1];
-        if(L&&L.green===c.green&&c.h>0.6*H&&L.h>0.6*H&&c.x0-L.x1<0.45*H){ const parts=(L.parts||[L]).concat([c]); const mm=compFrom(parts.flatMap(p=>p.px),w,cls); mm.parts=parts; mm.lane=L.lane; mm.green=L.green; out[out.length-1]=mm; }
+        if(L&&L.green===c.green&&c.h>0.6*H&&L.h>0.6*H&&c.x0>=L.x1-0.1*H&&c.x0-L.x1<0.45*H&&Math.abs(c.cy-L.cy)<0.5*H){ const parts=(L.parts||[L]).concat([c]); const mm=compFrom(parts.flatMap(p=>p.px),w,cls); mm.parts=parts; mm.lane=L.lane; mm.green=L.green; out[out.length-1]=mm; }
         else out.push(c); }
       merged.push(...out); }
     R.comps=merged.sort((a,b)=>a.cx-b.cx);
@@ -763,6 +765,8 @@ function readTable(item){
       for(const c of cs){
         const hand=c.green?"R":"L", bm=bitmapOf(c,w), rel=c.h/H;
         if(rel<0.06&&c.w<H*0.06) continue;                 // a speck: the frame's corner, a stray pixel
+        /* the ghost dot, in every style: small, round and solid */
+        if(rel<0.24&&c.w<H*0.3&&c.w<=c.h*1.6&&!hasHole(bm)){ cell.evs.push({v:"ghost",hand}); continue; }
         if(an.style==="flow"){
           const num=c.parts?c.parts.map(p=>matchGlyph(bitmapOf(p,w),["0","1","2","3","4","5","6","7","8","9"],ATLAS3)[0].g).join(""):null;
           let g=num, conf=1, margin=1;
@@ -782,8 +786,6 @@ function readTable(item){
           const other=m.find(x=>x.g!==g); const margin=other?m[0].score-other.score:1, conf=m[0].shape;
           const ev=g==="D"?{v:"field",f:0,hand}:{v:"field",f:+g,hand}; ev._g=g; ev._conf=conf; ev._margin=margin; ev._rel=rel;
           if(conf<0.55||margin<0.04) cell.q=true; cell.evs.push(ev); continue; }
-        /* the ghost dot: small and solid */
-        if(rel<0.24&&c.w<H*0.3&&c.w<=c.h*1.6&&!hasHole(bm)){ cell.evs.push({v:"ghost",hand}); continue; }
         /* a flat, wide mark above another glyph: the roll's tilde, or the
            overline whose meaning is still to be asked (it is kept as bar:true
            and the slot is flagged) */
