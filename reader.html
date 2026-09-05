@@ -117,6 +117,10 @@
   .read .slot.q{box-shadow:inset 0 0 0 2px var(--violet); background:var(--violet-soft)}
   .read .slot.q::after{content:"?"; position:absolute; right:2px; top:0; font-size:10px; font-weight:800; color:var(--violet)}
   .read .slot.sel{box-shadow:inset 0 0 0 2px var(--dixie)}
+  .read .slot.cur{box-shadow:inset 0 -4px 0 0 var(--dixie)}
+  .read .slot.sel.cur{box-shadow:inset 0 0 0 2px var(--dixie), inset 0 -4px 0 0 var(--dixie)}
+  .read .slot.play{background:var(--dixie-soft)}
+  .read .slot.play.q{background:var(--violet-soft)}
   .sym{font-weight:700; font-size:22px; line-height:1.02; color:var(--hand-l); font-variant-numeric:tabular-nums}
   .sym.r{color:var(--hand-r)}
   .sym.gh{font-size:20px}
@@ -219,6 +223,11 @@
     <p class="lede">The screenshot's row above, the reading below, position for position. Violet positions are
       the ones the reader is unsure of. Click any position to change it.</p>
     <div id="sum"></div>
+    <div class="row" id="checkBar" style="margin:0 0 10px">
+      <button class="ctl on" id="btnPlayCur" title="Play from the cursor in the app below (Space)">▶ Play from the cursor</button>
+      <button class="ctl" id="btnStopCur" title="Stop (Space while playing)">■ Stop</button>
+      <span class="lede" style="margin:0">Click a position to put the cursor there. ← → move it, Space plays from it. The app's playhead is shown on the grid while it plays.</span>
+    </div>
     <div id="pairs"></div>
     <div class="row"><button class="ctl" id="btnBackFound" title="Back to the frame and the grid, if the positions are off">Back to the frame</button><button class="ctl on" id="btnAccept" title="Accept this table as read and go on to the next one">Looks right</button></div>
   </section>
@@ -243,13 +252,13 @@
         <button class="ctl" id="btnJson" title="Copy the piece's data as plain JSON, for the repo or a bug report">Copy JSON</button></div>
       <textarea id="outCode" readonly></textarea>
     </div>
-    <div class="out player" id="playerBox">
-      <div class="row" style="margin:0 0 6px; align-items:baseline"><b>Hear it</b><span class="lede" style="margin:0">The app itself, with the piece as read. It reloads when you change a position or the arrangement.</span>
-        <span class="gap" style="flex:1"></span><button class="ctl on" id="btnPlayLoad" title="Load the piece as it stands into the player below">Load into the player</button></div>
-      <iframe id="player" title="Handpan Studio" allow="autoplay"></iframe>
-    </div>
     <div id="bench"></div>
   </section>
+  <div class="out player" id="playerBox" hidden>
+    <div class="row" style="margin:0 0 6px; align-items:baseline"><b>Hear it</b><span class="lede" style="margin:0" id="playerLede">The app itself, with the piece as read. It reloads when you change a position or the arrangement.</span>
+      <span class="gap" style="flex:1"></span><button class="ctl on" id="btnPlayLoad" title="Load the piece as it stands into the player below">Load into the player</button></div>
+    <iframe id="player" title="Handpan Studio" allow="autoplay"></iframe>
+  </div>
 </main>
 <div id="pop">
   <div class="evs" id="popEvs"></div>
@@ -878,8 +887,8 @@ function tableBars(item){
 const PANS=[["d-kurd-9","D Kurd 9"],["d-kurd-10","D Kurd 10"],["e-amara-9","E Amara 9"],["cs-amara-9","C♯ Amara 9"],
   ["f-pygmy-9","F Pygmy 9"],["c-harmonic-minor-9","C Harmonic Minor 9"],["g-hijaz-9","G Hijaz 9"],["d-integral-9","D Integral 9"],
   ["d-celtic-minor-9","D Celtic Minor 9"],["d-mystic-9","D Mystic 9"]];
-function buildPiece(){
-  const items=ITEMS.filter(i=>i.read);
+function buildPiece(only){
+  const items=only?[only]:ITEMS.filter(i=>i.read);
   if(!items.length) return null;
   const sections={}, metas=[];
   for(const it of items){ const an=it.an; const bars=tableBars(it); const splits=it.splits||{};
@@ -900,9 +909,9 @@ function buildPiece(){
     if(m.beats!==first.beats) s.meter=[m.beats,m.beats>=5&&m.sub===1?8:4];
     if(m.sub!==first.sub) s.sub=m.sub;
     if(m.bpr!==first.bpr) s.barsPerRow=m.bpr; }
-  const arr=ARR.filter(n=>sections[n]);
-  return {format:"hpd-1", id:"read-"+Date.now().toString(36), title:$("fTitle").value||"Untitled", author:"",
-    writtenFor:$("fPan").value, tempo:+$("fTempo").value||72,
+  const arr=only?[]:ARR.filter(n=>sections[n]);
+  return {format:"hpd-1", id:"read-"+Date.now().toString(36), title:(only?only.secName:$("fTitle").value)||"Untitled", author:"",
+    writtenFor:$("fPan").value||"d-kurd-9", tempo:+$("fTempo").value||72,
     meter:[first.beats,first.beats>=5&&first.sub===1?8:4], sub:first.sub, barsPerRow:first.bpr,
     sections, arrangement:arr.length?arr:metas.map(m=>m.name)};
 }
@@ -910,13 +919,38 @@ function enc(p){ return btoa(unescape(encodeURIComponent(JSON.stringify(p)))).re
 const APP_URL="https://davidkuckhermann-art.github.io/handpan-studio-app/?k=ce0f3bf87594bda9";
 /* the player is the app served beside this file: index.html on the pages site (behind its key), app.html in the repo */
 const PLAYER_URL=(location.hostname==="localhost"||location.hostname==="127.0.0.1"||location.protocol==="file:")?"app.html":"index.html?k=ce0f3bf87594bda9";
-let playerOn=false, playerTimer=null;
-function loadPlayer(){
-  const p=buildPiece(); if(!p) return;
+let playerOn=false, playerTimer=null, playerScope=null, playerReady=null, followTimer=null;
+function playerWin(){ try{ return $("player").contentWindow; }catch(e){ return null; } }
+/* the app's transport lives in top-level lets, out of reach from outside — but
+   the frame is same-origin, so an eval in ITS global scope reaches them. This
+   is the one place the reader touches the app's insides. */
+function appEval(code){ const w=playerWin(); if(!w||!w.document||!w.document.body) return undefined; try{ return w.eval(code); }catch(e){ return undefined; } }
+function loadPlayer(scope){
+  if(scope===undefined) scope=(STEP==="check"&&CUR)?CUR:null;
+  const p=buildPiece(scope); if(!p) return Promise.resolve(false);
   const f=$("player"); f.src=PLAYER_URL+(PLAYER_URL.includes("?")?"&":"?")+"r="+Date.now()+"#p="+enc(p);
-  f.classList.add("on"); playerOn=true;
+  f.classList.add("on"); playerOn=true; playerScope=scope;
+  $("playerLede").textContent=scope?"The app, with this screenshot alone, so the cursor above and the playhead below are the same positions.":"The app itself, with the whole piece as read. It reloads when you change a position or the arrangement.";
+  playerReady=new Promise(res=>{ const t0=Date.now(); const tick=()=>{ const w=playerWin(); if(w&&typeof w.togglePlay==="function"&&w.document.querySelector(".slot")) res(true); else if(Date.now()-t0>15000) res(false); else setTimeout(tick,120); }; f.addEventListener("load",()=>setTimeout(tick,50),{once:true}); });
+  return playerReady;
 }
-function playerFollow(){ if(!playerOn) return; clearTimeout(playerTimer); playerTimer=setTimeout(loadPlayer,900); }
+function playerFollow(){ if(!playerOn) return; clearTimeout(playerTimer); playerTimer=setTimeout(()=>loadPlayer(playerScope),900); }
+async function playFromCursor(){
+  const it=CUR; if(!it||!it.read) return;
+  if(!playerOn||playerScope!==it){ const ok=await loadPlayer(it); if(!ok){ toast("The player did not load"); return; } }
+  else if(playerReady) await playerReady;
+  const pulse=pulseOf(it,it.cur||0);
+  const r=appEval(`(function(){ loopSec=null; if(playing){ jumpTo(${pulse}); return "jumped"; } pendingStart=${pulse}; togglePlay(); return "started"; })()`);
+  if(!r){ toast("Press Play inside the player once, then Space works from here"); return; }
+  startFollow();
+}
+function playerStop(){ appEval("if(playing) stop();"); stopFollow(); }
+/* the app's playhead, mirrored onto the grid */
+function startFollow(){ stopFollow(); followTimer=setInterval(()=>{ const it=CUR; if(!it||STEP!=="check"||playerScope!==it){ stopFollow(); return; }
+  const on=appEval("playing"), p=appEval("lastPaint"); document.querySelectorAll("#pairs .slot.play").forEach(el=>el.classList.remove("play"));
+  if(!on){ stopFollow(); return; } const el=slotEl(it,p); if(el) el.classList.add("play"); },80); }
+function stopFollow(){ clearInterval(followTimer); followTimer=null; document.querySelectorAll("#pairs .slot.play").forEach(el=>el.classList.remove("play")); }
+
 
 /* ═══════════════════════════════════════════════════════════════════════
    STATE AND UI
@@ -925,6 +959,7 @@ const $=id=>document.getElementById(id);
 let ITEMS=[], CUR=null, ARR=[], STEP="pick";
 function toast(s){ const t=$("toast"); t.textContent=s; t.classList.add("on"); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove("on"),1800); }
 function setStep(s){ STEP=s; document.querySelectorAll(".step").forEach(el=>el.classList.toggle("on",el.id==="step-"+s));
+  $("playerBox").hidden=!(s==="check"||s==="assemble"); if(s!=="check") stopFollow();
   document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.step===s));
   if(s==="found") paintFound(); if(s==="check") paintCheck(); if(s==="assemble") paintAssemble(); }
 function navState(){ const any=ITEMS.length>0, cur=CUR, read=ITEMS.some(i=>i.read);
@@ -1056,8 +1091,22 @@ function glyphHTML(e){
   let g=bot?e.f.slice(1):e.f===0?(e.art==="mute"?"M":"D"):String(e.f); if(e.art==="mute"&&e.f!==0) g+="<small>m</small>"; if(e.roll) g+="̃"; if(e.bar) g+="̄";
   return `<span class="sym ${e.hand==="R"?"r":"l"}${bot?" bt":""}">${g}</span>`;
 }
+/* THE CURSOR on Check: one position, kept per screenshot, moved by click or
+   the arrow keys; Space plays from it in the app below (David, 5 Sep). */
+function slotEl(it,s){ return document.querySelector(`#pairs .read .slot[data-s="${s}"]`); }
+function setCursor(it,s){
+  const max=(it.an.style==="tab"||it.an.style==="flow")?it.an.N-1:it.read.length*it.an.N-1;
+  if(s<0||s>max) return;
+  const old=slotEl(it,it.cur); if(old) old.classList.remove("cur");
+  it.cur=s; const el=slotEl(it,s); if(el){ el.classList.add("cur"); el.scrollIntoView({block:"nearest",inline:"nearest"}); }
+}
+/* a position's pulse in the piece of THIS screenshot alone: the cells lie end
+   to end in reading order and every bar contributes its positions, so the
+   cell's index is its pulse */
+function pulseOf(it,s){ return s; }
 function paintCheck(){
   const it=CUR; if(!it||!it.read) return; const an=it.an;
+  if(it.cur===undefined) it.cur=0;
   const host=$("pairs"); host.innerHTML="";
   const q=it.read.reduce((n,R)=>n+R.cells.filter(c=>c.q).length,0), tot=an.style==="tab"?an.N:it.read.length*an.N;
   $("sum").innerHTML=`<span title="Positions the reader is sure of. The rest are marked violet."><b>${tot-q} of ${tot}</b> positions certain</span>${q?`<span class="chip vio">${q} to check</span>`:`<span class="chip">all certain</span>`}<span class="chip">${it.secName} · ${an.rows.length} rows · ${an.beats}/${an.beats>=5&&an.sub===1?8:4} · ${an.sub} per count${an.bpr>1?" · "+an.bpr+" bars a row":""}</span>`;
@@ -1085,11 +1134,12 @@ function paintCheck(){
       cell.appendChild(nm); strip.appendChild(cell); }
     pair.appendChild(strip);
     const read=document.createElement("div"); read.className="read"; read.style.gridTemplateColumns=`repeat(${rowCells.length},1fr)`;
-    rowCells.forEach((cell,si0)=>{ const si=si0+off; const sl=document.createElement("div"); const spb=an.style==="tab"?R.bars[0].spb:an.N/an.bpr;
+    rowCells.forEach((cell,si0)=>{ const si=si0+off+(an.style==="tab"||an.style==="flow"?0:ri*an.N); const sl=document.createElement("div"); const spb=an.style==="tab"?R.bars[0].spb:an.N/an.bpr;
       sl.className="slot"+(cell.q?" q":"")+(cell.evs.length>1?" n"+Math.min(4,cell.evs.length):"")+(((si0+1)%spb===0&&si0<rowCells.length-1)?" bar":((si0+1)%an.sub===0&&si0<rowCells.length-1)?" beat":"");
       sl.innerHTML=[...cell.evs].sort((a,b)=>(a.v==="field"?(typeof a.f==="string"?-0.5:a.f):-1)-(b.v==="field"?(typeof b.f==="string"?-0.5:b.f):-1)).map(glyphHTML).join("");
       sl.title=(cell.fold?"The tab drew an extra empty column in this beat; it was folded into this position. If the bar really is longer, add the position by hand. ":cell.q?"The reader is unsure here. ":"")+"Click to change this position";
-      sl.addEventListener("click",e=>openPop(it,ri,si,sl)); read.appendChild(sl); });
+      sl.dataset.s=si; if(it.cur===si) sl.classList.add("cur");
+      sl.addEventListener("click",e=>{ setCursor(it,si); openPop(it,ri,si-(an.style==="tab"||an.style==="flow"?0:ri*an.N),sl); }); read.appendChild(sl); });
     pair.appendChild(read); host.appendChild(pair);
   });
 }
@@ -1121,7 +1171,13 @@ function repaintSlot(){ const {it,ri,si,el}=POP; const cell=it.read[ri].cells[si
 $("hL").addEventListener("click",()=>{ popHand="L"; paintPop(); }); $("hR").addEventListener("click",()=>{ popHand="R"; paintPop(); });
 $("popClear").addEventListener("click",()=>{ const {it,ri,si}=POP; it.read[ri].cells[si].evs=[]; it.read[ri].cells[si].q=false; paintPop(); repaintSlot(); });
 $("popDone").addEventListener("click",()=>{ $("pop").classList.remove("on"); document.querySelectorAll(".read .slot.sel").forEach(s=>s.classList.remove("sel")); POP=null; });
-document.addEventListener("keydown",e=>{ if(!POP) return; const k=e.key; const cell=POP.it.read[POP.ri].cells[POP.si];
+document.addEventListener("keydown",e=>{
+  if(STEP==="check"&&CUR&&CUR.read&&!(e.target&&/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))){
+    if(e.key==="ArrowLeft"||e.key==="ArrowRight"){ e.preventDefault(); setCursor(CUR,CUR.cur+(e.key==="ArrowRight"?1:-1));
+      if(POP){ const el=slotEl(CUR,CUR.cur); if(el) el.click(); } return; }
+    if(e.key===" "&&!POP){ e.preventDefault(); if(appEval("playing")) playerStop(); else playFromCursor(); return; }
+  }
+  if(!POP) return; const k=e.key; const cell=POP.it.read[POP.ri].cells[POP.si];
   const push=ev=>{ cell.evs.push(Object.assign({hand:popHand},ev)); cell.q=false; paintPop(); repaintSlot(); };
   if(/^[1-9]$/.test(k)) push({v:"field",f:+k}); else if(k==="d"||k==="D") push({v:"field",f:0}); else if(k==="m"||k==="M") push({v:"field",f:0,art:"mute"});
   else if(k==="t") push({v:"perc",s:"tak"}); else if(k==="k") push({v:"perc",s:"tak",g:"K"}); else if(k==="^") push({v:"perc",s:"slap"}); else if(k==="."||k==="g") push({v:"ghost"});
@@ -1164,7 +1220,9 @@ function paintOut(){
   $("outCode").value=code; $("lnkOpen").href=APP_URL+"#p="+enc(p); window._piece=p;
   playerFollow();
 }
-$("btnPlayLoad").addEventListener("click",loadPlayer);
+$("btnPlayLoad").addEventListener("click",()=>loadPlayer(STEP==="check"?CUR:null));
+$("btnPlayCur").addEventListener("click",playFromCursor);
+$("btnStopCur").addEventListener("click",playerStop);
 $("btnArrClear").addEventListener("click",()=>{ ARR=[]; paintArr(); });
 $("btnArrAll").addEventListener("click",()=>{ const p=buildPiece(); ARR=p?Object.keys(p.sections):[]; paintArr(); });
 ["fTitle","fPan","fTempo"].forEach(id=>$(id).addEventListener("input",paintOut));
