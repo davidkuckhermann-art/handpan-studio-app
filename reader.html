@@ -261,7 +261,7 @@ let fontReady=(async()=>{
 /* ═══════════════════════════════════════════════════════════════════════
    PIXEL CLASSES
    ═══════════════════════════════════════════════════════════════════════ */
-const BG=0, INK=1, GREEN=2, GREY=3, FRAME=4, MARK=5, OTHER=6;
+const BG=0, INK=1, GREEN=2, GREY=3, FRAME=4, MARK=5, OTHER=6, ORANGE=7, BLUE=8, FAINT=9;
 function classify(d,w,h){
   const cls=new Uint8Array(w*h);
   for(let i=0,p=0;i<w*h;i++,p+=4){
@@ -271,9 +271,13 @@ function classify(d,w,h){
     if(g>r+35&&g>b+35&&g>70) c=GREEN;                       // the left hand's green, at any brightness
     else if(lum<125&&r>=g+18&&r>=b+18) c=FRAME;              // the dark-brown frame line
     else if(lum<125&&sat<70) c=INK;                          // black ink and its edges
-    else if(lum>=225&&sat<26) c=BG;                          // the page
+    else if(lum>=242&&sat<26) c=BG;                          // the page
+    else if(lum>=200&&lum<242&&sat<=40&&r>=b) c=FAINT;        // the app's faint warm lines and the badge's ground
+    else if(lum>=225&&sat<26) c=BG;
     else if(r>215&&g>185&&g<235&&b>120&&b<205&&r>b+30) c=MARK; // the amber marker box
     else if(sat<32&&lum>=125&&lum<225) c=GREY;               // header labels, underlines, discs
+    else if(r>190&&g>90&&g<190&&b<110&&r>b+100) c=ORANGE;    // the tab's upper hand
+    else if(b>120&&b>r+40&&b>g+20&&r<140) c=BLUE;            // the tab's lower hand
     else c=OTHER;
     cls[i]=c;
   }
@@ -356,13 +360,22 @@ function hasHole(bm){ // is the centre of the box empty while the ring is inked?
    ═══════════════════════════════════════════════════════════════════════ */
 const GLYPHS=["D","1","2","3","4","5","6","7","8","9","0","M","T","K","^","°","+","~","¯"];
 const STACK_GLYPHS=["D","1","2","3","4","5","6","7","8","9","M"];   // a stack is a chord of tone fields
-let ATLAS=null;
+let ATLAS=null, ATLAS2=null, ATLAS3=null;
+const FLOW_GLYPHS=["D","0","1","2","3","4","5","6","7","8","9","M","T","K","^","°"];
+const TAB_GLYPHS=["D","0","1","2","3","4","5","6","7","8","9","*"];
 async function buildAtlas(){
   await fontReady;
+  ATLAS=renderAtlas(GLYPHS,"LoopieMono, Helvetica, Arial");
+  /* the tab app's sans is close to Helvetica, but its 1 has a foot: two
+     faces in one atlas, and the nearer one wins per glyph */
+  ATLAS2=renderAtlas(TAB_GLYPHS,"Helvetica Neue, Helvetica, Arial").concat(renderAtlas(TAB_GLYPHS,"Verdana, Tahoma, DejaVu Sans, sans-serif"));
+  ATLAS3=renderAtlas(FLOW_GLYPHS,"bold Helvetica Neue, Helvetica, Arial").concat(renderAtlas(FLOW_GLYPHS,"bold Verdana, Tahoma, sans-serif"));   // the app's own symbols; its 1 has a foot
+}
+function renderAtlas(glyphs,font){
   const S=96, c=document.createElement("canvas"); c.width=S*2; c.height=S*2; const x=c.getContext("2d");
-  ATLAS=[];
-  for(const g of GLYPHS){
-    x.clearRect(0,0,S*2,S*2); x.fillStyle="#000"; x.font=`${S}px LoopieMono, Helvetica, Arial`; x.textBaseline="alphabetic";
+  const out=[];
+  for(const g of glyphs){
+    x.clearRect(0,0,S*2,S*2); x.fillStyle="#000"; x.font=font.startsWith("bold ")?`bold ${S}px ${font.slice(5)}`:`${S}px ${font}`; x.textBaseline="alphabetic";
     x.fillText(g,S*0.3,S*1.3);
     const d=x.getImageData(0,0,S*2,S*2).data; let x0=S*2,y0=S*2,x1=-1,y1=-1;
     for(let yy=0;yy<S*2;yy++) for(let xx=0;xx<S*2;xx++){ if(d[(yy*S*2+xx)*4+3]>110){ if(xx<x0)x0=xx; if(xx>x1)x1=xx; if(yy<y0)y0=yy; if(yy>y1)y1=yy; } }
@@ -370,13 +383,14 @@ async function buildAtlas(){
     const bw=x1-x0+1, bh=y1-y0+1, grid=new Float32Array(bw*bh);
     for(let yy=0;yy<bh;yy++) for(let xx=0;xx<bw;xx++) grid[yy*bw+xx]=d[((yy+y0)*S*2+xx+x0)*4+3]>110?1:0;
     const bm={w:bw,h:bh,g:grid};
-    ATLAS.push({g, aspect:bw/bh, hRel:bh/S, tpl:resample(bm,TW,TH), hole:hasHole(bm)});
+    out.push({g, aspect:bw/bh, hRel:bh/S, tpl:resample(bm,TW,TH), hole:hasHole(bm)});
   }
+  return out;
 }
 /* match a component against a set of glyph names; returns [{g,score}] best first */
-function matchGlyph(bm,allow){
+function matchGlyph(bm,allow,atlas){
   const t=resample(bm,TW,TH), aspect=bm.w/bm.h, res=[];
-  for(const a of ATLAS){ if(allow&&!allow.includes(a.g)) continue;
+  for(const a of (atlas||ATLAS)){ if(allow&&!allow.includes(a.g)) continue;
     let diff=0; for(let i=0;i<TW*TH;i++) diff+=Math.abs(t[i]-a.tpl[i]);
     const shape=1-diff/(TW*TH);
     const asp=Math.abs(Math.log(aspect/a.aspect));
@@ -454,9 +468,174 @@ function headerComps(item,rect){
 function median(a){ if(!a.length) return 0; const s=[...a].sort((p,q)=>p-q); return s[Math.floor(s.length/2)]; }
 function rowHeight(comps){ const hs=comps.map(c=>c.h).sort((a,b)=>b-a); const top=hs.slice(0,Math.max(1,Math.ceil(hs.length/2))); return median(top)||20; }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   THE TAB — a linear tablature: one grey staff line per system, black bar
+   lines, a grey tick at every position, one hand above the line in orange
+   and the other below in blue, tempo marks above. The grid is drawn, so
+   nothing is inferred: bars from the black lines, positions from the ticks.
+   ═══════════════════════════════════════════════════════════════════════ */
+function isTab(cls,w,h){
+  /* a table always has its dark-brown frame; a tab has a long grey line and no frame */
+  let fmax=0; for(let x=0;x<w;x+=2){ const r=longestRunCol(cls,w,h,x,c=>c===FRAME); if(r>fmax) fmax=r; }
+  if(fmax>=h*0.1) return false;
+  for(let y=0;y<h;y++) if(greyShare(cls,w,y)>=0.5) return true;
+  return false;
+}
+/* the staff line is grey but the black bar lines cut it, so it is known by its share of the row, not by one run */
+function greyShare(cls,w,y){ let n=0; for(let x=0;x<w;x++) if(cls[y*w+x]===GREY) n++; return n/w; }
+function analyzeTab(item){
+  const {w,h,cls}=item;
+  /* systems: the long grey staff lines */
+  const ys=[]; for(let y=0;y<h;y++) if(greyShare(cls,w,y)>=0.5) ys.push(y);
+  const staffs=[]; for(const y of ys){ const L=staffs[staffs.length-1]; if(L&&y-L.y1<=3){ L.y1=y; } else staffs.push({y0:y,y1:y}); }
+  const lines=staffs.map(o=>(o.y0+o.y1)/2);
+  /* the hands' ink, and the digit height from it */
+  let comps=components(cls,w,h,null,c=>c===ORANGE||c===BLUE,6);
+  for(const c of comps){ c.blue=(c.cnt[BLUE]||0)>(c.cnt[ORANGE]||0); }
+  const H=median(comps.filter(c=>c.h>6).map(c=>c.h))||30;
+  comps=comps.filter(c=>c.area>=0.05*H*H&&c.area/(c.w*c.h)>=0.15);   // a thread (the selection box's edge) is not a glyph
+  const flip=!!item.tabFlip;
+  for(const c of comps){ c.green=c.blue!==flip; }                  // blue = the left hand = the green token, unless flipped
+  const rows=[], bars=[], tempos=[]; let s0=0, sw=0;
+  lines.forEach((ly,ri)=>{
+    const band=[Math.max(0,Math.floor(ly-1.7*H)),Math.min(h-1,Math.ceil(ly+1.7*H))];
+    const runIn=(x,pred)=>{ let best=0,run=0; for(let y=band[0];y<=band[1];y++){ if(pred(cls[y*w+x])){run++; if(run>best)best=run;} else run=0; } return best; };
+    const cluster=xs=>{ const out=[]; for(const x of xs){ const L=out[out.length-1]; if(L&&x-L.x1<=4){ L.x1=x; } else out.push({x0:x,x1:x}); } return out.map(o=>(o.x0+o.x1)/2); };
+    const barX=[], tickX=[];
+    for(let x=0;x<w;x++){ if(runIn(x,c=>c===INK)>=2.2*H) barX.push(x); else if(runIn(x,c=>c===GREY)>=0.5*H) tickX.push(x); }
+    const barsX=cluster(barX);
+    const tickH=median(tickX.map(x=>runIn(x,c=>c===GREY)))||H;
+    const ticks=cluster(tickX.filter(x=>runIn(x,c=>c===GREY)>=tickH*0.7));
+    if(barsX.length<1) return;
+    const rowBars=[];
+    for(let b=0;b<barsX.length;b++){
+      const x0=barsX[b], x1=b+1<barsX.length?barsX[b+1]:null;
+      const inside=ticks.filter(t=>t>x0+0.3*H&&(x1===null||t<x1-0.3*H));
+      if(x1===null&&!inside.length) break;                       // the closing line of the row
+      /* the count comes from the tick SPACING, which a stray grey edge (the
+         selection box, a bar line's anti-aliased side) cannot move */
+      const pts=[x0,...inside]; const gaps=[]; for(let i=1;i<pts.length;i++) gaps.push(pts[i]-pts[i-1]);
+      const pitch=median(gaps.filter(g=>g>0.3*H));
+      const width=x1!==null?x1-x0:(pts[pts.length-1]-x0+pitch);
+      const spb=Math.max(1,Math.round(width/pitch));
+      const slot=width/spb; if(!sw) sw=slot;
+      rowBars.push({x0,x1:x0+width,spb,s0,row:ri,slot}); s0+=spb;
+    }
+    if(!rowBars.length) return;
+    const R={base:ly+1.6*H, top:ly-2.2*H, line:ly, segs:[{x0:rowBars[0].x0,x1:rowBars[rowBars.length-1].x1}], comps:[], H, bars:rowBars};
+    rows.push(R); bars.push(...rowBars);
+    /* tempo marks: black digits above the system */
+    const tb={x0:0,y0:Math.max(0,Math.floor(ly-6.5*H)),x1:w-1,y1:Math.floor(ly-1.9*H)};
+    const digs=components(cls,w,h,tb,c=>c===INK,6).filter(c=>c.h>=0.5*H&&c.h<=1.3*H).sort((a,b)=>a.cx-b.cx);
+    const groups=[]; for(const c of digs){ const L=groups[groups.length-1]; if(L&&c.x0-L.x1<0.6*H){ L.parts.push(c); L.x1=c.x1; } else groups.push({parts:[c],x0:c.x0,x1:c.x1}); }
+    for(const g of groups){ if(!ATLAS2) break; const txt=g.parts.map(c=>matchGlyph(bitmapOf(c,w),["0","1","2","3","4","5","6","7","8","9"],ATLAS2)[0].g).join("");
+      const bpm=+txt; if(!(bpm>=20&&bpm<=300)) continue;
+      const bar=rowBars.find(B=>g.x0<B.x1)||rowBars[rowBars.length-1]; const pos=Math.max(0,Math.min(bar.spb-1,Math.floor((g.x0-bar.x0)/bar.slot)));
+      tempos.push({bpm,bar:bars.indexOf(bar),pos,x:g.x0}); }
+  });
+  /* every glyph to its system; two digits side by side in one lane are one number */
+  for(const c of comps){ let best=-1,bd=1e9; rows.forEach((R,i)=>{ const d=Math.abs(c.cy-R.line); if(d<bd){ bd=d; best=i; } }); if(best>=0&&bd<2.5*H){ c.lane=c.cy<rows[best].line?"up":"down"; rows[best].comps.push(c); } }
+  for(const R of rows){ const merged=[];
+    for(const lane of ["up","down"]){ const list=R.comps.filter(c=>c.lane===lane).sort((a,b)=>a.cx-b.cx); const out=[];
+      for(const c of list){ const L=out[out.length-1];
+        if(L&&L.blue===c.blue&&c.h>0.6*H&&L.h>0.6*H&&c.x0-L.x1<0.6*H){ const parts=(L.parts||[L]).concat([c]); const m=compFrom(parts.flatMap(p=>p.px),w,cls); m.parts=parts; m.lane=L.lane; m.blue=L.blue; m.green=L.green; out[out.length-1]=m; }
+        else out.push(c); }
+      merged.push(...out); }
+    R.comps=merged.sort((a,b)=>a.cx-b.cx); }
+  comps=rows.flatMap(R=>R.comps);
+  const N=s0, spb0=bars.length?bars[0].spb:16;
+  const sub=spb0%4===0?4:spb0%3===0?3:spb0%2===0?2:1, beats=Math.max(1,Math.round(spb0/sub));
+  const frame={x0:Math.floor(Math.min(...bars.map(B=>B.x0))),x1:Math.ceil(Math.max(...bars.map(B=>B.x1))),y0:Math.floor(rows[0].top),y1:Math.ceil(rows[rows.length-1].base)};
+  item.frame=frame;
+  item.an={style:"tab",frame,inner:frame,tx0:frame.x0,tx1:frame.x1,rows,comps,labels:[],labelText:[],N,fit:0,beats,bpr:rows.length?rows[0].bars.length:1,sub,Hall:H,fits:[],sw,bars,tempos,barsAreBars:true};
+  return item.an;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   FLOW — the app's own Flow skin: one faint lane line per system, the
+   left hand green above it, the right hand black below, a faint short
+   line at every position (Flow packs its cells, so the cells are the
+   grid, not a pitch), taller faint lines at the counts, tan lines at the
+   bars, and a beige rounded box behind an underside note.
+   ═══════════════════════════════════════════════════════════════════════ */
+function faintShare(cls,w,y,x0,x1){ let n=0; for(let x=x0;x<=x1;x++) if(cls[y*w+x]===FAINT) n++; return n/(x1-x0+1); }
+function greyShareIn(cls,w,y,x0,x1){ let n=0; for(let x=x0;x<=x1;x++) if(cls[y*w+x]===GREY) n++; return n/(x1-x0+1); }
+function isFlow(item,frame){
+  const {w,h,cls}=item; const m=Math.round((frame.y1-frame.y0)*0.08);
+  let faint=false;
+  for(let y=frame.y0+m;y<=frame.y1-m;y++){ if(greyShareIn(cls,w,y,frame.x0,frame.x1)>=0.2) return false; if(faintShare(cls,w,y,frame.x0,frame.x1)>=0.4) faint=true; }
+  return faint;
+}
+function analyzeFlow(item,frame){
+  const {w,h,cls}=item; const m=Math.round((frame.y1-frame.y0)*0.08);
+  const ys=[]; for(let y=frame.y0+m;y<=frame.y1-m;y++) if(faintShare(cls,w,y,frame.x0,frame.x1)>=0.4) ys.push(y);
+  const staffs=[]; for(const y of ys){ const L=staffs[staffs.length-1]; if(L&&y-L.y1<=3){ L.y1=y; } else staffs.push({y0:y,y1:y}); }
+  let lines=staffs.map(o=>(o.y0+o.y1)/2);
+  /* the hands' ink near the lines, and the glyph height from the tallest half of it */
+  let comps=components(cls,w,h,{x0:frame.x0,y0:frame.y0,x1:frame.x1,y1:frame.y1},c=>c===INK||c===GREEN,6);
+  for(const c of comps){ c.green=(c.cnt[GREEN]||0)>(c.cnt[INK]||0); }
+  const H0=rowHeight(comps.filter(c=>c.h>8&&lines.some(ly=>Math.abs(c.cy-ly)<90)))||30;
+  /* a lane line is crossed by the cell lines (faint columns touching it just
+     above and below); the notation box's own edges are not */
+  const ticksAcross=ly=>{ let n=0,run=0; const y0=Math.round(ly)-4,y1=Math.round(ly)+4; if(y0<0||y1>=h) return 0;
+    for(let x=frame.x0;x<=frame.x1;x++){ const t=cls[y0*w+x]===FAINT||cls[y1*w+x]===FAINT; if(t){ run++; } else { if(run&&run<=0.15*H0) n++; run=0; } } return n; };
+  lines=lines.filter(ly=>ticksAcross(ly)>=8&&comps.filter(c=>Math.abs(c.cy-ly)<2.5*H0&&c.h>0.5*H0).length>=4);
+  comps=comps.filter(c=>lines.some(ly=>Math.abs(c.cy-ly)<2.5*H0));
+  const H=rowHeight(comps.filter(c=>c.h>8))||H0;
+  comps=comps.filter(c=>c.area>=0.05*H*H&&c.area/(c.w*c.h)>=0.15);
+  const rows=[], bars=[]; let s0=0, sw=0;
+  lines.forEach((ly,ri)=>{
+    const band=[Math.max(0,Math.floor(ly-2.3*H)),Math.min(h-1,Math.ceil(ly+1.8*H))];
+    const runIn=(x,pred)=>{ let best=0,run=0; for(let y=band[0];y<=band[1];y++){ if(pred(cls[y*w+x])){run++; if(run>best)best=run;} else run=0; } return best; };
+    const cluster=xs=>{ const out=[]; for(const x of xs){ const L=out[out.length-1]; if(L&&x-L.x1<=3){ L.x1=x; } else out.push({x0:x,x1:x}); } return out.filter(o=>o.x1-o.x0<=0.15*H).map(o=>(o.x0+o.x1)/2); };
+    /* the lane line's own extent is the row's */
+    let lx0=-1,lx1=-1; for(let x=frame.x0;x<=frame.x1;x++){ let f=false; for(let y=Math.floor(ly)-1;y<=Math.ceil(ly)+1;y++) if(cls[y*w+x]===FAINT) f=true; if(f){ if(lx0<0) lx0=x; lx1=x; } }
+    const barX=[], beatX=[], posX=[];
+    const touches=x=>{ for(const y of [Math.round(ly)-6,Math.round(ly)-5,Math.round(ly)-4]){ const c=cls[y*w+x]; if(c===FAINT||c===INK||c===GREY||c===OTHER) return true; } return false; };
+    for(let x=lx0;x<=lx1;x++){ if(!touches(x)) continue; const dark=runIn(x,c=>c!==BG&&c!==FAINT), faint=runIn(x,c=>c===FAINT);
+      if(dark>=1.6*H) barX.push(x); else if(faint>=1.1*H) beatX.push(x); else if(faint>=0.3*H) posX.push(x); }
+    const barsX=cluster(barX), beats=cluster(beatX), poss=cluster(posX);
+    /* every boundary in order; the row's left edge opens the first bar, the last bar line closes the last */
+    const edgesAll=[...new Set([lx0,...barsX,...beats,...poss].map(x=>Math.round(x)))].sort((a,b)=>a-b).filter((x,i,arr)=>i===0||x-arr[i-1]>0.2*H);
+    const closing=barsX.length&&barsX[barsX.length-1]>lx1-1.5*H?barsX[barsX.length-1]:lx1;
+    const barStarts=[lx0,...barsX.filter(x=>x>lx0+0.5*H&&x<closing-0.5*H)];
+    const rowBars=[];
+    for(let b=0;b<barStarts.length;b++){
+      const x0=barStarts[b], x1=b+1<barStarts.length?barStarts[b+1]:closing;
+      const edges=edgesAll.filter(x=>x>=x0-0.2*H&&x<=x1+0.2*H); if(edges.length<2) continue;
+      edges[0]=x0; edges[edges.length-1]=x1;
+      const spb=edges.length-1; const nb=beats.filter(x=>x>x0+0.2*H&&x<x1-0.2*H).length+1;
+      const slot=(x1-x0)/spb; if(!sw) sw=slot;
+      if(spb===1&&b===barStarts.length-1&&b>0&&!comps.some(c=>c.cx>x0&&c.cx<x1&&Math.abs(c.cy-ly)<2.5*H)){ break; }
+      rowBars.push({x0,x1,spb,s0,row:ri,slot,edges,counts:nb}); s0+=spb;
+    }
+    if(!rowBars.length) return;
+    rows.push({base:ly+1.7*H, top:ly-2.2*H, line:ly, segs:[{x0:lx0,x1:rowBars[rowBars.length-1].x1}], comps:[], H, bars:rowBars}); bars.push(...rowBars);
+  });
+  for(const c of comps){ let best=-1,bd=1e9; rows.forEach((R,i)=>{ const d=Math.abs(c.cy-R.line); if(d<bd){ bd=d; best=i; } }); if(best>=0&&bd<2.5*H){ c.lane=c.cy<rows[best].line?"up":"down"; if(c.lane==="up"&&!c.green) continue; rows[best].comps.push(c); } }
+  /* two digits side by side in one lane are one number; a beige ground behind a digit is the underside */
+  for(const R of rows){ const merged=[];
+    for(const lane of ["up","down"]){ const list=R.comps.filter(c=>c.lane===lane).sort((a,b)=>a.cx-b.cx); const out=[];
+      for(const c of list){ const L=out[out.length-1];
+        if(L&&L.green===c.green&&c.h>0.6*H&&L.h>0.6*H&&c.x0-L.x1<0.45*H){ const parts=(L.parts||[L]).concat([c]); const mm=compFrom(parts.flatMap(p=>p.px),w,cls); mm.parts=parts; mm.lane=L.lane; mm.green=L.green; out[out.length-1]=mm; }
+        else out.push(c); }
+      merged.push(...out); }
+    R.comps=merged.sort((a,b)=>a.cx-b.cx);
+    for(const c of R.comps){ const y=Math.round(c.cy); const side=dir=>[0.12,0.2,0.3].some(f=>{ const x=Math.round(dir<0?c.x0-f*H:c.x1+f*H); return x>=0&&x<w&&cls[y*w+x]===FAINT; });
+      c.badge=side(-1)&&side(1); }
+  }
+  comps=rows.flatMap(R=>R.comps);
+  const N=s0, b0=bars[0]; const beats=b0?b0.counts:4, sub=b0?Math.max(1,Math.round(b0.spb/beats)):4;
+  item.frame=frame;
+  item.an={style:"flow",frame,inner:frame,tx0:frame.x0,tx1:frame.x1,rows,comps,labels:[],labelText:[],N,fit:0,beats,bpr:rows.length?rows[0].bars.length:1,sub,Hall:H,fits:[],sw,bars,tempos:[],barsAreBars:true};
+  return item.an;
+}
+
 function analyze(item){
   const {w,h,cls}=item;
+  if(isTab(cls,w,h)) return analyzeTab(item);
   const frame=item.frame||findFrame(cls,w,h)||{x0:0,y0:0,x1:w-1,y1:h-1};
+  if(isFlow(item,frame)) return analyzeFlow(item,frame);
   item.frame=frame;
   const inset=Math.ceil(w*0.005)+3;                       // the frame line and its anti-aliasing
   const inner={x0:frame.x0+inset,y0:frame.y0+inset,x1:frame.x1-inset,y1:frame.y1-inset};
@@ -568,6 +747,11 @@ function readTable(item){
     for(let s=0;s<N;s++) cells.push({evs:[],q:false,notes:[]});
     /* assign components to slots by centre */
     const bySlot=cells.map(()=>[]);
+    if(an.style==="tab"||an.style==="flow"){ for(const c of R.comps){ const bar=R.bars.find(B=>c.cx<B.x1)||R.bars[R.bars.length-1];
+        let s; if(bar.edges){ s=bar.s0; for(let k=1;k<bar.edges.length-1;k++) if(c.cx>=bar.edges[k]) s=bar.s0+k; }
+        else s=bar.s0+Math.floor((c.cx-bar.x0)/bar.slot);
+        if(s<bar.s0)s=bar.s0; if(s>=bar.s0+bar.spb)s=bar.s0+bar.spb-1; bySlot[s].push(c); } }
+    else
     for(const c of R.comps){ const bar=an.bars.find(B=>c.cx<B.x1)||an.bars[an.bars.length-1];
       let s=bar.s0+Math.floor((c.cx-bar.x0)/an.sw); if(s<bar.s0)s=bar.s0; if(s>=bar.s0+bar.spb)s=bar.s0+bar.spb-1; bySlot[s].push(c); }
     for(let s=0;s<N;s++){
@@ -576,6 +760,25 @@ function readTable(item){
       for(const c of cs){
         const hand=c.green?"R":"L", bm=bitmapOf(c,w), rel=c.h/H;
         if(rel<0.06&&c.w<H*0.06) continue;                 // a speck: the frame's corner, a stray pixel
+        if(an.style==="flow"){
+          const num=c.parts?c.parts.map(p=>matchGlyph(bitmapOf(p,w),["0","1","2","3","4","5","6","7","8","9"],ATLAS3)[0].g).join(""):null;
+          let g=num, conf=1, margin=1;
+          if(!num){ const mm=matchGlyph(bm,rel>0.55?["D","1","2","3","4","5","6","7","8","9","M","T","K","^"]:["^","°"],ATLAS3); g=mm[0].g; conf=mm[0].shape; const other=mm.find(x=>x.g!==g); margin=other?mm[0].score-other.score:1; }
+          let ev;
+          if(g==="D") ev={v:"field",f:0,hand}; else if(g==="M") ev={v:"field",f:0,hand,art:"mute"};
+          else if(g==="^") ev={v:"perc",s:"slap",hand}; else if(g==="°") ev={v:"perc",s:"knock",hand};
+          else if(g==="T"||g==="K") ev={v:"perc",s:"tak",hand,g:g==="K"?"K":undefined};
+          else ev={v:"field",f:c.badge?"b"+(+g):+g,hand};
+          ev._g=g; ev._conf=conf; ev._margin=margin; ev._rel=rel;
+          if(conf<0.55||margin<0.04||(num&&!(+num>=1&&+num<=40))) cell.q=true; cell.evs.push(ev); continue; }
+        if(an.style==="tab"){
+          if(c.parts){ const txt=c.parts.map(p=>matchGlyph(bitmapOf(p,w),["0","1","2","3","4","5","6","7","8","9"],ATLAS2)[0].g).join("");
+            const ev={v:"field",f:+txt,hand,_g:txt,_conf:1,_margin:1,_rel:rel}; if(!(+txt>=1&&+txt<=40)) cell.q=true; cell.evs.push(ev); continue; }
+          const m=matchGlyph(bm,rel<0.6?["*"]:["D","1","2","3","4","5","6","7","8","9","*"],ATLAS2); const g=m[0].g;
+          if(g==="*"){ cell.q=true; continue; }               // the asterisk: meaning still to be asked, the position is flagged
+          const other=m.find(x=>x.g!==g); const margin=other?m[0].score-other.score:1, conf=m[0].shape;
+          const ev=g==="D"?{v:"field",f:0,hand}:{v:"field",f:+g,hand}; ev._g=g; ev._conf=conf; ev._margin=margin; ev._rel=rel;
+          if(conf<0.55||margin<0.04) cell.q=true; cell.evs.push(ev); continue; }
         /* the ghost dot: small and solid */
         if(rel<0.24&&c.w<H*0.3&&c.w<=c.h*1.6&&!hasHole(bm)){ cell.evs.push({v:"ghost",hand}); continue; }
         /* a flat, wide mark above another glyph: the roll's tilde, or the
@@ -604,7 +807,7 @@ function readTable(item){
         if(top&&pendingRoll.kind==="roll") top.roll=true; else if(top){ top.bar=true; cell.q=true; } else cell.q=true; }
       if(cell.evs.length>4) cell.q=true;
     }
-    rows.push({cells,H,top:R.top,base:R.base});
+    rows.push({cells,H,top:R.top,base:R.base,bars:R.bars,segs:R.segs});
   }
   item.read=rows; item.status="read";
   return rows;
@@ -616,6 +819,9 @@ function readTable(item){
 function cleanEv(e){ const o={}; for(const k in e) if(k[0]!=="_"&&e[k]!==undefined) o[k]=e[k]; return o; }
 function tableBars(item){
   const an=item.an, spb=Math.round(an.N/an.bpr), bars=[];
+  if(an.barsAreBars){ for(const B of an.bars){ const R=item.read[B.row]; if(!R) continue; const bar=[];
+      for(let s=B.s0;s<B.s0+B.spb;s++){ const cell=R.cells[s]; if(!cell) continue; for(const e of cell.evs){ const o=cleanEv(e); o.t=s-B.s0; bar.push(o); } }
+      bars.push(bar); } return bars; }
   for(const R of item.read){
     for(let b=0;b<an.bpr;b++){ const bar=[];
       for(let s=0;s<spb;s++){ const cell=R.cells[b*spb+s]; if(!cell) continue;
@@ -631,7 +837,15 @@ function buildPiece(){
   const items=ITEMS.filter(i=>i.read);
   if(!items.length) return null;
   const sections={}, metas=[];
-  for(const it of items){ const an=it.an; sections[it.secName]={bars:tableBars(it)};
+  for(const it of items){ const an=it.an;
+    if(an.barsAreBars){
+      /* a tab's bars may differ in length; the app's sections cannot, so each run of equal bars is a section */
+      const bars=tableBars(it); let run=[], runSpb=null, n=0;
+      const flush=()=>{ if(!run.length) return; n++; const nm=items.length>1||n>1?`${it.secName} ${n}`:it.secName; const sub=runSpb%4===0?4:runSpb%3===0?3:runSpb%2===0?2:1;
+        sections[nm]={bars:run}; metas.push({beats:runSpb/sub,sub,bpr:1,name:nm,spb:runSpb}); run=[]; };
+      an.bars.forEach((B,i)=>{ if(runSpb!==null&&B.spb!==runSpb) flush(); runSpb=B.spb; run.push(bars[i]||[]); }); flush();
+      continue; }
+    sections[it.secName]={bars:tableBars(it)};
     metas.push({beats:an.beats,sub:an.sub,bpr:an.bpr,name:it.secName}); }
   const first=metas[0];
   for(const m of metas){ const s=sections[m.name];
@@ -642,7 +856,7 @@ function buildPiece(){
   return {format:"hpd-1", id:"read-"+Date.now().toString(36), title:$("fTitle").value||"Untitled", author:"",
     writtenFor:$("fPan").value, tempo:+$("fTempo").value||72,
     meter:[first.beats,first.beats>=5&&first.sub===1?8:4], sub:first.sub, barsPerRow:first.bpr,
-    sections, arrangement:arr.length?arr:items.map(i=>i.secName)};
+    sections, arrangement:arr.length?arr:metas.map(m=>m.name)};
 }
 function enc(p){ return btoa(unescape(encodeURIComponent(JSON.stringify(p)))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
 const APP_URL="https://davidkuckhermann-art.github.io/handpan-studio-app/?k=ce0f3bf87594bda9";
@@ -719,7 +933,7 @@ function paintFound(){
   /* overlays: the frame, the text extent, the slot lines, the baselines, the labels */
   x.save(); x.scale(scale,scale);
   x.strokeStyle="#6E5A8C"; x.lineWidth=2/scale; x.strokeRect(an.frame.x0,an.frame.y0,an.frame.x1-an.frame.x0,an.frame.y1-an.frame.y0);
-  for(const B of an.bars) for(let s=0;s<=B.spb;s++){ const X=B.x0+s*an.sw; const beat=s%an.sub===0, bar=s===0||s===B.spb;
+  for(const B of an.bars) for(let s=0;s<=B.spb;s++){ const X=B.edges?B.edges[s]:B.x0+s*(B.slot||an.sw); const beat=s%an.sub===0, bar=s===0||s===B.spb;
     x.strokeStyle=bar?"rgba(110,90,140,.9)":beat?"rgba(110,90,140,.6)":"rgba(110,90,140,.28)"; x.lineWidth=(bar?2:1)/scale;
     x.beginPath(); x.moveTo(X,an.inner.y0); x.lineTo(X,an.inner.y1); x.stroke(); }
   x.strokeStyle="rgba(229,147,21,.9)"; x.lineWidth=1.5/scale;
@@ -739,6 +953,24 @@ function paintFound(){
   /* chips */
   const ch=$("foundChips"); ch.innerHTML="";
   const chip=(html,cls,tip)=>{ const s=document.createElement("span"); s.className="chip "+(cls||""); s.innerHTML=html; if(tip) s.title=tip; ch.appendChild(s); return s; };
+  if(an.style==="flow"){
+    chip(`Flow · ${an.rows.length} row${an.rows.length===1?"":"s"} · ${an.bars.length} bars`,"vio","The app's own Flow notation: bars from the tan lines, positions from the faint cell lines, counts from the taller ones, the left hand green above the line and the right hand black below.");
+    chip(`${an.bars[0]?an.bars[0].spb:"?"} positions a bar`,"vio","Positions in the first bar, counted from its cell lines.");
+    chip(`${an.beats} counts a bar`,"vio","Counts in the first bar, from the taller lines.");
+    chip(`${an.sub} per count`,"vio","Positions inside one count.");
+    return;
+  }
+  if(an.style==="tab"){
+    chip(`tab · ${an.rows.length} system${an.rows.length===1?"":"s"} · ${an.bars.length} bars`,"vio","A linear tablature: bars from the black lines, positions from the tick marks, hands from colour and lane.");
+    chip(`${an.bars[0]?an.bars[0].spb:"?"} positions a bar`,"vio","Positions in the first bar, counted from its tick marks.");
+    const cB2=chip(`counts a bar <input type="number" id="cB" min="1" max="16" value="${an.beats}">`,"vio","How many counts one bar has: the top number of the time signature. The tab does not say; 4 is assumed when the positions divide by 4.");
+    chip(`${an.sub} per count`,"vio","Positions inside one count, from the positions a bar and the counts a bar.");
+    const sw=chip(`<label><input type="checkbox" id="cFlip" ${it.tabFlip?"checked":""}> orange = left hand</label>`,"", "Orange above the line is taken as the right hand (black in the app) and blue below as the left (green). Tick this if it is the other way round.");
+    if(an.tempos.length) chip(`tempo ${an.tempos.map(t=>t.bpm).join(" · ")}`,"","Tempo marks read above the systems, in order. The first becomes the piece's tempo; the app holds one tempo per piece.");
+    cB2.querySelector("input").addEventListener("change",()=>{ const B=+$("cB").value||an.beats; an.beats=B; an.sub=Math.max(1,Math.round((an.bars[0]?an.bars[0].spb:16)/B)); paintFound(); });
+    $("cFlip").addEventListener("change",e=>{ it.tabFlip=e.target.checked; analyze(it); paintFound(); });
+    return;
+  }
   chip(`${an.rows.length} row${an.rows.length===1?"":"s"}`,"vio","Rows in the table. Each row becomes one line of the notation in the app.");
   const cN=chip(`positions a row <input type="number" id="cN" min="2" max="64" value="${an.N}">`,"vio",
     "Positions in one row: every place a symbol can stand, counting the empty ones. 16 for a row of sixteenths in 4/4, 12 for triplets, 14 for two bars of 7/8. Change it if the violet lines do not sit on the symbols.");
@@ -763,25 +995,28 @@ $("btnRead").addEventListener("click",()=>{ readTable(CUR); paintQueue(); navSta
 function glyphHTML(e){
   if(e.v==="ghost") return `<span class="sym gh ${e.hand==="R"?"r":"l"}">•</span>`;
   if(e.v==="perc"){ let g=e.s==="slap"?"^":e.s==="knock"?"°":(e.g||"T"); if(e.roll) g+="̃"; return `<span class="sym ${e.hand==="R"?"r":"l"}">${g}</span>`; }
-  let g=e.f===0?(e.art==="mute"?"M":"D"):String(e.f); if(e.art==="mute"&&e.f!==0) g+="<small>m</small>"; if(e.roll) g+="̃"; if(e.bar) g+="̄";
-  return `<span class="sym ${e.hand==="R"?"r":"l"}">${g}</span>`;
+  const bot=typeof e.f==="string"&&e.f[0]==="b";
+  let g=bot?e.f.slice(1):e.f===0?(e.art==="mute"?"M":"D"):String(e.f); if(e.art==="mute"&&e.f!==0) g+="<small>m</small>"; if(e.roll) g+="̃"; if(e.bar) g+="̄";
+  return `<span class="sym ${e.hand==="R"?"r":"l"}${bot?" bt":""}">${g}</span>`;
 }
 function paintCheck(){
   const it=CUR; if(!it||!it.read) return; const an=it.an;
   const host=$("pairs"); host.innerHTML="";
-  const q=it.read.reduce((n,R)=>n+R.cells.filter(c=>c.q).length,0), tot=it.read.length*an.N;
+  const q=it.read.reduce((n,R)=>n+R.cells.filter(c=>c.q).length,0), tot=an.style==="tab"?an.N:it.read.length*an.N;
   $("sum").innerHTML=`<span title="Positions the reader is sure of. The rest are marked violet."><b>${tot-q} of ${tot}</b> positions certain</span>${q?`<span class="chip vio">${q} to check</span>`:`<span class="chip">all certain</span>`}<span class="chip">${it.secName} · ${an.rows.length} rows · ${an.beats}/${an.beats>=5&&an.sub===1?8:4} · ${an.sub} per count${an.bpr>1?" · "+an.bpr+" bars a row":""}</span>`;
   it.read.forEach((R,ri)=>{
     const pair=document.createElement("div"); pair.className="pair";
     pair.innerHTML=`<div class="lab"><b>Row ${ri+1}</b><span>${R.cells.filter(c=>c.q).length?R.cells.filter(c=>c.q).length+" to check":"certain"}</span></div>`;
     const c=document.createElement("canvas"); const y0=Math.max(0,Math.floor(R.top-R.H*0.15)), y1=Math.min(it.h,Math.ceil(R.base+R.H*0.25));
-    const X0=Math.max(0,Math.floor(an.tx0)), X1=Math.min(it.w,Math.ceil(an.tx1));
+    const X0=Math.max(0,Math.floor(R.segs?R.segs[0].x0:an.tx0)), X1=Math.min(it.w,Math.ceil(R.segs?R.segs[R.segs.length-1].x1:an.tx1));
     c.width=X1-X0; c.height=y1-y0; c.getContext("2d").drawImage(it.canvas,X0,y0,X1-X0,y1-y0,0,0,X1-X0,y1-y0);
     pair.appendChild(c);
-    const read=document.createElement("div"); read.className="read"; read.style.gridTemplateColumns=`repeat(${an.N},1fr)`;
-    R.cells.forEach((cell,si)=>{ const sl=document.createElement("div"); const spb=an.N/an.bpr;
-      sl.className="slot"+(cell.q?" q":"")+(cell.evs.length>1?" n"+Math.min(4,cell.evs.length):"")+(((si+1)%spb===0&&si<an.N-1)?" bar":((si+1)%an.sub===0&&si<an.N-1)?" beat":"");
-      sl.innerHTML=[...cell.evs].sort((a,b)=>(a.v==="field"?a.f:-1)-(b.v==="field"?b.f:-1)).map(glyphHTML).join("");
+    const rowCells=an.style==="tab"?R.cells.slice(R.bars[0].s0,R.bars[R.bars.length-1].s0+R.bars[R.bars.length-1].spb):R.cells;
+    const off=an.style==="tab"?R.bars[0].s0:0;
+    const read=document.createElement("div"); read.className="read"; read.style.gridTemplateColumns=`repeat(${rowCells.length},1fr)`;
+    rowCells.forEach((cell,si0)=>{ const si=si0+off; const sl=document.createElement("div"); const spb=an.style==="tab"?R.bars[0].spb:an.N/an.bpr;
+      sl.className="slot"+(cell.q?" q":"")+(cell.evs.length>1?" n"+Math.min(4,cell.evs.length):"")+(((si0+1)%spb===0&&si0<rowCells.length-1)?" bar":((si0+1)%an.sub===0&&si0<rowCells.length-1)?" beat":"");
+      sl.innerHTML=[...cell.evs].sort((a,b)=>(a.v==="field"?(typeof a.f==="string"?-0.5:a.f):-1)-(b.v==="field"?(typeof b.f==="string"?-0.5:b.f):-1)).map(glyphHTML).join("");
       sl.title=(cell.q?"The reader is unsure here. ":"")+"Click to change this position";
       sl.addEventListener("click",e=>openPop(it,ri,si,sl)); read.appendChild(sl); });
     pair.appendChild(read); host.appendChild(pair);
@@ -834,8 +1069,14 @@ function paintAssemble(){
     tr.querySelector("input").addEventListener("change",e=>{ const old=it.secName; it.secName=e.target.value.trim()||old; ARR=ARR.map(n=>n===old?it.secName:n); paintAssemble(); paintQueue(); });
     t.appendChild(tr); }
   const secs=$("secs"); secs.innerHTML="";
-  for(const it of items){ const b=document.createElement("button"); b.textContent=it.secName; b.title="Add "+it.secName+" to the arrangement, once for every time it plays"; b.addEventListener("click",()=>{ ARR.push(it.secName); paintArr(); }); secs.appendChild(b); }
+  const p0=buildPiece(); const names=p0?Object.keys(p0.sections):items.map(i=>i.secName);
+  for(const nm of names){ const b=document.createElement("button"); b.textContent=nm; b.title="Add "+nm+" to the arrangement, once for every time it plays"; b.addEventListener("click",()=>{ ARR.push(nm); paintArr(); }); secs.appendChild(b); }
   if(!$("fPan").options.length) for(const [id,nm] of PANS){ const o=document.createElement("option"); o.value=id; o.textContent=nm; $("fPan").appendChild(o); }
+  const marks=items.flatMap(it=>(it.an.tempos||[]).map(t=>({it,t})));
+  let tl=$("tempoList"); if(!tl){ tl=document.createElement("p"); tl.id="tempoList"; tl.className="lede"; $("tbl").after(tl); }
+  if(marks.length){ if(!$("fTempo").dataset.set){ $("fTempo").value=marks[0].t.bpm; $("fTempo").dataset.set="1"; }
+    tl.textContent="Tempo marks read: "+marks.map(m=>`${m.t.bpm} (${m.it.secName}, bar ${m.t.bar+1}${m.t.pos?", position "+(m.t.pos+1):""})`).join(" · ")+". The app holds one tempo per piece; the first is set above."; }
+  else tl.textContent="";
   if(!$("fTitle").value&&items.length){ const base=items[0].name.replace(/\.[a-z0-9]+$/i,"").replace(/[-–_ ]\s*[A-Za-z]{1,8}\s?\d{0,2}\s*$/,"").trim(); $("fTitle").value=base||"Untitled"; }
   paintArr();
 }
@@ -851,7 +1092,7 @@ function paintOut(){
   $("outCode").value=code; $("lnkOpen").href=APP_URL+"#p="+enc(p); window._piece=p;
 }
 $("btnArrClear").addEventListener("click",()=>{ ARR=[]; paintArr(); });
-$("btnArrAll").addEventListener("click",()=>{ ARR=ITEMS.filter(i=>i.read).map(i=>i.secName); paintArr(); });
+$("btnArrAll").addEventListener("click",()=>{ const p=buildPiece(); ARR=p?Object.keys(p.sections):[]; paintArr(); });
 ["fTitle","fPan","fTempo"].forEach(id=>$(id).addEventListener("input",paintOut));
 $("btnCode").addEventListener("click",()=>{ navigator.clipboard.writeText($("outCode").value).then(()=>toast("Code copied")); });
 $("btnJson").addEventListener("click",()=>{ navigator.clipboard.writeText(JSON.stringify(window._piece,null,1)).then(()=>toast("JSON copied")); });
