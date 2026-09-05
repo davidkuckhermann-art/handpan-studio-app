@@ -502,6 +502,9 @@ function analyzeTab(item){
      app's green) and blue below the right (black), unless flipped */
   for(const c of comps){ c.green=(!c.blue)!==flip; }
   const rows=[], bars=[], tempos=[]; let s0=0, sw=0;
+  /* every glyph to its nearest system first: the bar loop needs to know which columns are empty */
+  const byLine=lines.map(()=>[]);
+  for(const c of comps){ let best=-1,bd=1e9; lines.forEach((ly,i)=>{ const d=Math.abs(c.cy-ly); if(d<bd){ bd=d; best=i; } }); if(best>=0&&bd<2.5*H) byLine[best].push(c); }
   lines.forEach((ly,ri)=>{
     const band=[Math.max(0,Math.floor(ly-1.7*H)),Math.min(h-1,Math.ceil(ly+1.7*H))];
     const runIn=(x,pred)=>{ let best=0,run=0; for(let y=band[0];y<=band[1];y++){ if(pred(cls[y*w+x])){run++; if(run>best)best=run;} else run=0; } return best; };
@@ -509,22 +512,42 @@ function analyzeTab(item){
     const barX=[], tickX=[];
     for(let x=0;x<w;x++){ if(runIn(x,c=>c===INK)>=2.2*H) barX.push(x); else if(runIn(x,c=>c===GREY)>=0.5*H) tickX.push(x); }
     const barsX=cluster(barX);
-    const tickH=median(tickX.map(x=>runIn(x,c=>c===GREY)))||H;
-    const ticks=cluster(tickX.filter(x=>runIn(x,c=>c===GREY)>=tickH*0.7));
+    const tickHs=tickX.map(x=>runIn(x,c=>c===GREY)); const tickH=median(tickHs)||H;
+    const tickOK=tickX.filter(x=>runIn(x,c=>c===GREY)>=tickH*0.7);
+    const ticks=cluster(tickOK);
+    /* the TALL ticks are the beats (1.25× the ordinary tick and more) */
+    const tallSet=new Set(cluster(tickOK.filter(x=>runIn(x,c=>c===GREY)>=tickH*1.25)).map(x=>Math.round(x)));
     if(barsX.length<1) return;
     const rowBars=[];
     for(let b=0;b<barsX.length;b++){
       const x0=barsX[b], x1=b+1<barsX.length?barsX[b+1]:null;
       const inside=ticks.filter(t=>t>x0+0.3*H&&(x1===null||t<x1-0.3*H));
       if(x1===null&&!inside.length) break;                       // the closing line of the row
-      /* the count comes from the tick SPACING, which a stray grey edge (the
-         selection box, a bar line's anti-aliased side) cannot move */
       const pts=[x0,...inside]; const gaps=[]; for(let i=1;i<pts.length;i++) gaps.push(pts[i]-pts[i-1]);
       const pitch=median(gaps.filter(g=>g>0.3*H));
       const width=x1!==null?x1-x0:(pts[pts.length-1]-x0+pitch);
-      const spb=Math.max(1,Math.round(width/pitch));
-      const slot=width/spb; if(!sw) sw=slot;
-      rowBars.push({x0,x1:x0+width,spb,s0,row:ri,slot}); s0+=spb;
+      const cols=Math.max(1,Math.round(width/pitch));          // drawn columns, from the tick spacing
+      const slot=width/cols; if(!sw) sw=slot;
+      /* COLUMNS ARE NOT ALWAYS POSITIONS (David, 5 Sep: "I don't see any
+         17-position bars there"). The tab app draws the beats as tall ticks,
+         and a beat drawn with one column more than the others carries an
+         extra EMPTY column — the one after the beat's last note. So the
+         positions are counted per beat, and a beat's surplus empty column
+         is folded into the position before it. */
+      const beatX=[x0,...inside.filter(t=>tallSet.has(Math.round(t))),x0+width];
+      const perBeat=[]; for(let k=1;k<beatX.length;k++) perBeat.push(Math.max(1,Math.round((beatX[k]-beatX[k-1])/slot)));
+      const modal=perBeat.length>1?median(perBeat):perBeat[0];
+      const edges=[x0]; let irregular=false;
+      for(let k=1;k<beatX.length;k++){ const n=perBeat[k-1]; const bx0=beatX[k-1]; const cs=[]; for(let j=0;j<n;j++) cs.push([bx0+j*slot,bx0+(j+1)*slot]);
+        let drop=-1;
+        if(n>modal){ for(let j=n-1;j>=0;j--){ const occupied=byLine[ri].some(c=>c.cx>=cs[j][0]&&c.cx<cs[j][1]); if(!occupied){ drop=j; break; } } if(drop<0) irregular=true; }
+        cs.forEach((cell,j)=>{ if(j===drop) return; edges.push(cell[1]); });
+        if(drop===0) edges[edges.length-n+1]=cs[0][1];             // an empty first column folds into the next
+      }
+      /* a folded column widens its neighbour's edge, so the edges must stay ascending */
+      for(let k=1;k<edges.length;k++) if(edges[k]<edges[k-1]) edges[k]=edges[k-1];
+      const spb=edges.length-1;
+      rowBars.push({x0,x1:x0+width,spb,s0,row:ri,slot,edges,counts:beatX.length-1,irregular}); s0+=spb;
     }
     if(!rowBars.length) return;
     const R={base:ly+1.6*H, top:ly-2.2*H, line:ly, segs:[{x0:rowBars[0].x0,x1:rowBars[rowBars.length-1].x1}], comps:[], H, bars:rowBars};
@@ -549,7 +572,7 @@ function analyzeTab(item){
     R.comps=merged.sort((a,b)=>a.cx-b.cx); }
   comps=rows.flatMap(R=>R.comps);
   const N=s0, spb0=bars.length?bars[0].spb:16;
-  const sub=spb0%4===0?4:spb0%3===0?3:spb0%2===0?2:1, beats=Math.max(1,Math.round(spb0/sub));
+  const beats=bars.length&&bars[0].counts>1?bars[0].counts:(spb0%4===0?4:spb0%3===0?3:1), sub=Math.max(1,Math.round(spb0/beats));
   const frame={x0:Math.floor(Math.min(...bars.map(B=>B.x0))),x1:Math.ceil(Math.max(...bars.map(B=>B.x1))),y0:Math.floor(rows[0].top),y1:Math.ceil(rows[rows.length-1].base)};
   item.frame=frame;
   item.an={style:"tab",frame,inner:frame,tx0:frame.x0,tx1:frame.x1,rows,comps,labels:[],labelText:[],N,fit:0,beats,bpr:rows.length?rows[0].bars.length:1,sub,Hall:H,fits:[],sw,bars,tempos,barsAreBars:true};
@@ -812,6 +835,7 @@ function readTable(item){
         if(top&&pendingRoll.kind==="roll") top.roll=true; else if(top){ top.bar=true; cell.q=true; } else cell.q=true; }
       if(cell.evs.length>4) cell.q=true;
     }
+    if(R.bars) for(const B of R.bars) if(B.irregular) for(let s=B.s0;s<B.s0+B.spb;s++) cells[s].q=true;
     rows.push({cells,H,top:R.top,base:R.base,bars:R.bars,segs:R.segs});
   }
   item.read=rows; item.status="read";
