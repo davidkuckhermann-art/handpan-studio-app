@@ -521,7 +521,7 @@ function analyze(item){
      them all. Without a header, one bar spans the underlines. */
   let labelText=[], lruns=[];
   if(labels.length&&ATLAS){
-    const lh=median(labels.map(Lb=>Lb.h));
+    const lh=Math.max(...labels.map(Lb=>Lb.h));
     for(const Lb of labels){ let s=""; for(const c of Lb.parts){ if(c.h<lh*0.4&&c.w<lh*0.5){ s+="·"; continue; } const m=matchGlyph(bitmapOf(c,w),["1","2","3","4","5","6","7","8","9","0","+"]); s+=m[0].g; } Lb.text=s; labelText.push(s); }
     let start=0; labels.forEach((Lb,i)=>{ if(Lb.text==="1"&&i>start){ lruns.push([start,i]); start=i; } }); lruns.push([start,labels.length]);
   }else if(labels.length) lruns.push([0,labels.length]);
@@ -529,10 +529,15 @@ function analyze(item){
   const fits=[]; const L=labels.length;
   let bars=[];
   if(L>=2){
-    const gaps=[]; for(const [r0,r1] of lruns) for(let i=r0+1;i<r1;i++) gaps.push(labels[i].cx-labels[i-1].cx);
-    const pitch=gaps.length?median(gaps):(labels[L-1].cx-labels[0].cx)/(L-1);
+    /* the label pitch is one monospace advance; a gap wider than that — a
+       bar's gap on the old page, a cell's padding on the video — starts a
+       group with its own origin. Bars-a-row still come from where "1"
+       returns; the groups only place the slots. */
+    const allGaps=[]; for(let i=1;i<L;i++) allGaps.push(labels[i].cx-labels[i-1].cx);
+    const pitch=median(allGaps.filter(g=>g<=median(allGaps)*1.2));
+    const gruns=[]; let g0=0; for(let i=1;i<L;i++){ if(labels[i].cx-labels[i-1].cx>pitch*1.2||labels[i].text==="1"){ gruns.push([g0,i]); g0=i; } } gruns.push([g0,L]);
     for(let k=1;k<=8;k++){ const sw=pitch/k; let s0=0;
-      const bs=lruns.map(([r0,r1])=>{ const n=r1-r0; const c0=median(labels.slice(r0,r1).map((Lb,i)=>Lb.cx-i*pitch)); const x0=c0-sw/2; const bar={x0,x1:x0+n*k*sw,spb:n*k,s0}; s0+=n*k; return bar; });
+      const bs=gruns.map(([r0,r1])=>{ const n=r1-r0; const c0=median(labels.slice(r0,r1).map((Lb,i)=>Lb.cx-i*pitch)); const x0=c0-sw/2; const bar={x0,x1:x0+n*k*sw,spb:n*k,s0}; s0+=n*k; return bar; });
       let e=0; for(const cx of anchors){ const bar=bs.find(B=>cx<B.x1)||bs[bs.length-1]; const u=(cx-bar.x0)/sw; e+=Math.abs(u-Math.floor(u)-0.5); }
       fits.push({N:s0,e:anchors.length?e/anchors.length:1,sw,bars:bs}); }
   }else{
@@ -570,6 +575,7 @@ function readTable(item){
       let pendingRoll=null;
       for(const c of cs){
         const hand=c.green?"R":"L", bm=bitmapOf(c,w), rel=c.h/H;
+        if(rel<0.06&&c.w<H*0.06) continue;                 // a speck: the frame's corner, a stray pixel
         /* the ghost dot: small and solid */
         if(rel<0.24&&c.w<H*0.3&&c.w<=c.h*1.6&&!hasHole(bm)){ cell.evs.push({v:"ghost",hand}); continue; }
         /* a flat, wide mark above another glyph: the roll's tilde, or the
