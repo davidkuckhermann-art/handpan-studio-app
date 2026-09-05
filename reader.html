@@ -100,6 +100,12 @@
   .pair .lab{display:flex; justify-content:space-between; font-size:11.5px; color:var(--ink3); margin:0 0 3px}
   .pair .lab b{color:var(--ink); font-weight:600}
   .pair canvas{display:block; width:100%; border:1px solid var(--rule); border-radius:6px 6px 0 0; background:#fff}
+  .barstrip{display:grid; gap:0; margin:0 0 3px}
+  .barstrip .bs{display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--ink3); padding:2px 4px; min-width:0}
+  .barstrip .bs label{display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap}
+  .barstrip .bs input[type=text]{font:600 12px inherit; padding:3px 6px; border:1px solid var(--rule); border-radius:6px; width:7em; background:var(--card); display:none}
+  .barstrip .bs.on{color:var(--violet)}
+  .barstrip .bs.on input[type=text]{display:inline-block}
   .read{display:grid; background:var(--sc-bg); border:1px solid var(--sc-rule); border-top:none;
     border-radius:0 0 6px 6px; overflow:hidden}
   .read .slot{position:relative; height:56px; display:flex; flex-direction:column-reverse; align-items:center;
@@ -161,6 +167,9 @@
   .form label{font-size:12.5px; color:var(--ink3)}
   .form input,.form select{font:inherit; padding:6px 9px; border:1px solid var(--rule); border-radius:8px; background:var(--card)}
   .out{background:var(--card); border:1px solid var(--rule); border-radius:12px; padding:14px; max-width:820px}
+  .out.player{max-width:1180px; margin-top:14px}
+  #player{width:100%; height:0; border:none; border-radius:10px; background:var(--paper); transition:height .2s}
+  #player.on{height:680px; border:1px solid var(--rule)}
   .out textarea{width:100%; height:70px; font:12px ui-monospace,Menlo,monospace; border:1px solid var(--rule);
     border-radius:8px; padding:8px; margin:8px 0 0; background:var(--paper)}
   a.open{display:inline-block; font:600 13px/1 inherit; padding:10px 14px; border-radius:9px; background:var(--dixie);
@@ -233,6 +242,11 @@
         <button class="ctl" id="btnCode" title="Copy the piece as a code you can paste into the app's Import box or send to someone">Copy code</button><button class="ctl" id="btnFile" title="Save the piece as an .hps file the app opens">Save .hps file</button>
         <button class="ctl" id="btnJson" title="Copy the piece's data as plain JSON, for the repo or a bug report">Copy JSON</button></div>
       <textarea id="outCode" readonly></textarea>
+    </div>
+    <div class="out player" id="playerBox">
+      <div class="row" style="margin:0 0 6px; align-items:baseline"><b>Hear it</b><span class="lede" style="margin:0">The app itself, with the piece as read. It reloads when you change a position or the arrangement.</span>
+        <span class="gap" style="flex:1"></span><button class="ctl on" id="btnPlayLoad" title="Load the piece as it stands into the player below">Load into the player</button></div>
+      <iframe id="player" title="Handpan Studio" allow="autoplay"></iframe>
     </div>
     <div id="bench"></div>
   </section>
@@ -868,16 +882,19 @@ function buildPiece(){
   const items=ITEMS.filter(i=>i.read);
   if(!items.length) return null;
   const sections={}, metas=[];
-  for(const it of items){ const an=it.an;
-    if(an.barsAreBars){
-      /* a tab's bars may differ in length; the app's sections cannot, so each run of equal bars is a section */
-      const bars=tableBars(it); let run=[], runSpb=null, n=0;
-      const flush=()=>{ if(!run.length) return; n++; const nm=items.length>1||n>1?`${it.secName} ${n}`:it.secName; const sub=runSpb%4===0?4:runSpb%3===0?3:runSpb%2===0?2:1;
-        sections[nm]={bars:run}; metas.push({beats:runSpb/sub,sub,bpr:1,name:nm,spb:runSpb}); run=[]; };
-      an.bars.forEach((B,i)=>{ if(runSpb!==null&&B.spb!==runSpb) flush(); runSpb=B.spb; run.push(bars[i]||[]); }); flush();
-      continue; }
-    sections[it.secName]={bars:tableBars(it)};
-    metas.push({beats:an.beats,sub:an.sub,bpr:an.bpr,name:it.secName}); }
+  for(const it of items){ const an=it.an; const bars=tableBars(it); const splits=it.splits||{};
+    /* the marks on Check cut the bars into tables; the first bar always starts one */
+    const starts=[0,...Object.keys(splits).map(Number).filter(i=>i>0&&i<bars.length)].sort((a,b)=>a-b);
+    const segs=starts.map((st,k)=>({name:k===0?it.secName:(splits[st]||"bar "+(st+1)),from:st,to:k+1<starts.length?starts[k+1]:bars.length}));
+    for(const sg of segs){
+      if(an.barsAreBars){
+        /* a tab's bars may still differ in length inside one table; each run of equal bars is a section of its own */
+        let run=[], runSpb=null, n=0;
+        const flush=()=>{ if(!run.length) return; n++; let nm=sg.name; if(n>1) nm+=" "+n; while(sections[nm]) nm+="'"; const sub=runSpb%4===0?4:runSpb%3===0?3:runSpb%2===0?2:1;
+          sections[nm]={bars:run}; metas.push({beats:runSpb/sub,sub,bpr:1,name:nm,spb:runSpb}); run=[]; };
+        for(let i=sg.from;i<sg.to;i++){ const B=an.bars[i]; if(runSpb!==null&&B.spb!==runSpb) flush(); runSpb=B.spb; run.push(bars[i]||[]); } flush();
+      } else { let nm=sg.name; while(sections[nm]) nm+="'"; sections[nm]={bars:bars.slice(sg.from,sg.to)}; metas.push({beats:an.beats,sub:an.sub,bpr:an.bpr,name:nm}); }
+    } }
   const first=metas[0];
   for(const m of metas){ const s=sections[m.name];
     if(m.beats!==first.beats) s.meter=[m.beats,m.beats>=5&&m.sub===1?8:4];
@@ -891,6 +908,15 @@ function buildPiece(){
 }
 function enc(p){ return btoa(unescape(encodeURIComponent(JSON.stringify(p)))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
 const APP_URL="https://davidkuckhermann-art.github.io/handpan-studio-app/?k=ce0f3bf87594bda9";
+/* the player is the app served beside this file: index.html on the pages site (behind its key), app.html in the repo */
+const PLAYER_URL=(location.hostname==="localhost"||location.hostname==="127.0.0.1"||location.protocol==="file:")?"app.html":"index.html?k=ce0f3bf87594bda9";
+let playerOn=false, playerTimer=null;
+function loadPlayer(){
+  const p=buildPiece(); if(!p) return;
+  const f=$("player"); f.src=PLAYER_URL+(PLAYER_URL.includes("?")?"&":"?")+"r="+Date.now()+"#p="+enc(p);
+  f.classList.add("on"); playerOn=true;
+}
+function playerFollow(){ if(!playerOn) return; clearTimeout(playerTimer); playerTimer=setTimeout(loadPlayer,900); }
 
 /* ═══════════════════════════════════════════════════════════════════════
    STATE AND UI
@@ -1044,6 +1070,20 @@ function paintCheck(){
     pair.appendChild(c);
     const rowCells=an.style==="tab"?R.cells.slice(R.bars[0].s0,R.bars[R.bars.length-1].s0+R.bars[R.bars.length-1].spb):R.cells;
     const off=an.style==="tab"?R.bars[0].s0:0;
+    /* one cell per bar: "a new table starts here", and its name (David, 5 Sep) */
+    const strip=document.createElement("div"); strip.className="barstrip"; strip.style.gridTemplateColumns=`repeat(${rowCells.length},1fr)`;
+    const rowBars=an.style==="tab"||an.style==="flow"?R.bars.map(B=>({idx:an.bars.indexOf(B),col:B.s0-off+1,span:B.spb})):(()=>{ const spb=an.N/an.bpr, out=[]; for(let b=0;b<an.bpr;b++) out.push({idx:ri*an.bpr+b,col:b*spb+1,span:spb}); return out; })();
+    it.splits=it.splits||{};
+    for(const B of rowBars){ const cell=document.createElement("div"); cell.className="bs"; cell.style.gridColumn=`${B.col} / span ${B.span}`;
+      const first=B.idx===0; const on=first||(B.idx in it.splits);
+      if(on) cell.classList.add("on");
+      const lab=document.createElement("label"); const cb=document.createElement("input"); cb.type="checkbox"; cb.checked=on; cb.disabled=first; cb.title=first?"The first bar always starts a table":"A new table starts at this bar";
+      lab.appendChild(cb); lab.appendChild(document.createTextNode(first?"table":"new table")); cell.appendChild(lab);
+      const nm=document.createElement("input"); nm.type="text"; nm.placeholder="name"; nm.value=first?it.secName:(it.splits[B.idx]||""); nm.title="The table's name in the piece: A1, Verse, Bridge 2";
+      cb.addEventListener("change",()=>{ if(cb.checked){ it.splits[B.idx]=nm.value||("bar "+(B.idx+1)); cell.classList.add("on"); nm.focus(); } else { delete it.splits[B.idx]; cell.classList.remove("on"); } paintOutIfAssembled(); });
+      nm.addEventListener("input",()=>{ if(first){ const old=it.secName; it.secName=nm.value.trim()||old; ARR=ARR.map(n=>n===old?it.secName:n); paintQueue(); } else it.splits[B.idx]=nm.value; paintOutIfAssembled(); });
+      cell.appendChild(nm); strip.appendChild(cell); }
+    pair.appendChild(strip);
     const read=document.createElement("div"); read.className="read"; read.style.gridTemplateColumns=`repeat(${rowCells.length},1fr)`;
     rowCells.forEach((cell,si0)=>{ const si=si0+off; const sl=document.createElement("div"); const spb=an.style==="tab"?R.bars[0].spb:an.N/an.bpr;
       sl.className="slot"+(cell.q?" q":"")+(cell.evs.length>1?" n"+Math.min(4,cell.evs.length):"")+(((si0+1)%spb===0&&si0<rowCells.length-1)?" bar":((si0+1)%an.sub===0&&si0<rowCells.length-1)?" beat":"");
@@ -1075,8 +1115,9 @@ function paintPop(){
   const roll=document.createElement("button"); roll.className="pc"; roll.textContent="~ roll"; roll.title="A short roll before the top note of this position"; roll.addEventListener("click",()=>{ const top=cell.evs.filter(e=>e.v!=="ghost").pop(); if(top){ top.roll=!top.roll; paintPop(); repaintSlot(); } }); keys.appendChild(roll);
   $("hL").classList.toggle("on",popHand==="L"); $("hR").classList.toggle("on",popHand==="R");
 }
+function paintOutIfAssembled(){ playerFollow(); if(STEP==="assemble") paintAssemble(); }
 function repaintSlot(){ const {it,ri,si,el}=POP; const cell=it.read[ri].cells[si]; el.classList.toggle("q",cell.q); el.className=el.className.replace(/ n\d/,"")+(cell.evs.length>1?" n"+Math.min(4,cell.evs.length):"");
-  el.innerHTML=[...cell.evs].sort((a,b)=>(a.v==="field"?a.f:-1)-(b.v==="field"?b.f:-1)).map(glyphHTML).join(""); paintQueue(); }
+  el.innerHTML=[...cell.evs].sort((a,b)=>(a.v==="field"?a.f:-1)-(b.v==="field"?b.f:-1)).map(glyphHTML).join(""); paintQueue(); playerFollow(); }
 $("hL").addEventListener("click",()=>{ popHand="L"; paintPop(); }); $("hR").addEventListener("click",()=>{ popHand="R"; paintPop(); });
 $("popClear").addEventListener("click",()=>{ const {it,ri,si}=POP; it.read[ri].cells[si].evs=[]; it.read[ri].cells[si].q=false; paintPop(); repaintSlot(); });
 $("popDone").addEventListener("click",()=>{ $("pop").classList.remove("on"); document.querySelectorAll(".read .slot.sel").forEach(s=>s.classList.remove("sel")); POP=null; });
@@ -1121,7 +1162,9 @@ function paintArr(){
 function paintOut(){
   const p=buildPiece(); if(!p) return; const code="HPS1:"+enc(p);
   $("outCode").value=code; $("lnkOpen").href=APP_URL+"#p="+enc(p); window._piece=p;
+  playerFollow();
 }
+$("btnPlayLoad").addEventListener("click",loadPlayer);
 $("btnArrClear").addEventListener("click",()=>{ ARR=[]; paintArr(); });
 $("btnArrAll").addEventListener("click",()=>{ const p=buildPiece(); ARR=p?Object.keys(p.sections):[]; paintArr(); });
 ["fTitle","fPan","fTempo"].forEach(id=>$(id).addEventListener("input",paintOut));
