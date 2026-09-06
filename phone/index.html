@@ -7794,7 +7794,7 @@ const AUDIO_LOG_MAX=40;
 function audioNote(what){
   try{
     const d=new Date(), p=n=>String(n).padStart(2,"0");
-    const line=p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds())+"  "+what;
+    const line=p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds())+"  "+what+audioTag();
     let a=[]; try{ a=JSON.parse(localStorage.getItem("hps.audiolog")||"[]"); }catch(e){ a=[]; }
     if(!Array.isArray(a)) a=[];
     a.push(line); if(a.length>AUDIO_LOG_MAX) a=a.slice(-AUDIO_LOG_MAX);
@@ -7823,6 +7823,37 @@ function setAudioSession(){
   catch(e){}
 }
 function haveAudioSession(){ try{ return !!navigator.audioSession; }catch(e){ return false; } }
+/* ── WHAT EVERY LOG LINE CARRIES (an instrument, 6 Sep — David's headphone
+   drop). The log of that evening showed a rebuilt path whose sink iOS paused
+   every few seconds while the app answered "sound back" each time — and the
+   sink's own clock WAS moving between the pauses (no "stalled" line), so the
+   one witness left is the layer below the page: the audio session. Every line
+   now ends in a tag, [session·engine·sink-seconds]:
+     session  navigator.audioSession.state — act(ive), int(errupted),
+              ina(ctive), or n/a where the API is absent (desktop Chrome)
+     engine   ctx.state — run, sus(pended), int(errupted), clo(sed), or none
+     sink     the hidden element's currentTime, so two lines apart say whether
+              it advanced; "-" while there is no element
+   And the session's own statechange is logged as it happens, so an
+   interruption or a route change shows up in the log at the moment iOS
+   sees it, not only when the watchdog next asks. The relaunch line carries
+   the build stamp, so a screenshot says which code wrote it. */
+function audioTag(){
+  let s="n/a", e="none", t="-";
+  try{ if(navigator.audioSession) s=String(navigator.audioSession.state||"?").slice(0,3); }catch(x){}
+  try{ if(typeof ctx!=="undefined"&&ctx) e=String(ctx.state).slice(0,3); }catch(x){}
+  try{ if(typeof iosSink!=="undefined"&&iosSink&&iosSink!=="failed") t=iosSink.currentTime.toFixed(1)+"s"; }catch(x){}
+  return " ["+s+"·"+e+"·"+t+"]";
+}
+function audioBuildStamp(){
+  try{ const d=new Date(document.lastModified), p=n=>String(n).padStart(2,"0");
+    if(!isNaN(d)) return p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes()); }catch(x){}
+  return document.lastModified||"?";
+}
+try{ if(navigator.audioSession&&navigator.audioSession.addEventListener)
+  navigator.audioSession.addEventListener("statechange",()=>audioNote("session → "+navigator.audioSession.state)); }catch(x){}
+try{ if(navigator.mediaDevices&&navigator.mediaDevices.addEventListener)
+  navigator.mediaDevices.addEventListener("devicechange",()=>audioNote("audio devices changed")); }catch(x){}
 /* ── THE PHONE GETS A REAL MEDIA ELEMENT AFTER ALL (experiment, 1 Sep) ─────
    The early return below was right on its own terms: on a modern iOS the
    audioSession type alone carries background playback, cleanly, with no
@@ -29716,7 +29747,7 @@ if(PHONE){
   });
   sheetSwipe($("menuDlg"),$("menuDlg").querySelector(".grab"));
   $("menuClose").addEventListener("click",()=>$("menuDlg").close());
-  audioNote("app opened");           // the line that marks a relaunch in the log
+  audioNote("app opened — build "+audioBuildStamp());   // the line that marks a relaunch in the log, and WHICH build wrote it
   $("mAudioLog").addEventListener("click",()=>{
     $("audioLogBody").textContent=audioLogText();
     openDlg($("audioLogDlg"));
