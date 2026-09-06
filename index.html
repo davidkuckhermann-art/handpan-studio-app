@@ -1516,15 +1516,21 @@ body.mkline .beat.nowbeat::after{border:none; top:auto; height:2px;
    the letter … instead of the M") — his own PDF notation, which the screenshot
    reader already reads as mute on the glyph below the line. The muted ding
    was an M and a muted field wore a small m; both are now the note itself
-   with a bar on top, in the hand's own colour. The bar is a BACKGROUND STRIPE at
-   the top of the glyph's box: every skin stacks its glyphs as centred flex
+   with a bar on top, in the hand's own colour. The bar is an EMPTY ELEMENT
+   (`<i class="mb">`) inside the glyph's span, positioned at the top of the box: every skin stacks its glyphs as centred flex
    items, so the box is exactly the glyph's advance wide and one line-height
    tall, and Inter leaves 0.1225em between that top and a cap (see .rl) —
    zero layout, no pseudo (::before is the underside badge's, ::after the
-   roll's and the overtone's), and nothing to fit. Two thirds of the
+   roll's and the overtone's), and nothing to fit. An element and not a
+   background because the underside badge is a z-index:-1 child, which
+   paints OVER its parent's background — the first build drew the bar as a
+   background stripe and the badge covered it (David, 6 Sep: "partly covered
+   by the badge"); a child element paints above the badge. Empty, so the
+   glyph's textContent is still the symbol. Two thirds of the
    box long, centred on the ink — muInk() says how the ink is found. A rolled mute wears the
    tilde on the bar; both are rare enough together to share the headroom. */
-.sym.mu{background-image:linear-gradient(currentColor,currentColor); background-size:66% .09em; background-repeat:no-repeat; background-position:var(--muc,50%) 0}
+.sym.mu{position:relative}
+.sym.mu>.mb{position:absolute; top:0; left:var(--muc,50%); width:var(--muw,66%); height:.09em; background:currentColor; transform:translateX(-50%); pointer-events:none}
 /* THE UNDERSIDE MARK IN THE SCORE (David, 28 Aug — a background behind the
    bottom notes, mockups-pan-view.html §1; reshaped 29 Aug — a BADGE, not a
    disc, mockups-chordcard.html B4/B5: "adapt badge shape instead of the
@@ -1549,7 +1555,8 @@ body.mkline .beat.nowbeat::after{border:none; top:auto; height:2px;
    on exactly the rows that matter. It carries a hairline of its own as well,
    which is geometry rather than shading and survives all three grounds. */
 .sym.bt{position:relative; isolation:isolate;
-  padding-inline:var(--btpad,.21em); max-width:calc(100% - 2px)}
+  padding-inline:var(--btpad,.21em); max-width:calc(100% - 2px);
+  display:inline-flex; justify-content:center; align-items:flex-start}
 /* THE BADGE'S ROOM IS PART OF THE GLYPH'S BOX (David, 29 Aug: the badges
    "should never sit on top of other letters/symbols or over borders
    (including the marker orange border)"). It used to be paint hanging outside
@@ -1563,7 +1570,17 @@ body.mkline .beat.nowbeat::after{border:none; top:auto; height:2px;
    --btpad is the overhang, halved on the phone (below), which is his "a bit
    narrower when space is tight". The cap is 2px UNDER the slot rather than
    flush with it, so that where it binds the badge still shows daylight either
-   side instead of appearing to fill the column. */
+   side instead of appearing to fill the column.
+   WHEN THE CAP BINDS, THE GLYPH STAYS CENTRED (David, 6 Sep: "some of the
+   bottom note beds are out of place" — a 20-slot bar at 1000px: the box is
+   capped at 22px, the padding keeps its 12px, the digit no longer fits the
+   content box and, being inline text, overflows to the RIGHT, 4.3px off the
+   badge's centre). The box is a flex container centring its text, so a
+   glyph wider than the content box overflows both sides alike: the badge
+   and the digit share a centre at every width, and the cap still holds the
+   badge inside its slot. inline-flex, so the span stays inline-level where
+   it is not already a flex item; flex-start keeps the overtone ring at the
+   top, as vertical-align:top did. */
 .sym.bt::before{content:""; position:absolute; z-index:-1;
   left:0; right:0; top:50%; height:.94em; transform:translateY(-50%);
   border-radius:.26em; background:var(--sc-under)}
@@ -1610,7 +1627,7 @@ body.phone{--btpad:.12em}
    The overhang is what gives way, since it is decoration; the digit keeps
    its size and its ground. */
 @media (orientation:portrait){ body.phone{--btpad:.04em} }
-.tabsym.bt{--btpad:.17em}
+.tabsym.bt{--btpad:.17em; display:inline-flex; justify-content:center; align-items:flex-start}
 .tabsym.bt::before{height:.9em}
 /* THE RUN OF UNDERSIDE NOTES SHARES ONE GROUND (David, 29 Aug, C2/C5). They
    always sit together at the foot of a stack, so two badges touching was
@@ -8352,7 +8369,8 @@ function comp2(){
   const B4=[B1[0],B1[1],B1[2],
    [...st(0,[7,5,3],"Cmaj"),G(2,"L"),F(3,3,"R"),P(4,"slap","L"),F(5,3,"R"),F(6,5,"R"),
     F(7,7,"L"),G(8,"R"),F(9,9,"L"),G(10,"R"),F(11,9,"L"),F(12,9,"R"),F(14,8,"L")]];
-  return { format:"hpd-2", id:"composition-2", title:"Composition 2", course:"Handpan Cookbook", lesson:"2.14",
+  /* the id stays "composition-2" — the lesson embeds ask for it by id (?piece=composition-2); the title is David's name for it (6 Sep) */
+  return { format:"hpd-2", id:"composition-2", title:"Composition 1 Advanced", course:"Handpan Cookbook", lesson:"2.14",
     link:"https://worldpercussion.mykajabi.com/products/handpan-studio-test/categories/2160649392/posts/2199817643",
     author:"David Kuckhermann", writtenFor:"d-kurd-9", tempo:75,
     meter:[4,4], sub:4, barsPerRow:1,
@@ -12425,6 +12443,11 @@ function laneHandOf(ev,evs){ return ev.hand==="L"?"L":"R"; }   // an unmarked no
 const muInk=(()=>{
   let cv=null,ctx=null,font="";
   const cache=new Map(), PAD=20, S=100;
+  /* an optical nudge per symbol, in em, on top of the ink's centre — data,
+     like the symbol table. The D is the one letter among the digits, and
+     its eye-centre sits left of its ink (David, 6 Sep: "for the D, can we
+     bring the line 2 pixels to the left" — on the 64px sheet, 2/64 em). */
+  const NUDGE={D:-0.031};
   const ready=()=>{
     if(!cv){ cv=document.createElement("canvas"); cv.width=cv.height=1;
       cv.style.cssText="position:absolute;left:-9999px;top:0;width:1px;height:1px;font-variant-numeric:tabular-nums";
@@ -12448,8 +12471,14 @@ const muInk=(()=>{
       for(let y=0;y<H;y++) if(d[(y*W+x)*4+3]>40){ ink=true; break; }
       if(ink){ if(l<0) l=x; r=x+1; } }
     if(l<0){ l=PAD; r=PAD+adv; }
-    const c=((l+r)/2-(PAD+adv/2))/S;               // em: the ink's centre off the box's
-    const st="--muc:calc(50% + "+c.toFixed(3)+"em)";
+    const c=((l+r)/2-(PAD+adv/2))/S+(NUDGE[text]||0);   // em: the ink's centre off the box's, plus the symbol's nudge
+    /* the bar's LENGTH is the glyph's too — two thirds of its advance — so a
+       badged note wears the same bar as a plain one (David, 6 Sep: "they
+       don't have to adapt to the badge … just refer to the note"); 66 % of
+       the box was longer on a bottom note, whose box carries the badge's
+       overhang as padding. A plain note's box IS its advance, so its bar is
+       unchanged. */
+    const st="--muc:calc(50% + "+c.toFixed(3)+"em);--muw:"+(adv*0.66/S).toFixed(3)+"em";
     cache.set(text,st); return st; };
 })();
 const fxCls=ev=>(ev.roll?" rl":"")+(ev.flam?" fl":"");
@@ -12473,8 +12502,9 @@ function glyphFor(ev,disp){
   let cls="sym"+(bot?" bt":"")+(base.length>1?" d2":"");
   if(ev.art==="overtone") cls+=" ot";
   let st="";
-  if(ev.art==="mute"){ cls+=" mu"; st=muInk(base); }   // the bar over the note — .sym.mu, centred on the ink
-  return {t:base,cls:cls+fxCls(ev),st};
+  let t=base;
+  if(ev.art==="mute"){ cls+=" mu"; st=muInk(base); t+='<i class="mb"></i>'; }   // the bar over the note — .sym.mu>.mb, centred on the ink
+  return {t,cls:cls+fxCls(ev),st};
 }
 function locOf(pulse){
   let acc=0;

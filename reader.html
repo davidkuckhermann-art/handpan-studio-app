@@ -34,7 +34,7 @@
     --ink:#1E1B16; --ink2:#5E5749; --ink3:#8D8578; --rule:#E4DCD0;
     --dixie:#E59315; --dixie-soft:#FDF3E4; --amber-ink:#A9660A;
     --violet:#6E5A8C; --violet-soft:#EAE4F0;
-    --hand-l:#17150F; --hand-r:#469957; --ok:#3F8C50; --bad:#BF5346;
+    --hand-l:#469957; --hand-r:#17150F;   /* the LEFT hand green, the RIGHT hand black — the letter is the hand (5 Sep) */ --ok:#3F8C50; --bad:#BF5346;
     --sc-bg:#FFFFFF; --sc-rule:#D9D2C6; --sc-edge:#6B4A38; --sc-under:#EAE3D6;
   }
   *{box-sizing:border-box}
@@ -121,12 +121,13 @@
   .read .slot.sel.cur{box-shadow:inset 0 0 0 2px var(--dixie), inset 0 -4px 0 0 var(--dixie)}
   .read .slot.play{background:var(--dixie-soft); box-shadow:inset 0 0 0 2px var(--dixie)}
   .read .slot.play.q{background:var(--violet-soft)}
-  .sym{font-weight:700; font-size:22px; line-height:1.02; color:var(--hand-l); font-variant-numeric:tabular-nums}
-  .sym.r{color:var(--hand-r)}
+  .sym{font-weight:700; font-size:22px; line-height:1.02; color:var(--hand-r); font-variant-numeric:tabular-nums}
+  .sym.l{color:var(--hand-l)}
   .sym.gh{font-size:20px}
   .slot.n2 .sym,.slot.n3 .sym,.slot.n4 .sym{font-size:15px}
-  .sym.bt{background:var(--sc-under); border-radius:4px; padding:0 3px}
-  .sym small{font-size:.55em; font-weight:600}
+  .sym.bt{background:var(--sc-under); border-radius:4px; padding:0 3px; display:inline-flex; justify-content:center}
+  .sym.mu{position:relative}   /* a mute is a bar over the note, as in the app (6 Sep) — an element, so it paints above the badge */
+  .sym.mu>.mb{position:absolute; top:0; left:var(--muc,50%); width:var(--muw,66%); height:.09em; background:currentColor; transform:translateX(-50%); pointer-events:none}
   #sum{display:flex; align-items:center; gap:10px; margin:0 0 12px}
   /* the slot editor */
   #pop{position:absolute; z-index:10; background:var(--card); border:1px solid var(--rule); border-radius:12px;
@@ -263,7 +264,7 @@
 <div id="pop">
   <div class="evs" id="popEvs"></div>
   <div class="keys" id="popKeys"></div>
-  <div class="hands"><span>Next note:</span><button class="l on" id="hL" title="The next symbol you add is played by the right hand, drawn black (key L)">black · right</button><button class="r" id="hR" title="The next symbol you add is played by the left hand, drawn green (key R)">green · left</button>
+  <div class="hands"><span>Next note:</span><button class="r on" id="hR" title="The next symbol you add is played by the right hand, drawn black (key R)">black · right</button><button class="l" id="hL" title="The next symbol you add is played by the left hand, drawn green (key L)">green · left</button>
     <span class="sp"></span><button id="popClear" title="Empty this position">Clear</button><button id="popDone" title="Close (Enter or Escape)">Done</button></div>
 </div>
 <div class="toast" id="toast"></div>
@@ -809,7 +810,7 @@ function readTable(item){
       const cell=cells[s], cs=bySlot[s].sort((a,b)=>b.cy-a.cy); // bottom first
       let pendingRoll=null;
       for(const c of cs){
-        const hand=c.green?"R":"L", bm=bitmapOf(c,w), rel=c.h/H;
+        const hand=c.green?"L":"R", bm=bitmapOf(c,w), rel=c.h/H;   // green is the LEFT hand (the letter is the hand, 5 Sep)
         if(rel<0.06&&c.w<H*0.06) continue;                 // a speck: the frame's corner, a stray pixel
         /* the ghost dot, in every style: small, round and solid */
         if(rel<0.24&&c.w<H*0.3&&c.w<=c.h*1.6&&!hasHole(bm)){ cell.evs.push({v:"ghost",hand}); continue; }
@@ -834,9 +835,13 @@ function readTable(item){
           const ev=g==="D"?{v:"field",f:0,hand}:{v:"field",f:+g,hand}; ev._g=g; ev._conf=conf; ev._margin=margin; ev._rel=rel;
           if(conf<0.55||margin<0.04) cell.q=true; cell.evs.push(ev); continue; }
         /* a flat, wide mark above another glyph: the roll's tilde, or the
-           overline whose meaning is still to be asked (it is kept as bar:true
-           and the slot is flagged) */
-        if(rel<0.3&&c.w>c.h*1.6){ const mm=matchGlyph(bm,["~","¯"]); pendingRoll={c,kind:mm[0].g==="~"?"roll":"bar"}; continue; }
+           overline — the MUTE articulation, the note damped by the same hand
+           (David, 5 Sep 2026, Composition 3's B table) */
+        if(rel<0.3&&c.w>c.h*1.6){ const mm=matchGlyph(bm,["~","¯"]);
+          /* the mark belongs to the glyph directly BELOW it — the cell is read bottom
+             first, so that is the last note pushed so far; a note ABOVE the line (the
+             green 7 over a muted 3 in Composition 3) is not the one marked */
+          pendingRoll={c,kind:mm[0].g==="~"?"roll":"bar",below:cell.evs.filter(e=>e.v!=="ghost").pop()||null}; continue; }
         const stacked=cs.filter(x=>x.h>=H*0.3).length>=2;
         const allow=stacked?["D","1","2","3","4","5","6","7","8","9","M"]
                   :rel>0.62?["D","1","2","3","4","5","6","7","8","9","M","T","K","^"]
@@ -855,8 +860,8 @@ function readTable(item){
         if(conf<0.72||margin<0.05) cell.q=true;
         cell.evs.push(ev);
       }
-      if(pendingRoll){ const top=cell.evs.filter(e=>e.v!=="ghost").pop();
-        if(top&&pendingRoll.kind==="roll") top.roll=true; else if(top){ top.bar=true; cell.q=true; } else cell.q=true; }
+      if(pendingRoll){ const top=pendingRoll.below||cell.evs.filter(e=>e.v!=="ghost").pop();
+        if(top&&pendingRoll.kind==="roll") top.roll=true; else if(top){ top.art="mute"; } else cell.q=true; }   // the overline is the mute articulation (David, 5 Sep: "muted with the same hand")
       if(cell.evs.length>4) cell.q=true;
     }
     if(R.bars) for(const B of R.bars){ if(B.irregular) for(let s=B.s0;s<B.s0+B.spb;s++) cells[s].q=true;
@@ -910,7 +915,7 @@ function buildPiece(only){
     if(m.sub!==first.sub) s.sub=m.sub;
     if(m.bpr!==first.bpr) s.barsPerRow=m.bpr; }
   const arr=only?[]:ARR.filter(n=>sections[n]);
-  return {format:"hpd-1", id:"read-"+Date.now().toString(36), title:(only?only.secName:$("fTitle").value)||"Untitled", author:"",
+  return {format:"hpd-2", id:"read-"+Date.now().toString(36), title:(only?only.secName:$("fTitle").value)||"Untitled", author:"",
     writtenFor:$("fPan").value||"d-kurd-9", tempo:+$("fTempo").value||72,
     meter:[first.beats,first.beats>=5&&first.sub===1?8:4], sub:first.sub, barsPerRow:first.bpr,
     sections, arrangement:arr.length?arr:metas.map(m=>m.name)};
@@ -1093,12 +1098,66 @@ $("btnRefind").addEventListener("click",()=>{ CUR.frame=null; analyze(CUR); pain
 $("btnRead").addEventListener("click",()=>{ readTable(CUR); paintQueue(); navState(); setStep("check"); });
 
 /* ── Check ─────────────────────────────────────────────────────────────── */
+/* WHERE THE INK IS. A bar centred on the glyph's box sat well over a 3 or a
+   5 and badly over a 1, a 4 or the D (David, 6 Sep: "visually not centred"):
+   a box is the advance width, and the ink of a tabular 1 stands right of its
+   middle, a 4 leans, a D is stem-left. So the bar is centred on the INK:
+   each string is drawn once on a canvas wearing the score's font and its
+   tabular figures, the inked columns are read back, and the ink's centre
+   is written in em as one custom property the bar's background rule wears.
+   The LENGTH is fixed — two thirds of the box — so the bars in a stack are
+   alike: David picked it from a sheet of fifteen (6 Sep, cell 1), and it is
+   the length he had approved over a 3 and a 5. Sizing the bar to the ink was
+   tried and came out (a 1's bar went short); so did the ink's centre of mass
+   (it nudged the 3 and the 5) and the top third of the ink (Figtree's
+   tabular 1 has a foot, and the top third is its flag). Pixels, not measureText: WebKit's
+   actualBoundingBox is the advance, not the ink, and Chrome's ignores the
+   tabular figures unless the CANVAS ELEMENT wears them — so the canvas is in
+   the document with font-variant-numeric on it, and its font is read from a
+   real .sym. Cached per string; cleared, and the score redrawn, when a font
+   finishes loading. */
+const muInk=(()=>{
+  let cv=null,ctx=null,font="";
+  const cache=new Map(), PAD=20, S=100;
+  /* an optical nudge per symbol, in em, on top of the ink's centre — data,
+     like the symbol table. The D is the one letter among the digits, and
+     its eye-centre sits left of its ink (David, 6 Sep: "for the D, can we
+     bring the line 2 pixels to the left" — on the 64px sheet, 2/64 em). */
+  const NUDGE={D:-0.031};
+  const ready=()=>{
+    if(!cv){ cv=document.createElement("canvas"); cv.width=cv.height=1;
+      cv.style.cssText="position:absolute;left:-9999px;top:0;width:1px;height:1px;font-variant-numeric:tabular-nums";
+      document.body.appendChild(cv); ctx=cv.getContext("2d",{willReadFrequently:true}); }
+    if(!font){ const s=document.createElement("span"); s.className="sym";
+      s.style.cssText="position:absolute;visibility:hidden;font-size:100px"; s.textContent="0";
+      document.body.appendChild(s); const cs=getComputedStyle(s);
+      font=cs.fontWeight+" "+S+"px "+cs.fontFamily; s.remove(); } };
+  if(document.fonts&&document.fonts.addEventListener) document.fonts.addEventListener("loadingdone",()=>{
+    cache.clear(); font="";  });
+  return text=>{
+    const hit=cache.get(text); if(hit) return hit;
+    ready();
+    const W=Math.ceil(S*1.2*text.length)+2*PAD, H=Math.ceil(S*1.4);
+    if(cv.width!==W||cv.height!==H){ cv.width=W; cv.height=H; }
+    ctx.clearRect(0,0,W,H); ctx.font=font; ctx.textBaseline="alphabetic"; ctx.fillStyle="#000";
+    ctx.fillText(text,PAD,S*1.05);
+    const adv=ctx.measureText(text).width, d=ctx.getImageData(0,0,W,H).data;
+    let l=-1,r=-1;
+    for(let x=0;x<W;x++){ let ink=false;
+      for(let y=0;y<H;y++) if(d[(y*W+x)*4+3]>40){ ink=true; break; }
+      if(ink){ if(l<0) l=x; r=x+1; } }
+    if(l<0){ l=PAD; r=PAD+adv; }
+    const c=((l+r)/2-(PAD+adv/2))/S+(NUDGE[text]||0);   // em: the ink's centre off the box's, plus the symbol's nudge
+    const st="--muc:calc(50% + "+c.toFixed(3)+"em);--muw:"+(adv*0.66/S).toFixed(3)+"em";   // the bar is 66 % of the ADVANCE, so a badged note wears a plain note's bar (6 Sep)
+    cache.set(text,st); return st; };
+})();
 function glyphHTML(e){
-  if(e.v==="ghost") return `<span class="sym gh ${e.hand==="R"?"r":"l"}">•</span>`;
-  if(e.v==="perc"){ let g=e.s==="slap"?"^":e.s==="knock"?"°":(e.g||"T"); if(e.roll) g+="̃"; return `<span class="sym ${e.hand==="R"?"r":"l"}">${g}</span>`; }
+  if(e.v==="ghost") return `<span class="sym gh ${e.hand==="L"?"l":"r"}">•</span>`;
+  if(e.v==="perc"){ let g=e.s==="slap"?"^":e.s==="knock"?"°":(e.g||"T"); if(e.roll) g+="̃"; return `<span class="sym ${e.hand==="L"?"l":"r"}">${g}</span>`; }
   const bot=typeof e.f==="string"&&e.f[0]==="b";
-  let g=bot?e.f.slice(1):e.f===0?(e.art==="mute"?"M":"D"):String(e.f); if(e.art==="mute"&&e.f!==0) g+="<small>m</small>"; if(e.roll) g+="̃"; if(e.bar) g+="̄";
-  return `<span class="sym ${e.hand==="R"?"r":"l"}${bot?" bt":""}">${g}</span>`;
+  let g=bot?e.f.slice(1):e.f===0?"D":String(e.f); const st=e.art==="mute"?` style="${muInk(g)}"`:""; if(e.roll) g+="̃"; if(e.bar) g+="̄";
+  if(e.art==="mute") g+='<i class="mb"></i>';
+  return `<span${st} class="sym ${e.hand==="L"?"l":"r"}${bot?" bt":""}${e.art==="mute"?" mu":""}">${g}</span>`;
 }
 /* THE CURSOR on Check: one position, kept per screenshot, moved by click or
    the arrow keys; Space plays from it in the app below (David, 5 Sep). */
@@ -1152,7 +1211,7 @@ function paintCheck(){
     pair.appendChild(read); host.appendChild(pair);
   });
 }
-let POP=null, popHand="L";
+let POP=null, popHand="R";   // the next symbol is the right hand's unless said otherwise
 function openPop(it,ri,si,el){
   document.querySelectorAll(".read .slot.sel").forEach(s=>s.classList.remove("sel")); el.classList.add("sel");
   POP={it,ri,si,el}; const p=$("pop"); p.classList.add("on");
@@ -1162,7 +1221,7 @@ function openPop(it,ri,si,el){
 function paintPop(){
   const {it,ri,si}=POP, cell=it.read[ri].cells[si]; const evs=$("popEvs"); evs.innerHTML="";
   if(!cell.evs.length) evs.innerHTML='<span style="color:var(--ink3);font-size:12px">empty slot</span>';
-  cell.evs.forEach((e,i)=>{ const d=document.createElement("span"); d.className="ev "+(e.hand==="R"?"r":"l");
+  cell.evs.forEach((e,i)=>{ const d=document.createElement("span"); d.className="ev "+(e.hand==="L"?"l":"r");
     d.innerHTML=glyphHTML(e)+`<button title="Switch this symbol to the other hand">⇄</button><button title="Remove this symbol">✕</button>`;
     d.querySelectorAll("button")[0].addEventListener("click",()=>{ e.hand=e.hand==="R"?"L":"R"; cell.q=false; paintPop(); repaintSlot(); });
     d.querySelectorAll("button")[1].addEventListener("click",()=>{ cell.evs.splice(i,1); cell.q=false; paintPop(); repaintSlot(); });
@@ -1244,8 +1303,9 @@ $("btnFile").addEventListener("click",()=>{ const a=document.createElement("a");
    ═══════════════════════════════════════════════════════════════════════ */
 async function loadUrl(url,name){ const r=await fetch(url); const b=await r.blob(); const f=new File([b],name||url.split("/").pop(),{type:b.type||"image/png"}); await addFiles([f]); }
 function sig(bar){ return bar.map(e=>[e.t,e.v,e.v==="field"?e.f:e.s,e.hand,e.art||"",e.roll?"~":""].join(":")).sort(); }
-async function bench(truthUrl,imgs){
+async function bench(truthUrl,imgs){   // a truth written before 5 Sep 2026 carries the old hand tokens: turned around by its format below
   const truth=await (await fetch(truthUrl)).json(); const out=[]; let tot=0,bad=0;
+  if(truth.format==="hpd-1"){ const flip=h=>h==="L"?"R":h==="R"?"L":h; for(const sec of Object.values(truth.sections||{})) for(const bar of (sec.bars||[])) for(const ev of bar) if(ev&&"hand" in ev) ev.hand=flip(ev.hand); truth.format="hpd-2"; }
   for(const u of imgs){ await loadUrl(u); const it=ITEMS[ITEMS.length-1]; readTable(it);
     const sec=truth.sections[it.secName]; const bars=tableBars(it);
     if(!sec){ out.push(`${it.secName}: no truth section`); continue; }
