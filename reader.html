@@ -2,7 +2,7 @@
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Table Reader</title>
+<title>HPD Notation Import Tool</title>
 <!--
   TABLE READER — reads David's HPD notation tables from screenshots and turns
   them into a Handpan Studio piece. A separate application, by David's
@@ -34,7 +34,7 @@
     --ink:#1E1B16; --ink2:#5E5749; --ink3:#8D8578; --rule:#E4DCD0;
     --dixie:#E59315; --dixie-soft:#FDF3E4; --amber-ink:#A9660A;
     --violet:#6E5A8C; --violet-soft:#EAE4F0;
-    --hand-l:#469957; --hand-r:#17150F;   /* the LEFT hand green, the RIGHT hand black — the letter is the hand (5 Sep) */ --ok:#3F8C50; --bad:#BF5346;
+    --hand-l:#469957; --hand-r:#17150F;   /* the LEFT hand green, the RIGHT hand black — the letter is the hand (5 Sep) */ --hand-s:#A21AF1; --ok:#3F8C50; --bad:#BF5346;
     --sc-bg:#FFFFFF; --sc-rule:#D9D2C6; --sc-edge:#6B4A38; --sc-under:#EAE3D6;
   }
   *{box-sizing:border-box}
@@ -95,62 +95,70 @@
   .handle{position:absolute; width:14px; height:14px; margin:-7px 0 0 -7px; background:var(--violet);
     border:2px solid #fff; border-radius:3px; cursor:grab; pointer-events:auto; box-shadow:0 0 0 1px rgba(0,0,0,.2)}
 
-  /* ── Check ──────────────────────────────────────────────────────────── */
-  .pair{margin:0 0 14px; max-width:1100px}
-  .pair .lab{display:flex; justify-content:space-between; font-size:11.5px; color:var(--ink3); margin:0 0 3px}
-  .pair .lab b{color:var(--ink); font-weight:600}
-  .pair canvas{display:block; width:100%; border:1px solid var(--rule); border-radius:6px 6px 0 0; background:#fff}
-  .barstrip{display:grid; gap:0; margin:0 0 3px}
-  .barstrip .bs{display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--ink3); padding:2px 4px; min-width:0}
-  .barstrip .bs label{display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap}
-  .barstrip .bs input[type=text]{font:600 12px inherit; padding:3px 6px; border:1px solid var(--rule); border-radius:6px; width:7em; background:var(--card); display:none}
-  .barstrip .bs.on{color:var(--violet)}
-  .barstrip .bs.on input[type=text]{display:inline-block}
-  .read{display:grid; background:var(--sc-bg); border:1px solid var(--sc-rule); border-top:none;
-    border-radius:0 0 6px 6px; overflow:hidden}
-  .read .slot{position:relative; height:56px; display:flex; flex-direction:column-reverse; align-items:center;
-    justify-content:center; border-right:1px solid var(--sc-rule); cursor:pointer; padding:2px 0}
-  .read .slot:last-child{border-right:none}
-  .read .slot.beat{border-right:1.5px solid var(--sc-edge)}
-  .read .slot.bar{border-right:2.5px solid var(--sc-edge)}
-  .read .slot:hover{background:var(--dust)}
-  .read .slot.q{box-shadow:inset 0 0 0 2px var(--violet); background:var(--violet-soft)}
-  .read .slot.q::after{content:"?"; position:absolute; right:2px; top:0; font-size:10px; font-weight:800; color:var(--violet)}
-  .read .slot.sel{box-shadow:inset 0 0 0 2px var(--dixie)}
-  .read .slot.cur{box-shadow:inset 0 -4px 0 0 var(--dixie)}
-  .read .slot.sel.cur{box-shadow:inset 0 0 0 2px var(--dixie), inset 0 -4px 0 0 var(--dixie)}
-  .read .slot.play{background:var(--dixie-soft); box-shadow:inset 0 0 0 2px var(--dixie)}
-  .read .slot.play.q{background:var(--violet-soft)}
+  /* ── Pan (a printed score) ─────────────────────────────────────────────── */
+  #panWarn .warn{display:flex; gap:10px; align-items:flex-start; background:var(--dixie-soft); color:var(--amber-ink); border-radius:12px;
+    padding:10px 12px; font-size:13px; margin:0 0 10px; max-width:760px}
+  #panWarn .warn.bad{background:#F8E8E5; color:var(--bad)}
+  #panWarn .warn .ic{font-size:16px; line-height:1.2}
+  #panFilters input.q{font:inherit; padding:8px 10px; border:1px solid var(--rule); border-radius:9px; background:var(--card); width:11em}
+  #panOpts label.chip{cursor:pointer} #panOpts label.chip input{margin:0 4px 0 0}
+  .tier{font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink3); margin:14px 0 6px}
+  .panrow{display:grid; grid-template-columns:auto 1fr auto; gap:2px 12px; align-items:center; padding:9px 12px; border-radius:12px;
+    border:1px solid var(--rule); margin:0 0 6px; cursor:pointer; max-width:760px; background:var(--card)}
+  .panrow.sel{border-color:var(--ink); box-shadow:inset 0 0 0 1px var(--ink)}
+  .panrow.dim{opacity:.6}
+  .panrow .star{border:none; background:none; cursor:pointer; font-size:17px; color:var(--ink3); padding:0 2px; line-height:1}
+  .panrow .star.on{color:var(--dixie)}
+  .panrow .nm{font-weight:700; font-size:14px} .panrow .nm small{font-weight:600; color:var(--dixie); font-size:10px; letter-spacing:.05em; text-transform:uppercase; margin-left:8px}
+  .panrow .key{color:var(--ink3); font-size:12.5px; text-align:right}
+  .panrow .bars{grid-column:2/-1; display:flex; gap:5px}
+  .panrow .b{flex:1; height:6px; border-radius:3px; background:var(--dust); position:relative; overflow:hidden}
+  .panrow .b i{position:absolute; left:0; top:0; bottom:0; background:var(--ok)}
+  .panrow .b.mid i{background:var(--dixie)} .panrow .b.low i{background:var(--bad)}
+  .panrow .lbl{grid-column:2/-1; display:flex; gap:5px; font-size:10.5px; color:var(--ink3)} .panrow .lbl span{flex:1}
+  .more{font-size:12.5px; color:var(--ink3); margin:4px 0 8px}
+
+  /* ── Check: the scans, whole, with the marks drawn over them (9 Sep) ──
+     ONE RULE FOR THE LAYOUT: a scan is shown no taller than 72% of the window and no wider than the page, at its
+     own proportions; scans flow left to right and wrap. A wide table fills a row on its own, two portrait pages
+     sit side by side (David: "depending on the format — if they fit next to each other, that's better"). */
+  #scans{display:flex; flex-wrap:wrap; gap:12px 14px; align-items:flex-start; max-width:1180px; margin:0 0 4px}
+  .scan{flex:0 1 auto; max-width:100%; min-width:0}
+  .scan .lab{display:flex; justify-content:space-between; gap:12px; font-size:11.5px; color:var(--ink3); margin:0 0 3px}
+  .scan .lab b{color:var(--ink); font-weight:600}
+  .scan.cur .lab b{text-decoration:underline; text-decoration-color:var(--dixie); text-underline-offset:3px}
+  .scan .pic{position:relative; display:inline-block; max-width:100%; line-height:0; border:1px solid var(--rule); border-radius:6px; overflow:hidden; background:#fff}
+  .scan .pic img{display:block; max-width:100%; max-height:var(--scan-h,72vh); width:auto; height:auto}
+  #scanSize{display:inline-flex; align-items:center; gap:8px; cursor:default} #scanSize input{width:120px; margin:0; accent-color:var(--ink)}
+  #scanSide{display:inline-flex; gap:0} #scanSide .ctl{border-radius:0} #scanSide .ctl:first-child{border-radius:999px 0 0 999px} #scanSide .ctl:last-child{border-radius:0 999px 999px 0}
+  /* THE SCANS BESIDE THE APP (David, 9 Sep: "place the original notation scan next to the notation table on the left or
+     right, and then resize it to make it fit"): main becomes the row, the Check step dissolves into it (display:contents),
+     its heading, lede, sum and bar span the row, the scans take the slider's share of the width and the app the rest. */
+  main.side{display:flex; flex-wrap:wrap; align-items:flex-start; gap:10px 16px; align-content:flex-start}
+  main.side #step-check.on{display:contents}
+  main.side #step-check>*{flex:0 0 100%; max-width:100%}
+  main.side #scans{flex:0 0 var(--scan-w,45%); max-width:var(--scan-w,45%); margin:0}
+  main.side .scan{max-width:100%} main.side .scan .pic img{max-height:none}
+  main.side .out.player{flex:1 1 0; min-width:360px; margin-top:0; max-width:none}
+  main.side.right #scans{order:2}
+  .scan .pic canvas{position:absolute; left:0; top:0; width:100%; height:100%; cursor:pointer}
+  .scan .mks{position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; line-height:1.2}
+  .scan .mk{position:absolute; pointer-events:auto; transform:translateY(-100%)}
+  .scan .mk input{font:600 11px inherit; padding:2px 5px; border:1px solid var(--violet); border-radius:5px; background:var(--card); color:var(--violet); width:6.5em; box-shadow:0 1px 3px rgba(0,0,0,.12)}
+  .scan .mk input:focus{outline:2px solid var(--violet); outline-offset:1px}
   .sym{font-weight:700; font-size:22px; line-height:1.02; color:var(--hand-r); font-variant-numeric:tabular-nums}
   .sym.l{color:var(--hand-l)}
+  .sym.s{color:var(--hand-s)}   /* a stand-in note: the score import replaced a note the pan lacks (8 Sep) */
   .sym.gh{font-size:20px}
   .slot.n2 .sym,.slot.n3 .sym,.slot.n4 .sym{font-size:15px}
   .sym.bt{background:var(--sc-under); border-radius:4px; padding:0 3px; display:inline-flex; justify-content:center}
   .sym.mu{position:relative}   /* a mute is a bar over the note, as in the app (6 Sep) — an element, so it paints above the badge */
   .sym.mu>.mb{position:absolute; top:0; left:var(--muc,50%); width:var(--muw,66%); height:.09em; background:currentColor; transform:translateX(-50%); pointer-events:none}
   #sum{display:flex; align-items:center; gap:10px; margin:0 0 12px}
-  /* the slot editor */
-  #pop{position:absolute; z-index:10; background:var(--card); border:1px solid var(--rule); border-radius:12px;
-    padding:10px; box-shadow:0 8px 24px rgba(0,0,0,.14); width:340px; display:none}
-  #pop.on{display:block}
-  #pop .evs{display:flex; flex-wrap:wrap; gap:6px; min-height:30px; margin:0 0 8px}
-  #pop .ev{display:inline-flex; align-items:center; gap:4px; padding:4px 6px 4px 8px; border-radius:8px;
-    border:1px solid var(--rule); font-weight:700}
-  #pop .ev.r{color:var(--hand-r)} #pop .ev.l{color:var(--hand-l)}
-  #pop .ev button{border:none; background:none; cursor:pointer; color:var(--ink3); font-size:13px; padding:0 2px}
-  #pop .keys{display:grid; grid-template-columns:repeat(8,1fr); gap:4px}
-  #pop .keys button{height:32px; font:700 15px/1 inherit; border:1px solid var(--rule); border-radius:7px;
-    background:var(--paper); cursor:pointer; color:var(--ink)}
-  #pop .keys button:hover{border-color:var(--ink3)}
-  #pop .keys button.pc{font-weight:600; font-size:13px}
-  #pop .hands{display:flex; gap:6px; margin:8px 0 0; align-items:center; font-size:12px; color:var(--ink3)}
-  #pop .hands button{font:600 12px/1 inherit; padding:6px 10px; border-radius:999px; border:1px solid var(--rule);
-    background:var(--card); cursor:pointer}
-  #pop .hands button.on.l{background:var(--hand-l); color:#fff; border-color:var(--hand-l)}
-  #pop .hands button.on.r{background:var(--hand-r); color:#fff; border-color:var(--hand-r)}
-  #pop .hands .sp{flex:1}
 
-  /* ── Assemble ───────────────────────────────────────────────────────── */
+  
+
+/* ── Assemble ───────────────────────────────────────────────────────── */
   table.tables{border-collapse:collapse; font-size:13px; margin:0 0 14px; width:100%; max-width:820px}
   table.tables th{text-align:left; font-size:10.5px; letter-spacing:.04em; text-transform:uppercase; color:var(--ink3);
     padding:4px 8px 4px 0; border-bottom:1px solid var(--rule)}
@@ -189,12 +197,13 @@
 </head>
 <body>
 <header>
-  <div><h1>Table Reader</h1><div class="sub">HPD notation from a screenshot to a Handpan Studio piece · nothing leaves your browser</div></div>
+  <div><h1>HPD Notation Import Tool</h1><div class="sub">A notation table, a tab, the app's Flow or a printed score — from a screenshot to a Handpan Studio piece · nothing leaves your browser</div></div>
   <nav>
     <button data-step="pick" class="on" title="Add screenshots">1 · Pick</button>
     <button data-step="found" disabled title="Confirm the frame and the grid of the current table">2 · Found</button>
-    <button data-step="check" disabled title="Compare the reading with the screenshot, position by position">3 · Check</button>
-    <button data-step="assemble" disabled title="Name the sections, build the arrangement, export the piece">4 · Assemble</button>
+    <button data-step="pan" disabled title="A printed score: every pan rated for it, and the one to arrange for">3 · Pan</button>
+    <button data-step="check" disabled title="Compare the reading with the screenshot, position by position">4 · Check</button>
+    <button data-step="assemble" disabled title="Name the sections, build the arrangement, export the piece">5 · Assemble</button>
   </nav>
 </header>
 <aside>
@@ -206,7 +215,8 @@
   <section class="step on" id="step-pick">
     <h2>Pick the screenshots</h2>
     <p class="lede">One table per image. Name them the way the lessons do — <b>Let it Be - A1.png</b> — and the
-      reader names the sections for you. The whole table with the count labels above it reads best.</p>
+      reader names the sections for you. The whole table with the count labels above it reads best.
+      <b>A printed score</b> works too: a PDF page, a screenshot of one, a clean scan; several pages make one piece.</p>
     <div class="drop" id="dropMain" style="max-width:520px; padding:40px 20px"><b>Drop screenshots here</b>or paste one with ⌘V, or click to choose</div>
   </section>
 
@@ -219,18 +229,32 @@
     <div class="row"><button class="ctl" id="btnRefind" title="Look for the frame from scratch, dropping any corner you dragged">Find again</button><button class="ctl on" id="btnRead" title="Read every position with these settings">Read it</button></div>
   </section>
 
+  <section class="step" id="step-pan">
+    <h2>Which pan is this for?</h2>
+    <p class="lede">Every pan in the app, tried at every transposition. The three bars: <b>melody notes the pan has</b> ·
+      <b>melody on the top shell</b> · <b>bass roots low</b>, on the ding and the underside. Star the pans you own; the app's own pan is marked.</p>
+    <div id="panWarn"></div>
+    <div class="row" id="panFilters"></div>
+    <div class="row" id="panOpts"></div>
+    <div id="panList"></div>
+    <div class="row"><button class="ctl" id="btnPanBack" title="Back to the score as read">Back to the score</button><button class="ctl on" id="btnArrange" title="Arrange the score for the selected pan and check it bar by bar">Arrange →</button></div>
+  </section>
+
   <section class="step" id="step-check">
-    <h2>Read side by side</h2>
-    <p class="lede">The screenshot's row above, the reading below, position for position. Violet positions are
-      the ones the reader is unsure of. Click any position to change it.</p>
+    <h2>Check and edit</h2>
+    <p class="lede">The screenshots the piece was read from, whole, above; the app below in Edit mode with the piece as read.
+      Change any note in the app — it goes straight into the piece. While it plays, the marker runs through the app's table and over the scans.
+      Click a bar on a scan to start a new table there, and name it; violet dots mark the positions the reader was unsure of.</p>
     <div id="sum"></div>
     <div class="row" id="checkBar" style="margin:0 0 10px">
-      <button class="ctl on" id="btnPlayCur" title="Play from the cursor in the app below (Space)">▶ Play from the cursor</button>
+      <button class="ctl on" id="btnPlayCur" title="Play in the app below (Space)">▶ Play</button>
       <button class="ctl" id="btnStopCur" title="Stop (Space while playing)">■ Stop</button>
-      <span class="lede" style="margin:0">Click a position to put the cursor there. ← → move it, Space plays from it. The app's playhead is shown on the grid while it plays.</span>
+      <span class="seg" id="scanSide" title="Where the scans sit: above the app, or beside it on the left or the right"><button class="ctl" data-side="above">Scans above</button><button class="ctl" data-side="left">Left</button><button class="ctl" data-side="right">Right</button></span>
+      <label class="chip" id="scanSize" title="How large the scans are shown: above the app, a scan's height as a share of the window; beside it, the scans' share of the width. Smaller shows the whole page at once.">size <input type="range" id="scanH" min="20" max="100" value="72" step="1"></label>
+      <span class="gap" style="flex:1"></span>
+      <button class="ctl" id="btnBackFound" title="Back to the frame and the grid, if the positions are off">Back to the frame</button><button class="ctl on" id="btnAccept" title="Accept these tables as they stand and go on">Looks right</button>
     </div>
-    <div id="pairs"></div>
-    <div class="row"><button class="ctl" id="btnBackFound" title="Back to the frame and the grid, if the positions are off">Back to the frame</button><button class="ctl on" id="btnAccept" title="Accept this table as read and go on to the next one">Looks right</button></div>
+    <div id="scans"></div>
   </section>
 
   <section class="step" id="step-assemble">
@@ -261,14 +285,10 @@
     <iframe id="player" title="Handpan Studio" allow="autoplay"></iframe>
   </div>
 </main>
-<div id="pop">
-  <div class="evs" id="popEvs"></div>
-  <div class="keys" id="popKeys"></div>
-  <div class="hands"><span>Next note:</span><button class="r on" id="hR" title="The next symbol you add is played by the right hand, drawn black (key R)">black · right</button><button class="l" id="hL" title="The next symbol you add is played by the left hand, drawn green (key L)">green · left</button>
-    <span class="sp"></span><button id="popClear" title="Empty this position">Clear</button><button id="popDone" title="Close (Enter or Escape)">Done</button></div>
-</div>
 <div class="toast" id="toast"></div>
 
+<script src="score-reader.js"></script>
+<script src="score-arrange.js"></script>
 <script>
 /* ═══════════════════════════════════════════════════════════════════════
    THE FONT — the notation's own, so the glyph atlas is the truth
@@ -612,6 +632,105 @@ function analyzeTab(item){
    ═══════════════════════════════════════════════════════════════════════ */
 function faintShare(cls,w,y,x0,x1){ let n=0; for(let x=x0;x<=x1;x++) if(cls[y*w+x]===FAINT) n++; return n/(x1-x0+1); }
 function greyShareIn(cls,w,y,x0,x1){ let n=0; for(let x=x0;x<=x1;x++) if(cls[y*w+x]===GREY) n++; return n/(x1-x0+1); }
+/* ═══════════════════════════════════════════════════════════════════════
+   THE APP'S OWN TABLE AND TAB VIEWS (9 Sep 2026 — David: "the notation import
+   tool seems not to be able to read our own notation"). Both are a grid of
+   cells: rows parted by faint lines, bars drawn as boxes with dark-brown
+   edges and a gap between them, beats as dark-brown lines inside a box,
+   positions as faint lines, the count labels in grey above the first row.
+   A cell holds every glyph of that position — the Table stacks a chord, the
+   Tab puts the left hand above the right — and the glyph's colour is the
+   hand, so one reader serves both. A blue glyph is a stand-in (its hand is
+   not shown; the Tab's lane says it, the Table's does not). The chord names
+   in a cell's corner are small text and are dropped by their size.
+   ═══════════════════════════════════════════════════════════════════════ */
+function appRowLines(item){
+  const {w,h,cls}=item; const ys=[];
+  for(let y=0;y<h;y++) if(faintShare(cls,w,y,0,w-1)>=0.3) ys.push(y);
+  const lines=[]; for(const y of ys){ const L=lines[lines.length-1]; if(L&&y-L.y1<=3) L.y1=y; else lines.push({y0:y,y1:y}); }
+  const all=lines.map(o=>(o.y0+o.y1)/2);
+  /* the table's rows are the longest run of lines at one spacing (the card's other faint rules are not) */
+  let best=[]; for(let i=0;i<all.length;i++){ const run=[all[i]]; for(let j=i+1;j<all.length;j++){ const d0=run.length>1?run[1]-run[0]:all[j]-run[run.length-1]; const d=all[j]-run[run.length-1]; if(Math.abs(d-d0)<=0.15*d0) run.push(all[j]); else break; } if(run.length>best.length) best=run; }
+  return best.length>=3?best:[];
+}
+/* the two faint shades of the app's grid: the darker rule (a bar box's edge, a beat line, a row line) and the lighter slot line */
+function faintLum(item,x,y){ const d=item.data, i=(y*item.w+x)*4; return (d[i]*3+d[i+1]*6+d[i+2])/10; }
+function isAppGrid(item){
+  const {w,h,cls}=item; const lines=appRowLines(item); if(lines.length<3) return false;
+  const y0=Math.floor(lines[0]), y1=Math.ceil(lines[lines.length-1]); let cols=0;
+  for(let x=0;x<w;x+=2){ let n=0; for(let y=y0;y<=y1;y++) if(cls[y*w+x]===FAINT) n++; if(n>=0.85*(y1-y0)) cols++; }   // faint columns through every row: the boxes' edges and the beat lines
+  return cols>=4;
+}
+function analyzeAppGrid(item){
+  const {w,h,cls}=item;
+  const lines=appRowLines(item);
+  const yTop=lines[0], yBot=lines[lines.length-1];
+  let comps=components(cls,w,h,{x0:0,y0:Math.floor(yTop),x1:w-1,y1:Math.ceil(yBot)},c=>c===INK||c===GREEN||c===BLUE,6);
+  for(const c of comps){ c.green=(c.cnt[GREEN]||0)>(c.cnt[INK]||0)+(c.cnt[BLUE]||0); c.blue=(c.cnt[BLUE]||0)>(c.cnt[INK]||0)+(c.cnt[GREEN]||0); }
+  const H=rowHeight(comps.filter(c=>c.h>8))||30;
+  comps=comps.filter(c=>c.area>=0.015*H*H&&c.area/(c.w*c.h)>=0.15);
+  const rows=[], bars=[]; let s0=0, sw=0;
+  for(let k=0;k+1<lines.length;k++){
+    const y0=lines[k], y1=lines[k+1]; if(y1-y0<1.2*H) continue;
+    const band=[Math.ceil(y0)+3,Math.floor(y1)-3];
+    const runIn=(x,pred)=>{ let best=0,run=0; for(let y=band[0];y<=band[1];y++){ if(pred(cls[y*w+x])){run++; if(run>best)best=run;} else run=0; } return best; };
+    const tall=0.7*(band[1]-band[0]);
+    const colsX=[]; for(let x=0;x<w;x++){ const run=runIn(x,c=>c===FAINT); if(run<0.25*(band[1]-band[0])) continue; let lum=0,n=0; for(let y=band[0];y<=band[1];y+=4){ if(cls[y*w+x]===FAINT){ lum+=faintLum(item,x,y); n++; } } colsX.push({x,lum:n?lum/n:255,run}); }
+    const cluster=xs=>{ const out=[]; for(const c of xs){ const L=out[out.length-1]; if(L&&c.x-L.x1<=3){ L.x1=c.x; L.lums.push(c.lum); L.run=Math.max(L.run,c.run); } else out.push({x0:c.x,x1:c.x,lums:[c.lum],run:c.run}); } return out.map(o=>({x:(o.x0+o.x1)/2,lum:Math.min(...o.lums),run:o.run,w:o.x1-o.x0+1})); };
+    /* a line is thin and has paper beside it; the beige ground behind an underside digit is a block whose
+       edges look like two thin lines once the digit's ink has cut its middle short */
+    const faintBeside=x=>{ let n=0,k=0; for(let y=band[0];y<=band[1];y+=2){ k++; if(x>=0&&x<w&&cls[y*w+x]===FAINT) n++; } return k?n/k:0; };
+    const bounds=cluster(colsX).filter(b=>b.w<=0.15*H&&faintBeside(Math.round(b.x)-5)<0.15&&faintBeside(Math.round(b.x)+5)<0.15); if(bounds.length<2) continue;
+    /* the darker rules, running the row's height, are the boxes' edges and the beat lines; the lighter ones — short ticks in the Table, full in the Tab — the positions */
+    const lums=bounds.map(b=>b.lum).sort((a,b)=>a-b); const cut=(lums[0]+lums[lums.length-1])/2;
+    const dark=bounds.filter(b=>b.lum<=cut&&b.run>=tall).map(b=>b.x), light=bounds.filter(b=>b.lum>cut).map(b=>b.x);
+    if(dark.length<2) continue;
+    /* boxes: two dark rules with nothing between them, less than a glyph apart, are a box's end and the next box's start */
+    const boxes=[]; let open=dark[0];
+    for(let i=1;i<dark.length;i++){ const gapNext=i+1<dark.length?dark[i+1]-dark[i]:Infinity;
+      const emptyGap=gapNext<1.0*H&&!light.some(x=>x>dark[i]&&x<dark[i+1]);
+      if(emptyGap){ boxes.push({x0:open,x1:dark[i]}); open=dark[i+1]; i++; }
+      else if(i===dark.length-1) boxes.push({x0:open,x1:dark[i]}); }
+    const rowBars=[];
+    for(const bx of boxes){
+      const beatsIn=dark.filter(x=>x>bx.x0+0.3*H&&x<bx.x1-0.3*H);
+      const posIn=light.filter(x=>x>bx.x0+0.3*H&&x<bx.x1-0.3*H);
+      const es=[bx.x0,...beatsIn,...posIn,bx.x1].sort((a,b)=>a-b).filter((x,i,arr)=>i===0||x-arr[i-1]>0.2*H);
+      const spb=es.length-1; if(spb<1) continue;
+      const slot=(bx.x1-bx.x0)/spb; if(!sw) sw=slot;
+      rowBars.push({x0:bx.x0,x1:bx.x1,spb,s0,row:rows.length,slot,edges:es,counts:beatsIn.length+1}); s0+=spb;
+    }
+    if(!rowBars.length) continue;
+    rows.push({base:y1-2, top:y0+2, line:(y0+y1)/2, segs:[{x0:rowBars[0].x0,x1:rowBars[rowBars.length-1].x1}], comps:[], H, bars:rowBars});
+    bars.push(...rowBars);
+  }
+  /* the app draws every row on one grid; a row whose lines are hidden — by the amber wash on the playing cell,
+     by the cursor — takes the grid of the row that shows the most */
+  if(rows.length>1){ const count=R=>R.bars.reduce((n,b)=>n+b.edges.length,0); const ref=rows.reduce((a,R)=>count(R)>count(a)?R:a,rows[0]);
+    let s1=0; rows.forEach((R,ri)=>{ if(R!==ref&&count(R)<count(ref)) R.bars=ref.bars.map(b=>Object.assign({},b,{row:ri,edges:b.edges.slice()}));
+      for(const b of R.bars){ b.s0=s1; s1+=b.spb; } });
+    s0=s1; bars.length=0; for(const R of rows) bars.push(...R.bars); }
+  for(const c of comps){ const R=rows.find(R=>c.cy>R.top&&c.cy<R.base); if(!R) continue;
+    if(c.h<0.5*H&&!(c.w<0.35*H&&c.w<=c.h*1.6)) continue;                               // a chord name in the cell's corner: small text, not a dot
+    c.lane=c.cy<R.line?"up":"down"; R.comps.push(c); }
+  /* two digits side by side, in one lane and one colour, are one number (10, 13) — checked within each lane and
+     colour, because the other hand's glyph above or below sits between them in x-order */
+  for(const R of rows){ const out=[];
+    for(const lane of ["up","down"]) for(const col of ["G","B","I"]){
+      const list=R.comps.filter(c=>c.lane===lane&&(c.green?"G":c.blue?"B":"I")===col).sort((a,b)=>a.cx-b.cx); const got=[];
+      for(const c of list){ const L=got[got.length-1];
+        if(L&&c.h>0.45*R.H&&L.h>0.45*R.H&&c.x0>=L.x1-0.3*R.H&&c.x0-L.x1<0.45*R.H&&Math.abs(c.cy-L.cy)<0.5*R.H){ const parts=(L.parts||[L]).concat([c]); const mm=compFrom(parts.flatMap(p=>p.px),w,cls); mm.parts=parts; mm.lane=L.lane; mm.green=L.green; mm.blue=L.blue; got[got.length-1]=mm; }   // a bold 1's foot runs under the 0 of a 10
+        else got.push(c); }
+      out.push(...got); }
+    R.comps=out.sort((a,b)=>a.cx-b.cx);
+    for(const c of R.comps){ const y=Math.round(c.cy); const side=dir=>[0.12,0.2,0.3].some(f=>{ const x=Math.round(dir<0?c.x0-f*R.H:c.x1+f*R.H); return x>=0&&x<w&&cls[y*w+x]===FAINT; }); c.badge=side(-1)&&side(1); }
+  }
+  comps=rows.flatMap(R=>R.comps);
+  const b0=bars[0]; const beats=b0?b0.counts:4, sub=b0?Math.max(1,Math.round(b0.spb/beats)):2;
+  const frame={x0:0,y0:Math.floor(yTop),x1:w-1,y1:Math.ceil(yBot)}; item.frame=frame;
+  item.an={style:"app",frame,inner:frame,tx0:frame.x0,tx1:frame.x1,rows,comps,labels:[],labelText:[],N:s0,fit:0,beats,bpr:rows.length?rows[0].bars.length:1,sub,Hall:H,fits:[],sw,bars,tempos:[],barsAreBars:true};
+  return item.an;
+}
 function isFlow(item,frame){
   const {w,h,cls}=item; const m=Math.round((frame.y1-frame.y0)*0.08);
   let faint=false;
@@ -686,6 +805,7 @@ function analyzeFlow(item,frame){
 function analyze(item){
   const {w,h,cls}=item;
   if(isTab(cls,w,h)) return analyzeTab(item);
+  if(isAppGrid(item)) return analyzeAppGrid(item);
   const frame=item.frame||findFrame(cls,w,h)||{x0:0,y0:0,x1:w-1,y1:h-1};
   if(isFlow(item,frame)) return analyzeFlow(item,frame);
   item.frame=frame;
@@ -799,7 +919,7 @@ function readTable(item){
     for(let s=0;s<N;s++) cells.push({evs:[],q:false,notes:[]});
     /* assign components to slots by centre */
     const bySlot=cells.map(()=>[]);
-    if(an.style==="tab"||an.style==="flow"){ for(const c of R.comps){ const bar=R.bars.find(B=>c.cx<B.x1)||R.bars[R.bars.length-1];
+    if(an.style==="tab"||an.style==="flow"||an.style==="app"){ for(const c of R.comps){ const bar=R.bars.find(B=>c.cx<B.x1)||R.bars[R.bars.length-1];
         let s; if(bar.edges){ s=bar.s0; for(let k=1;k<bar.edges.length-1;k++) if(c.cx>=bar.edges[k]) s=bar.s0+k; }
         else s=bar.s0+Math.floor((c.cx-bar.x0)/bar.slot);
         if(s<bar.s0)s=bar.s0; if(s>=bar.s0+bar.spb)s=bar.s0+bar.spb-1; bySlot[s].push(c); } }
@@ -814,16 +934,17 @@ function readTable(item){
         if(rel<0.06&&c.w<H*0.06) continue;                 // a speck: the frame's corner, a stray pixel
         /* the ghost dot, in every style: small, round and solid */
         if(rel<0.24&&c.w<H*0.3&&c.w<=c.h*1.6&&!hasHole(bm)){ cell.evs.push({v:"ghost",hand}); continue; }
-        if(an.style==="flow"){
+        if(an.style==="flow"||an.style==="app"){
           const num=c.parts?c.parts.map(p=>matchGlyph(bitmapOf(p,w),["0","1","2","3","4","5","6","7","8","9"],ATLAS3)[0].g).join(""):null;
           let g=num, conf=1, margin=1;
-          if(!num){ const mm=matchGlyph(bm,rel>0.55?["D","1","2","3","4","5","6","7","8","9","M","T","K","^"]:["^","°"],ATLAS3); g=mm[0].g; conf=mm[0].shape; const other=mm.find(x=>x.g!==g); margin=other?mm[0].score-other.score:1; }
+          if(!num){ const mm=matchGlyph(bm,rel>(an.style==="app"?0.4:0.55)?["D","1","2","3","4","5","6","7","8","9","M","T","K","^"]:["^","°"],ATLAS3); g=mm[0].g; conf=mm[0].shape; const other=mm.find(x=>x.g!==g); margin=other?mm[0].score-other.score:1; }   // the Table's chord stack writes its digits at half height
           let ev;
           if(g==="D") ev={v:"field",f:0,hand}; else if(g==="M") ev={v:"field",f:0,hand,art:"mute"};
           else if(g==="^") ev={v:"perc",s:"slap",hand}; else if(g==="°") ev={v:"perc",s:"knock",hand};
           else if(g==="T"||g==="K") ev={v:"perc",s:"tak",hand,g:g==="K"?"K":undefined};
           else ev={v:"field",f:c.badge?"b"+(+g):+g,hand};
           ev._g=g; ev._conf=conf; ev._margin=margin; ev._rel=rel;
+          if(c.blue){ ev.sub=true; if(an.style==="app"&&c.lane==="up") ev.hand="L"; }   // a stand-in: blue, its hand from the Tab's lane
           if(conf<0.55||margin<0.04||(num&&!(+num>=1&&+num<=40))) cell.q=true; cell.evs.push(ev); continue; }
         if(an.style==="tab"){
           if(c.parts){ const txt=c.parts.map(p=>matchGlyph(bitmapOf(p,w),["0","1","2","3","4","5","6","7","8","9"],ATLAS2)[0].g).join("");
@@ -895,7 +1016,7 @@ const PANS=[["d-kurd-9","D Kurd 9"],["d-kurd-10","D Kurd 10"],["e-amara-9","E Am
 function buildPiece(only){
   const items=only?[only]:ITEMS.filter(i=>i.read);
   if(!items.length) return null;
-  const sections={}, metas=[];
+  const sections={}, metas=[]; SRC={};
   for(const it of items){ const an=it.an; const bars=tableBars(it); const splits=it.splits||{};
     /* the marks on Check cut the bars into tables; the first bar always starts one */
     const starts=[0,...Object.keys(splits).map(Number).filter(i=>i>0&&i<bars.length)].sort((a,b)=>a-b);
@@ -903,11 +1024,11 @@ function buildPiece(only){
     for(const sg of segs){
       if(an.barsAreBars){
         /* a tab's bars may still differ in length inside one table; each run of equal bars is a section of its own */
-        let run=[], runSpb=null, n=0;
+        let run=[], runIdx=[], runSpb=null, n=0;
         const flush=()=>{ if(!run.length) return; n++; let nm=sg.name; if(n>1) nm+=" "+n; while(sections[nm]) nm+="'"; const sub=runSpb%4===0?4:runSpb%3===0?3:runSpb%2===0?2:1;
-          sections[nm]={bars:run}; metas.push({beats:runSpb/sub,sub,bpr:1,name:nm,spb:runSpb}); run=[]; };
-        for(let i=sg.from;i<sg.to;i++){ const B=an.bars[i]; if(runSpb!==null&&B.spb!==runSpb) flush(); runSpb=B.spb; run.push(bars[i]||[]); } flush();
-      } else { let nm=sg.name; while(sections[nm]) nm+="'"; sections[nm]={bars:bars.slice(sg.from,sg.to)}; metas.push({beats:an.beats,sub:an.sub,bpr:an.bpr,name:nm}); }
+          sections[nm]={bars:run}; SRC[nm]=runIdx.map(idx=>({it,idx})); metas.push({beats:runSpb/sub,sub,bpr:1,name:nm,spb:runSpb}); run=[]; runIdx=[]; };
+        for(let i=sg.from;i<sg.to;i++){ const B=an.bars[i]; if(runSpb!==null&&B.spb!==runSpb) flush(); runSpb=B.spb; run.push(bars[i]||[]); runIdx.push(i); } flush();
+      } else { let nm=sg.name; while(sections[nm]) nm+="'"; sections[nm]={bars:bars.slice(sg.from,sg.to)}; SRC[nm]=bars.slice(sg.from,sg.to).map((_,k)=>({it,idx:sg.from+k})); metas.push({beats:an.beats,sub:an.sub,bpr:an.bpr,name:nm}); }
     } }
   const first=metas[0];
   for(const m of metas){ const s=sections[m.name];
@@ -925,6 +1046,7 @@ const APP_URL="https://davidkuckhermann-art.github.io/handpan-studio-app/?k=ce0f
 /* the player is the app served beside this file: index.html on the pages site (behind its key), app.html in the repo */
 const PLAYER_URL=(location.hostname==="localhost"||location.hostname==="127.0.0.1"||location.protocol==="file:")?"app.html":"index.html?k=ce0f3bf87594bda9";
 let playerOn=false, playerTimer=null, playerScope=null, playerReady=null, followTimer=null;
+let SRC={};   // section name → [{it,idx}], one per bar: where every bar of the piece in the player came from (buildPiece)
 function playerWin(){ try{ return $("player").contentWindow; }catch(e){ return null; } }
 /* the app's transport lives in top-level lets, out of reach from outside — but
    the frame is same-origin, so an eval in ITS global scope reaches them. This
@@ -935,35 +1057,60 @@ function loadPlayer(scope){
   const p=buildPiece(scope); if(!p) return Promise.resolve(false);
   const f=$("player"); f.src=PLAYER_URL+(PLAYER_URL.includes("?")?"&":"?")+"r="+Date.now()+"#p="+enc(p);
   f.classList.add("on"); playerOn=true; playerScope=scope;
-  $("playerLede").textContent=scope?"The app, with this screenshot alone, so the cursor above and the playhead below are the same positions.":"The app itself, with the whole piece as read. It reloads when you change a position or the arrangement.";
-  playerReady=new Promise(res=>{ const t0=Date.now(); const tick=()=>{ const w=playerWin(); if(w&&typeof w.togglePlay==="function"&&w.document.querySelector(".slot")) res(true); else if(Date.now()-t0>15000) res(false); else setTimeout(tick,120); }; f.addEventListener("load",()=>setTimeout(tick,50),{once:true}); });
+  $("playerLede").textContent=STEP==="check"?"The app in Edit mode, with the whole piece as read. Change any note here; it goes into the piece. The marker runs through the tables here and over the scans above.":"The app itself, with the whole piece as read. It reloads when you change a table above.";
+  lastPieceStr=null; lastPieceObj=null; loadedSig=JSON.stringify(p); lastFit=0; f.style.height="";
+  /* THE PLAYER PLAYS THE PAN THE PIECE WAS ARRANGED FOR (David, 9 Sep: "always the pan should be chosen that I chose
+     earlier for the arrangement"). The frame boots with the pan saved on this device — which drew and sounded an
+     E Kurd 21 arrangement on a D Kurd 19 — so once it is ready its pan is set to the piece's writtenFor, in the
+     frame only: not through choosePan, which would write hps.panId and change the pan of the app itself. */
+  playerReady=new Promise(res=>{ const t0=Date.now(); const tick=()=>{ const w=playerWin(); if(w&&typeof w.togglePlay==="function"&&w.document.querySelector(".slot")) { appEval(`(function(id){ if(!id||myPanId===id||!panById(id)) return; myPanId=id; myPan=derive(panById(id)); refresh(); })(${JSON.stringify(p.writtenFor)})`); if(STEP==="check") appEval('if(!editing) document.getElementById("editBtn").click();'); res(true); } else if(Date.now()-t0>15000) res(false); else setTimeout(tick,120); }; f.addEventListener("load",()=>setTimeout(tick,50),{once:true}); });
   return playerReady;
 }
 function playerFollow(){ if(!playerOn) return; clearTimeout(playerTimer); playerTimer=setTimeout(()=>loadPlayer(playerScope),900); }
-async function playFromCursor(){
-  const it=CUR; if(!it||!it.read) return;
-  if(!playerOn||playerScope!==it){ const ok=await loadPlayer(it); if(!ok){ toast("The player did not load"); return; } }
+async function playToggle(){
+  if(!playerOn){ const ok=await loadPlayer(null); if(!ok){ toast("The player did not load"); return; } }
   else if(playerReady) await playerReady;
-  const pulse=pulseOf(it,it.cur||0);
-  const r=appEval(`(function(){ loopSec=null; if(playing){ jumpTo(${pulse}); return "jumped"; } pendingStart=${pulse}; togglePlay(); return "started"; })()`);
-  if(!r){ toast("Press Play inside the player once, then Space works from here"); return; }
-  startFollow();
+  const r=appEval('(function(){ loopSec=null; if(!playing) togglePlay(); return "ok"; })()');
+  if(!r) toast("Press Play inside the player once, then Space works from here");
 }
-function playerStop(){ appEval("if(playing) stop();"); stopFollow(); }
-/* THE PLAYHEAD, mirrored onto the grid. Not the app's own lastPaint: that is
+function playerStop(){ appEval("if(playing) stop();"); clearBand(); }
+/* THE PLAYHEAD, mirrored onto the scans. Not the app's own lastPaint: that is
    written by its requestAnimationFrame, which WebKit stops for a frame that
    is scrolled out of view — so the mirror stood still while the music played
    (David, 5 Sep). The pulse sounding NOW is read the way the app's own tick
    reads it: the last scheduled stroke whose time has come, against the audio
-   clock. That needs no frame to be drawn. */
-const NOW_PULSE="(function(){ if(!playing||!ctx) return -1; const now=ctx.currentTime; for(let i=fired.length-1;i>=0;i--) if(fired[i].at<=now) return fired[i].pi; return -1; })()";
-let lastShown=-1;
-function startFollow(){ stopFollow(); lastShown=-1; followTimer=setInterval(()=>{ const it=CUR; if(!it||STEP!=="check"||playerScope!==it){ stopFollow(); return; }
-  const on=appEval("playing"); if(!on){ stopFollow(); return; }
-  const p=appEval(NOW_PULSE); if(p===lastShown||p<0) return;
-  document.querySelectorAll("#pairs .slot.play").forEach(el=>el.classList.remove("play"));
-  const el=slotEl(it,p); if(el){ el.classList.add("play"); if(lastShown<0||Math.floor(p/64)!==Math.floor(lastShown/64)) el.scrollIntoView({block:"nearest"}); } lastShown=p; },40); }
-function stopFollow(){ clearInterval(followTimer); followTimer=null; document.querySelectorAll("#pairs .slot.play").forEach(el=>el.classList.remove("play")); }
+   clock, and the app itself says which section and pulse that is. */
+const NOW_WHERE="(function(){ if(!playing||!ctx||!C) return null; const now=ctx.currentTime; let pi=-1; for(let i=fired.length-1;i>=0;i--) if(fired[i].at<=now){ pi=fired[i].pi; break; } if(pi<0) return null; const s=secOfPulse(pi); return JSON.stringify({name:s.name,rel:pi-s.pulse,spb:s.bp}); })()";
+let lastWhere="", followTick=0;
+/* ONE LOOP while Check is open: 25× a second it asks the app where the playhead is and paints the band on the
+   scan that bar came from; every 15th tick it asks for the piece and reads any changed bar back. */
+function startFollow(){ if(followTimer) return; lastWhere=""; followTick=0;
+  followTimer=setInterval(()=>{ if(STEP!=="check"){ stopFollow(); return; } if(!playerOn) return;
+    fitPlayer();
+    const w=appEval(NOW_WHERE)||""; if(w!==lastWhere){ lastWhere=w; clearBand(); if(w){ const o=JSON.parse(w); const src=(SRC[o.name]||[])[Math.floor(o.rel/o.spb)]; if(src){ src.it.band={idx:src.idx,t:o.rel%o.spb,spb:o.spb}; paintOvl(src.it); } } }
+    if(++followTick%15===0) pollPiece(); },40); }
+function stopFollow(){ clearInterval(followTimer); followTimer=null; clearBand(); $("player").style.height=""; }
+/* THE FRAME IS AS TALL AS THE APP IN IT while Check is open (David, 9 Sep: "have the player frame extend vertically in
+   the check window"): the app's document height, read every tick, never under the frame's resting 680 px and never
+   over 4000 — the Lab's fitFrame rule. Outside Check the frame goes back to its resting height. */
+let lastFit=0;
+function fitPlayer(){ const h=appEval("document.documentElement.scrollHeight"); if(!h) return; const want=Math.min(4000,Math.max(680,h)); if(Math.abs(want-lastFit)<3) return; lastFit=want; $("player").style.height=want+"px"; }
+function clearBand(){ for(const it of ITEMS) if(it.band){ it.band=null; paintOvl(it); } }
+/* THE PIECE COMES BACK from the app: polled, not listened to (the Lab's rule, 5 Sep). A bar whose events differ
+   from the app's last answer is written into its cells — only that bar, so the reader's doubts elsewhere stand. */
+let lastPieceStr=null, lastPieceObj=null, loadedSig=null;
+function pollPiece(){
+  const str=appEval("JSON.stringify(piece)"); if(!str||str===lastPieceStr) return;
+  const p=JSON.parse(str); const prev=lastPieceObj; lastPieceStr=str; lastPieceObj=p;
+  if(!prev) return;    // the first answer after a load is the baseline: the app's own spelling of what it was given
+  let changed=0; const touched=new Set();
+  for(const nm in SRC){ const sec=p.sections[nm], was=prev.sections[nm]; if(!sec) continue;
+    SRC[nm].forEach((src,k)=>{ const bar=sec.bars[k]; if(!bar) return; if(was&&was.bars[k]&&JSON.stringify(was.bars[k])===JSON.stringify(bar)) return;
+      const cells=barCells(src.it,src.idx); if(!cells) return;
+      const want=cells.map(()=>[]); for(const e of bar){ const o=cleanEv(e); const t=o.t; delete o.t; if(want[t]) want[t].push(o); }
+      cells.forEach((c,i)=>{ c.evs=want[i]; c.q=false; }); changed++; touched.add(src.it); }); }
+  if(changed){ paintQueue(); paintSum(); for(const it of touched) paintOvl(it); if(STEP==="assemble") paintAssemble(); }
+}
 
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -975,9 +1122,10 @@ function toast(s){ const t=$("toast"); t.textContent=s; t.classList.add("on"); c
 function setStep(s){ STEP=s; document.querySelectorAll(".step").forEach(el=>el.classList.toggle("on",el.id==="step-"+s));
   $("playerBox").hidden=!(s==="check"||s==="assemble"); if(s!=="check") stopFollow();
   document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.step===s));
-  if(s==="found") paintFound(); if(s==="check") paintCheck(); if(s==="assemble") paintAssemble(); }
+  if(s==="found") paintFound(); if(s==="pan") paintPan(); if(s==="check") paintCheck(); if(s==="assemble") paintAssemble(); }
 function navState(){ const any=ITEMS.length>0, cur=CUR, read=ITEMS.some(i=>i.read);
   document.querySelector('[data-step="found"]').disabled=!cur; document.querySelector('[data-step="check"]').disabled=!(cur&&cur.read);
+  document.querySelector('[data-step="pan"]').disabled=!(cur&&cur.score);
   document.querySelector('[data-step="assemble"]').disabled=!read; }
 document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click",()=>setStep(b.dataset.step)));
 
@@ -1001,7 +1149,8 @@ async function prepare(it){
   await buildAtlasOnce();
   const c=document.createElement("canvas"); c.width=it.w; c.height=it.h; const x=c.getContext("2d",{willReadFrequently:true}); x.drawImage(it.img,0,0);
   it.canvas=c; it.data=x.getImageData(0,0,it.w,it.h).data; it.cls=classify(it.data,it.w,it.h); it.frame=null;
-  analyze(it); it.status="found"; paintQueue();
+  if(!(it.forceTable||scoreAnalyze(it))) analyze(it);       // a printed score is the fourth kind of picture; five staff lines say so
+  it.status="found"; paintQueue();
 }
 let atlasP=null; function buildAtlasOnce(){ return atlasP||(atlasP=buildAtlas()); }
 function paintQueue(){
@@ -1033,6 +1182,8 @@ document.addEventListener("dragover",e=>e.preventDefault()); document.addEventLi
 let scale=1;
 function paintFound(){
   const it=CUR; if(!it) return; const an=it.an;
+  $("btnRead").textContent=an.style==="score"?"Choose the pan →":"Read it"; $("btnRefind").textContent=an.style==="score"?"Not a score":"Find again";
+  if(an.style==="score"){ paintFoundScore(it); return; }
   const cv=$("cv"); const maxW=Math.min(1100, document.querySelector("main").clientWidth-50); scale=Math.min(1,maxW/it.w);
   cv.width=Math.round(it.w*scale); cv.height=Math.round(it.h*scale); const x=cv.getContext("2d");
   x.drawImage(it.img,0,0,cv.width,cv.height);
@@ -1059,8 +1210,15 @@ function paintFound(){
   /* chips */
   const ch=$("foundChips"); ch.innerHTML="";
   const chip=(html,cls,tip)=>{ const s=document.createElement("span"); s.className="chip "+(cls||""); s.innerHTML=html; if(tip) s.title=tip; ch.appendChild(s); return s; };
+  if(an.style==="app"){
+    chip(`the app's own table · ${an.rows.length} row${an.rows.length===1?"":"s"} · ${an.bars.length} bars`,"vio","A screenshot of Handpan Studio's Table or Tab view: rows from the faint lines, bars from the dark-brown boxes, beats from the lines inside them, positions from the faint lines; the glyph's colour is the hand, blue a stand-in.");
+    chip(`${an.bars[0]?an.bars[0].spb:"?"} positions a bar`,"vio","Positions in the first bar, counted from its lines.");
+    chip(`${an.beats} counts a bar`,"vio","Counts in the first bar, from the dark-brown lines inside it.");
+    chip(`${an.sub} per count`,"vio","Positions inside one count.");
+    return;
+  }
   if(an.style==="flow"){
-    chip(`Flow · ${an.rows.length} row${an.rows.length===1?"":"s"} · ${an.bars.length} bars`,"vio","The app's own Flow notation: bars from the tan lines, positions from the faint cell lines, counts from the taller ones, the left hand green above the line and the right hand black below.");
+    chip(`Flow · ${an.style==="score"?it.read.length:an.rows.length} row${an.rows.length===1?"":"s"} · ${an.bars.length} bars`,"vio","The app's own Flow notation: bars from the tan lines, positions from the faint cell lines, counts from the taller ones, the left hand green above the line and the right hand black below.");
     chip(`${an.bars[0]?an.bars[0].spb:"?"} positions a bar`,"vio","Positions in the first bar, counted from its cell lines.");
     chip(`${an.beats} counts a bar`,"vio","Counts in the first bar, from the taller lines.");
     chip(`${an.sub} per count`,"vio","Positions inside one count.");
@@ -1077,7 +1235,7 @@ function paintFound(){
     $("cFlip").addEventListener("change",e=>{ it.tabFlip=e.target.checked; analyze(it); paintFound(); });
     return;
   }
-  chip(`${an.rows.length} row${an.rows.length===1?"":"s"}`,"vio","Rows in the table. Each row becomes one line of the notation in the app.");
+  chip(`${an.style==="score"?it.read.length:an.rows.length} row${an.rows.length===1?"":"s"}`,"vio","Rows in the table. Each row becomes one line of the notation in the app.");
   const cN=chip(`positions a row <input type="number" id="cN" min="2" max="64" value="${an.N}">`,"vio",
     "Positions in one row: every place a symbol can stand, counting the empty ones. 16 for a row of sixteenths in 4/4, 12 for triplets, 14 for two bars of 7/8. Change it if the violet lines do not sit on the symbols.");
   const cB=chip(`counts a bar <input type="number" id="cB" min="1" max="16" value="${an.beats}">`,"vio",
@@ -1094,8 +1252,8 @@ function paintFound(){
     paintFound(); };
   [cN,cB,cP].forEach(c=>c.querySelector("input").addEventListener("change",re));
 }
-$("btnRefind").addEventListener("click",()=>{ CUR.frame=null; analyze(CUR); paintFound(); });
-$("btnRead").addEventListener("click",()=>{ readTable(CUR); paintQueue(); navState(); setStep("check"); });
+$("btnRefind").addEventListener("click",()=>{ if(CUR.an.style==="score"){ CUR.forceTable=true; CUR.score=null; CUR.read=null; analyze(CUR); navState(); paintFound(); return; } CUR.frame=null; analyze(CUR); paintFound(); });
+$("btnRead").addEventListener("click",()=>{ if(CUR.an.style==="score"){ navState(); setStep("pan"); return; } readTable(CUR); paintQueue(); navState(); setStep("check"); });
 
 /* ── Check ─────────────────────────────────────────────────────────────── */
 /* WHERE THE INK IS. A bar centred on the glyph's box sat well over a 3 or a
@@ -1157,103 +1315,249 @@ function glyphHTML(e){
   const bot=typeof e.f==="string"&&e.f[0]==="b";
   let g=bot?e.f.slice(1):e.f===0?"D":String(e.f); const st=e.art==="mute"?` style="${muInk(g)}"`:""; if(e.roll) g+="̃"; if(e.bar) g+="̄";
   if(e.art==="mute") g+='<i class="mb"></i>';
-  return `<span${st} class="sym ${e.hand==="L"?"l":"r"}${bot?" bt":""}${e.art==="mute"?" mu":""}">${g}</span>`;
+  return `<span${st} class="sym ${e.hand==="L"?"l":"r"}${e.sub?" s":""}${bot?" bt":""}${e.art==="mute"?" mu":""}">${g}</span>`;
 }
-/* THE CURSOR on Check: one position, kept per screenshot, moved by click or
-   the arrow keys; Space plays from it in the app below (David, 5 Sep). */
-function slotEl(it,s){ return document.querySelector(`#pairs .read .slot[data-s="${s}"]`); }
-function setCursor(it,s){
-  const max=(it.an.style==="tab"||it.an.style==="flow")?it.an.N-1:it.read.length*it.an.N-1;
-  if(s<0||s>max) return;
-  const old=slotEl(it,it.cur); if(old) old.classList.remove("cur");
-  it.cur=s; const el=slotEl(it,s); if(el){ el.classList.add("cur"); el.scrollIntoView({block:"nearest",inline:"nearest"}); }
-}
-/* a position's pulse in the piece of THIS screenshot alone: the cells lie end
-   to end in reading order and every bar contributes its positions, so the
-   cell's index is its pulse */
-function pulseOf(it,s){ return s; }
 function paintCheck(){
-  const it=CUR; if(!it||!it.read) return; const an=it.an;
-  if(it.cur===undefined) it.cur=0;
-  const host=$("pairs"); host.innerHTML="";
-  const q=it.read.reduce((n,R)=>n+R.cells.filter(c=>c.q).length,0), tot=an.style==="tab"?an.N:it.read.length*an.N;
-  $("sum").innerHTML=`<span title="Positions the reader is sure of. The rest are marked violet."><b>${tot-q} of ${tot}</b> positions certain</span>${q?`<span class="chip vio">${q} to check</span>`:`<span class="chip">all certain</span>`}<span class="chip">${it.secName} · ${an.rows.length} rows · ${an.beats}/${an.beats>=5&&an.sub===1?8:4} · ${an.sub} per count${an.bpr>1?" · "+an.bpr+" bars a row":""}</span>`;
-  it.read.forEach((R,ri)=>{
-    const pair=document.createElement("div"); pair.className="pair";
-    pair.innerHTML=`<div class="lab"><b>Row ${ri+1}</b><span>${R.cells.filter(c=>c.q).length?R.cells.filter(c=>c.q).length+" to check":"certain"}</span></div>`;
-    const c=document.createElement("canvas"); const y0=Math.max(0,Math.floor(R.top-R.H*0.15)), y1=Math.min(it.h,Math.ceil(R.base+R.H*0.25));
-    const X0=Math.max(0,Math.floor(R.segs?R.segs[0].x0:an.tx0)), X1=Math.min(it.w,Math.ceil(R.segs?R.segs[R.segs.length-1].x1:an.tx1));
-    c.width=X1-X0; c.height=y1-y0; c.getContext("2d").drawImage(it.canvas,X0,y0,X1-X0,y1-y0,0,0,X1-X0,y1-y0);
-    pair.appendChild(c);
-    const rowCells=an.style==="tab"?R.cells.slice(R.bars[0].s0,R.bars[R.bars.length-1].s0+R.bars[R.bars.length-1].spb):R.cells;
-    const off=an.style==="tab"?R.bars[0].s0:0;
-    /* one cell per bar: "a new table starts here", and its name (David, 5 Sep) */
-    const strip=document.createElement("div"); strip.className="barstrip"; strip.style.gridTemplateColumns=`repeat(${rowCells.length},1fr)`;
-    const rowBars=an.style==="tab"||an.style==="flow"?R.bars.map(B=>({idx:an.bars.indexOf(B),col:B.s0-off+1,span:B.spb})):(()=>{ const spb=an.N/an.bpr, out=[]; for(let b=0;b<an.bpr;b++) out.push({idx:ri*an.bpr+b,col:b*spb+1,span:spb}); return out; })();
+  const items=ITEMS.filter(i=>i.read); const host=$("scans"); host.innerHTML="";
+  for(const it of items){
     it.splits=it.splits||{};
-    for(const B of rowBars){ const cell=document.createElement("div"); cell.className="bs"; cell.style.gridColumn=`${B.col} / span ${B.span}`;
-      const first=B.idx===0; const on=first||(B.idx in it.splits);
-      if(on) cell.classList.add("on");
-      const lab=document.createElement("label"); const cb=document.createElement("input"); cb.type="checkbox"; cb.checked=on; cb.disabled=first; cb.title=first?"The first bar always starts a table":"A new table starts at this bar";
-      lab.appendChild(cb); lab.appendChild(document.createTextNode(first?"table":"new table")); cell.appendChild(lab);
-      const nm=document.createElement("input"); nm.type="text"; nm.placeholder="name"; nm.value=first?it.secName:(it.splits[B.idx]||""); nm.title="The table's name in the piece: A1, Verse, Bridge 2";
-      cb.addEventListener("change",()=>{ if(cb.checked){ it.splits[B.idx]=nm.value||("bar "+(B.idx+1)); cell.classList.add("on"); nm.focus(); } else { delete it.splits[B.idx]; cell.classList.remove("on"); } paintOutIfAssembled(); });
-      nm.addEventListener("input",()=>{ if(first){ const old=it.secName; it.secName=nm.value.trim()||old; ARR=ARR.map(n=>n===old?it.secName:n); paintQueue(); } else it.splits[B.idx]=nm.value; paintOutIfAssembled(); });
-      cell.appendChild(nm); strip.appendChild(cell); }
-    pair.appendChild(strip);
-    const read=document.createElement("div"); read.className="read"; read.style.gridTemplateColumns=`repeat(${rowCells.length},1fr)`;
-    rowCells.forEach((cell,si0)=>{ const si=si0+off+(an.style==="tab"||an.style==="flow"?0:ri*an.N); const sl=document.createElement("div"); const spb=an.style==="tab"?R.bars[0].spb:an.N/an.bpr;
-      sl.className="slot"+(cell.q?" q":"")+(cell.evs.length>1?" n"+Math.min(4,cell.evs.length):"")+(((si0+1)%spb===0&&si0<rowCells.length-1)?" bar":((si0+1)%an.sub===0&&si0<rowCells.length-1)?" beat":"");
-      sl.innerHTML=[...cell.evs].sort((a,b)=>(a.v==="field"?(typeof a.f==="string"?-0.5:a.f):-1)-(b.v==="field"?(typeof b.f==="string"?-0.5:b.f):-1)).map(glyphHTML).join("");
-      sl.title=(cell.fold?"The tab drew an extra empty column in this beat; it was folded into this position. If the bar really is longer, add the position by hand. ":cell.q?"The reader is unsure here. ":"")+"Click to change this position";
-      sl.dataset.s=si; if(it.cur===si) sl.classList.add("cur");
-      sl.addEventListener("click",e=>{ setCursor(it,si); openPop(it,ri,si-(an.style==="tab"||an.style==="flow"?0:ri*an.N),sl); }); read.appendChild(sl); });
-    pair.appendChild(read); host.appendChild(pair);
-  });
+    const d=document.createElement("div"); d.className="scan"+(it===CUR?" cur":""); it.scanEl=d;
+    d.innerHTML=`<div class="lab"><b title="${it.name}">${it.name}</b><span class="st"></span></div><div class="pic"><img alt=""><canvas></canvas><div class="mks"></div></div>`;
+    const img=d.querySelector("img"); img.src=it.img.src; img.title="Click a bar to start a new table there";
+    d.querySelector("canvas").addEventListener("click",e=>{ const r=e.currentTarget.getBoundingClientRect(), k=it.w/r.width; const x=(e.clientX-r.left)*k, y=(e.clientY-r.top)*k;
+      const n=barCount(it); for(let idx=0;idx<n;idx++){ const b=barBox(it,idx); if(!b) continue; if(x>=b.x0&&x<=b.x1&&y>=b.y0&&y<=b.y1){ toggleSplit(it,idx); return; } } });
+    host.appendChild(d);
+    const ro=new ResizeObserver(()=>paintOvl(it)); ro.observe(img); if(img.complete) paintOvl(it); else img.addEventListener("load",()=>paintOvl(it));
+  }
+  paintSum();
+  /* the player shows the piece as it stands: reloaded on entering Check whenever the piece changed since it was loaded */
+  const sig=JSON.stringify(buildPiece(null)); if(!playerOn||playerScope!==null||sig!==loadedSig) loadPlayer(null); startFollow();
 }
-let POP=null, popHand="R";   // the next symbol is the right hand's unless said otherwise
-function openPop(it,ri,si,el){
-  document.querySelectorAll(".read .slot.sel").forEach(s=>s.classList.remove("sel")); el.classList.add("sel");
-  POP={it,ri,si,el}; const p=$("pop"); p.classList.add("on");
-  const r=el.getBoundingClientRect(); p.style.left=Math.min(window.innerWidth-360,r.left+window.scrollX)+"px"; p.style.top=(r.bottom+window.scrollY+6)+"px";
-  paintPop();
+function paintSum(){
+  const items=ITEMS.filter(i=>i.read); let q=0, tot=0;
+  for(const it of items){ const an=it.an; const iq=it.read.reduce((n,R)=>n+R.cells.filter(c=>c.q).length,0), itot=an.style==="tab"||an.style==="flow"||an.style==="app"?an.N:it.read.length*an.N; q+=iq; tot+=itot;
+    if(it.scanEl) it.scanEl.querySelector(".st").textContent=`${barCount(it)} bar${barCount(it)===1?"":"s"} · ${iq?iq+" to check":"certain"}`; }
+  $("sum").innerHTML=`<span title="Positions the reader is sure of. The rest carry a violet dot on the scan."><b>${tot-q} of ${tot}</b> positions certain</span>${q?`<span class="chip vio">${q} to check</span>`:`<span class="chip">all certain</span>`}<span class="chip">${items.length} screenshot${items.length===1?"":"s"}</span>`;
 }
-function paintPop(){
-  const {it,ri,si}=POP, cell=it.read[ri].cells[si]; const evs=$("popEvs"); evs.innerHTML="";
-  if(!cell.evs.length) evs.innerHTML='<span style="color:var(--ink3);font-size:12px">empty slot</span>';
-  cell.evs.forEach((e,i)=>{ const d=document.createElement("span"); d.className="ev "+(e.hand==="L"?"l":"r");
-    d.innerHTML=glyphHTML(e)+`<button title="Switch this symbol to the other hand">⇄</button><button title="Remove this symbol">✕</button>`;
-    d.querySelectorAll("button")[0].addEventListener("click",()=>{ e.hand=e.hand==="R"?"L":"R"; cell.q=false; paintPop(); repaintSlot(); });
-    d.querySelectorAll("button")[1].addEventListener("click",()=>{ cell.evs.splice(i,1); cell.q=false; paintPop(); repaintSlot(); });
-    evs.appendChild(d); });
-  const keys=$("popKeys"); keys.innerHTML="";
-  const add=(label,ev,cls,tip)=>{ const b=document.createElement("button"); b.innerHTML=label; if(cls) b.className=cls; b.title=tip; b.addEventListener("click",()=>{ cell.evs.push(Object.assign({hand:popHand},ev)); cell.q=false; paintPop(); repaintSlot(); }); keys.appendChild(b); };
-  add("D",{v:"field",f:0},"","Ding, the centre note (key D)"); for(const d of DIGITS) add(d,{v:"field",f:+d},"",`Tone field ${d} (key ${d}). Add a second number to make a chord.`);
-  add("M",{v:"field",f:0,art:"mute"},"pc","Mute on the ding (key M)"); add("^",{v:"perc",s:"slap"},"pc","Slap (key ^)"); add("°",{v:"perc",s:"knock"},"pc","Knock"); add("T",{v:"perc",s:"tak"},"pc","Tak (key T)"); add("K",{v:"perc",s:"tak",g:"K"},"pc","Tak, written K (key K)"); add("•",{v:"ghost"},"pc","Ghost note: a quiet stroke that carries the hand (key . or G)");
-  const roll=document.createElement("button"); roll.className="pc"; roll.textContent="~ roll"; roll.title="A short roll before the top note of this position"; roll.addEventListener("click",()=>{ const top=cell.evs.filter(e=>e.v!=="ghost").pop(); if(top){ top.roll=!top.roll; paintPop(); repaintSlot(); } }); keys.appendChild(roll);
-  $("hL").classList.toggle("on",popHand==="L"); $("hR").classList.toggle("on",popHand==="R");
+/* WHERE A BAR IS on its scan, whatever the reader read: a score's bar between its bar lines over both staffs,
+   a tab's or the app's own bar from its lines, a video table's from the row and the count grid. The same
+   function places the table markers, the doubt dots, the playhead band and the click. */
+function barCount(it){ const an=it.an; return an.style==="score"?Math.min(it.score.bars.length,it.read.length*an.bpr):an.barsAreBars?an.bars.length:it.read.length*an.bpr; }
+function barBox(it,idx){
+  const an=it.an;
+  if(an.style==="score"){ const B=it.score.bars[idx]; if(!B) return null; const sys=it.score.systems[B.sysIndex], sp=it.score.sp;
+    return {x0:B.x0,x1:B.x1,y0:Math.max(0,sys.staffs[0].lines[0]-2.2*sp),y1:Math.min(it.h,sys.staffs[sys.staffs.length-1].lines[4]+2.2*sp),B}; }
+  if(an.barsAreBars){ const B=an.bars[idx]; if(!B) return null; const R=it.read[B.row]; if(!R) return null; return {x0:B.x0,x1:B.x1,y0:R.top,y1:R.base,B}; }
+  const B=an.bars[idx%an.bpr], R=it.read[Math.floor(idx/an.bpr)]; if(!B||!R) return null; return {x0:B.x0,x1:B.x1,y0:R.top,y1:R.base,B};
+}
+function barCells(it,idx){
+  const an=it.an;
+  if(an.barsAreBars){ const B=an.bars[idx]; if(!B) return null; const R=it.read[B.row]; return R?R.cells.slice(B.s0,B.s0+B.spb):null; }
+  const spb=an.N/an.bpr, R=it.read[Math.floor(idx/an.bpr)], b=idx%an.bpr; return R?R.cells.slice(b*spb,(b+1)*spb):null;
+}
+/* a position's x inside its bar: a score's column at that onset, a table's cell centre */
+function posX(it,box,t,spb){
+  if(it.an.style==="score"){ let best=null; for(const st of box.B.staffs) for(const c of st.cols){ const d=Math.abs(c.onset/st.total-t/spb); if(best===null||d<best.d) best={d,x:c.x}; }
+    if(best&&best.d<0.5/spb) return best.x; return box.x0+(t+0.3)/spb*(box.x1-box.x0); }
+  const B=box.B; if(B.edges) return (B.edges[t]+B.edges[t+1])/2; return B.x0+(t+0.5)*(B.slot||(B.x1-B.x0)/spb);
+}
+const cssVar=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function paintOvl(it){
+  const d=it.scanEl; if(!d||!d.isConnected) return; const img=d.querySelector("img"), cv=d.querySelector("canvas"), mks=d.querySelector(".mks");
+  const W=img.clientWidth, H=img.clientHeight; if(!W) return; const dpr=window.devicePixelRatio||1, k=W/it.w;
+  if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){ cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr); }
+  const x=cv.getContext("2d"); x.setTransform(dpr*k,0,0,dpr*k,0,0); x.clearRect(0,0,it.w,it.h);
+  const violet=cssVar("--violet")||"#6E5A8C", dixie=cssVar("--dixie")||"#E59315";
+  const n=barCount(it), an=it.an; mks.innerHTML="";
+  for(let idx=0;idx<n;idx++){ const b=barBox(it,idx); if(!b) continue; const spb=b.B.spb||an.N/an.bpr;
+    /* the playhead: a band over the bar, a thin line at the position */
+    if(it.band&&it.band.idx===idx){ x.fillStyle="rgba(229,147,21,.18)"; x.fillRect(b.x0,b.y0,b.x1-b.x0,b.y1-b.y0);
+      const px=posX(it,b,it.band.t,it.band.spb); x.fillStyle=dixie; x.fillRect(px-1/k,b.y0,2/k,b.y1-b.y0); }
+    /* the doubts: a dot under each unsure position */
+    const cells=barCells(it,idx)||[]; x.fillStyle=violet;
+    cells.forEach((c,t)=>{ if(!c.q) return; const px=posX(it,b,t,spb); x.beginPath(); x.arc(px,b.y1-3/k,3.5/k,0,Math.PI*2); x.fill(); });
+    /* a table starts here: a violet edge and the name */
+    const first=idx===0; if(!first&&!(idx in it.splits)) continue;
+    x.fillStyle=violet; x.fillRect(b.x0-1/k,b.y0,3/k,b.y1-b.y0);
+    const mk=document.createElement("div"); mk.className="mk"; mk.style.left=Math.max(0,b.x0*k)+"px"; mk.style.top=Math.max(20,b.y0*k)+"px";
+    const nm=document.createElement("input"); nm.type="text"; nm.placeholder="name"; nm.value=first?it.secName:(it.splits[idx]||""); nm.title=first?"This table's name in the piece: A1, Verse, Bridge 2. Click the bar to keep it; the first bar always starts a table.":"The table's name in the piece: A1, Verse, Bridge 2. Click the bar again to join it to the table before.";
+    nm.addEventListener("input",()=>{ if(first){ const old=it.secName; it.secName=nm.value.trim()||old; ARR=ARR.map(a=>a===old?it.secName:a); paintQueue(); } else it.splits[idx]=nm.value; paintOutIfAssembled(); });
+    nm.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key==="Escape") nm.blur(); e.stopPropagation(); });
+    mk.appendChild(nm); mks.appendChild(mk); if(it.focusIdx===idx){ it.focusIdx=null; nm.focus(); nm.select(); } }
+}
+function toggleSplit(it,idx){
+  if(idx===0){ it.focusIdx=0; paintOvl(it); return; }
+  if(idx in it.splits) delete it.splits[idx]; else { it.splits[idx]="bar "+(idx+1); it.focusIdx=idx; }
+  paintOvl(it); paintOutIfAssembled();
 }
 function paintOutIfAssembled(){ playerFollow(); if(STEP==="assemble") paintAssemble(); }
-function repaintSlot(){ const {it,ri,si,el}=POP; const cell=it.read[ri].cells[si]; el.classList.toggle("q",cell.q); el.className=el.className.replace(/ n\d/,"")+(cell.evs.length>1?" n"+Math.min(4,cell.evs.length):"");
-  el.innerHTML=[...cell.evs].sort((a,b)=>(a.v==="field"?a.f:-1)-(b.v==="field"?b.f:-1)).map(glyphHTML).join(""); paintQueue(); playerFollow(); }
-$("hL").addEventListener("click",()=>{ popHand="L"; paintPop(); }); $("hR").addEventListener("click",()=>{ popHand="R"; paintPop(); });
-$("popClear").addEventListener("click",()=>{ const {it,ri,si}=POP; it.read[ri].cells[si].evs=[]; it.read[ri].cells[si].q=false; paintPop(); repaintSlot(); });
-$("popDone").addEventListener("click",()=>{ $("pop").classList.remove("on"); document.querySelectorAll(".read .slot.sel").forEach(s=>s.classList.remove("sel")); POP=null; });
 document.addEventListener("keydown",e=>{
-  if(STEP==="check"&&CUR&&CUR.read&&!(e.target&&/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))){
-    if(e.key==="ArrowLeft"||e.key==="ArrowRight"){ e.preventDefault(); setCursor(CUR,CUR.cur+(e.key==="ArrowRight"?1:-1));
-      if(POP){ const el=slotEl(CUR,CUR.cur); if(el) el.click(); } return; }
-    if(e.key===" "&&!POP){ e.preventDefault(); if(appEval("playing")) playerStop(); else playFromCursor(); return; }
-  }
-  if(!POP) return; const k=e.key; const cell=POP.it.read[POP.ri].cells[POP.si];
-  const push=ev=>{ cell.evs.push(Object.assign({hand:popHand},ev)); cell.q=false; paintPop(); repaintSlot(); };
-  if(/^[1-9]$/.test(k)) push({v:"field",f:+k}); else if(k==="d"||k==="D") push({v:"field",f:0}); else if(k==="m"||k==="M") push({v:"field",f:0,art:"mute"});
-  else if(k==="t") push({v:"perc",s:"tak"}); else if(k==="k") push({v:"perc",s:"tak",g:"K"}); else if(k==="^") push({v:"perc",s:"slap"}); else if(k==="."||k==="g") push({v:"ghost"});
-  else if(k==="l") { popHand="L"; paintPop(); } else if(k==="r"){ popHand="R"; paintPop(); }
-  else if(k==="Backspace"){ cell.evs.pop(); cell.q=false; paintPop(); repaintSlot(); } else if(k==="Escape"||k==="Enter") $("popDone").click(); else return; e.preventDefault(); });
+  if(STEP==="check"&&!(e.target&&/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))&&e.key===" "){ e.preventDefault(); if(appEval("playing")) playerStop(); else playToggle(); } });
 $("btnBackFound").addEventListener("click",()=>setStep("found"));
-$("btnAccept").addEventListener("click",()=>{ CUR.status="ok"; for(const R of CUR.read) for(const c of R.cells) c.q=false; paintQueue(); navState();
-  const next=ITEMS.find(i=>i.status!=="ok"); if(next){ toast(CUR.secName+" accepted"); (async()=>{ if(next.status==="new") await prepare(next); CUR=next; paintQueue(); navState(); setStep(next.read?"check":"found"); })(); } else setStep("assemble"); });
+$("btnAccept").addEventListener("click",()=>{ for(const it of ITEMS) if(it.read){ it.status="ok"; for(const R of it.read) for(const c of R.cells) c.q=false; } paintQueue(); navState();
+  const next=ITEMS.find(i=>i.status!=="ok"); if(next){ toast("Accepted"); (async()=>{ if(next.status==="new") await prepare(next); CUR=next; paintQueue(); navState(); setStep(next.read?"check":"found"); })(); } else setStep("assemble"); });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   THE FOURTH PICTURE: A PRINTED SCORE (8 Sep 2026 — SCORE-IMPORT.md)
+   score-reader.js reads it, score-arrange.js rates every pan and writes the
+   piece; here the two are wired into Found · Pan · Check · Assemble. The
+   arrangement becomes the reader's own rows and cells, so Check, the slot
+   editor, the player and Assemble work on it unchanged.
+   ═══════════════════════════════════════════════════════════════════════ */
+let PANLIST=null, panListP=null;
+/* the app's pan list, read from the app beside this file (the one source);
+   the user's own pans from the app's storage — same origin in the shell */
+function loadPans(){ return panListP||(panListP=(async()=>{
+  let pans=[];
+  try{ const t=await (await fetch(PLAYER_URL.split("?")[0])).text(); const i=t.indexOf("const BUILTIN_PANS=["); const j=t.indexOf("\n];",i);
+    if(i>=0&&j>i) pans=new Function("return "+t.slice(i+"const BUILTIN_PANS=".length,j+2))(); }catch(e){ console.warn("pan list",e); }
+  try{ const mine=JSON.parse(localStorage.getItem("hps.pans")||"[]"); if(Array.isArray(mine)) for(const p of mine) if(p&&p.id&&p.ding&&Array.isArray(p.fields)&&!pans.some(q=>q.id===p.id)) pans.push(Object.assign({mine:true},p)); }catch(e){}
+  PANLIST=pans; fillPanSelect(); return pans; })()); }
+function fillPanSelect(){ const sel=$("fPan"); const list=PANLIST?PANLIST.map(p=>[p.id,p.name]):PANS; if(sel.dataset.n===String(list.length)) return;
+  const keep=sel.value; sel.innerHTML=""; for(const [id,nm] of list){ const o=document.createElement("option"); o.value=id; o.textContent=nm; sel.appendChild(o); } sel.dataset.n=String(list.length); if(keep&&[...sel.options].some(o=>o.value===keep)) sel.value=keep; }
+function grayOf(it){ const d=it.data, g=new Uint8Array(it.w*it.h); for(let i=0,j=0;i<g.length;i++,j+=4){ const a=d[j+3]/255; g[i]=Math.round((0.299*d[j]+0.587*d[j+1]+0.114*d[j+2])*a+255*(1-a)); } return g; }
+function scoreAnalyze(it){
+  if(typeof ScoreReader==="undefined") return false;
+  const res=ScoreReader.read({w:it.w,h:it.h,gray:grayOf(it)});
+  if(!res.systems||!res.systems.length||!res.bars.length) return false;
+  it.score=res; it.read=null; it.splits={}; it.frame={x0:0,y0:0,x1:it.w-1,y1:it.h-1};
+  it.an={style:"score",beats:res.meter.beats,sub:2,bpr:2,N:res.meter.beats*4,fifths:res.key.fifths,bars:[],rows:[],labels:[],labelText:[],fit:0,tx0:0,tx1:it.w,
+    inner:{x0:0,y0:0,x1:it.w,y1:it.h},frame:it.frame,sp:res.sp};
+  loadPans();
+  return true;
+}
+const KEYS=["C","G","D","A","E","B","F♯","C♯"], KEYSF=["C","F","B♭","E♭","A♭","D♭","G♭","C♭"];
+const keyLabel=f=>(f>=0?KEYS[Math.min(7,f)]:KEYSF[Math.min(7,-f)])+" major";
+const durName=d=>({4:"whole",3:"dotted half",2:"half",1.5:"dotted quarter",1:"quarter",0.75:"dotted eighth",0.5:"eighth",0.25:"sixteenth"})[d]||(d+" beats");
+function paintFoundScore(it){
+  const res=it.score, sp=res.sp;
+  const cv=$("cv"); const maxW=Math.min(1100, document.querySelector("main").clientWidth-50); scale=Math.min(1,maxW/it.w);
+  cv.width=Math.round(it.w*scale); cv.height=Math.round(it.h*scale); const x=cv.getContext("2d");
+  x.drawImage(it.img,0,0,cv.width,cv.height); $("ovl").innerHTML="";
+  x.save(); x.scale(scale,scale); x.lineWidth=Math.max(1,sp*0.08);
+  for(const sys of res.systems){ const y0=sys.staffs[0].lines[0]-2*sp, y1=sys.staffs[sys.staffs.length-1].lines[4]+2*sp;
+    for(const bx of sys.bars){ x.strokeStyle="rgba(110,90,140,.75)"; x.beginPath(); x.moveTo(bx,y0); x.lineTo(bx,y1); x.stroke(); } }
+  x.font=`bold ${Math.round(sp*0.72)}px -apple-system,sans-serif`;
+  for(const b of res.bars){ const sys=res.systems[b.sysIndex];
+    for(const st of b.staffs){ const staff=sys.staffs.find(S=>S.clef===st.clef)||sys.staffs[0]; const top=staff.lines[0];
+      if(b.q){ x.fillStyle="rgba(110,90,140,.10)"; x.fillRect(b.x0,top-2.5*sp,b.x1-b.x0,staff.lines[4]-top+5*sp); }
+      for(const c of st.cols){
+        if(c.rest){ x.fillStyle="rgba(191,83,70,.85)"; x.fillText("rest",c.x-0.6*sp,top-1.1*sp); continue; }
+        c.notes.forEach((nt,i)=>{ x.fillStyle=(nt.q||c.q)?"rgba(110,90,140,.95)":"rgba(63,140,80,.95)"; x.fillText(nt.name+(i===0?" · "+durName(c.dur):""),c.x+0.6*sp,top-(0.35+0.85*i)*sp); }); } } }
+  x.restore();
+  const ch=$("foundChips"); ch.innerHTML="";
+  const chip=(html,cls,tip)=>{ const s=document.createElement("span"); s.className="chip "+(cls||""); s.innerHTML=html; if(tip) s.title=tip; ch.appendChild(s); return s; };
+  const nq=res.bars.filter(b=>b.q).length;
+  chip(`score · ${res.systems.length} system${res.systems.length===1?"":"s"} · ${res.bars.length} bars`,"vio","A printed score: staffs from the five lines, bars from the bar lines, notes from the heads.");
+  chip(keyLabel(res.key.fifths),"vio","The key signature, read after the clef. Every pitch follows from it.");
+  chip(`${res.meter.beats} beats a bar`,"vio","What most bars add up to. The time signature's digits are not read yet, so 6/8 shows as 3 beats.");
+  chip(res.sectionCuts&&res.sectionCuts.length?`sections end after bar ${res.sectionCuts.join(", ")}`:"one section","","Thick bar lines — repeats and finals — end a section. Tables are cut there and filled to four rows.");
+  chip(nq?`${nq} bar${nq===1?"":"s"} to check`:"every bar adds up", nq?"vio":"", nq?"Bars whose notes do not add up to the meter, or with a head between two positions. Violet on the score; check them after arranging.":"Every bar's notes add up to the meter.");
+  chip(`${res.notes.length} notes`,"","Note heads found, filled and hollow.");
+  chip(res.tempo?`♩ = ${res.tempo.bpm}`:"no tempo mark", res.tempo?"vio":"", res.tempo?"The tempo mark above the first staff, read digit by digit. It becomes the piece's tempo; change it on Assemble if it is wrong.":"No ♩ = … mark found above the first staff (a word like Andante is not read). The piece takes the tempo set on Assemble.");
+  /* the mark becomes the piece's tempo, unless the tempo was already set by hand or by an earlier screenshot (David, 9 Sep) */
+  if(res.tempo&&!$("fTempo").dataset.set){ $("fTempo").value=res.tempo.bpm; $("fTempo").dataset.set="1"; }
+}
+/* the transposition, said as a musician would */
+const INTERVALS=["as written","a semitone","a tone","a minor third","a third","a fourth","a tritone","a fifth","a minor sixth","a sixth","a minor seventh","a seventh","an octave"];
+function shiftText(sh){ if(!sh) return "as written"; const a=Math.abs(sh), dir=sh>0?"up ":"down "; if(a<=12) return dir+INTERVALS[a]; return dir+"an octave and "+INTERVALS[a-12]; }
+function stars(){ try{ return new Set(JSON.parse(localStorage.getItem("hpsReader.stars")||"[]")); }catch(e){ return new Set(); } }
+function setStar(id,on){ const s=stars(); if(on) s.add(id); else s.delete(id); localStorage.setItem("hpsReader.stars",JSON.stringify([...s])); }
+async function paintPan(){
+  const it=CUR; if(!it||!it.score) return;
+  $("panList").innerHTML='<p class="lede">Rating every pan…</p>';
+  const pans=await loadPans(); if(!pans.length){ $("panList").innerHTML='<p class="lede">No pan list: the app (app.html) must be served beside this file.</p>'; return; }
+  if(!it.rating) it.rating=ScoreArrange.rateAll(pans,it.score);
+  const r=it.rating;
+  /* the warnings */
+  const wHost=$("panWarn"); wHost.innerHTML="";
+  it.hard=r.warnings.some(wn=>wn.kind==="chromatic"||wn.kind==="hard");
+  for(const wn of r.warnings){ const d=document.createElement("div"); d.className="warn"+(wn.kind==="chromatic"||wn.kind==="hard"?" bad":"");
+    d.innerHTML=`<span class="ic">⚠</span><div>${wn.text}${(wn.kind==="chromatic"||wn.kind==="hard")?" You can still import: every note the pan lacks is replaced by the nearest that keeps the line, and marked violet on Check.":""}</div>`; wHost.appendChild(d); }
+  /* the filters */
+  it.panFilter=it.panFilter||"all"; if(it.panQuery===undefined) it.panQuery="";
+  const f=$("panFilters"); f.innerHTML="";
+  const mk=(key,label,tip)=>{ const b=document.createElement("button"); b.className="ctl"+(it.panFilter===key?" on":""); b.textContent=label; b.title=tip; b.addEventListener("click",()=>{ it.panFilter=key; paintPan(); }); f.appendChild(b); };
+  mk("all","All","Every pan in the app, and your own"); mk("star","★ Starred","The pans you starred here"); mk("mine","My pan","The pan the app is set to");
+  mk("fit","Holds the melody","Pans that have every melody note"); mk("big","17 notes or more","The larger pans");
+  const q=document.createElement("input"); q.className="q"; q.placeholder="search a name"; q.value=it.panQuery; q.title="Filter the list by name"; q.addEventListener("input",()=>{ it.panQuery=q.value; paintPanList(); }); f.appendChild(q);
+  /* the options */
+  const o=$("panOpts"); o.innerHTML="";
+  it.chordMode=it.chordMode||"keep";
+  const seg=(key,label,tip)=>{ const b=document.createElement("button"); b.className="ctl"+(it.chordMode===key?" on":""); b.textContent=label; b.title=tip; b.addEventListener("click",()=>{ it.chordMode=key; paintPan(); }); o.appendChild(b); };
+  seg("keep","Keep chords as written","Every note of every chord, as the sheet has it — for you to thin at the pan.");
+  seg("adapt","Adapt chord voicings to the handpan","One hand plays the melody, the other the chord. The chord hand keeps the root, adds the third when the two lie under one hand, else the fifth, else plays the root alone.");
+  it.foreignMode=it.foreignMode||"place";
+  const gap=document.createElement("span"); gap.style.width="10px"; o.appendChild(gap);
+  const segF=(key,label,tip)=>{ const b=document.createElement("button"); b.className="ctl"+(it.foreignMode===key?" on":""); b.textContent=label; b.title=tip; b.addEventListener("click",()=>{ it.foreignMode=key; paintPan(); }); o.appendChild(b); };
+  segF("place","Place foreign notes on the pan","A note outside the pan's scale becomes the nearest note that keeps the line, in the stand-in colour; on a pan that has the note it comes back as written.");
+  segF("keep","Keep foreign notes foreign","A note outside the pan's scale stays foreign: its name in the stand-in colour, on no field, sounding as written — for another handpan to cover. On a pan that has the note it comes home.");
+  const tie=document.createElement("span"); tie.className="chip"; tie.textContent="tied notes sound once"; tie.title="Two heads of one pitch joined by an arc are one note (David, 8 Sep)."; o.appendChild(tie);
+  paintPanList();
+}
+function paintPanList(){
+  const it=CUR; if(!it||!it.rating) return; const r=it.rating; const st=stars(); const myPan=localStorage.getItem("hps.panId");
+  let list=r.rated.slice();
+  const qq=(it.panQuery||"").trim().toLowerCase(); if(qq) list=list.filter(x=>x.pan.name.toLowerCase().includes(qq));
+  if(it.panFilter==="star") list=list.filter(x=>st.has(x.pan.id));
+  if(it.panFilter==="mine") list=list.filter(x=>x.pan.id===myPan||x.pan.mine);
+  if(it.panFilter==="fit") list=list.filter(x=>x.melody>=0.999);
+  if(it.panFilter==="big") list=list.filter(x=>1+(x.pan.fields||[]).length+(x.pan.bottom||[]).length>=17);
+  if(!it.panId){ const mine=r.rated.find(x=>x.pan.id===myPan); it.panId=(mine&&mine.melody>=0.999)?myPan:(r.rated[0]&&r.rated[0].pan.id); }
+  const host=$("panList"); host.innerHTML="";
+  const tiers=[["top","Holds the whole piece on the top shell"],["mostly","Holds the melody, part of it underneath"],["split","Holds the melody, split across both faces"],["missing","Does not hold every melody note"]];
+  const bar=(v,cls)=>`<span class="b ${cls}"><i style="width:${Math.round(v*100)}%"></i></span>`;
+  const grade=v=>v>=0.999?"":v>=0.75?"mid":"low";
+  let shown=0;
+  for(const [tier,label] of tiers){ const rows=list.filter(x=>x.tier===tier); if(!rows.length) continue;
+    const h=document.createElement("div"); h.className="tier"; h.textContent=label+` · ${rows.length}`; host.appendChild(h);
+    for(const x of rows.slice(0,it.panShowAll?rows.length:12)){ shown++;
+      const d=document.createElement("div"); d.className="panrow"+(x.pan.id===it.panId?" sel":"")+(tier==="missing"?" dim":"");
+      const nMiss=Math.round((1-x.melody)*x.counts.melody);
+      const missing=x.melody<0.999?` · ${nMiss} note${nMiss===1?"":"s"} missing`:"";
+      d.innerHTML=`<button class="star ${st.has(x.pan.id)?"on":""}" title="Star this pan">${st.has(x.pan.id)?"★":"☆"}</button>
+        <span class="nm">${x.pan.name}${x.pan.id===myPan?"<small>your pan</small>":x.pan.mine?"<small>yours</small>":""}</span><span class="key">plays in ${x.key} major · ${shiftText(x.shift)}</span>
+        <div class="bars">${bar(x.melody,grade(x.melody))}${bar(x.onTop,grade(x.onTop))}${bar(x.bassLow,grade(x.bassLow))}</div>
+        <div class="lbl"><span>melody ${Math.round(x.melody*100)} %${missing}</span><span>on top ${Math.round(x.onTop*100)} %</span><span>bass low ${Math.round(x.bassLow*100)} %</span></div>`;
+      d.title=`${x.pan.name}: ${x.pan.ding} / ${(x.pan.fields||[]).join(" ")}${x.pan.bottom&&x.pan.bottom.length?"  |  "+x.pan.bottom.join(" "):""}`;
+      d.querySelector(".star").addEventListener("click",e=>{ e.stopPropagation(); setStar(x.pan.id,!st.has(x.pan.id)); paintPanList(); });
+      d.addEventListener("click",()=>{ it.panId=x.pan.id; paintPanList(); });
+      host.appendChild(d); }
+    if(rows.length>12&&!it.panShowAll){ const m=document.createElement("div"); m.className="more"; m.textContent=`${rows.length-12} more in this tier — show all`; m.style.cursor="pointer"; m.addEventListener("click",()=>{ it.panShowAll=true; paintPanList(); }); host.appendChild(m); } }
+  if(!shown) host.innerHTML='<p class="lede">No pan matches this filter.</p>';
+  const sel=r.rated.find(x=>x.pan.id===it.panId);
+  $("btnArrange").textContent=sel?((it.hard||sel.melody<0.999)?`Import anyway for ${sel.pan.name} →`:`Arrange for ${sel.pan.name} →`):"Arrange →";
+}
+/* the arrangement, then the reader's own rows and cells from it */
+function arrangeScore(it){
+  const pan=PANLIST.find(p=>p.id===it.panId); if(!pan){ toast("Choose a pan first"); return false; }
+  const rp=ScoreArrange.ratePan(pan,it.rating.voices);
+  const before=ITEMS.filter(x=>x!==it&&x.score&&x.piece&&ITEMS.indexOf(x)<ITEMS.indexOf(it)).reduce((n,x)=>n+Object.keys(x.piece.sections).length,0);
+  const piece=ScoreArrange.arrange(it.score,pan,rp.shift,{chords:it.chordMode||"keep",foreign:it.foreignMode||"place",title:it.name,letterOffset:before,tempo:+$("fTempo").value||72});
+  it.piece=piece; it.writtenFor=pan.id; it.shift=rp.shift;
+  const an=it.an; an.beats=piece.meter[0]; an.sub=piece.sub; an.bpr=piece.barsPerRow; const spb=an.beats*an.sub; an.N=spb*an.bpr;
+  const bars=[]; it.splits={}; let idx=0;
+  for(const nm of piece.arrangement){ const sec=piece.sections[nm]; if(idx===0) it.secName=nm; else it.splits[idx]=nm; for(const b of sec.bars) bars.push(b); idx+=sec.bars.length; }
+  const res=it.score, sp=res.sp;
+  const rows=[];
+  for(let r0=0;r0<bars.length;r0+=an.bpr){
+    const cells=[]; for(let s=0;s<an.N;s++) cells.push({evs:[],q:false,notes:[]});
+    for(let b=0;b<an.bpr&&r0+b<bars.length;b++) for(const e of bars[r0+b]){ const cell=cells[b*spb+e.t]; if(!cell) continue;
+      const ev={v:"field",f:e.f,hand:e.hand}; if(e.sub){ ev.sub=true; ev.oi=e.oi; if(e.fo) ev.fo=true; }   // a stand-in keeps its mark and its written interval into the piece; a kept-foreign note its flag
+      cell.evs.push(ev); if(e.q) cell.q=true; }
+    /* the strip on Check: the score's own bars, both staffs, from this row's first bar to its last in the same system */
+    const B0=res.bars[r0], B1=res.bars[Math.min(bars.length-1,r0+an.bpr-1)]; const sys=res.systems[B0.sysIndex];
+    const top=sys.staffs[0].lines[0]-2.2*sp, bot=sys.staffs[sys.staffs.length-1].lines[4]+2.2*sp;
+    const x1=(B1.sysIndex===B0.sysIndex)?B1.x1:sys.bars[sys.bars.length-1];
+    rows.push({cells,top:Math.max(0,top),base:Math.min(it.h,bot),H:0.01,segs:[{x0:Math.max(0,B0.x0),x1:Math.min(it.w,x1)}]});
+  }
+  it.read=rows; it.status="read"; it.cur=0;
+  fillPanSelect(); const sel=$("fPan"); if(![...sel.options].some(o=>o.value===pan.id)){ const o=document.createElement("option"); o.value=pan.id; o.textContent=pan.name; sel.appendChild(o); } sel.value=pan.id;
+  if(piece.importLog.length) toast(`${piece.importLog.length} note${piece.importLog.length===1?"":"s"} changed for the pan — in the stand-in colour on Check`);
+  return true;
+}
+$("btnPanBack").addEventListener("click",()=>setStep("found"));
+$("btnArrange").addEventListener("click",()=>{ if(arrangeScore(CUR)){ paintQueue(); navState(); setStep("check"); } });
 
 /* ── Assemble ──────────────────────────────────────────────────────────── */
 function paintAssemble(){
@@ -1267,7 +1571,7 @@ function paintAssemble(){
   const secs=$("secs"); secs.innerHTML="";
   const p0=buildPiece(); const names=p0?Object.keys(p0.sections):items.map(i=>i.secName);
   for(const nm of names){ const b=document.createElement("button"); b.textContent=nm; b.title="Add "+nm+" to the arrangement, once for every time it plays"; b.addEventListener("click",()=>{ ARR.push(nm); paintArr(); }); secs.appendChild(b); }
-  if(!$("fPan").options.length) for(const [id,nm] of PANS){ const o=document.createElement("option"); o.value=id; o.textContent=nm; $("fPan").appendChild(o); }
+  fillPanSelect();
   const marks=items.flatMap(it=>(it.an.tempos||[]).map(t=>({it,t})));
   let tl=$("tempoList"); if(!tl){ tl=document.createElement("p"); tl.id="tempoList"; tl.className="lede"; $("tbl").after(tl); }
   if(marks.length){ if(!$("fTempo").dataset.set){ $("fTempo").value=marks[0].t.bpm; $("fTempo").dataset.set="1"; }
@@ -1288,12 +1592,24 @@ function paintOut(){
   $("outCode").value=code; $("lnkOpen").href=APP_URL+"#p="+enc(p); window._piece=p;
   playerFollow();
 }
-$("btnPlayLoad").addEventListener("click",()=>loadPlayer(STEP==="check"?CUR:null));
-$("btnPlayCur").addEventListener("click",playFromCursor);
+$("btnPlayLoad").addEventListener("click",()=>loadPlayer(null));
+$("btnPlayCur").addEventListener("click",playToggle);
+/* THE SCANS' SIZE is David's (9 Sep: "let me resize the original notation on the check screen so I can make it
+   smaller and actually see the whole page"): the one layout rule's number, a scan's height as a share of the window,
+   from the slider, remembered on this device. The overlays follow through their ResizeObserver. */
+{ const sl=$("scanH"); const apply=v=>{ document.documentElement.style.setProperty("--scan-h",v+"vh"); document.documentElement.style.setProperty("--scan-w",Math.min(70,v)+"%"); };
+  let v=72; try{ v=Math.max(20,Math.min(100,+localStorage.getItem("hpsReader.scanH")||72)); }catch(e){} sl.value=v; apply(v);
+  sl.addEventListener("input",()=>{ apply(+sl.value); try{ localStorage.setItem("hpsReader.scanH",sl.value); }catch(e){} });
+  /* where the scans sit: above the app (the default), or beside it — the same slider then shares the width */
+  const setSide=side=>{ const m=document.querySelector("main"); m.classList.toggle("side",side!=="above"); m.classList.toggle("right",side==="right");
+    document.querySelectorAll("#scanSide .ctl").forEach(b=>b.classList.toggle("on",b.dataset.side===side)); try{ localStorage.setItem("hpsReader.scanSide",side); }catch(e){} };
+  let side="above"; try{ side=localStorage.getItem("hpsReader.scanSide")||"above"; }catch(e){} if(!/^(above|left|right)$/.test(side)) side="above"; setSide(side);
+  document.querySelectorAll("#scanSide .ctl").forEach(b=>b.addEventListener("click",()=>setSide(b.dataset.side))); }
 $("btnStopCur").addEventListener("click",playerStop);
 $("btnArrClear").addEventListener("click",()=>{ ARR=[]; paintArr(); });
 $("btnArrAll").addEventListener("click",()=>{ const p=buildPiece(); ARR=p?Object.keys(p.sections):[]; paintArr(); });
 ["fTitle","fPan","fTempo"].forEach(id=>$(id).addEventListener("input",paintOut));
+$("fTempo").addEventListener("input",()=>{ $("fTempo").dataset.set="1"; });   // a tempo typed by hand is not overwritten by a later screenshot's mark
 $("btnCode").addEventListener("click",()=>{ navigator.clipboard.writeText($("outCode").value).then(()=>toast("Code copied")); });
 $("btnJson").addEventListener("click",()=>{ navigator.clipboard.writeText(JSON.stringify(window._piece,null,1)).then(()=>toast("JSON copied")); });
 $("btnFile").addEventListener("click",()=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([$("outCode").value+"\n"],{type:"text/plain"})); a.download=($("fTitle").value||"piece").replace(/[^\w -]+/g,"")+".hps"; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); });

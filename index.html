@@ -23,6 +23,7 @@
   --green:#3F8C50; --green-soft:#EDF4EE;
   --sc-bg:#FFFFFF; --sc-edge:#6B4A38; --sc-ink:#17150F; --sc-hand:#3F8C50;
   --hand-l:#469957; --hand-r:#17150F;   /* the LEFT hand green, the RIGHT hand black — the letter is the hand (5 Sep); student-selectable */
+  --hand-s:#A21AF1;                     /* a STAND-IN note — one the pan lacks, replaced by the score import (David, 8 Sep: "a new color"; 9 Sep: the purple of his swatch, #A21AF1, over the earlier strong blue", violet was hard to see); set beside the hand colours */
   --sc-rule:#D9D2C6; --sc-count:#C6BEB1; --sc-band:#FBE7C6;
   /* THE PLAYING WASH IS TRANSLUCENT (David, 30 Aug, after four attempts at
      out-stacking it: "the marker still blocks the lines"). Z-order could
@@ -1731,6 +1732,10 @@ body:not(.phone) .tsyms.lane{min-height:31px}
 body:not(.phone) .beat.tbeat{padding:5px 1px 4px}
 .sym.l{color:var(--hand-l)}
 .sym.r{color:var(--hand-r)}
+.sym.s{color:var(--hand-s)}   /* a stand-in note wears its own colour, whichever hand plays it */
+.sym.fo{font-weight:800}       /* a foreign note: the note's name, on no field (For my pan · keep missing notes foreign) */
+.sym.fo .acc{font-size:.6em; vertical-align:.34em; letter-spacing:0; margin-left:.03em}   /* its flat or sharp: a small raised b or # in the same face */
+#report .keepfo{display:flex; align-items:center; gap:6px; font-size:12.5px; margin:6px 0 4px; cursor:pointer}
 .sym.gh{font-size:21px; line-height:1.15}
 .sym.pc{font-size:21px}
 .sym.ot::after{content:"˚"; font-size:12px; vertical-align:top}
@@ -6642,7 +6647,8 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <span style="display:flex;gap:7px;align-items:center">
       <label class="ctl" id="colCtl" title="Hand colours — double-click to reset">
         L <input type="color" id="colR" aria-label="Left-hand colour">
-        R <input type="color" id="colL" aria-label="Right-hand colour"></label>
+        R <input type="color" id="colL" aria-label="Right-hand colour">
+        <span title="A stand-in note: one the pan did not have when a score was imported, replaced by the nearest that keeps the line. It comes back as written on a pan that has it.">✱ <input type="color" id="colS" aria-label="Stand-in note colour"></span></label>
       <button class="ctl" id="colReset" title="Hand colours back to black + green">↺</button></span></div>
   <div class="dsep" id="setFeelSep"></div>
   <!-- EMPTIED BY THE MOVE (28 Aug). Swing goes to the footer on the desktop
@@ -7583,6 +7589,14 @@ function preloadBank(){ // returns a promise: everything the current pan needs
      tap falls through to synthBuf, which is exactly how a real note comes out
      sounding digital. */
   for(const b of myPan.bottom||[]) ps.push(bankDecode("o"+b.midi),bankDecode("m"+b.midi));
+  /* …and the piece's FOREIGN notes (David, 9 Sep: "foreign notes should still be played by the handpan sample, not
+     by a digital sound"): a note kept foreign at import, or kept foreign in transposition, sounds at a pitch no
+     field of this pan has — bank.js has the sample, or the nearest one shifted, but only a decoded key plays; an
+     undecoded one fell through to synthBuf. Whatever foreignOf says is foreign right now is decoded here. */
+  if(piece&&piece.sections){ const seen=new Set();
+    for(const nm in piece.sections) for(const bar of (piece.sections[nm].bars||[])) for(const ev of bar){
+      if(!ev||ev.v!=="field") continue; let fo=null; try{ fo=foreignOf(ev); }catch(e){}
+      if(fo&&fo.pos===null&&fo.midi!=null&&!seen.has(fo.midi)){ seen.add(fo.midi); ps.push(bankDecode("o"+fo.midi),bankDecode("m"+fo.midi)); } } }
   for(const p of ["takR","takL","slapR","slapL","knockR","knockL"]) ps.push(bankDecode("p_"+p));
   return Promise.allSettled(ps);
 }
@@ -8486,6 +8500,362 @@ function letItBe(){
 /* third in the library, after the two compositions it sits beside in the course */
 DEMOS.splice(2,0,letItBe());
 
+/* LET IT BE — THE LEAD SHEET, ARRANGED FOR D KURD 17 (7 Sep 2026). Read from
+   David's screenshot of the piano/vocal sheet (C major, 4/4, "Slowly": the
+   two-bar intro and the verse, bars 3–9 under a repeat). Note heads were
+   located by measurement, not by eye (the first bar's line is A G F E D C).
+   TRANSPOSED DOWN A FIFTH to F major, the one major key a D Kurd holds:
+   melody G4–F5 → C4–B♭4, bass on the ding and the underside (F3 = b3,
+   C3 = b2, B♭2 = b1, Dm = the ding). Three notes the pan does not have:
+   · B♭4 ("words" in "speaking words of wisdom", the sheet's F5) → C5, the
+     chord's root, keeps the up-and-back shape;
+   · E3 (bar 2's first note, the sheet's B3) → bar 2 takes the PIANO BASS
+     line instead (C3 B♭2 A3, the sheet's G F E), same chords;
+   · bar 10 is not on the screenshot (the page ends at "let it") — written
+     as bar 6 with the "When I" pick-up so the repeat works.
+   Bass with the left hand, melody alternating from the right; a bass note on
+   1 and 3 stacks with the melody's eighth — the underside stacks are the
+   thing to judge at the pan. Eighths (sub 2), two bars to a row: the intro one
+   row, the verse one table of four. */
+function letItBeSheet(){
+  const B=(t,i,h)=>F(t,"b"+i,h);            // underside note i (1 = B♭2, 2 = C3, 3 = F3, 4 = G3)
+  const intro=[
+   /* 1  B♭ · F      D C B♭ A G F  — the famous descent, B♭2 under the first note */
+   [F(0,4,"R"),B(0,1,"L"),F(2,3,"L"),F(3,2,"R"),F(4,1,"L"),B(6,4,"R"),B(7,3,"L")],
+   /* 2  C · B♭ · F/A  the bass line, then "When I" */
+   [B(0,2,"R"),B(2,1,"L"),F(4,1,"R"),F(6,3,"L"),F(7,3,"R")]];
+  const bar3=[F(0,3,"R"),B(0,3,"L"),F(1,3,"L"),F(2,4,"R"),F(3,1,"L"),      // find my-self in
+              F(4,3,"R"),B(4,2,"L"),F(5,3,"L"),F(6,6,"R"),F(7,7,"L")];     // times of trou-ble
+  const bar4=[F(0,7,"R"),F(0,0,"L"),F(1,8,"L"),F(2,8,"R"),F(3,7,"L"),      // Mo-ther Ma-ry
+              F(4,7,"R"),B(4,1,"L"),F(5,6,"L"),F(6,6,"R")];                // comes to me
+  const bar5=[F(0,8,"R"),B(0,2,"L"),F(1,8,"L"),F(2,9,"R"),F(3,8,"L"),      // speak-ing words of
+              F(4,8,"R"),B(4,2,"L"),F(5,7,"L"),F(6,8,"R"),F(7,7,"L")];     // wis-dom let it
+  const bar6=[F(0,6,"R"),B(0,1,"L"),B(4,3,"L"),F(6,3,"R")];                // be. — And
+  const bar7=[F(0,3,"R"),B(0,3,"L"),F(1,3,"L"),F(2,4,"R"),F(3,6,"L"),      // in my hour of
+              F(4,3,"R"),B(4,2,"L"),F(5,3,"L"),F(6,6,"R"),F(7,7,"L")];     // dark-ness she is
+  const bar10=[F(0,6,"R"),B(0,1,"L"),B(4,3,"L"),F(6,3,"R"),F(7,3,"L")];    // be. — When I
+  const cp=b=>b.map(e=>Object.assign({},e));
+  /* ONE FOUR-ROW TABLE FOR THE VERSE (David, 7 Sep: "when it makes sense, fill
+     the tables to four rows … instead of having two sections that go two rows
+     each"). The verse's two halves are bars 3–6 and 7–10; at two bars a row
+     they are one table of four rows, so A is the whole verse. */
+  const A=[bar3,bar4,bar5,bar6, bar7,cp(bar4),cp(bar5),bar10];
+  return { format:"hpd-2", id:"let-it-be-sheet", title:"Let It Be (lead sheet)",
+    author:"Lennon–McCartney", writtenFor:"d-kurd-17", tempo:72,
+    meter:[4,4], sub:2, barsPerRow:2,
+    sections:{ Intro:{bars:intro}, A:{bars:A} },
+    arrangement:["Intro","A","A"] };
+}
+DEMOS.splice(3,0,letItBeSheet());
+
+/* CANON IN D — PACHELBEL, ARRANGED FOR E KURD 21 (7 Sep 2026). Read from
+   David's screenshot of the simplified piano version (D major, 4/4, 20 bars:
+   four bars of the ground alone, the melody in halves, half-note chords, the
+   quarter-note variation, the variation with chords). Heads located by
+   measurement (staff spacing 14.9 px), checked against 2× crops; the
+   transcription is in the session's scratchpad notes. David chose the pan
+   from a rating of all 120 ("E Kurd 21") and kept the chords ("let's keep
+   them for now"). DOWN A FIFTH to G major: the melody A4–B5 becomes D4–E5,
+   all on the top shell; the ground's roots G D E B C are the underside and
+   the ding, and each arpeggio (root · 3rd · 5th · octave, as the piano's)
+   is raised one or two octaves to where the pan has it. Bass alternates
+   L R from the left on every eighth; a melody note takes the other hand of
+   the eighth it lands on. Eighths (sub 2), two bars a row: Intro two rows,
+   A and B four rows each. */
+function canonInD(){
+  const arp={ G:["b5",1,3,6], D:["b3","b4","b6",3], E:[0,"b5",1,4],
+              B:["b1","b3","b4",1], C:["b2",0,"b5",2] };      // root 3rd 5th 8ve
+  const ground=[["G","D"],["E","B"],["C","G"],["C","D"]];      // the four-bar bass, two chords a bar
+  const bassBar=i=>{ const [c1,c2]=ground[i%4]; const ps=arp[c1].concat(arp[c2]);
+    return ps.map((f,t)=>F(t,f,t%2?"R":"L")); };
+  const mel=(t,fs)=>(Array.isArray(fs)?fs:[fs]).map(f=>F(t,f,t%2?"L":"R"));
+  const bar=(i,...notes)=>bassBar(i).concat(...notes);
+  const intro=[bassBar(0),bassBar(1),bassBar(2),bassBar(3)];
+  const A=[
+    bar(0, mel(0,8), mel(4,7)),                 // 5  B A     (the sheet's F♯ E)
+    bar(1, mel(0,6), mel(4,5)),                 // 6  G F♯
+    bar(2, mel(0,4), mel(4,3)),                 // 7  E D
+    bar(3, mel(0,4), mel(4,5)),                 // 8  E F♯
+    bar(0, mel(0,[8,6,3]), mel(4,[7,5,3])),     // 9  half-note chords
+    bar(1, mel(0,[6,4,1]), mel(4,[5,3,1])),     // 10
+    bar(2, mel(0,[4,2,"b5"]), mel(4,[3,1,"b5"])), // 11
+    bar(3, mel(0,[4,2,"b5"]), mel(4,[5,3,"b6"]))]; // 12
+  const B=[
+    bar(0, mel(0,6), mel(2,8), mel(4,10), mel(6,9)),        // 13 quarters
+    bar(1, mel(0,8), mel(2,6), mel(4,8), mel(7,7)),         // 14 dotted quarter + eighth
+    bar(2, mel(0,6), mel(2,4), mel(4,6), mel(6,8)),         // 15
+    bar(3, mel(0,9), mel(2,11), mel(4,10), mel(7,9)),       // 16
+    bar(0, mel(0,[6,4]), mel(2,8), mel(4,[10,7]), mel(6,9)),   // 17 with chords
+    bar(1, mel(0,[8,6]), mel(2,6), mel(4,[8,5]), mel(7,7)),    // 18
+    bar(2, mel(0,[6,4,2]), mel(2,4), mel(4,[6,3]), mel(6,8)),  // 19
+    bar(3, mel(0,[9,4]), mel(2,11), mel(4,[10,5]), mel(7,9))]; // 20
+  return { format:"hpd-2", id:"canon-in-d", title:"Canon in D",
+    author:"Johann Pachelbel", collection:"Traditionals", writtenFor:"e-kurd-21", tempo:64,
+    meter:[4,4], sub:2, barsPerRow:2,
+    sections:{ Intro:{bars:intro}, A:{bars:A}, B:{bars:B} },
+    arrangement:["Intro","A","B"] };
+}
+DEMOS.splice(4,0,canonInD());
+
+/* ───────── THE ROOT RULE — how an arrangement uses the low notes ─────────
+   David, 8 Sep, twice. First: "the low notes are only used in accompaniment
+   when they are the root of the current chord. Check the jam rules, and we
+   should adapt the same when creating these arrangements." Then, seeing the
+   Canon: "this arrangement of the Canon in D works actually really well … in
+   this case it's okay. What doesn't work so well, especially, is to put the
+   THIRD in the bass as a bass note under a chord. In an arpeggio it can
+   sometimes work."
+
+   LOW MEANS BELOW A3, ABSOLUTELY — midi 57, whatever the pan (David's choice,
+   8 Sep, over the other definition the code carries: `panLowCut`, "any note
+   below the lowest note of the circle", which is pan-relative and sits a tone
+   higher on an E Kurd 21 because its ring starts at B3). The jam voicer is
+   where the number lives: `BASS_TOP = 57`, and `jvChordPool` enforces two
+   things on a voicing — `bassOk`, the lowest note may be under A3 only when it
+   is the ROOT, and `oneLow`, at most one note under A3 at all.
+
+   THE THREE PARTS, in the order they bite:
+     1. The ROOT may always be low. That is what the bottom shell is for.
+     2. The THIRD is never a standing bass note under a chord.
+     3. A moving ARPEGGIO may pass through low thirds and fifths — which is
+        exactly why the Canon's ground works and must not be "corrected".
+
+   THE GENERATIVE FORM for a chord that stands under a melody: rise from the
+   root, then take the LOWEST chord tone that is at or above A3. It writes
+   every voicing by itself — Em on an E Kurd 21 comes out ding-E3 · B3 · G4
+   rather than the G3 sitting right there, and C comes out C3 · E4 · G4.
+
+   The trap, met and fallen into on 8 Sep: "use the underside more" is not the
+   goal and led to whole triads underneath, which is mud. THE ROOT UNDERNEATH
+   is the goal. */
+/* AMAZING GRACE — arranged for D Kurd 10 (8 Sep 2026). The melody is not
+   transcribed from a picture: it is parsed from the LilyPond source of the
+   English Wikipedia article, so the pitches are exact — six of them,
+   D4 E4 G4 A4 B4 D5, inside exactly an octave. That is why this one is here:
+   26 of the 73 pans that have no underside hold it whole with the melody
+   entirely on the top shell, and the D Kurd 10 is one of them.
+   DOWN A TONE to F major, the one major key a D Kurd holds (as Let It Be).
+   The harmony is the hymn's own, read off the article's bass staff and moved
+   with the tune: F, with C7 at the half cadences, B♭ at "sweet the" and
+   "now am", Dm at "blind". The pan has NO LOW F, so the F chord is voiced
+   from A3 (F/A) and the ding D3 stands in at the two cadences, where D under
+   F A C is the Dm7 the instrument wants anyway. 3/4, eighths, two bars a
+   row: two tables of four rows. */
+function amazingGrace(){
+  const M=(t,f,h)=>F(t,f,h||"R"), B=(t,f)=>F(t,f,"L");   // melody right, bass left
+  const A3=1, Bb3=2, C4=3, D4=4, E4=5, F4=6, G4=7, A4=8, C5=9, DING=0;
+  const bars=[
+   /*  1 pickup — "A-"                       */ [M(4,C4)],
+   /*  2 "ma-zing"            F              */ [B(0,A3),M(0,F4),M(4,A4),M(5,F4,"L")],
+   /*  3 "grace how"          F  → C7        */ [B(0,A3),M(0,F4),M(0,A4),B(4,C4),M(4,E4),M(4,G4)],
+   /*  4 "sweet the"          Dm → B♭        */ [B(0,DING),M(0,F4),B(4,Bb3),M(4,D4)],
+   /*  5 "sound that"         F              */ [B(0,A3),M(0,C4),M(4,C4)],
+   /*  6 "saved a"            F              */ [B(0,A3),M(0,F4),M(4,A4),M(5,F4,"L")],
+   /*  7 "wretch like"        F  → C7        */ [B(0,A3),M(0,F4),M(0,A4),B(4,C4),M(4,E4),M(4,G4)],
+   /*  8 "me — I"             F              */ [B(0,A3),M(0,F4),M(0,C5),M(4,A4)],
+   /*  9 "once was"           F              */ [B(0,A3),M(0,F4),M(0,C5),M(3,A4,"L"),M(4,C5),M(5,A4,"L")],
+   /* 10 "lost but"           F              */ [B(0,A3),M(0,F4),M(4,C4)],
+   /* 11 "now am"             B♭             */ [B(0,Bb3),M(0,D4),M(3,F4,"L"),M(4,F4),M(5,D4,"L")],
+   /* 12 "found, was"         F              */ [B(0,A3),M(0,C4),M(4,C4)],
+   /* 13 "blind, but"         Dm → F         */ [B(0,DING),M(0,F4),B(4,A3),M(4,A4),M(5,F4,"L")],
+   /* 14 "now I"              F  → C7        */ [B(0,A3),M(0,F4),M(0,A4),B(4,C4),M(4,E4),M(4,G4)],
+   /* 15 "see."               F              */ [B(0,A3),M(0,F4)],
+   /* 16 the chord rings      F              */ [B(0,DING),M(0,F4),M(0,A4),M(0,C5)]];
+  return { format:"hpd-2", id:"amazing-grace", title:"Amazing Grace",
+    author:"Traditional (New Britain, 1835)", collection:"Traditionals", writtenFor:"d-kurd-9", tempo:66,
+    meter:[3,4], sub:2, barsPerRow:2,
+    sections:{ A:{bars:bars.slice(0,8)}, B:{bars:bars.slice(8)} },
+    arrangement:["A","B"] };
+}
+DEMOS.splice(5,0,amazingGrace());
+
+/* AMAZING GRACE, THE BASS VERSION — arranged for D Kurd 19 (8 Sep 2026).
+   David, after Scarborough Fair: "let's create an arrangement for Amazing
+   Grace also for D Kurd 19, so we can use the nice bass notes."
+   The D Kurd 10 has no underside at all, which is why the first setting had
+   to voice F major from A3 and why four of its bars read Amin until the F
+   was stacked in by hand. The 19 carries B♭2, C3, F3 and G3 down there, so
+   EVERY chord in this piece stands on its own root:
+     F   F3 · A3 · C4          B♭  B♭2 · D4 · F4
+     C   C3 · E4 · G4          Dm  ding D3 · A3 · F4
+   Where the melody sits on A — "wretch like" and "now I" — a C underneath
+   makes the bar an Am7, because A C E G is what actually sounds. At
+   "wretch like" that is fixed by taking Dm, whose fifth the A is. At "now I"
+   the C stays, because the cadence into "see" wants it; the chord row names
+   that bar Amin, and it is not wrong — Am7 to F is a cadence. David's ear
+   decides whether it becomes an F or a Dm.
+   Same accompaniment rule as Scarborough Fair: three quarter notes a bar,
+   the triad rising from its root, the root underneath. The left hand is
+   busy on every quarter, so the melody is all right hand.
+   The harmony is the hymn's own, one chord to the bar so the arpeggio can
+   run: B♭ at "sweet the" and "now am", C at the two half cadences, and Dm
+   at "blind" — the one darkening in the piece. Two bars of the bare
+   arpeggio open it, the second carrying the "A-" pick-up over the C, and
+   two more close it. 3/4, eighths, two bars a row: Intro one row, A and B
+   four rows each. */
+function amazingGraceBass(){
+  const M=(t,f)=>F(t,f,"R");
+  const C4=3, D4=4, F4=6, G4=7, A4=8, C5=9;
+  /* Bass: THE ROOT RULE above. */
+  const CH={ F: ["b3",1,3],      // F3 · A3 · C4    A3 is not below A3
+             Bb:["b1",4,6],      // B♭2 · D4 · F4   — not the ding, nor F3
+             C: ["b2",5,7],      // C3 · E4 · G4    — not G3
+             Dm:[0,1,6] };       // ding D3 · A3 · F4  — not F3, which is a third
+  const acc=c=>CH[c].map((f,i)=>F(i*2,f,"L"));       // quarters on 1, 2, 3
+  const bar=(c,...mel)=>acc(c).concat(mel);
+  const intro=[bar("F"), bar("C", M(4,C4))];                 // the second bar carries "A-"
+  const A=[
+    bar("F",  M(0,F4),M(4,A4),M(5,F4)),      // 1 "-ma-zing"
+    bar("F",  M(0,A4),M(4,G4)),              // 2 "grace how"
+    bar("Bb", M(0,F4),M(4,D4)),              // 3 "sweet the"
+    bar("F",  M(0,C4),M(4,C4)),              // 4 "sound that"
+    bar("F",  M(0,F4),M(4,A4),M(5,F4)),      // 5 "saved a"
+    bar("Dm", M(0,A4),M(4,G4)),              // 6 "wretch like"   the A is Dm's fifth
+    bar("F",  M(0,C5),M(4,A4)),              // 7 "me — I"
+    bar("F",  M(0,C5),M(3,A4),M(4,C5),M(5,A4))];  // 8 "once was"
+  const B=[
+    bar("F",  M(0,F4),M(4,C4)),              // 9  "lost but"
+    bar("Bb", M(0,D4),M(3,F4),M(4,F4),M(5,D4)),   // 10 "now am"
+    bar("F",  M(0,C4),M(4,C4)),              // 11 "found, was"
+    bar("Dm", M(0,F4),M(4,A4),M(5,F4)),      // 12 "blind, but"   the one darkening
+    bar("C",  M(0,A4),M(4,G4)),              // 13 "now I"
+    bar("F",  M(0,F4)),                      // 14 "see."
+    bar("F"), bar("F")];                     // and the arpeggio rings out
+  return { format:"hpd-2", id:"amazing-grace-bass", title:"Amazing Grace (with bass)",
+    author:"Traditional (New Britain, 1835)", collection:"Traditionals", writtenFor:"d-kurd-19", tempo:66,
+    meter:[3,4], sub:2, barsPerRow:2,
+    sections:{ Intro:{bars:intro}, A:{bars:A}, B:{bars:B} },
+    arrangement:["Intro","A","B"] };
+}
+DEMOS.splice(6,0,amazingGraceBass());
+
+/* SCARBOROUGH FAIR — arranged for E Kurd 21 (8 Sep 2026; accompaniment
+   rebuilt the same night). Melody parsed from the LilyPond of the English
+   Wikipedia article, the "version commonly used today" — D Dorian, nine
+   pitches across a ninth, which is why no 9- or 10-note pan can play it.
+   UP A FIFTH to A Dorian: the whole melody on the top shell, every chord
+   root on the underside.
+   THE ACCOMPANIMENT comes from David's screenshot of an easy-piano setting
+   (`fair.png`, 8 Sep), read by measurement — staff spacing 13.9 px, heads by
+   erosion and centroid, 66 of them. Its left hand never stops: THREE QUARTER
+   NOTES A BAR, the chord spelled upwards from its lowest note, and the
+   arranger keeps that lowest note low rather than always taking the root —
+   the G chord appears as D G B and the F as C F A. That last part is a
+   PIANIST'S constraint, and David threw it out (8 Sep): on a pan the root is
+   on the bottom shell, so every chord here stands on its own root and every
+   root is an underside note or the ding. Its harmony is the other gift: a bar of D MAJOR (the
+   sheet writes the B natural in), a C, and one bar where the bass simply
+   WALKS DOWN — F E D there, C B A here, under the melody's own descent.
+   Two bars of the bare arpeggio open the piece, as the sheet does.
+   The left hand is busy on every quarter, so the melody is all right hand.
+   3/4, eighths, two bars a row: Intro one row, A and B four rows each. */
+function scarboroughFair(){
+  const M=(t,f)=>F(t,f,"R");
+  const G4=6, A4=7, B4=8, C5=9, D5=10, E5=11, Fs5=12, G5=13, A5=14;
+  /* EVERY CHORD STANDS ON ITS OWN ROOT, AND THE ROOT IS UNDERNEATH (David,
+     8 Sep). The sheet voices its G as D G B and its F as C F A because a
+     piano left hand does not want to leap; a pan has no such reason — the
+     root is right there on the bottom shell. So each chord is a plain root
+     position rising root · 3rd · 5th, and the root is an underside note or
+     the ding every time: A3, G3, the ding E3, D3, C3. The D and the C sit
+     wholly in the low register that way, which is the point — they are the
+     two bars that open out under a high melody. */
+  /* Bass: THE ROOT RULE above. */
+  const CH={ Am:["b6",2,4],      // A3 · C4 · E4
+             G: ["b5",1,3],      // G3 · B3 · D4
+             Em:[0,1,6],         // ding E3 · B3 · G4
+             D: ["b3","b6",5],   // D3 · A3 · F♯4   — A3 is legal, F♯3 is not
+             C: ["b2",5,7],      // C3 · E4 · G4
+             walk:[2,1,"b6"] };  // C4 · B3 · A3    — and it lands on the root
+  const acc=c=>CH[c].map((f,i)=>F(i*2,f,"L"));      // quarters on 1, 2, 3
+  const bar=(c,...mel)=>acc(c).concat(mel);
+  const intro=[bar("Am"),bar("Am")];
+  const A=[
+    bar("Am", M(0,A4),M(4,A4)),                    // 1  "Are you"
+    bar("Am", M(0,E5),M(1,E5),M(4,E5)),            // 2  "go-ing to Scar-"
+    bar("G",  M(0,B4),M(3,C5),M(4,B4)),            // 3  "-bo-rough"
+    bar("Am", M(0,A4)),                            // 4  "Fair?"
+    bar("Em", M(2,E5),M(4,G5)),                    // 5  "Pars-ley,"      (the arpeggio fills the rest)
+    bar("Am", M(0,A5),M(4,G5)),                    // 6  "sage, rose-"
+    bar("D",  M(0,E5),M(2,Fs5),M(4,D5)),           // 7  "-ma-ry and"     the Dorian major chord
+    bar("Am", M(0,E5),M(4,A5))];                   // 8  "thyme."
+  const B=[
+    bar("Am", M(0,A5),M(4,A5)),                    // 9  "Re-mem-"
+    bar("C",  M(0,G5),M(4,E5)),                    // 10 "-ber me"
+    bar("walk",M(0,E5),M(2,D5),M(4,C5)),           // 11 "to one who"     bass walks down with it
+    bar("Em", M(0,B4)),                            // 12 "lives there,"
+    bar("Am", M(0,A4),M(4,E5)),                    // 13 "she once"
+    bar("G",  M(0,D5),M(4,C5)),                    // 14 "was a"
+    bar("Em", M(0,B4),M(2,A4),M(4,G4)),            // 15 "true love of"
+    bar("Am", M(0,A4))];                           // 16 "mine."
+  return { format:"hpd-2", id:"scarborough-fair", title:"Scarborough Fair",
+    author:"Traditional (English)", collection:"Traditionals", writtenFor:"e-kurd-21", tempo:76,
+    meter:[3,4], sub:2, barsPerRow:2,
+    sections:{ Intro:{bars:intro}, A:{bars:A}, B:{bars:B} },
+    arrangement:["Intro","A","B"] };
+}
+DEMOS.splice(7,0,scarboroughFair());
+
+/* GREENSLEEVES — arranged for E Kurd 21 (8 Sep 2026; bass rebuilt the same
+   night). Melody parsed from the ABC of the French Wikipedia article. THE PAN
+   SETTLES AN OLD ARGUMENT: as printed the tune has twelve pitches inside a
+   tenth — both sixths and both sevenths — and NO pan in the database can play
+   it. The cadence F♯ is what breaks it, in every key, on every build. Taking
+   it out opens 18 pans Dorian, 16 Aeolian; David chose Dorian (8 Sep), so the
+   raised seventh becomes the flat seventh and the sixth stays natural.
+   UP A TONE to A Dorian — the same key as Scarborough Fair on the same pan —
+   and the whole melody sits on the top shell.
+   THE BASS is the 6/8 lilt itself: TWO RISING ARPEGGIOS A BAR, one under each
+   dotted-quarter pulse, each rising from its chord's root. Because a pulse
+   gets its own chord, the
+   two bars that turn (7 and 15) can go Am then Em inside the bar, which is
+   where the tune actually wants to move. The left hand is busy on every
+   eighth, so the melody is all right hand.
+   Written in 3/4 at sixteenth resolution rather than 6/8: the dotted-eighth
+   pairs need the finer grid and the bar length is the same. One bar a row —
+   Intro two rows, then four tables of four. The anacrusis rides at the end of
+   the intro and again at the end of bar 16, so the repeat sings into itself. */
+function greensleeves(){
+  const M=(t,f)=>F(t,f,"R");
+  const E4=4, Fs4=5, G4=6, A4=7, B4=8, C5=9, D5=10, E5=11, Fs5=12, G5=13;
+  /* Bass: THE ROOT RULE above. */
+  const CH={ Am:["b6",2,4],       // A3 · C4 · E4   A3 is not below A3
+             G: ["b5",1,3],       // G3 · B3 · D4   G3 is the root
+             Em:[0,1,6],          // ding E3 · B3 · G4   — not G3, which is a third
+             C: ["b2",5,7] };     // C3 · E4 · G4        — not the ding, nor G3
+  const acc=(c1,c2)=>CH[c1].map((f,i)=>F(i*2,f,"L"))
+              .concat(CH[c2].map((f,i)=>F(6+i*2,f,"L")));   // eighths: 0 2 4 | 6 8 10
+  const bar=(c1,c2,...mel)=>acc(c1,c2).concat(mel);
+  const intro=[bar("Am","Am"), bar("Em","Em", M(10,A4))];    // the pick-up "A-"
+  const A1=[
+    bar("Am","Am", M(0,C5),M(4,D5),M(6,E5),M(9,Fs5),M(10,E5)),   // 1 "-las my love, you"
+    bar("G","G",   M(0,D5),M(4,B4),M(6,G4),M(9,A4),M(10,B4)),    // 2 "do me wrong, to"
+    bar("Am","Am", M(0,C5),M(4,A4),M(6,A4),M(9,G4),M(10,A4)),    // 3 "cast me off dis-cour-"
+    bar("Em","Em", M(0,B4),M(4,G4),M(6,E4),M(10,A4))];           // 4 "-teous-ly, and"
+  const A2=[
+    bar("Am","Am", M(0,C5),M(4,D5),M(6,E5),M(9,Fs5),M(10,E5)),   // 5 "I have loved you"
+    bar("G","G",   M(0,D5),M(4,B4),M(6,G4),M(9,A4),M(10,B4)),    // 6 "so long, de-"
+    bar("Am","Em", M(0,C5),M(3,B4),M(4,A4),M(6,G4),M(9,Fs4),M(10,G4)), // 7 "-light-ing in your"
+    bar("Am","Am", M(0,A4),M(4,A4),M(6,A4))];                    // 8 "com-pa-ny."
+  const B1=[
+    bar("C","C",   M(0,G5),M(6,G5),M(9,Fs5),M(10,E5)),           // 9  "Green-sleeves was"
+    bar("G","G",   M(0,D5),M(4,B4),M(6,G4),M(9,A4),M(10,B4)),    // 10 "all my joy,"
+    bar("Am","Am", M(0,C5),M(4,A4),M(6,A4),M(9,G4),M(10,A4)),    // 11 "Green-sleeves was my"
+    bar("Em","Em", M(0,B4),M(4,G4),M(6,E4))];                    // 12 "de-light,"
+  const B2=[
+    bar("C","C",   M(0,G5),M(6,G5),M(9,Fs5),M(10,E5)),           // 13 "Green-sleeves was my"
+    bar("G","G",   M(0,D5),M(4,B4),M(6,G4),M(9,A4),M(10,B4)),    // 14 "heart of gold, and"
+    bar("Am","Em", M(0,C5),M(4,A4),M(6,G4),M(9,Fs4),M(10,G4)),   // 15 "who but La-dy Green-"
+    bar("Am","Am", M(0,A4),M(6,A4),M(10,A4))];                   // 16 "-sleeves."  + the pick-up
+  return { format:"hpd-2", id:"greensleeves", title:"Greensleeves",
+    author:"Traditional (English, 16th c.)", collection:"Traditionals", writtenFor:"e-kurd-21", tempo:84,
+    meter:[3,4], sub:4, barsPerRow:1,
+    sections:{ Intro:{bars:intro}, A1:{bars:A1}, A2:{bars:A2},
+               B1:{bars:B1}, B2:{bars:B2} },
+    arrangement:["Intro","A1","A2","B1","B2"] };
+}
+DEMOS.splice(8,0,greensleeves());
+
 // "Level 1 6.6" — from David's four tables (26 Aug). 3/4, header counts
 // beats only, 8th grid beneath (the run row uses all six slots), two bars
 // per row. Standard cell: stack on 1, note on 2, offbeat 8th on 2+, note
@@ -8694,7 +9064,7 @@ const tabRows="split";
    that decides nothing is worse than no key. `hps.hands` and the older
    `hps.tabhands` are simply left where they lie; they mean nothing now. */
 // hand colours — the students' choice; black + green is the notation's default
-const HAND_DEFAULTS={l:"#469957",r:"#17150f"};   // l = the LEFT hand, green; r = the RIGHT hand, black
+const HAND_DEFAULTS={l:"#469957",r:"#17150f",s:"#a21af1"};   // l = the LEFT hand, green; r = the RIGHT hand, black; s = a stand-in note, strong blue
 try{ // stored copies of superseded defaults follow the new default
   if(["#4aa35d","#3f8c50"].includes((localStorage.getItem("hps.colR")||"").toLowerCase()))
     localStorage.removeItem("hps.colR");
@@ -8714,14 +9084,14 @@ try{ // stored copies of superseded defaults follow the new default
    one of the two moves and the other does not.
    TONED IS A LIGHT SHEET and therefore uses the LIGHT pair — which is the
    whole point of offering it: nothing a student chose can break there. */
-const HAND_DEFAULTS_DARK={l:"#469957",r:"#f3ede1"};
+const HAND_DEFAULTS_DARK={l:"#469957",r:"#f3ede1",s:"#c77dff"};
 function darkSheet(){
   const r=document.documentElement;
   return r.dataset.lum==="dark" && r.dataset.sheet!=="toned";
 }
-function handKeys(){ return darkSheet()?["hps.colL.dark","hps.colR.dark"]:["hps.colL","hps.colR"]; }
+function handKeys(){ return darkSheet()?["hps.colL.dark","hps.colR.dark","hps.colS.dark"]:["hps.colL","hps.colR","hps.colS"]; }
 function handDefaults(){ return darkSheet()?HAND_DEFAULTS_DARK:HAND_DEFAULTS; }
-let handCol={l:HAND_DEFAULTS.l,r:HAND_DEFAULTS.r};
+let handCol={l:HAND_DEFAULTS.l,r:HAND_DEFAULTS.r,s:HAND_DEFAULTS.s};
 /* the stored hand colours were keyed by the old tokens (colL = the black hand);
    turned around once, the day the letters became the hands (5 Sep 2026) */
 try{ if(localStorage.getItem("hps.handsv")!=="2"){
@@ -8733,9 +9103,9 @@ try{ if(localStorage.getItem("hps.handsv")!=="2"){
   localStorage.setItem("hps.handsv","2"); } }catch(e){}
 function loadHandCol(){
   const k=handKeys(), d=handDefaults();
-  let l=null,r=null;
-  try{ l=localStorage.getItem(k[0]); r=localStorage.getItem(k[1]); }catch(e){}
-  handCol={l:l||d.l, r:r||d.r};
+  let l=null,r=null,sc=null;
+  try{ l=localStorage.getItem(k[0]); r=localStorage.getItem(k[1]); sc=localStorage.getItem(k[2]); }catch(e){}
+  handCol={l:l||d.l, r:r||d.r, s:sc||d.s};
 }
 loadHandCol();
 // The hand letters are the hands since 5 Sep 2026 (see handLetter):
@@ -8750,6 +9120,34 @@ loadHandCol();
    is hpd-2. handLetter stays as the one place a letter is shown, and it is
    now the identity. */
 function handLetter(h){ return h; }
+/* A STAND-IN NOTE (8 Sep 2026, the score import): a note the written-for pan lacked, replaced by
+   another and marked sub:true, carrying the WRITTEN note as oi — semitones above that pan's ding
+   (an interval, not a pitch: the transposer keeps intervals from the ding, so it travels with the
+   piece). On a pan that has the interval, the note comes back as written and loses its colour;
+   elsewhere the stand-in follows the field map like any other note. Older builds ignore both fields. */
+function standInPos(ev){
+  if(!ev||!ev.sub||ev.oi==null||!myPan) return null;
+  for(const p of myPan.posList()){ if(p===0) continue; if(myPan.posIv(p)===ev.oi) return p; }
+  return null;
+}
+/* KEEP MISSING NOTES FOREIGN (David, 8 Sep 2026): with the checkbox on the transposition card, every note
+   keeps its interval above the ding — on this pan where the pan has the interval, and otherwise as a
+   FOREIGN note: drawn as its name in the stand-in colour, on no field, sounding at the pitch it should
+   have (the new ding plus the interval, which is the written pitch when the dings agree), so another
+   handpan can cover it. The field map is not consulted at all then. A stand-in keeps its written interval.
+   A session setting, like For my pan itself. */
+function foreignOf(ev){
+  if(!ev||ev.v!=="field"||!myPan) return null;
+  /* KEPT FOREIGN AT IMPORT (David, 9 Sep: the Import Tool's other choice for a note outside the pan's scale —
+     "keep them foreign"): fo:true with oi. Foreign in every mode wherever this pan lacks the interval; home
+     on a pan that has it. The stand-in field it also carries is what an older build plays. */
+  if(ev.fo&&ev.oi!=null){ for(const p of myPan.posList()){ if(p!==0&&myPan.posIv(p)===ev.oi) return {pos:p}; } const midi=myPan.ding+ev.oi; return {pos:null,midi,name:spellPc(midi%12)}; }
+  if(!keepForeign||mode!=="trans"||!MAP||!srcPan) return null;
+  const iv=(ev.sub&&ev.oi!=null)?ev.oi:srcPan.posIv(ev.f); if(iv==null) return null;
+  if(iv===0) return {pos:0};
+  for(const p of myPan.posList()){ if(p!==0&&myPan.posIv(p)===iv) return {pos:p}; }
+  const midi=myPan.ding+iv; return {pos:null,midi,name:spellPc(midi%12)};
+}
 function migratePiece(p){
   if(!p||typeof p!=="object"||p.format!=="hpd-1") return p;
   const flip=h=>h==="L"?"R":h==="R"?"L":h;
@@ -8849,6 +9247,7 @@ function applyHandColors(){
   const root=document.documentElement;
   root.style.setProperty("--hand-l",handCol.l);
   root.style.setProperty("--hand-r",handCol.r);
+  root.style.setProperty("--hand-s",handCol.s);
   /* READ BACK WHAT ACTUALLY RESOLVED, rather than trusting handCol: a sheet is
      free to supply its own pair, and the ink must follow the colour that gets
      PAINTED. applyTheme calls this after every scheme and sheet change, so the
@@ -8859,7 +9258,7 @@ function applyHandColors(){
   const r=cs.getPropertyValue("--hand-r").trim()||handCol.r;
   root.style.setProperty("--on-hand-l",onHand(l));
   root.style.setProperty("--on-hand-r",onHand(r));
-  const cl=$("colL"); if(cl){ cl.value=handCol.l; $("colR").value=handCol.r; }
+  const cl=$("colL"); if(cl){ cl.value=handCol.l; $("colR").value=handCol.r; if($("colS")) $("colS").value=handCol.s; }
 }
 /* ───────── THE THEME (30 Aug) ─────────
    data-mode is the student's choice, data-theme is the resolved scheme and
@@ -9041,9 +9440,10 @@ function fireEvent(ev,at){
     if(ev.roll) fire(bankBuf("p_"+ev.s+otherHand(hand))||buf,at-0.045,evGain(ev)*0.45);   // grace before the accent
     fire(buf,at,evGain(ev)); return;
   }
-  let f=ev.f;
-  if(mode==="trans"&&MAP){ f=MAP[f]; if(f===null||f===undefined) return; }
-  const midi=myPan.posMidi(f);
+  let f=ev.f, midi=null;
+  { const fo=foreignOf(ev); if(fo){ if(fo.pos===null) midi=fo.midi; else f=fo.pos; }
+    else if(mode==="trans"&&MAP){ const back=standInPos(ev); if(back!=null) f=back; else { f=MAP[f]; if(f===null||f===undefined) return; } } }
+  if(midi==null) midi=myPan.posMidi(f);
   if(midi===null||midi===undefined) return;   // field missing on this pan
   const art=ev.art||"open";
   const buf=(art==="open"?bankBuf("o"+midi):art==="mute"?bankBuf("m"+midi):null)
@@ -9844,9 +10244,10 @@ function exportVoice(ev,trans){
     return pair(bankBuf("p_"+ev.s+hand)||percBuf(ev.s==="tak"?"tak":ev.s),
                 bankBuf("p_"+ev.s+otherHand(hand)));                    // the roll's grace: the other hand
   }
-  let f=ev.f;
-  if(trans){ f=MAP[f]; if(f===null||f===undefined) return null; }
-  const midi=myPan.posMidi(f);
+  let f=ev.f, midi=null;
+  { const fo=foreignOf(ev); if(fo){ if(fo.pos===null) midi=fo.midi; else f=fo.pos; }
+    else if(trans){ const back=standInPos(ev); if(back!=null) f=back; else { f=MAP[f]; if(f===null||f===undefined) return null; } } }
+  if(midi==null) midi=myPan.posMidi(f);
   if(midi===null||midi===undefined) return null;    // field missing on this pan
   const art=ev.art||"open";
   return pair((art==="open"?bankBuf("o"+midi):art==="mute"?bankBuf("m"+midi):null)
@@ -12519,8 +12920,12 @@ function glyphFor(ev,disp){
     let g=ev.s==="slap"?"^":ev.s==="knock"?"°":(ev.g||"T");
     return {t:g,cls:"sym pc"+(ev.s==="slap"?" sl":"")+fxCls(ev)};
   }
-  let f=ev.f;
-  if(disp&&mode==="trans"&&MAP){ f=MAP[f]; if(f===null||f===undefined) return {t:"–",cls:"sym gh"}; }
+  let f=ev.f, standIn=!!ev.sub;
+  const fo=disp?foreignOf(ev):null;
+  if(fo){ if(fo.pos===null){ /* the accidental as a small raised letter in the notation's own font — the ♭ and ♯ glyphs fall back to
+        another face and sat thin and apart (David, 9 Sep: "the flat of the foreign note is not nicely formatted") */
+      const acc=fo.name.slice(1); return {t:fo.name[0]+(acc?'<span class="acc">'+(acc==="♭"?"b":"#")+"</span>":""),cls:"sym s fo"+(acc?" d2":"")+fxCls(ev)}; } f=fo.pos; standIn=false; }   // a foreign note: its name, in the stand-in colour
+  else if(disp&&mode==="trans"&&MAP){ const back=standInPos(ev); if(back!=null){ f=back; standIn=false; } else { f=MAP[f]; if(f===null||f===undefined) return {t:"–",cls:"sym gh"}; } }
   /* AN UNDERSIDE NOTE IS ITS OWN NUMBER ON A NEUTRAL GROUND (David, 28 Aug:
      "can we instead put some kind of background behind the bottom notes?" —
      mockups-pan-view.html §1, candidate C3). The digit keeps its full hand
@@ -12530,7 +12935,7 @@ function glyphFor(ev,disp){
   let base=bot?String(botIdx(f)):(f===0?"D":String(f));
   /* .d2 — a number of more than one character writes smaller and tighter, so
      it stays inside its own slot and reads as one number (David, 29 Aug). */
-  let cls="sym"+(bot?" bt":"")+(base.length>1?" d2":"");
+  let cls="sym"+(bot?" bt":"")+(base.length>1?" d2":"")+(standIn?" s":"");
   if(ev.art==="overtone") cls+=" ot";
   let st="";
   let t=base;
@@ -16723,6 +17128,8 @@ function renderReport(){
    +'<div class="fitline"><span class="fitpc">'+REPORT.fit+'%</span>'
    +'<span class="fitsum"><b>'+srcPan.pan.name+' → '+myPan.pan.name+'</b><br>'
    +REPORT.nEx+' exact · '+REPORT.nOc+' octave · '+REPORT.nSub+' substituted · '+REPORT.nDrop+' dropped</span></div>';
+  h+='<label class="keepfo" title="A note this pan lacks stays foreign instead of moving to another field: drawn as its name in the stand-in colour, on no field, sounding at the pitch it should have — so another handpan can cover it. The map below is not used while this is on.">'
+   +'<input type="checkbox" id="keepForeign"'+(keepForeign?" checked":"")+'> Keep missing notes foreign</label>';
   h+='<table class="map"><tr><th>Field</th><th>Sounds</th><th></th><th>On your pan</th><th>Match</th><th>Change</th></tr>';
   /* an underside place reads as its own number in brackets — the maker's
      spelling, and the same series the pan drawing numbers (David, 28 Aug) */
@@ -16744,6 +17151,7 @@ function renderReport(){
   R.innerHTML=h;
   const rx=$("repX");
   if(rx) rx.addEventListener("click",()=>{ reportClosed=true; renderReport(); });
+  const kf=$("keepForeign"); if(kf) kf.addEventListener("change",()=>{ keepForeign=kf.checked; render(); if(ctx) preloadBank(); });   // the notes now foreign need their samples
   R.querySelectorAll("select").forEach(s=>s.addEventListener("change",()=>{
     /* positions are numbers OR "b1"-style strings now, so neither side of
        this may be coerced with a unary + any more */
@@ -18380,8 +18788,14 @@ function libFolders(){
   const all=libPieces(), fav=libFavs();
   const courses=[...new Set(all.filter(p=>p.course).map(p=>p.course))].sort();
   const F=courses.map(c=>({key:"c:"+c,course:c,ico:"▤",name:c,n:all.filter(p=>p.course===c).length}));
+  /* COLLECTIONS (David, 8 Sep: "let's add a folder called Traditionals where
+     all these pieces go"). A collection is a folder that is NOT a course: it
+     has no lesson numbers, so its rows are not grouped into chapters, and it
+     stands under its own heading rather than among the courses. */
+  const colls=[...new Set(all.filter(p=>p.collection).map(p=>p.collection))].sort();
+  colls.forEach(c=>F.push({key:"k:"+c,coll:c,ico:"❧",name:c,n:all.filter(p=>p.collection===c).length}));
   F.push({key:"mine",ico:"♪",name:"My pieces",n:all.filter(p=>p._saved).length});
-  F.push({key:"other",ico:"◌",name:"Grooves & others",n:all.filter(p=>!p.course&&!p._saved).length});
+  F.push({key:"other",ico:"◌",name:"Grooves & others",n:all.filter(p=>!p.course&&!p.collection&&!p._saved).length});
   const nf=all.filter(p=>fav.has(libKey(p))).length; if(nf) F.push({key:"fav",ico:"♥",name:"Favourites",n:nf});
   return F;
 }
@@ -18389,7 +18803,8 @@ function libRows(){
   const all=libPieces(), q=LIB.q.trim().toLowerCase(); let list;
   if(q) list=all.filter(p=>((p.title||"")+" "+(p.course||"")+" "+(p.lesson||"")).toLowerCase().includes(q));
   else if(LIB.folder==="mine") list=all.filter(p=>p._saved);
-  else if(LIB.folder==="other") list=all.filter(p=>!p.course&&!p._saved);
+  else if(LIB.folder==="other") list=all.filter(p=>!p.course&&!p.collection&&!p._saved);
+  else if(LIB.folder&&LIB.folder.startsWith("k:")){ const c=LIB.folder.slice(2); list=all.filter(p=>p.collection===c); }
   else if(LIB.folder==="fav"){ const f=libFavs(); list=all.filter(p=>f.has(libKey(p))); }
   else if(LIB.folder&&LIB.folder.startsWith("c:")){ const c=LIB.folder.slice(2); list=all.filter(p=>p.course===c); }
   else list=[];
@@ -18411,7 +18826,8 @@ function renderLib(){
     b.querySelector(".ico").textContent=f.ico; b.querySelector(".fnm").textContent=f.name; b.querySelector(".n").textContent=f.n;
     b.addEventListener("click",()=>{ LIB.folder=f.key; LIB.q=""; $("libSearch").value=""; LIB.open=true; renderLib(); }); FO.appendChild(b); };
   if(F.some(f=>f.course)){ grp("Courses"); F.filter(f=>f.course).forEach(fbtn); }
-  grp("Yours"); F.filter(f=>!f.course).forEach(fbtn);
+  if(F.some(f=>f.coll)){ grp("Collections"); F.filter(f=>f.coll).forEach(fbtn); }
+  grp("Yours"); F.filter(f=>!f.course&&!f.coll).forEach(fbtn);
   const L=$("libList"); L.innerHTML="";
   const rows=libRows(), q=LIB.q.trim();
   const head=t=>{ const d=document.createElement("div"); d.className="ppgroup"; d.textContent=t; L.appendChild(d); };
@@ -18580,6 +18996,7 @@ let jamOn=false, jamPrev=null, jamEditSlot=-1, jam=null, jamSugOn=false;
    student asks for Transposed again (David, 26 Aug) — it is a briefing, not
    a permanent fixture, and it was un-closeable in every view. */
 let reportClosed=false;
+let keepForeign=false;   // For my pan: missing notes stay foreign instead of moving to another field (David, 8 Sep) — a session setting
 const JAM_MAX=8;   // longest progression jam mode takes for now (David, 26 Aug)
 const jpc=m=>((m%12)+12)%12;
 
@@ -28038,13 +28455,15 @@ function boot(){
     try{localStorage.setItem(handKeys()[0],handCol.l)}catch(e){} applyHandColors(); });
   $("colR").addEventListener("input",()=>{ handCol.r=$("colR").value;
     try{localStorage.setItem(handKeys()[1],handCol.r)}catch(e){} applyHandColors(); });
+  $("colS").addEventListener("input",()=>{ handCol.s=$("colS").value;
+    try{localStorage.setItem(handKeys()[2],handCol.s)}catch(e){} applyHandColors(); });
   /* the reset clears whichever pair is live, and says which pair that was —
      "back to black + green" is simply untrue on a dark sheet */
   const colReset=()=>{
     const k=handKeys(), d=handDefaults();
-    try{ localStorage.removeItem(k[0]); localStorage.removeItem(k[1]); }catch(e){}
+    try{ localStorage.removeItem(k[0]); localStorage.removeItem(k[1]); localStorage.removeItem(k[2]); }catch(e){}
     loadHandCol(); applyHandColors();
-    toast("Hand colours back to "+(darkSheet()?"bone + green":"black + green")); };
+    toast("Hand colours back to "+(darkSheet()?"bone + green":"black + green")+", stand-ins blue"); };
   $("colReset").addEventListener("click",colReset);
   $("colCtl").addEventListener("dblclick",colReset);
   /* ── the theme switch (30 Aug) ── */
