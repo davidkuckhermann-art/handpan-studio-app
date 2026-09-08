@@ -2630,14 +2630,41 @@ body:not(.phone) #belowrow>#cpband.four{flex:1 1 100%; max-width:100%}
 /* the pan fills its cell, the chord's label in the top-left corner the
    drawing leaves empty (David, 2 Sep: "the pan should really grow as much
    as possible inside those tabs") */
-#cpband .cpfour{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-top:8px}
-#cpband .cpfour .cell{position:relative; border:1px solid var(--rule2); border-radius:12px; padding:4px; background:var(--card); min-width:0}
-#cpband .cpfour .cell.active{background:var(--dixie-soft); border-color:var(--dixie); box-shadow:0 0 0 1px var(--dixie)}
-#cpband .cpfour .clab{position:absolute; top:8px; left:10px; z-index:1; text-align:left; line-height:1.1}
-#cpband .cpfour .roman{font-size:11px; font-weight:700; color:var(--ink3)}
-#cpband .cpfour .cell.active .roman{color:var(--amber-ink)}
-#cpband .cpfour .cname{font-size:19px}
-#cpband .cpfour .fourpan svg{width:100%; height:auto; display:block; margin:0 auto; pointer-events:none}
+/* ONE GRID, THREE HOSTS (9 Sep): chord practice's band, the jam's pan card,
+   and the magnified overlay. The cells are the same everywhere; only the
+   columns and the sizes differ per host. */
+.cpfour{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px}
+#cpband .cpfour{margin-top:8px}
+.cpfour .cell{position:relative; border:1px solid var(--rule2); border-radius:12px; padding:4px; background:var(--card); min-width:0}
+.cpfour .cell.active{background:var(--dixie-soft); border-color:var(--dixie); box-shadow:0 0 0 1px var(--dixie)}
+.cpfour .clab{position:absolute; top:8px; left:10px; z-index:1; text-align:left; line-height:1.1}
+.cpfour .roman{font-size:11px; font-weight:700; color:var(--ink3)}
+.cpfour .cell.active .roman{color:var(--amber-ink)}
+.cpfour .cname{font-size:19px}
+.cpfour .fourpan svg{width:100%; height:auto; display:block; margin:0 auto; pointer-events:none}
+/* the jam's card spans the row while its four are up, as the band does */
+/* …on a line of its own: min-width:100% is what makes the row wrap it under
+   the chord card rather than shrink it to sit beside it */
+body:not(.phone).jam #belowrow:has(>#panwrap.four){flex-wrap:wrap}
+body:not(.phone).jam #belowrow>#panwrap.four{flex:1 1 100%; max-width:100%; min-width:100%; width:auto}
+#panwrap.four .cpfour{margin-top:8px}
+/* THE MAGNIFIED FOUR (mockups-cp-four-zoom.html): a square, the side the
+   largest the window allows for --cols columns and two rows; bigger labels;
+   the × at the frame's top-left corner */
+#panZoom.four #panZoomInner{width:auto; height:auto; position:relative}
+#panZoom .cpfour{--gap:14px; --cols:2;
+  --side:min(calc((100vw - 24px - (var(--cols) - 1)*var(--gap)) / var(--cols)), calc((100vh - 76px - var(--gap)) / 2));
+  grid-template-columns:repeat(var(--cols),var(--side)); grid-auto-rows:var(--side); gap:var(--gap)}
+#panZoom .cpfour .cell{border-radius:18px; padding:6px; display:flex; align-items:center; justify-content:center}
+#panZoom .cpfour .cell.active{box-shadow:0 0 0 2px var(--dixie)}
+#panZoom .cpfour .clab{top:12px; left:16px}
+#panZoom .cpfour .roman{font-size:13px}
+#panZoom .cpfour .cname{font-size:26px; font-weight:800; color:var(--ink)}
+#panZoom .cpfour .fourpan{width:92%; height:92%}
+#panZoom .cpfour .fourpan svg{height:100%; overflow:visible}
+#panZoomX{position:absolute; top:-16px; left:-16px; z-index:2; width:34px; height:34px; border-radius:50%;
+  font-size:22px; line-height:1; color:var(--ink); background:var(--card); border-color:var(--rule-strong);
+  box-shadow:0 2px 8px rgba(0,0,0,.35)}
 #cpband .cphead #panfour.on{border-color:var(--dixie); background:var(--dixie-soft); box-shadow:0 0 0 1px var(--dixie)}
 
 #learnwrap{max-width:780px;margin:0 auto;padding:48px 16px 24px;
@@ -15780,7 +15807,29 @@ document.addEventListener("click",e=>{
   if(!e.target.closest||!e.target.closest("#panmenu,#edPanMenu")) return;
   e.preventDefault(); e.stopPropagation();
 },true);
+/* WHILE FOUR PANS ARE UP, THE MAGNIFIER ENLARGES THE FOUR (David, 9 Sep,
+   mockups-cp-four-zoom.html): a square of them, each as large as the screen
+   allows, the sounding chord's cell lit as in the band, and LIVE — the fills
+   above refresh this grid while it is open. Closes as the single pan does,
+   by a tap anywhere or Esc, and by the × in its top-left corner. */
+function openPanZoomFour(W){
+  const host=$("panZoomInner"), z=$("panZoom"); if(!host||!z) return;
+  host.innerHTML="";
+  const grid=document.createElement("div"); grid.className="cpfour";
+  grid.style.setProperty("--cols",String(Math.max(2,Math.ceil(W.names.length/2))));
+  fourPansFill(grid,W,"z");
+  const x=document.createElement("button"); x.id="panZoomX"; x.type="button"; x.className="ib";
+  x.title="Close"; x.setAttribute("aria-label","Close"); x.textContent="\u00d7";
+  x.addEventListener("click",closePanZoom);
+  host.append(x,grid);
+  const nm=(myPan&&myPan.pan)?myPan.pan.name:"";
+  $("panZoomCap").innerHTML=(nm?"<b>"+nm.replace(/[<&]/g,"")+"</b> &middot; ":"")+"tap anywhere to close";
+  const fs=document.fullscreenElement||document.webkitFullscreenElement;
+  (fs||document.body).appendChild(z);
+  z.classList.add("on","four");
+}
 function openPanZoom(){
+  { const W=fourNow(); if(W){ openPanZoomFour(W); return; } }
   const src=$("pvsvg"); if(!src) return;
   const host=$("panZoomInner"); if(!host) return;
   host.innerHTML="";
@@ -15811,7 +15860,7 @@ function openPanZoom(){
 }
 function closePanZoom(){
   const z=$("panZoom"); if(!z||!z.classList.contains("on")) return;
-  z.classList.remove("on");
+  z.classList.remove("on","four");
   $("panZoomInner").innerHTML="";                 // the clone is not kept
   if(z.parentElement!==document.body) document.body.appendChild(z);
 }
@@ -16108,10 +16157,12 @@ function renderPanPanelInner(){
       bg.id="panbig"; bg.className="ib"; bg.type="button";
       bg.title="Enlarge the pan"; bg.setAttribute("aria-label",bg.title);
       bg.innerHTML='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><use href="#is-grow"/></svg>';
-      bg.addEventListener("click",()=>landOpen(0,1));
+      bg.addEventListener("click",()=>{ if(fourNow()) openPanZoom(); else landOpen(0,1); });
       box.appendChild(bg);
       // chord practice, desktop: the four-pan view (David, 2 Sep)
       if(!PHONE&&typeof cpOn!=="undefined"&&cpOn&&cpStage) box.appendChild(cpFourBtn(false));
+      // …and a jam's (David, 9 Sep)
+      else if(!PHONE&&typeof jamOn!=="undefined"&&jamOn) box.appendChild(jamFourBtn(jamFour));
     }
     /* The A/1 labels toggle stood beside the menu from 30 Aug to 2 Sep. It is
        the menu's Labels row now, on every platform (David: "we can totally
@@ -16145,6 +16196,15 @@ function renderPanPanelInner(){
     box.appendChild(rs);
   }
   box.classList.toggle("customising",panCustom);
+  /* THE JAM'S FOUR PANS STAND IN FOR THE DRAWING (David, 9 Sep): the card
+     spans the row and holds one pan per chord of the progression, the
+     sounding one live; the magnifier above enlarges them. */
+  $("panwrap").classList.toggle("four",!!(!PHONE&&jamOn&&jamFour&&!panCustom));
+  if(!PHONE&&jamOn&&jamFour&&!panCustom){
+    const grid=document.createElement("div"); grid.className="cpfour"; box.appendChild(grid);
+    jamFourIdx=-1; jamFourFill(Math.max(0,jamSlotAt(panCursor())));
+    return;
+  }
   const wrap=document.createElement("div"); wrap.id="pvwrap";
   const pan=document.createElement("div"); pan.innerHTML=panViewSVG(null,null,{under:true});
   /* The strokes flank the instrument in two columns instead of sitting in a row
@@ -16570,11 +16630,12 @@ function pvFlashId(id,cls){
   pvFlash($(id),cls);
   if(landIdx>=0){ const t=$("landPanInner").querySelector('[data-twin="'+id+'"]'); if(t) pvFlash(t,cls); }
   // …and the live pan of chord practice's four
-  if(typeof cpFour!=="undefined"&&cpFour){ const t=document.querySelector('#cpband .cpfour .cell.active [data-twin="'+id+'"]'); if(t) pvFlash(t,cls); }
+  if((typeof cpFour!=="undefined"&&cpFour)||(typeof jamFour!=="undefined"&&jamFour))
+    document.querySelectorAll('.cpfour .cell.active [data-twin="'+id+'"]').forEach(t=>pvFlash(t,cls));   // the band's, the card's, the enlarged one's
 }
 function paintPan(pi){
   if(panMode!=="strokes"){ paintPanChord(pi);                       // the chord holds…
-    if(panMode==="chords"&&!(typeof cpFour!=="undefined"&&cpFour)) return; }   // …and in Both (and on the four's live pan) the strokes flash over it
+    if(panMode==="chords"&&!(typeof cpFour!=="undefined"&&cpFour)&&!(typeof jamFour!=="undefined"&&jamFour&&jamOn)) return; }   // …and in Both (and on a four's live pan) the strokes flash over it
   for(const ev of (C&&C.byPulse.get(pi)||[])){
     const hand=handOf(ev)==="L"?"hL":"hR";
     /* The L and R lamps DO NOT flash (David, 26 Aug: "(R) and (L) don't need
@@ -22036,6 +22097,25 @@ function applyJam(){
   paintBrkStill();      // the bars are new; the grey has to find them again
 }
 // which chord card is sounding at this pulse — spans follow the slots' bars
+/* which slot of the progression a pulse falls in — the painter's own walk,
+   shared with the four-pan card (9 Sep) */
+function jamSlotAtRel(rel,bp){
+  let from=0;
+  for(let i=0;i<jam.slots.length;i++){
+    const to=from+Math.max(1,jam.slots[i].bars||1)*bp;
+    if(rel>=from&&rel<to) return i;
+    from=to;
+  }
+  return -1;
+}
+function jamSlotAt(pi){
+  if(!jam||!jam.slots.length) return -1;
+  const pat=allPats().find(p=>p.id===jam.patternId)||JAMPATS[0], bp=pat.meter[0]*pat.sub;
+  const total=jam.slots.reduce((n,sl)=>n+Math.max(1,sl.bars||1),0)*bp;
+  const sc=(typeof secOfPulse==="function"&&C)?secOfPulse(pi):null;
+  let rel=sc?pi-sc.pulse:pi; if(total>0) rel=((rel%total)+total)%total;
+  return jamSlotAtRel(rel,bp);
+}
 function jamPaintChord(pi){
   const pat=allPats().find(p=>p.id===jam.patternId)||JAMPATS[0];
   const bp=pat.meter[0]*pat.sub;
@@ -22056,12 +22136,8 @@ function jamPaintChord(pi){
   const sc=secOfPulse(pi);
   let rel=sc?pi-sc.pulse:pi;
   if(total>0) rel=((rel%total)+total)%total;
-  let from=0, idx=-1;
-  for(let i=0;i<jam.slots.length;i++){
-    const to=from+Math.max(1,jam.slots[i].bars||1)*bp;
-    if(rel>=from&&rel<to){ idx=i; break; }
-    from=to;
-  }
+  const idx=jamSlotAtRel(rel,bp);
+  if(jamFour&&!PHONE&&idx>=0&&idx!==jamFourIdx){ jamFourIdx=idx; jamFourFill(idx); }   // the four's live pan (9 Sep)
   document.querySelectorAll("#jamProg .jslot.playing").forEach(el=>{
     if(+el.dataset.i!==idx) el.classList.remove("playing","brk"); });
   if(idx>=0){ const el=document.querySelector('#jamProg .jslot[data-i="'+idx+'"]');
@@ -24100,6 +24176,11 @@ function leavePractice(){ if(quizOn) leaveQuiz(); if(rqOn) leaveRhythmQuiz(); if
    counts four clicks, brings the next one. No scoring; portrait first. */
 var cpOn=false, cpStage=false, cpPrev=null, cpWas=null, cpSeq=null, cpSeqN=0, cpLastTpl=null, cpLastIdx=-1;
 var cpFour=false, cpFourIdx=-1;      // the four-pan view (desktop), and which chord its live pan shows
+/* THE JAM'S FOUR PANS (David, 9 Sep: "let's also activate this 4 pan view in
+   Jam mode") — the same panel, fed by the progression's chords, remembered
+   per device; the sounding slot is the live one */
+var jamFour=false, jamFourIdx=-1;
+try{ jamFour=localStorage.getItem("hps.jamfour")==="1"; }catch(e){}
 /* ONE SETTING FOR WHAT IS PLAYED AND WHAT IS DRAWN (David, 4 Sep: "this
    option should also toggle the notes that are being played, not just the
    chord tab display. These two things should be connected"). There used to be
@@ -24809,7 +24890,7 @@ function cpRenderBand(){
     const mag=document.createElement("button"); mag.className="ib"; mag.type="button";
     mag.title="Enlarge the pan"; mag.setAttribute("aria-label",mag.title);
     mag.innerHTML='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><use href="#is-grow"/></svg>';
-    mag.addEventListener("click",()=>landOpen(0,1));
+    mag.addEventListener("click",openPanZoom);   // the four, enlarged (9 Sep) — the ring drew the pan without its lighting
     const fb=cpFourBtn(true);
     head.insertBefore(fb,head.firstChild); head.insertBefore(mag,head.firstChild);
     b.appendChild(head);
@@ -24856,12 +24937,19 @@ function cpRenderBand(){
 }
 /* the four-pan button: on the pan card's corner beside the magnifier, and
    in the panel's head while the four are up */
-function cpFourBtn(on){
+function cpFourBtn(on){ return fourBtn(on,v=>cpSetFour(v)); }
+function jamFourBtn(on){ return fourBtn(on,v=>jamSetFour(v)); }
+function jamSetFour(v){
+  jamFour=!!v&&!PHONE; try{ localStorage.setItem("hps.jamfour",jamFour?"1":"0"); }catch(e){}
+  jamFourIdx=-1; renderPanPanel();
+  if(jamFour) jamFourFill(Math.max(0,jamSlotAt(panCursor())));
+}
+function fourBtn(on,set){
   const fb=document.createElement("button"); fb.id="panfour"; fb.type="button";
   fb.className="ib"+(on?" on":""); fb.title=on?"One pan again":"Four pans — one for each chord";
   fb.setAttribute("aria-label",fb.title); fb.setAttribute("aria-pressed",String(!!on));
   fb.innerHTML='<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="6" cy="12" r="4"/><circle cx="14" cy="12" r="4"/><circle cx="20" cy="12" r="3.2"/></svg>';
-  fb.addEventListener("click",()=>cpSetFour(!cpFour));
+  fb.addEventListener("click",()=>set(!on));
   return fb;
 }
 function cpSetFour(v){
@@ -24882,18 +24970,23 @@ function cpFourNames(idx){
    data-twin as the landscape ring does, each lit with its chord (the
    suggested fields deeper); the live one wears the wash and takes the
    strokes' flashes through pvFlashId */
-function cpFourFill(idx){
-  const grid=document.querySelector("#cpband .cpfour"); if(!grid) return;
-  const W=cpFourNames(idx);
-  const key=W.names.join("|");
+/* THE CELLS OF ANY FOUR-PAN GRID — the band's, the jam card's, the magnified
+   overlay's (9 Sep): the pan card's own drawing once per chord, ids turned
+   into data-twin as the landscape ring does, each lit with its chord (the
+   suggested fields deeper); the live one wears the wash and takes the
+   strokes' flashes through pvFlashId. `tag` keeps each grid's gradient ids
+   apart from every other grid's on the page. */
+function fourPansFill(grid,W,tag){
+  const key=W.names.join("|")+"#"+tag;
   if(grid.dataset.key!==key){
     grid.dataset.key=key; grid.innerHTML="";
     W.names.forEach((name,i)=>{
       const c=document.createElement("div"); c.className="cell"; c.dataset.name=name;
       const lab=document.createElement("div"); lab.className="clab";
-      const r=document.createElement("div"); r.className="roman"; r.innerHTML=fmtChord(W.romans[i]);
+      const rm=(W.romans&&W.romans[i])||"";
+      if(rm){ const r=document.createElement("div"); r.className="roman"; r.innerHTML=fmtChord(rm); lab.appendChild(r); }
       const nm=document.createElement("div"); nm.className="cname"; nm.innerHTML=fmtChord(name);
-      lab.append(r,nm);
+      lab.appendChild(nm);
       const pan=document.createElement("div"); pan.className="fourpan";
       /* THE SHELL'S GRADIENTS KEEP AN ID OF THEIR OWN PER CELL (David, 2 Sep,
          from his D Kurd 20: "I don't necessarily like the black instruments").
@@ -24901,17 +24994,43 @@ function cpFourFill(idx){
          that points at a missing paint server is black; the card's own copy
          cannot serve it while the card is hidden. */
       let svg=panViewSVG(null,null,{under:true});
-      for(const g of ["pvg","pvgd"]) svg=svg.split('id="'+g+'"').join('id="'+g+'_c'+i+'"').split("url(#"+g+")").join("url(#"+g+"_c"+i+")");
+      for(const g of ["pvg","pvgd"]) svg=svg.split('id="'+g+'"').join('id="'+g+'_'+tag+i+'"').split("url(#"+g+")").join("url(#"+g+"_"+tag+i+")");
       pan.innerHTML=svg;
       pan.querySelectorAll("[id]").forEach(el=>{ if(/gradient/i.test(el.tagName)) return; el.dataset.twin=el.id; el.removeAttribute("id"); });
-      const sug=new Set(cpSuggested(name).map(pvId));
+      const sug=new Set((W.sug&&W.sug[i])||[]);
       for(const f of chordFields(name)){ const g=pan.querySelector('[data-twin="'+pvId(f)+'"]');
         if(g){ g.classList.add("clit"); if(sug.has(pvId(f))) g.classList.add("csug"); } }
       c.append(lab,pan); grid.appendChild(c);
     });
   }
   [...grid.children].forEach((c,i)=>c.classList.toggle("active",i===W.active));
-  if(cpWalking()){ const r=grid.children[0]&&grid.children[0].querySelector(".roman"); if(r&&!/now/.test(r.textContent)) r.innerHTML+=" · now"; }
+}
+/* chord practice's grids: the band's, and the magnified one while it is open */
+function cpFourFill(idx){
+  const W=cpFourNames(idx);
+  W.sug=W.names.map(n=>cpSuggested(n).map(pvId));
+  const band=document.querySelector("#cpband .cpfour"); if(band) fourPansFill(band,W,"c");
+  const z=document.querySelector("#panZoom .cpfour"); if(z) fourPansFill(z,W,"z");
+  if(cpWalking()) for(const g of [band,z]){ if(!g) continue;
+    const r=g.children[0]&&g.children[0].querySelector(".roman"); if(r&&!/now/.test(r.textContent)) r.innerHTML+=" · now"; }
+}
+/* the jam's: every slot of the progression, the sounding one live */
+function jamFourNames(idx){
+  const names=jam.slots.map(sl=>sl.chord);
+  return {names,romans:null,active:idx};
+}
+function jamFourFill(idx){
+  if(!jam||!jam.slots.length) return;
+  const W=jamFourNames(idx);
+  const card=document.querySelector("#panwrap .cpfour"); if(card) fourPansFill(card,W,"j");
+  const z=document.querySelector("#panZoom .cpfour"); if(z) fourPansFill(z,W,"z");
+}
+/* WHICH FOUR IS UP RIGHT NOW, if any — what the magnifier asks (9 Sep) */
+function fourNow(){
+  if(PHONE) return null;
+  if(typeof cpOn!=="undefined"&&cpOn&&cpStage&&cpFour&&cpSeq){ const W=cpFourNames(Math.max(0,cpFourIdx)); W.sug=W.names.map(n=>cpSuggested(n).map(pvId)); return W; }
+  if(typeof jamOn!=="undefined"&&jamOn&&jamFour&&jam&&jam.slots.length) return jamFourNames(Math.max(0,jamFourIdx));
+  return null;
 }
 /* the notation holds FOUR ROWS in a practice (David, 2 Sep: "only four lines
    should show up in the notation at once, so it doesn't grow too big … the
