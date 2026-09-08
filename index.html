@@ -9367,11 +9367,23 @@ let metOn=(localStorage.getItem("hps.met")||"0")==="1";
    (David, 9 Sep: "it would be a listening preference, like the metronome").
    It lives on the device, never in the piece: a jam that is saved or shared
    carries no bass, and nothing is drawn for it in the notation. */
-/* OFF AT EVERY LAUNCH (David, 9 Sep: "the first time the app is opened, bass
-   and drums should be muted"): the switch itself is for the session, like the
-   handpan's mute; what is remembered is how they sound — volume, the bass's
-   lowest note, the groove — not whether they are on. */
+/* REMEMBERED PER ROOM (David, 9 Sep, superseding the morning's "off at every
+   launch": "have the app remember the settings for bass and drums. They should
+   not be active by default when the app is first started, but then it can
+   remember the settings. Remember them separately for practice mode and for
+   the various different modes"). One key per room — practice, jam, chord
+   practice — holding the two switches; nothing stored means off, which is
+   how a first start meets them. Loaded whenever a room is entered or left,
+   saved whenever a switch is pressed. Volume, the bass's lowest note and the
+   groove stay one setting for the whole app. */
 let bassOn=false;
+function voiceRoom(){ return (typeof jamOn!=="undefined"&&jamOn)?"jam":(typeof cpOn!=="undefined"&&cpOn)?"cp":"practice"; }
+function voicesLoad(){
+  let v=null; try{ v=JSON.parse(localStorage.getItem("hps.voices."+voiceRoom())||"null"); }catch(e){}
+  bassOn=!!(v&&v.bass); rhyOn=!!(v&&v.rhy);
+  if(typeof paintVoices==="function") paintVoices();
+}
+function voicesSave(){ try{ localStorage.setItem("hps.voices."+voiceRoom(),JSON.stringify({bass:bassOn?1:0,rhy:rhyOn?1:0})); }catch(e){} }
 /* …and how loud it is, in per cent of its own full level (David, 9 Sep:
    "can you give me volume control on the bass when I right-click on the
    symbol?"). 100 is the level it shipped at; the range runs to 150 because a
@@ -9388,7 +9400,7 @@ let bassLow=Math.max(24,Math.min(48,+(localStorage.getItem("hps.jambasslow"))||3
    the same kind of preference as the bass: on/off, its volume, and which of
    David's grooves; remembered per device, never part of the piece. "auto"
    picks by the jam groove's meter (see rhyGrooveId). */
-let rhyOn=false;                    // off at every launch, like the bass (9 Sep)
+let rhyOn=false;                    // per room, see voicesLoad (9 Sep)
 let rhyVol=Math.max(0,Math.min(150,+(localStorage.getItem("hps.jamrhyvol"))||100));
 let rhyPick=localStorage.getItem("hps.jamrhypick")||"auto";
 /* THE HANDPAN'S MUTE is the one switch here that is NOT remembered: it is
@@ -21894,6 +21906,7 @@ function enterJam(){
   if(jam.bpm) bpm=jam.bpm;
   navPush("jam","Practice",()=>leaveJam());
   jamOn=true; document.body.classList.add("jam");
+  voicesLoad();                                   // the jam's own bass and rhythm switches
   /* A JAM OPENS ON THE CHORDS (David, 29 Aug: "jam mode should always open
      with the chords view, even when I closed the app with pan view").
      THIS REVERSES HIS OWN CALL OF 28 AUG, which opened a jam on the pan for
@@ -21930,6 +21943,7 @@ function leaveJam(){
   saveJamLS();
   jamOn=false; jamEditSlot=-1; document.body.classList.remove("jam");
   panMute=false; if(typeof paintPanMute==="function") paintPanMute();
+  voicesLoad();                                   // back to the room we return to
   navDrop("jam");
   clearBrkDim(); try{ $("brkDlg").close(); }catch(e){}
   $("brkBtn").classList.add("hidden");
@@ -25024,6 +25038,7 @@ function enterCp(){
   if(videoSeen) setSyncMode(false);
   cpLoadCfg();
   cpOn=true; cpStage=false; cpSeq=null; cpSeqN=0; cpLastTpl=null;
+  if(typeof voicesLoad==="function") voicesLoad();   // chord practice's own switches
   fsLeave();
   document.body.classList.add("cpsetup");
   $("cpwrap").classList.remove("hidden");
@@ -25074,6 +25089,7 @@ function leaveCp(noRestore){
   if(playing) stop();
   lsStop();
   cpOn=false; cpStage=false; cpSeq=null; cpFour=false;
+  if(typeof voicesLoad==="function") voicesLoad();   // back to the room we return to
   document.body.classList.remove("cp","cpsetup");
   $("cpwrap").classList.add("hidden");
   const b=$("cpband"); if(b){ b.classList.add("hidden"); b.innerHTML=""; }
@@ -29237,9 +29253,10 @@ function boot(){
       bb.addEventListener(ev,()=>clearTimeout(lt)));
     bb.addEventListener("click",e=>{
       if(longed){ e.stopImmediatePropagation(); longed=false; return; }   // a long press is not a click
-      bassOn=!bassOn;                              // not stored: off at every launch
+      bassOn=!bassOn; voicesSave();                // remembered for this room
       paintBass();
-      toast(bassOn?"Bass on — the root of each chord":"Bass off"); },true); }
+      toast(bassOn?"Bass on — the root of each chord":"Bass off"); },true);
+    window.paintBass=paintBass; }
   /* THE HANDPAN'S MUTE: a plain toggle, its face the pan or the pan struck
      through, never stored. */
   window.paintPanMute=()=>{ const mb=$("panMuteBtn"); if(!mb) return;
@@ -29263,6 +29280,10 @@ function boot(){
         .catch(e=>{ db.classList.remove("wait"); rhyOn=false; paintDrum();
           toast("The rhythm could not be loaded — "+(e&&e.message||"unknown")); }); };
     if(rhyOn) arm();
+    /* one painter for the room loader: both faces, and the rhythm's fetch if
+       the room wants it */
+    window.paintVoices=()=>{ if(window.paintBass) paintBass(); paintDrum(); arm(); };
+    voicesLoad();                                   // the room the app opens in
     let longed=false, lt=null;
     const openRhy=()=>{
       if(closePop()) return;
@@ -29307,7 +29328,7 @@ function boot(){
     ["pointerup","pointerleave","pointercancel"].forEach(ev=>db.addEventListener(ev,()=>clearTimeout(lt)));
     db.addEventListener("click",e=>{
       if(longed){ e.stopImmediatePropagation(); longed=false; return; }
-      rhyOn=!rhyOn;                                // not stored: off at every launch
+      rhyOn=!rhyOn; voicesSave();                  // remembered for this room
       paintDrum();
       if(rhyOn){ if(window.HPSWGG) HPSWGG.restart(); arm(); toast("Rhythm on — a World Groove Grid groove under the jam"); }
       else toast("Rhythm off"); },true); }
