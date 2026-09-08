@@ -900,6 +900,12 @@ body.editing #scorefoot #arrbox,#scorefoot.tight #arrbox{flex-wrap:wrap; justify
    footer — otherwise hiding it would take the play button with it. */
 body.nonota #score{display:none}
 body.nonota #scorefoot{margin-top:0; border-top:none}
+/* …AND WHILE CHORD PRACTICE'S FOUR PANS ARE UP (David, 9 Sep: "hide the
+   notation tab when the 4 pan band is active"): the same hiding — the music
+   goes, the frame's head with play and the voices stays, the foot closes up
+   — by a class cpRenderBand sets with the band. */
+body.cpfour #score{display:none}
+body.cpfour #scorefoot{margin-top:0; border-top:none}
 .ib{width:31px; height:31px; border-radius:9px; border:1px solid var(--rule);
   background:var(--card); color:var(--ink2); display:grid; place-items:center; flex:none;
   box-shadow:0 1px 2px rgba(var(--sh),.06); padding:0}
@@ -1384,6 +1390,11 @@ body.editing #fsBtn,body.gedit #fsBtn{display:none}
 body.phone #linkBtn,body.tablet #linkBtn{display:none !important}
 body.fs #scorewrap{background:var(--paper); overflow:auto; padding:16px;
   scrollbar-gutter:stable}
+/* the fullscreen diagnostic's readout (fsDiagPaint) — fixed, so inside a
+   fullscreen element it pins to that element's corner */
+#fsdiag{position:fixed; left:8px; bottom:8px; z-index:99; margin:0; padding:8px 10px;
+  font:11px/1.4 ui-monospace,Menlo,monospace; color:#fff; background:rgba(0,0,0,.74);
+  border-radius:8px; white-space:pre; pointer-events:none; max-width:96vw; overflow:hidden}
 body.fsmax #scorewrap{position:fixed; inset:0; z-index:80}
 /* the scale selector rides in the head's top-left while fullscreen — next to
    the section name in the arranger, beside the groove chip in a jam — so a
@@ -24892,6 +24903,7 @@ function cpRenderBand(){
      band can turn into the panel of four pans, one lit for each chord, the
      sounding one live; the magnifier and the (lit) four-pan button lead its
      head, the pan card standing hidden behind it */
+  document.body.classList.toggle("cpfour",!!(cpFour&&!PHONE));   // the notation steps aside for the four (9 Sep)
   if(cpFour&&!PHONE){
     b.classList.add("four");
     const mag=document.createElement("button"); mag.className="ib"; mag.type="button";
@@ -25228,7 +25240,7 @@ function leaveCp(noRestore){
   if(!cpOn) return;
   if(playing) stop();
   lsStop();
-  cpOn=false; cpStage=false; cpSeq=null; cpFour=false;
+  cpOn=false; cpStage=false; cpSeq=null; cpFour=false; document.body.classList.remove("cpfour");
   if(typeof voicesLoad==="function") voicesLoad();   // back to the room we return to
   document.body.classList.remove("cp","cpsetup");
   $("cpwrap").classList.add("hidden");
@@ -31780,11 +31792,40 @@ function fsSqueezed(z){
     const avail=e.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
     rg.selectNodeContents(e);
     // the range rect is visual px, clientWidth is layout px — divide out z
-    if(rg.getBoundingClientRect().width/z>avail+.6) return true;
+    if(rg.getBoundingClientRect().width/z>avail+.6){ FS_SQ++; return true; }
   }
   return false;
 }
+/* FULLSCREEN DIAGNOSTIC (9 Sep 2026) — AN INSTRUMENT, NOT A FIX. David's
+   desktop lands at zoom 1 in fullscreen where Safari here fits to the screen;
+   with ?fsdiag=1 on the URL (or localStorage hps.fsdiag=1) every fit pass is
+   written on the screen, inside the fullscreen element so it can be read and
+   screenshotted there: who called, the two heights the fit reads, the music's
+   layout width before and after, the zoom before and after, the squeeze cap. */
+const FSDIAG=[]; let FS_SQ=0;
+function fsDiagOn(){ try{ return /[?&]fsdiag=1/.test(location.search)||localStorage.getItem("hps.fsdiag")==="1"; }catch(e){ return false; } }
+function fsDiagPaint(){
+  if(!fsDiagOn()) return;
+  const wrap=$("scorewrap"); let d=$("fsdiag");
+  if(!d){ d=document.createElement("pre"); d.id="fsdiag"; }
+  if(d.parentElement!==wrap) wrap.appendChild(d);
+  d.textContent=FSDIAG.slice(-9).join("\n");
+}
 function fsFit(){
+  if(!fsDiagOn()){ fsFitCore(); return; }
+  const wrap=$("scorewrap"), sc=$("scorecard"), mus=$("score");
+  const by=((new Error().stack||"").split("\n").filter(l=>!/fsFit\b/.test(l))[1]||"").replace(/@?\(?https?:[^ )]*\)?/g,"").trim().slice(0,26)||"?";
+  const before=parseFloat(mus.style.zoom)||1, capIn=fsZCap, offW0=mus.offsetWidth; FS_SQ=0;
+  fsFitCore();
+  const z=parseFloat(mus.style.zoom)||1;
+  FSDIAG.push(Math.round(performance.now())+"ms "+by+" | avail "+(Math.min(wrap.clientHeight,innerHeight)-42)
+    +" (wrap "+wrap.clientWidth+"x"+wrap.clientHeight+" inner "+innerWidth+"x"+innerHeight+" screen "+screen.width+"x"+screen.height+")"
+    +" | native "+((document.fullscreenElement||document.webkitFullscreenElement)===wrap?"yes":"no")+(document.body.classList.contains("fsmax")?" fallback":"")
+    +" | offW "+offW0+"\u2192"+mus.offsetWidth+" h "+Math.round(mus.getBoundingClientRect().height)+" card "+Math.round(sc.getBoundingClientRect().height)
+    +" | z "+before.toFixed(2)+"\u2192"+z.toFixed(2)+" cap "+(capIn===Infinity?"\u221e":capIn.toFixed(2))+"\u2192"+(fsZCap===Infinity?"\u221e":fsZCap.toFixed(2))+" squeezed\u00d7"+FS_SQ);
+  fsDiagPaint();
+}
+function fsFitCore(){
   if(!fsOn()) return;
   const wrap=$("scorewrap"), sc=$("scorecard"), mus=$("score");
   /* THE CARD MUST FIT, WITH A MARGIN (David, 30 Aug: "in fullscreen the
