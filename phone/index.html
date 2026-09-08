@@ -1710,6 +1710,13 @@ body.phone{--btpad:.12em}
 .btcap{position:relative; isolation:isolate; display:flex;
   flex-direction:inherit; align-items:center; gap:inherit;
   padding-inline:var(--btpad,.21em); max-width:calc(100% - 2px)}  /* its room, in the box */
+/* IN FULL SCREEN THE TILE KEEPS ITS DIGIT WITH ITS OWN ROOM (David, 9 Sep):
+   unclamped, the capsule is its digit plus its overhang, symmetric, and may
+   stand a few pixels past a narrow slot — instead of the whole table giving
+   zoom back 6% at a time until every slot was wide enough (the "jumps back"
+   of his report, up to ten steps on a two-digit tile). fsSqueezed stays as
+   the safety net; with the clamp gone it has nothing left to find. */
+body.fs .btcap,body.fs .sym.bt{max-width:none}
 .btcap::before{content:""; position:absolute; z-index:-1;
   inset:calc((var(--symlh,1.02) - 1.206) * .5em + .101em) 0
         calc((var(--symlh,1.02) - 1.206) * .5em + .109em);
@@ -2520,7 +2527,7 @@ body.cplisten #score .beat.lsrep{box-shadow:inset 1px 0 0 var(--rule)}
    digit (the "badges out of sync" of David's screenshots). */
 body.cplisten #score{container-type:inline-size}
 body.cplisten #score .slot .sym{font-size:clamp(16px,calc(90cqw / var(--lscols,12)),64px)}   /* FILL THE CELL, in both views (David, 4 Sep, his pick): the number grows with its column */
-body.fs.cplisten #score .slot .sym{font-size:clamp(16px,calc(90cqw / var(--lscols,12)),120px)}  /* full screen: no zoom (fsFit), the screen's own width, a higher ceiling */
+body.fs.cplisten #score .slot .sym{font-size:clamp(16px,calc(90cqw / var(--lscols,12)),120px)}  /* full screen: no zoom (fsFit) — the numbers are already the widest their columns hold; the height is filled with rows (cpCapRows) */
 body.cplisten #score .slot.haschord{padding-top:clamp(15px,calc(30cqw / var(--lscols,12)),44px)}   /* the chord label's reserve grows with the number */
 body.cplisten #score .sym.bt{max-width:none;
   /* THE BADGE GIVES WAY WHEN THE ROW IS PACKED (David, 4 Sep: "when there's
@@ -25036,14 +25043,22 @@ function fourNow(){
    should show up in the notation at once, so it doesn't grow too big … the
    notation inside can be scrollable … only vertically … should follow the
    playhead") — the phone's fitter caps its own; this is the desktop's */
-function cpCapRows(){
+/* FOUR ROWS — OR, IN FULL SCREEN, AS MANY AS THE ROOM HOLDS (9 Sep): `room`
+   is the height the music may take, in layout px; the cap falls on the last
+   row that fits it, and never under four. Without `room` it is the four-row
+   cap of the windowed view. */
+function cpCapRows(room){
   if(PHONE) return;
   const mus=$("score"); if(!mus) return;
   const on=cpOn&&cpStage&&view!=="flow";
   if(mus.dataset.cpcap){ mus.style.maxHeight=""; mus.style.overflowY=""; mus.style.overflowX=""; delete mus.dataset.cpcap; }
   if(!on) return;
   const rows=mus.querySelectorAll(".nrow"); if(rows.length<=4) return;
-  const cap=rows[3].getBoundingClientRect().bottom-mus.getBoundingClientRect().top;
+  const z=parseFloat(mus.style.zoom)||1, top=mus.getBoundingClientRect().top;   // rects are visual px; max-height is layout px
+  let k=3;
+  if(room>0) for(let i=rows.length-1;i>3;i--){ if((rows[i].getBoundingClientRect().bottom-top)/z<=room){ k=i; break; } }
+  if(k>=rows.length-1) return;                               // every row fits: no cap at all
+  const cap=(rows[k].getBoundingClientRect().bottom-top)/z;
   mus.style.maxHeight=cap+"px"; mus.style.overflowY="auto"; mus.style.overflowX="hidden"; mus.dataset.cpcap="1";
 }
 /* …and it follows the playhead: the row the pulse is in becomes the window's
@@ -31795,15 +31810,24 @@ function fsFit(){
     wrap.style.paddingTop=(16+Math.max(0,(availH-fh)/2))+"px";
     return;
   }
-  /* LISTENING DOES NOT ZOOM EITHER (David, 4 Sep: "full screen mode is messed
-     up"): its numbers are a share of the column's width, and a zoom narrows
-     the layout, shrinks the numbers, shortens the rows and asks for more zoom
-     — it settled at small numbers in tall cells. So, as Flow: no zoom, the
-     numbers take their size from the real screen width, the four-row cap is
-     measured again for that size, the card is centred. */
+  /* ONE SENTENCE FOR EVERY ROOM (David, 9 Sep: "the table should simply
+     take the full screen, and it should follow the same rules in all the
+     different modes"): the table fills the width, its numbers are as large
+     as their columns allow, and the height is filled with the table — never
+     with air. For a zoomable table that is the zoom fit below (the width
+     floor is where the columns stop holding their glyphs). LISTEN's numbers
+     are ALREADY the widest their columns hold — a share of the column, the
+     4 Sep rule — so zoom could only push them into each other (measured
+     9 Sep: a zoomed Listen table overlapped its glyphs). What it had left
+     on the table was height: four rows of a twelve-row walk, and padding
+     for the rest. So Listen fills the height with ROWS instead — as many as
+     fit the screen, the four-row cap becoming a fit-the-room cap. */
   if(typeof lsOn!=="undefined"&&lsOn){
     mus.style.zoom="";
-    if(typeof cpCapRows==="function") cpCapRows();
+    if(typeof cpCapRows==="function"){
+      const chrome=sc.getBoundingClientRect().height-mus.getBoundingClientRect().height;
+      cpCapRows(Math.max(80,availH-chrome));
+    }
     const fh=sc.getBoundingClientRect().height;
     wrap.style.paddingTop=(16+Math.max(0,(availH-fh)/2))+"px";
     return;
