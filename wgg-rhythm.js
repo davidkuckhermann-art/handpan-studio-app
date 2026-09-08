@@ -178,7 +178,11 @@ function nodeFor(ri){
     const row=ROWS[ri];
     const g=ctx.createGain(); g.gain.value=Math.pow(10,(row.gain||0)/20);
     let out=g;
-    if(ctx.createStereoPanner){ const p=ctx.createStereoPanner(); p.pan.value=(row.pan||0)/100; g.connect(p); out=p; }
+    /* the grid's pan is a FRACTION, -1..1, handed straight to the panner —
+       build_grid.py's row.panNode.pan.value=row.pan (the mini's percent table
+       is for URL-carried pans, not saved grids); /100 here had flattened
+       every pan David set to a whisper (found 9 Sep on the reimport) */
+    if(ctx.createStereoPanner){ const p=ctx.createStereoPanner(); p.pan.value=Math.max(-1,Math.min(1,+row.pan||0)); g.connect(p); out=p; }
     out.connect(bus); pans[ri]=g;
   }
   return pans[ri];
