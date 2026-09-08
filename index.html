@@ -712,7 +712,12 @@ body.phone #genBtn{display:none !important}
    (placeTabletControls / placePhoneControls). */
 #jamVoices{display:none; align-items:center; gap:6px; padding:3px;
   border:1px solid var(--rule); border-radius:12px; background:var(--card)}
-body.jam:not(.editing):not(.gedit) #jamVoices{display:inline-flex}
+/* IN EVERY ROOM THAT PLAYS A PIECE (David, 9 Sep: "let's bring the option
+   for bass and percussion, and muting the handpan, also to practice mode …
+   And please bring them to chord practice as well"): a jam, Practice, the
+   chord-practice stage. Not in an editor, a quiz, Learn or chord practice's
+   setup screen. */
+body:not(.editing):not(.gedit):not(.quiz):not(.rquiz):not(.learn):not(.cpsetup) #jamVoices{display:inline-flex}
 /* DESKTOP ONLY — and "desktop" is NOT `body:not(.phone)`: a tablet's body
    carries `tablet` without `phone`, so that selector fired on David's iPad and
    put the group at left:100% of the deck, one pixel past the screen's edge
@@ -723,9 +728,13 @@ body:not(.phone):not(.tablet) #jamVoices{position:absolute; left:100%; top:50%;
   transform:translateY(-50%); margin-left:10px; white-space:nowrap}
 /* the phone's tabs row is short of room: smaller faces, and the group at the
    row's right end where the section chip stood */
-body.phone:not(.tablet) #jamVoices{margin-left:auto; gap:4px; padding:2px}
-body.phone:not(.tablet) #jamVoices .ib{width:28px; height:28px; border-radius:8px}
-body.phone:not(.tablet) #jamVoices .ib svg{width:15px; height:15px}
+/* landscape: hovering over the notation just left of the play button, which
+   sits at top:6px right:6px, 44px round (see body.phone #scorewrap>#playBtn) */
+body.phone:not(.tablet) #scorewrap>#jamVoices{position:absolute; top:8px; right:58px; z-index:4}
+/* in the drawer the group keeps its full faces; its heading hides where the
+   group does */
+#dsVoices{display:none}
+body.phone:not(.tablet):not(.editing):not(.gedit):not(.quiz):not(.rquiz):not(.learn):not(.cpsetup) #dsVoices{display:block}
 /* WHITE SOUNDS, GREY IS SILENT (David, 9 Sep: "the handpan button should be
    white by default, and the other two buttons should be grayed out. Only the
    handpan button plays, and when you click the other buttons, they will also
@@ -5693,8 +5702,8 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
          tablet; the phone has not been given them yet. -->
     <span id="jamVoices" role="group" aria-label="The jam's voices">
       <button class="ib" id="panMuteBtn" title="Mute the handpan — the bass and the rhythm carry on" aria-pressed="false"><svg><use href="#is-pan"/></svg></button>
-      <button class="ib" id="bassBtn" title="Bass — one note under each chord (jam mode)"><svg><use href="#is-bass"/></svg></button>
-      <button class="ib" id="drumBtn" title="Rhythm — a World Groove Grid groove under the jam. Right-click for its volume and groove"><svg><use href="#is-drum"/></svg></button>
+      <button class="ib" id="bassBtn" title="Bass — one note under each chord"><svg><use href="#is-bass"/></svg></button>
+      <button class="ib" id="drumBtn" title="Rhythm — a World Groove Grid groove under the music. Right-click for its volume and groove"><svg><use href="#is-drum"/></svg></button>
     </span>
     <!-- LISTENING (David, 3 Sep): shown by body.lslive alone — while the app
          hears the pan, not while it is paused; the desktop's, the phone never listens -->
@@ -5879,6 +5888,13 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
          bar's second line so the two can never disagree. Its own label is
          for the bar — inside the drawer the MY PAN heading already says it. -->
     <div class="drow" id="dwPan"><span id="panNow"><span class="lab" id="panNowLab">My pan</span></span></div>
+    <!-- THE VOICES (David, 9 Sep: "the interface on mobile is getting a bit too
+         cluttered. Let's move these three buttons from above the notation
+         table into the drawer below the scale selector, above the swing and
+         groove map row") — the framed group moves in here in portrait;
+         landscape has no drawer and keeps it in the tabs row. -->
+    <div class="dsec" id="dsVoices">Voices</div>
+    <div class="drow" id="dwVoices"></div>
     <div class="dsec" id="dsFeel">Feel</div>
     <div class="drow" id="dwFeel"></div>
   </div>
@@ -8375,11 +8391,12 @@ function loadWgg(){
    made for the backbeat grooves (4/4) and "2-step for HPS" for the up-tempo
    backbeat and the 2-step (2/4). "auto" reads the jam groove's meter; a
    chip in the popup overrides it. */
-function rhyGrooveId(){
+function rhyGrooveId(m){
   const gs=(window.HPSWGG&&HPSWGG.grooves())||[]; if(!gs.length) return null;
   if(rhyPick!=="auto"&&gs.some(g=>g.id===rhyPick)) return rhyPick;
-  const pat=allPats().find(x=>x.id===(jam&&jam.patternId))||JAMPATS[0];
-  const two=pat.meter&&pat.meter[0]===2&&pat.meter[1]===4;
+  /* the meter of the section in hand — a jam's groove, a piece's own */
+  if(!m){ try{ m=SM(piece,viewSec||piece.arrangement[0]); }catch(e){ m=null; } }
+  const two=!!(m&&m.beats===2);
   const want=two?/2-?step|two-?step/i:/backbeat/i;
   /* several backbeats now (Backbeat 2–5 for HPS, 9 Sep): Auto takes the
      plain one, "Simple Backbeat", and leaves the others to the chips */
@@ -9897,6 +9914,16 @@ function jamBassChordAt(p){
   }
   return null;
 }
+/* THE CHORD A BAR STANDS UNDER, IN ANY PIECE (9 Sep, the voices in Practice):
+   the name written on the bar, else the nearest one written before it in the
+   loop (a jam tags a chord on the bar it starts on), else the chord the bar's
+   own notes spell — barChordLabel's inference, the chord row's own reading. */
+function voiceChordAt(p,sec,m){
+  const own=(C.byPulse.get(p)||[]).find(x=>x.chord); if(own) return own.chord;
+  const back=jamBassChordAt(p); if(back) return back;
+  try{ const bar=piece.sections[sec.name].bars[Math.floor((p-sec.pulse)/m.bp)];
+    const l=bar&&barChordLabel(bar); return l?l.name:null; }catch(e){ return null; }
+}
 /* HOW LONG THE BAR IS, counted in the very pulses the scheduler is about to
    play, so the ring follows the tempo, the metre and a half-speed pass without
    being told about any of them. A break's silence cuts it short — a bass still
@@ -9966,7 +9993,7 @@ function sched(){
         const built=buildJamPiece(); piece=built; viewSec=built.arrangement[0]; selAi=0; viewPin=null;
         refresh(); fired=[]; lastPaint=-1; jamPaintChord(0); paintBrkStill();
       }
-      if(!mutedByPreview&&!brkMute&&!cpQuiet&&!(jamOn&&panMute)) for(const ev of (C.byPulse.get(p2)||[])) fireEvent(ev,at);
+      if(!mutedByPreview&&!brkMute&&!cpQuiet&&!panMute) for(const ev of (C.byPulse.get(p2)||[])) fireEvent(ev,at);
       /* THE BREAK'S CLICK IS ITS OWN INSTRUMENT (David, 29 Aug: "if
          'metronome keeps time' is activated in breaks settings, the metronome
          should play during the break, starting after the 1st beat, not on it.
@@ -10002,8 +10029,12 @@ function sched(){
          construction; which note it is comes from the chord in force. It
          stands under the same three mutes as the strokes above: a groove
          preview, a break's silence, and chord practice's quiet. */
-      if(bassOn&&jamOn&&!mutedByPreview&&!brkMute&&!cpQuiet&&rel%m.bp===0){
-        const nm=jamBassChordAt(p2);
+      /* THE BASS AND THE RHYTHM PLAY IN ANY ROOM THAT PLAYS A PIECE (9 Sep).
+         They keep the preview's and the break's silences; chord practice's
+         "click only" and "silent" quiet the PAN, not these — they are their
+         own voices with their own switches. */
+      if(bassOn&&!mutedByPreview&&!brkMute&&rel%m.bp===0){
+        const nm=voiceChordAt(p2,sec,m);
         if(nm) fireBass(nm,at,jamBassBar(nextPulse,m.bp));
       }
       /* THE RHYTHM TRACK, under the same three mutes. The step is counted
@@ -10014,8 +10045,8 @@ function sched(){
          feel all reach the drums. Not ready yet — first switch-on, or a
          tempo just changed — means the preparation is asked for and this
          step passes in silence. */
-      if(rhyOn&&jamOn&&window.HPSWGG&&HPSWGG.loaded()&&!mutedByPreview&&!brkMute&&!cpQuiet){
-        HPSWGG.use(rhyGrooveId());
+      if(rhyOn&&window.HPSWGG&&HPSWGG.loaded()&&!mutedByPreview&&!brkMute){
+        HPSWGG.use(rhyGrooveId(m));
         const fit=rhyFit(m);
         if(fit){
           const sd=pulseDurOf(p2)/fit.spp;
@@ -10025,7 +10056,14 @@ function sched(){
              bar on the second row instead of restarting at every row. */
           const rowP=m.bp*Math.max(1,m.bpr||1), cycP=fit.steps/fit.spp;
           const span=(cycP>rowP&&cycP%rowP===0)?cycP:rowP;
-          if(HPSWGG.ready(sd)) HPSWGG.fireStep(((rel%span)*fit.spp)%fit.steps,at,sd);
+          /* EVERY SIXTEENTH THE PULSE COVERS (David, 9 Sep: "with a two-pulse
+             groove all the rhythms get cut off"). A groove whose pulses are
+             eighths asked the rhythm about every other sixteenth, so a stroke
+             on an odd step — 2-step's 5, 11 and 13, Khaligi's 3 — never
+             fired and the rest sounded cut. The pulse now hands over each of
+             its spp steps in turn, spaced by the step length. */
+          if(HPSWGG.ready(sd)){ const s0=(rel%span)*fit.spp;
+            for(let k=0;k<fit.spp;k++) HPSWGG.fireStep((s0+k)%fit.steps,at+k*sd,sd); }
           else HPSWGG.prepare(sd);
         }
       }
@@ -20075,6 +20113,16 @@ function panFlavour(pan){
   if(h.major===h.ding) return "major";
   return h.minor!=null?"minor":"major";
 }
+/* NO QUESTION ANY MORE (David, 9 Sep: "when I select a new scale, please
+   don't bring up the question if I want to transpose or not. Simply
+   transpose the jam to the new scale"). The progression follows the pan's
+   home at once; the toast says by how much. askPanMove and its dialog stay
+   in the file, unused, in case he wants the question back. */
+function jamPanMove(oldPan){
+  const t=jamTransposeBetween(oldPan,myPan);
+  if(!t||!t.semis){ renderJamPanel(); return; }   // same home: nothing to move
+  panMove=t; doPanMove();
+}
 function askPanMove(oldPan){
   const t=jamTransposeBetween(oldPan,myPan);
   if(!t||!t.semis){ renderJamPanel(); return; }   // same home: nothing to move
@@ -20099,7 +20147,7 @@ function doPanMove(){
   });
   jamEditSlot=-1;
   applyJam();
-  toast("Progression transposed");
+  toast("Progression transposed "+(n<=6?"up "+n:"down "+(12-n))+(Math.min(n,12-n)===1?" semitone":" semitones")+" to the new pan");
 }
 function jamTransposeBetween(oldPan,newPan){
   const a=panHomes(oldPan), b=panHomes(newPan);
@@ -28625,7 +28673,7 @@ function choosePan(id){
   if(typeof rqOn!=="undefined"&&rqOn&&!RQ) setTimeout(renderRQSetup,0);
   try{ localStorage.setItem("hps.panId",id); }catch(e){}
   $("panPickDlg").close(); refresh();
-  if(jamOn&&jam&&jam.slots.length&&wasPan&&wasId!==myPanId) askPanMove(wasPan);
+  if(jamOn&&jam&&jam.slots.length&&wasPan&&wasId!==myPanId) jamPanMove(wasPan);
   /* PICKING A PAN WHILE WRITING ASKS THE OBVIOUS QUESTION (David, 31 Aug:
      "if the user picks another pan from the normal pan selector while in
      edit mode, there can be a dialog asking if the user wants to switch the
@@ -29220,9 +29268,8 @@ function boot(){
       let fitNote="";
       if(window.HPSWGG&&HPSWGG.loaded()){
         HPSWGG.use(rhyGrooveId());
-        const pat=allPats().find(x=>x.id===(jam&&jam.patternId))||JAMPATS[0];
-        const m={sub:pat.sub,bp:pat.meter[0]*pat.sub};
-        const unit=pat.unit||4, ok=rhyFit({sub:m.sub,bp:m.bp});
+        let m=null; try{ m=SM(piece,viewSec||piece.arrangement[0]); }catch(e){}
+        const ok=m&&rhyFit(m);
         fitNote=ok?"":'<div class="note">This jam groove is not written in sixteenths, so the rhythm stays silent on it.</div>';
       }
       pop.innerHTML='<div class="ttl">Rhythm volume</div>'
@@ -31221,6 +31268,10 @@ function placeDrawer(){
      the same instruction). `dsFeel` for a piece is where they already are. */
   const ex=$("drawerExtra"), before=jamOn?$("dsMode"):$("dsFeel");
   ex.insertBefore($("dsPan"),before); ex.insertBefore($("dwPan"),before);
+  /* …and the voices directly under the pan (David, 9 Sep: "below the scale
+     selector, above the swing and groove map row") — seated AFTER the pan
+     rows, since those are re-inserted on every placement */
+  if($("dsVoices")&&$("dwVoices")){ ex.insertBefore($("dsVoices"),before); ex.insertBefore($("dwVoices"),before); }
   /* The Chords|Pan switch went back to the top right, where it was (David,
      27 Aug), and the Notation toggle retired with it — the notation is always
      on now, so a switch for it was a control with one useful position. */
@@ -31434,9 +31485,16 @@ function placePhoneControls(){
     if(panOn) renderPanPanel();
     return;
   }
-  /* THE JAM'S VOICES TAKE THE SECTION CHIP'S PLACE in the tabs row (David,
-     9 Sep) — both orientations; the chip itself is hidden on the phone now. */
-  { const jv=$("jamVoices"), vr=$("viewrow"); if(jv&&vr&&jv.parentElement!==vr) vr.appendChild(jv); }
+  /* THE VOICES LIVE IN THE DRAWER in portrait (David, 9 Sep, "too cluttered")
+     and in the tabs row in landscape, which has no drawer. Moved on every
+     placement, so a rotation carries them across. */
+  { const jv=$("jamVoices"), land=matchMedia("(orientation:landscape)").matches;
+    /* landscape has neither a drawer nor a tabs row (#viewrow is hidden
+       there): the group floats over the notation beside the play button,
+       which already floats at the card's top-right (David, 9 Sep: "next to
+       the play button, just left of the play button, hovering over the
+       notation table") */
+    if(jv&&!land&&$("dwVoices")&&jv.parentElement!==$("dwVoices")) $("dwVoices").appendChild(jv); }
   if(matchMedia("(orientation:landscape)").matches){
     // desktop order: Follow video · play · sound · loop (David, 28 Aug)
     $("sctools").append($("followBtn"),$("playBtn"),$("folMute"),$("loopBtn"));
@@ -31445,6 +31503,7 @@ function placePhoneControls(){
        drawer, and placeDrawer had moved them into it (27 Aug) */
     const lrow=$("prow1"), lfirst=lrow.firstChild;
     ["bpmCtl","countBtn","halfBtn","metBtn"].forEach(id=>lrow.insertBefore($(id),lfirst));
+    $("scorewrap").appendChild($("jamVoices"));      // beside the floating play button
     $("markBtn").classList.add("hidden");     // no room for it on a wide phone
     $("halfBtn").className="ctl"; $("halfBtn").textContent="Half speed";
     $("metBtn").className="ctl";  $("metBtn").textContent="Metronome";
