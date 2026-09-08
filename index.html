@@ -4158,13 +4158,14 @@ body.phone #edLaneHead #undoBtn, body.phone #edLaneHead #redoBtn{
    jam mode when relevant as well"). `jamparts` is the flag renderArr already
    keeps for exactly this — a jam that runs to several tables — so the chip
    appears with the pills it belongs beside and never for a one-table jam. */
-/* GONE IN A PHONE JAM (David, 9 Sep: "get rid of the navigation button on the
-   top right of the notation table … we already have the navigation in the
-   drawer. Instead, let's place the same three buttons here" — and then,
-   "Practice mode was a mistake. Not for now, only in jam mode"). So the jam's
-   voices take the chip's place in a jam alone; in Practice the chip stands
-   as before. */
-body.phone.jam #secChip{display:none !important}
+/* GONE ON THE PHONE, IN EVERY ROOM (David, 9 Sep, in three steps: "get rid of
+   the navigation button on the top right of the notation table … we already
+   have the navigation in the drawer"; then "Practice mode was a mistake" —
+   which was about the three VOICES, not the chip; then "Please take out the
+   arrangement navigator … also in practice mode. Navigating the arrangement
+   happens in the drawer on mobile"). The rules below are kept for the record
+   and never match now. */
+body.phone #secChip{display:none !important}
 body.phone.jam.jamparts:not(.editing):not(.gedit) #secChip,
 body.phone:not(.editing):not(.gedit):not(.jam):not(.quiz):not(.rquiz) #secChip{
   display:inline-flex; align-items:center; gap:4px; margin-left:auto;
@@ -21441,7 +21442,7 @@ function jamNarrowNow(){ return !!jam&&!jam.motion&&!!jam.narrow; }
    pass that is sounding and no two passes are alike. jamPasses() answers 1 for
    it, so every reader of the form's length is untouched; jamEndless() is the
    one thing the scheduler asks. */
-function jamEndless(){ return !!(jam&&jam.motion&&jam.mpasses==="inf"); }
+function jamEndless(){ return !!(jam&&(jam.motion||jam.trans)&&jam.mpasses==="inf"); }
 function jamPasses(){ if(jamEndless()) return 1; const n=+(jam&&jam.mpasses)||2; return [1,2,4].includes(n)?n:2; }
 function buildJamPiece(){ const b=buildJamPieceRaw(); if(myPan) assignHands(b,myPan,{jam:true}); return b; }   // the groove pattern's hands (HANDS.md rule 9)
 function buildJamPieceRaw(){
@@ -21623,7 +21624,17 @@ function buildJamPieceRaw(){
      whether the rules should match was yes, and one shared function is the
      only way to mean it. There is no travelling line here, so nothing is
      re-aimed afterwards: the run is a lead-in, not a change of register. */
-  const nBarsAll=jam.slots.reduce((n,sl)=>n+Math.max(1,sl.bars||1),0);
+  /* THE CYCLES BELONG TO TRANSITIONS TOO (David, 9 Sep: "when the transition
+     option is activated in the jam please activate the same melody cycles
+     option that Motion also activates, so that the transitions don't have to
+     be the same every round"). With Transitions on, the form runs jamPasses()
+     times through the chords — the run stream (`trnd`) walks on across the
+     passes, so the runs of pass two are not the runs of pass one — and the
+     passes become tables exactly as Motion's do. Endless redraws them every
+     time round (the scheduler's jamEndless rebuild). Without Transitions
+     nothing repeats: one pass, one table, as always. */
+  const passesN=jam.trans?jamPasses():1;
+  const nBarsAll=jam.slots.reduce((n,sl)=>n+Math.max(1,sl.bars||1),0)*passesN;
   const trnd=jamRnd(((jam.mseed||1)^0x9E3779B9)>>>0);
   const topTokN=JV_TOK[Math.max(0,VV-1)];
   const phraseN=Math.max(4,Math.round(nBarsAll/4));
@@ -21632,7 +21643,7 @@ function buildJamPieceRaw(){
   const chordAtBar=[];
   jam.slots.forEach(sl=>{ const n=Math.max(1,sl.bars||1);
     for(let k=0;k<n;k++) chordAtBar.push(sl.chord); });
-  jam.slots.forEach((slot,si)=>{
+  for(let pass=0;pass<passesN;pass++) jam.slots.forEach((slot,si)=>{
     const v=vs[si];
     const gb=patBars(pat), bp=pat.meter[0]*pat.sub;
     for(let b=0;b<(slot.bars||1);b++){
@@ -21673,6 +21684,17 @@ function buildJamPieceRaw(){
       bars.push(bar);
     }
   });
+  /* one table per pass, named "1", "2"… — Motion's own split, for the same
+     reasons (a form nobody can read as one table; the navigator's pills) */
+  if(passesN>1){
+    const per=Math.max(1,jamBarCount()), sections={}, order=[];
+    for(let k=0;k<passesN;k++){ const nm=String(k+1);
+      sections[nm]={bars:bars.slice(k*per,(k+1)*per)}; order.push(nm); }
+    return { format:"hpd-2", id:"jam", title:"Jam", author:"",
+      writtenFor:myPanId, tempo:bpm||72, meter:pat.meter, sub:pat.sub,
+      unit:pat.unit||4,
+      barsPerRow:pat.bpr||1, sections, arrangement:order };
+  }
   return { format:"hpd-2", id:"jam", title:"Jam", author:"",
     writtenFor:myPanId, tempo:bpm||72, meter:pat.meter, sub:pat.sub,
     unit:pat.unit||4,
@@ -22343,7 +22365,7 @@ function renderJamPanel(){
          hit first */
       tpills.querySelectorAll("button").forEach(x=>
         x.setAttribute("aria-pressed",String(x===b)));
-      jam.trans=val; applyJam(); saveJamLS();
+      jam.trans=val; applyJam(); saveJamLS(); paintVoicingDesc();   // the cycles row follows the switch (9 Sep)
       toast(val?"Transitions on — rows lead into the next chord":"Transitions off");
     });
     tpills.appendChild(b);
@@ -28376,7 +28398,7 @@ function paintVoicingDesc(){
      bars, because "2×" is only a number until you know the progression. */
   const row=$("jsMotionRow");
   if(row){
-    row.classList.toggle("hidden",!(jam&&jam.motion));
+    row.classList.toggle("hidden",!(jam&&(jam.motion||jam.trans)));   // Motion's, and Transitions' since 9 Sep
     const ps=$("jsPasses");
     if(ps) ps.querySelectorAll("button").forEach(b=>
       b.setAttribute("aria-pressed",String(jamEndless()?b.dataset.passes==="inf":+b.dataset.passes===jamPasses())));
@@ -28384,7 +28406,13 @@ function paintVoicingDesc(){
     if(d){ const n=jamBarCount()*jamPasses();
       d.textContent=jamEndless()
         ? "Endless: one pass of your "+jam.slots.length+(jam.slots.length===1?" chord":" chords")
-          +" is on the page, and every time the music comes round the line is drawn again — improvised as it goes, never the same twice. New line redraws it now."
+          +" is on the page, and every time the music comes round the "+(jam.motion?"line is":"transitions are")
+          +" drawn again — improvised as it goes, never the same twice. New line redraws "+(jam.motion?"it":"them")+" now."
+        : !jam.motion
+        ? "The transitions are drawn over "+jamPasses()+(jamPasses()===1?" pass":" passes")+" of your "
+          +jam.slots.length+(jam.slots.length===1?" chord":" chords")+" — "
+          +(jamPasses()===1?"the same runs every time round.":"a different run each time round, and the notation is that whole form.")
+          +" New line draws other runs over the same chords."
         : "The line rises and returns over "+n+(n===1?" bar":" bars")
         +" — "+jamPasses()+(jamPasses()===1?" pass":" passes")+" of your "
         +jam.slots.length+(jam.slots.length===1?" chord":" chords")
