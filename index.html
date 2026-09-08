@@ -8356,7 +8356,7 @@ let wggPend=null;
 function wggURL(name){
   const b=document.querySelector('script[src*="bank.js"]');
   const src=b?b.getAttribute("src"):"bank.js";
-  return src.replace(/bank\.js(\?.*)?$/,name+"?v=1");
+  return src.replace(/bank\.js(\?.*)?$/,name+"?v=2");   // v=2: the seven-groove bank (9 Sep)
 }
 function loadWgg(){
   if(window.HPSWGG&&window.HPSWGG.loaded()) return Promise.resolve();
@@ -8381,13 +8381,17 @@ function rhyGrooveId(){
   const pat=allPats().find(x=>x.id===(jam&&jam.patternId))||JAMPATS[0];
   const two=pat.meter&&pat.meter[0]===2&&pat.meter[1]===4;
   const want=two?/2-?step|two-?step/i:/backbeat/i;
-  const hit=gs.find(g=>want.test(g.name));
+  /* several backbeats now (Backbeat 2–5 for HPS, 9 Sep): Auto takes the
+     plain one, "Simple Backbeat", and leaves the others to the chips */
+  const hit=(!two&&gs.find(g=>/simple backbeat/i.test(g.name)))||gs.find(g=>want.test(g.name));
   return (hit||gs[0]).id;
 }
 /* DOES THE RHYTHM FIT THIS GROOVE — one sentence: the rhythm plays whenever
    the jam's grid is in sixteenths (a whole number of WGG steps per pulse); it
    counts its steps from the top of the CURRENT ROW of the notation and starts
-   over with every new row. (David, 9 Sep: "make it so that you can still
+   over with every new row — unless its cycle spans a whole number of rows, in
+   which case it counts from the top of that span (a two-bar rhythm over two
+   one-bar rows). (David, 9 Sep: "make it so that you can still
    activate the rhythm, but it will loop from the start when the cycle starts
    again from the handpan jam" — and then, "the rhythm should restart when a
    new row starts".) The row is the unit David set on 1 Sep for everything the
@@ -10015,8 +10019,13 @@ function sched(){
         const fit=rhyFit(m);
         if(fit){
           const sd=pulseDurOf(p2)/fit.spp;
-          const rowP=m.bp*Math.max(1,m.bpr||1);
-          if(HPSWGG.ready(sd)) HPSWGG.fireStep(((rel%rowP)*fit.spp)%fit.steps,at,sd);
+          /* THE SPAN: the row — unless the rhythm's cycle is a whole number of
+             rows, in which case the span is the cycle, so a two-bar rhythm
+             (David's Backbeat 3, 4 and 5 for HPS: 32 steps) reaches its second
+             bar on the second row instead of restarting at every row. */
+          const rowP=m.bp*Math.max(1,m.bpr||1), cycP=fit.steps/fit.spp;
+          const span=(cycP>rowP&&cycP%rowP===0)?cycP:rowP;
+          if(HPSWGG.ready(sd)) HPSWGG.fireStep(((rel%span)*fit.spp)%fit.steps,at,sd);
           else HPSWGG.prepare(sd);
         }
       }
@@ -29202,7 +29211,8 @@ function boot(){
     const openRhy=()=>{
       if(closePop()) return;
       const pop=document.createElement("div"); pop.className="pop"; pop.id="drumPop";
-      const gs=(window.HPSWGG&&HPSWGG.grooves())||[];
+      const gs=((window.HPSWGG&&HPSWGG.grooves())||[]).slice()
+        .sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));   // the store lists newest first; the chips read in order
       const chips='<button class="chip'+(rhyPick==="auto"?" on":"")+'" data-rg="auto">Auto</button>'
         +gs.map(g=>'<button class="chip'+(rhyPick===g.id?" on":"")+'" data-rg="'+g.id+'">'
           +g.name.replace(/\s*for HPS\s*$/i,"")+'</button>').join("");
