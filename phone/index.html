@@ -25066,11 +25066,11 @@ function cpCapRows(room){
   if(mus.dataset.cpcap){ mus.style.maxHeight=""; mus.style.overflowY=""; mus.style.overflowX=""; delete mus.dataset.cpcap; }
   if(!on) return;
   const rows=mus.querySelectorAll(".nrow"); if(rows.length<=4) return;
-  const z=parseFloat(mus.style.zoom)||1, top=mus.getBoundingClientRect().top;   // rects are visual px; max-height is layout px
+  const kr=zoomRectRatio(mus), top=mus.getBoundingClientRect().top;   // rects → layout px by the engine's own ratio (9 Sep)
   let k=3;
-  if(room>0) for(let i=rows.length-1;i>3;i--){ if((rows[i].getBoundingClientRect().bottom-top)/z<=room){ k=i; break; } }
+  if(room>0) for(let i=rows.length-1;i>3;i--){ if((rows[i].getBoundingClientRect().bottom-top)/kr<=room){ k=i; break; } }
   if(k>=rows.length-1) return;                               // every row fits: no cap at all
-  const cap=(rows[k].getBoundingClientRect().bottom-top)/z;
+  const cap=(rows[k].getBoundingClientRect().bottom-top)/kr;
   mus.style.maxHeight=cap+"px"; mus.style.overflowY="auto"; mus.style.overflowX="hidden"; mus.dataset.cpcap="1";
 }
 /* …and it follows the playhead: the row the pulse is in becomes the window's
@@ -31784,15 +31784,20 @@ function fsNativeEl(){ return document.fullscreenElement||document.webkitFullscr
    window near the 540px floor, but fullscreen is the one place that CHOOSES
    its layout width — so it must choose one where nothing clamps: measure
    the ink against the room and give zoom back until every tile holds. */
+/* RECTS INSIDE A ZOOMED SUBTREE: WebKit gives them unzoomed, Chromium zoomed
+   (9 Sep). This is the one ratio that says which — the music's rect height
+   over its layout height: z on Chromium, 1 on WebKit — and every measure
+   taken inside #score by a rect is divided by it to reach layout px. */
+function zoomRectRatio(mus){ const l=mus.offsetHeight; return l?mus.getBoundingClientRect().height/l:1; }
 function fsSqueezed(z){
-  const rg=document.createRange();
-  for(const e of $("score").querySelectorAll(".sym.bt,.btcap")){
+  const rg=document.createRange(), mus=$("score"), k=zoomRectRatio(mus);
+  for(const e of mus.querySelectorAll(".sym.bt,.btcap")){
     if(!e.offsetParent) continue;
     const cs=getComputedStyle(e);
     const avail=e.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
     rg.selectNodeContents(e);
-    // the range rect is visual px, clientWidth is layout px — divide out z
-    if(rg.getBoundingClientRect().width/z>avail+.6){ FS_SQ++; return true; }
+    // the range rect is in the subtree's rect units, clientWidth is layout px
+    if(rg.getBoundingClientRect().width/k>avail+.6){ FS_SQ++; return true; }
   }
   return false;
 }
@@ -31866,7 +31871,7 @@ function fsFitCore(){
   if(typeof lsOn!=="undefined"&&lsOn){
     mus.style.zoom="";
     if(typeof cpCapRows==="function"){
-      const chrome=sc.getBoundingClientRect().height-mus.getBoundingClientRect().height;
+      const chrome=sc.getBoundingClientRect().height-mus.offsetHeight*(parseFloat(mus.style.zoom)||1);
       cpCapRows(Math.max(80,availH-chrome));
     }
     const fh=sc.getBoundingClientRect().height;
@@ -31875,8 +31880,16 @@ function fsFitCore(){
   }
   let z=parseFloat(mus.style.zoom)||1;
   const setZ=v=>{ z=v; mus.style.zoom=v; };
+  /* THE MUSIC'S HEIGHT ON THE SCREEN IS ITS LAYOUT HEIGHT TIMES THE ZOOM
+     (David's readout, 9 Sep, from the Mac app): WebKit reports the bounding
+     rect of a zoomed element in the element's own unzoomed units, Chromium
+     in screen units. Read through the rect, the Mac saw a 335-px music inside
+     a 1639-px card, called the rest "chrome", found no room and gave up —
+     then shrank pass by pass once the window had finished growing. offsetHeight
+     is layout px in both engines; times z it is the screen in both. */
+  const musH=()=>mus.offsetHeight*z;
   for(let i=0;i<8;i++){
-    const h=mus.getBoundingClientRect().height;
+    const h=musH();
     // the head, footer and card padding around the music — unzoomed, but
     // remeasured each pass because the head can rewrap as the music moves
     const chrome=sc.getBoundingClientRect().height-h;
@@ -31902,7 +31915,7 @@ function fsFitCore(){
   for(let i=0;i<8;i++){
     const over=sc.getBoundingClientRect().height-availH;
     if(over<=1||z<=.35) break;
-    const mh=mus.getBoundingClientRect().height;
+    const mh=musH();
     if(mh<=0) break;
     setZ(Math.max(.35,z*Math.max(.5,(mh-over)/mh)));
   }
@@ -31955,7 +31968,13 @@ function fsLeave(){
 }
 {
   const wrap=$("scorewrap");
-  $("fsBtn").addEventListener("click",()=>{
+  $("fsBtn").addEventListener("click",e=>{
+    /* THE READOUT'S SWITCH FOR THE MAC APP (9 Sep): no address bar there, so
+       an Option-click on the fullscreen button turns the diagnostic on or
+       off — it then shows on the next fullscreen. */
+    if(e&&e.altKey){ let on=false; try{ on=localStorage.getItem("hps.fsdiag")!=="1"; localStorage.setItem("hps.fsdiag",on?"1":"0"); }catch(err){}
+      const d=$("fsdiag"); if(d&&!on) d.remove();
+      toast(on?"Fullscreen readout on — press the full-screen button now":"Fullscreen readout off"); return; }
     if(fsOn()){ fsLeave(); return; }
     const req=wrap.requestFullscreen||wrap.webkitRequestFullscreen;
     const fallback=()=>{ if(!fsNativeEl()&&!fsOn()){ document.body.classList.add("fsmax"); fsApply(true); } };
