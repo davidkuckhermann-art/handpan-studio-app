@@ -226,7 +226,7 @@ function readScore(img,opts){
     }
     sys.bars=findBarLines(inkL,w,h,sys,sp);
   }
-  for(const sys of systems) for(const st of sys.staffs){ st.heads=st.heads.filter(hd=>!hd.fake); findDots(st,symComps,sp,sys.bars); findAccidentals(st,symComps,sp,sym,w); }
+  for(const sys of systems) for(const st of sys.staffs){ st.heads=st.heads.filter(hd=>!hd.fake); findTuplets(st,symComps,sp,sym,w); findDots(st,symComps,sp,sys.bars); findAccidentals(st,symComps,sp,sym,w); }
 
   /* columns and onsets per staff per bar */
   const bars=[]; let n=0; const sectionCuts=[];
@@ -238,6 +238,7 @@ function readScore(img,opts){
       for(const st of sys.staffs){
         const heads=st.heads.filter(hd=>hd.x>bx0&&hd.x<bx1&&hd.dur).sort((a,b)=>a.x-b.x);
         const rests=findRests(st,symComps,sp,bx0,bx1,heads);
+        for(const r of rests){ const t=(st.tupletSpans||[]).find(t=>r.x>=t.x0&&r.x<=t.x1); if(t){ r.dur*=2/3; r.voice=t.dir; } }   // a rest under a tuplet's bracket is the tuplet's, in the bracket's voice
         const items=heads.map(hd=>({x:hd.x,head:hd})).concat(rests.map(r=>({x:r.x,rest:r})));
         items.sort((a,b)=>a.x-b.x);
         const cols=[];
@@ -258,17 +259,34 @@ function readScore(img,opts){
             if(arc){ ha.tiedTo=hb; hb.tied=true; } }
         }
         for(const C of cols){ C._origHeads=C.heads; C.heads=C.heads.filter(hd=>!hd.tied); }
-        let onset=0;
+        /* TWO VOICES (triplet arpeggios, 8 Sep 2026: a dotted eighth and a sixteenth above a triplet, the sixteenth
+           landing after the bar's end): a bar that shows stems of both directions in one column is written in two
+           voices, and each direction keeps its own clock — a head starts where its voice's clock stands, and the
+           column where the earliest of its heads does. Every other bar is one voice, the columns in sequence. */
+        const dirOf=hd=>hd.stem?hd.stem.dir:0;
+        /* Two voices are told by their stems: the upper voice's go up, the lower's down, and every up-stem head
+           stands above every down-stem head. One voice stems by pitch — up below the middle line, down above —
+           so its up-stem heads sit BELOW its down-stem heads, and a chord's heads reading their one stem either
+           way fall the same side. (The first statement, opposite stems in one column, missed the bar where the
+           upper voice never shares a column — a dotted half over rests and eighths, page 2, 8 Sep 2026.) */
+        const ups=[], downs=[]; for(const C of cols) for(const hd of C.heads){ if(!hd.stem) continue; (hd.stem.dir<0?ups:downs).push(hd.y); }
+        const twoVoice=ups.length>0&&downs.length>0&&Math.max(...ups)<Math.min(...downs);
+        let onset=0; const clock={"-1":0,"1":0};
         for(let i=0;i<cols.length;i++){ const C=cols[i];
           if(!C.rest&&!C.heads.length){ C.empty=true; continue; }               // a column of tied continuations: its time flows to the note before
           C.dur=C.rest?C.rest.dur:Math.min(...C.heads.map(hd=>hd.dur));
           let j=i+1; while(j<cols.length&&!cols[j].rest&&!cols[j].heads.length){ C.dur+=Math.min(...(cols[j]._origHeads||[]).map(hd=>hd.dur).concat([0.5])); j++; }
-          C.onset=onset; onset+=C.dur;
+          if(twoVoice){
+            const at=hd=>{ const d=dirOf(hd); return d?clock[d]:Math.min(clock[-1],clock[1]); };
+            if(C.rest){ const d=C.rest.voice||(clock[-1]<=clock[1]?-1:1); C.onset=clock[d]; clock[d]+=C.dur; }
+            else { C.onset=Math.max(...C.heads.map(at)); for(const hd of C.heads){ const d=dirOf(hd)||(clock[-1]<=clock[1]?-1:1); clock[d]=C.onset+hd.dur; } }   // a voice entering into the other's column starts with it: its rests were not found or not written
+            onset=Math.max(clock[-1],clock[1]);
+          } else { C.onset=onset; onset+=C.dur; }
           C.notes=C.heads.map(hd=>({midi:hd.midi,name:hd.name,step:hd.step,hollow:hd.hollow,q:!!hd.q,acc:hd.acc})).sort((a,b)=>b.step-a.step);
           C.q=C.heads.some(hd=>hd.q);
           C.x=Math.round(C.x);
         }
-        bar.staffs.push({clef:st.clef,cols:cols.filter(c=>!c.empty),total:onset});
+        bar.staffs.push({clef:st.clef,cols:cols.filter(c=>!c.empty),total:onset,twoVoice});
       }
       bars.push(bar);
     }
@@ -276,7 +294,7 @@ function readScore(img,opts){
   /* the meter is what most bars add up to; a bar that does not is uncertain */
   const plain=bars.flatMap(b=>b.staffs.filter(s=>!s.cols.some(c=>c.rest&&c.rest.kind==="whole")).map(s=>s.total)).filter(t=>t>0);
   const beats=plain.length?modeOf(plain.map(t=>Math.round(t*4)/4)):4;
-  for(const b of bars) for(const s of b.staffs){ let t=0; for(const c of s.cols){ if(c.rest&&c.rest.kind==="whole") c.dur=beats; c.onset=t; t+=c.dur; } s.total=t; }
+  for(const b of bars) for(const s of b.staffs){ if(s.twoVoice) continue; let t=0; for(const c of s.cols){ if(c.rest&&c.rest.kind==="whole") c.dur=beats; c.onset=t; t+=c.dur; } s.total=t; }
   for(const b of bars){ for(const s of b.staffs){ s.q=s.cols.length>0&&Math.abs(s.total-beats)>0.01; if(s.total===0) s.empty=true; }
     b.q=b.staffs.some(s=>s.q||s.cols.some(c=>c.q)); }
   const notes=headsAll.map(hd=>({x:Math.round(hd.x),y:Math.round(hd.y),midi:hd.midi,name:hd.name,dur:hd.dur,hollow:hd.hollow,q:!!hd.q,clef:hd.clef}));
@@ -406,7 +424,7 @@ function findHeads(ink,sym,symLab,symComps,w,h,st,sp,log){
     if(fill>0.5&&(sideRun(ym,c.x0,-1)>=1.0*sp||sideRun(ym,c.x1,1)>=1.0*sp)) return true;    // a wedge open into a line or a beam; a head's rim is short
     return false; };
   const {comps:hc}=components(st._holes,w,h,c=>{ if(c.cy>yTop&&c.cy<yBot&&c.x0>xMin) (st._holeRaw=st._holeRaw||[]).push({x:Math.round(c.cx),y:Math.round(c.cy),w:c.w,h:c.h,fill:+(c.n/(c.w*c.h)).toFixed(2),sliver:sliver(c)});
-    return c.cy>yTop&&c.cy<yBot&&c.x0>xMin&&c.w>=0.3*sp&&c.w<1.3*sp&&c.h>0.08*sp&&c.h<0.9*sp&&!sliver(c); });
+    return c.cy>yTop&&c.cy<yBot&&c.x0>xMin&&c.w>=0.3*sp&&c.w<1.3*sp&&c.h>0.08*sp&&c.h<=1.0*sp&&!sliver(c); });   // a whole note's hole in a space is a spacing tall (page 2, bar 15's bass)
   hc.sort((a,b)=>a.cx-b.cx);
   const used=new Set();
   for(let i=0;i<hc.length;i++){
@@ -421,7 +439,7 @@ function findHeads(ink,sym,symLab,symComps,w,h,st,sp,log){
     const bw=box.x1-box.x0+1, bh=box.y1-box.y0+1;
     const bhEff=members.size>1?[...members].reduce((n,m)=>n+m.h,0):bh;                     // two halves across a staff line: the line's rows are not hole
     const trace=(why)=>{ (st._holeLog=st._holeLog||[]).push({x:Math.round((box.x0+box.x1)/2),y:Math.round((box.y0+box.y1)/2),w:bw,h:bh,why}); };
-    if(bw/bhEff<0.7||bh>0.95*sp||bh<0.3*sp){ trace("shape"); continue; }     // letters and digits are taller; a pocket under a beam is thinner
+    if(bw/bhEff<0.7||bh>1.0*sp||bh<0.3*sp){ trace("shape"); continue; }     // letters and digits are taller; a pocket under a beam is thinner
     /* WHAT STANDS RIGHT BESIDE THE HOLE IS THE HEAD'S RIM — short, since a rim is curved: the ink in the column
        next to the hole runs no taller than 1.3 sp. A bar line there (the paper between a bar line, two staff
        lines and the next glyph — Tchaikovsky's half notes hard after the line, Game of Thrones' tie pockets) or a
@@ -439,7 +457,7 @@ function findHeads(ink,sym,symLab,symComps,w,h,st,sp,log){
     /* a ROUND hole is a WHOLE NOTE's, and a whole note's rim is thick — a quarter to two thirds of a spacing on
        each side; the round pocket between a flat's curve and a head (Für Elise) or where a flag leaves its stem
        has thin walls. Measured on the top half's row when a line splits the hole. */
-    if(bw/bhEff<1.1){ const top=[...members].reduce((a,m)=>m.y0<a.y0?m:a); const cyr=Math.round((top.y0+top.y1)/2);
+    if(bw/bhEff<1.2){ const top=[...members].reduce((a,m)=>m.y0<a.y0?m:a); const cyr=Math.round((top.y0+top.y1)/2);   // 1.2: a space-filling pocket beside a stem is as round as a whole note's hole (Let It Be) — the rim tells them apart
       const thick=(x,dir)=>{ let n=0; while(x>=0&&x<w&&ink[cyr*w+x]){ n++; x+=dir; } return n; };
       const l=thick(box.x0-1,-1), r=thick(box.x1+1,1);
       if(l<0.25*sp||l>0.7*sp||r<0.25*sp||r>0.7*sp){ trace("round, thin rim "+l+"/"+r); continue; } }
@@ -477,7 +495,14 @@ function findHeads(ink,sym,symLab,symComps,w,h,st,sp,log){
     // text has more letters close on both sides; a note has paper (or one thin stem) beside it
     const side=(xa,xb)=>{ let n=0,k=0; for(let y=box.y0;y<=box.y1;y++) for(let x=xa;x<=xb;x++){ k++; n+=sym[y*w+x]; } return k?n/k:0; };
     const gap=Math.round(0.25*sp), wd=Math.round(0.45*sp);
-    const left=side(Math.max(0,box.x0-gap-wd),Math.max(0,box.x0-gap)), right=side(Math.min(w-1,box.x1+gap),Math.min(w-1,box.x1+gap+wd));
+    /* measured beyond the head's own rim: a whole note's rim is half a spacing thick on each side, and the window
+       beside the hole used to fall inside it (triplet arpeggios, 8 Sep 2026: every whole note on the page was
+       "text"). The rim is the ink walked outward from the hole on its middle row — the top half's row when a
+       line splits the hole. */
+    const rimRow=members.size>1?Math.round(([...members].reduce((a,m)=>m.y0<a.y0?m:a).y0+[...members].reduce((a,m)=>m.y0<a.y0?m:a).y1)/2):Math.round((box.y0+box.y1)/2);
+    const rim=(x,dir)=>{ let n=0; while(x>=0&&x<w&&ink[rimRow*w+x]&&n<sp){ n++; x+=dir; } return n<=0.7*sp?n:0; };   // thicker than a rim is a neighbouring glyph (the pocket between two beamed heads): measure from the hole
+    const rimL=rim(box.x0-1,-1), rimR=rim(box.x1+1,1);
+    const left=side(Math.max(0,box.x0-rimL-gap-wd),Math.max(0,box.x0-rimL-gap)), right=side(Math.min(w-1,box.x1+rimR+gap),Math.min(w-1,box.x1+rimR+gap+wd));
     if(left>0.35&&right>0.35){ trace(`text ${left.toFixed(2)}/${right.toFixed(2)}`); continue; }
     trace("kept");
     heads.push({x:(box.x0+box.x1)/2,y:(box.y0+box.y1)/2,hx0:box.x0-e,hx1:box.x1+e,hy0:box.y0-e,hy1:box.y1+e,hollow:true});
@@ -580,12 +605,18 @@ function readStem(hd,sym,w,h,sp,st){
   let beams=0;
   for(const off of [0.55,1.1]) for(const side of [1,-1]){
     const x=Math.round(best.x+side*off*sp); if(x<0||x>=w) continue;
-    let runs=0,run=0,onStem=0; const yA=best.yEnd+best.dir*1.0*sp, yB=best.yEnd-best.dir*Math.min(2.5*sp,best.len-1.4*sp);   // from a spacing past the stem's end (a sloping beam sits higher there) toward the head
+    let runs=0,run=0,onStem=0,att=0; const yA=best.yEnd+best.dir*1.0*sp, yB=best.yEnd-best.dir*Math.min(2.5*sp,best.len-1.4*sp);   // from a spacing past the stem's end (a sloping beam sits higher there) toward the head
     const step=-best.dir;                                                   // from the end toward the head, stopping short of the head
     const beamMin=Math.max(0.22*sp,1.3*st.th);   // a beam or a flag is clearly thicker than a staff line; a line kept beside a beam is not
-    const close=()=>{ if(run>=beamMin&&onStem>=run*0.5){ runs++; (hd._beamRuns=hd._beamRuns||[]).push([side,run,onStem]); } run=0; onStem=0; };
+    /* an accidental's upright half a spacing from the stem is a hairline running long (triplet arpeggios, 8 Sep
+       2026: a flat's stroke beside a stem was a second beam, and an eighth of a triplet became a sixteenth). A
+       flag is a hairline where the scan line crosses it too, but a short one — under half a spacing at every
+       size benched — and a beam is broad. A run that is a hairline on most of its rows and longer than 0.8 sp
+       is a stroke, not a beam. */
+    const broad=y=>{ let a=x,b=x; while(a>0&&sym[y*w+a-1]) a--; while(b<w-1&&sym[y*w+b+1]) b++; return b-a+1>=0.4*sp; };
+    const close=()=>{ if(run>=beamMin&&onStem>=run*0.5&&!(att<run*0.5&&run>=0.8*sp)){ runs++; (hd._beamRuns=hd._beamRuns||[]).push([side,run,onStem,att]); } run=0; onStem=0; att=0; };
     for(let y=span(yA);best.dir<0?y<=span(yB):y>=span(yB);y+=step){
-      if(sym[y*w+x]){ run++; if(sym[y*w+best.x]||sym[y*w+best.x-1]||sym[y*w+best.x+1]) onStem++; } else close();
+      if(sym[y*w+x]){ run++; if(sym[y*w+best.x]||sym[y*w+best.x-1]||sym[y*w+best.x+1]) onStem++; if(broad(y)) att++; } else close();
     }
     close();
     beams=Math.max(beams,runs);
@@ -594,6 +625,71 @@ function readStem(hd,sym,w,h,sp,st){
   hd.dur=hd.hollow?2:beams===0?1:beams===1?0.5:0.25;
 }
 
+/* TUPLETS (8 Sep 2026 — a page of triplet arpeggios, David: "look at the timing in the third bar"): a small figure —
+   the 3 — beyond the beam of a group, at the stems' far end. Every beamed eighth counted half a beat, a triplet added
+   up to a beat and a half, the bar to six, and the meter followed. The mark itself was also read as a tiny head at the
+   end of some groups. A mark is a glyph 0.7–1.5 sp tall and under 1.2 sp wide, beyond the beam of a beamed head
+   within 2.5 sp of its stem; a head that coincides with a mark goes; the group under a mark — beamed heads joined by
+   one continuous beam — is scaled by two thirds when its count is a multiple of three. */
+function findTuplets(st,symComps,sp,sym,w){
+  /* A TUPLET IS ITS FIGURE BEYOND THE BEAM (triplet arpeggios, 9 Sep 2026): a beamed group with a "3" past its
+     stems' ends plays three in the time of two. The figure is read as INK AT ITS PLACE, not as a component —
+     the italic 3 of this engraving falls into two or three fragments in the symbol image, and no fragment was
+     a figure. Ink in the window beyond a group's beam (0.15–2.5 sp past the stems' ends, between its outer
+     stems) is clustered across gaps of a third of a spacing; a cluster 0.7–1.5 sp tall and under 1.2 sp wide is
+     the figure. A slur or a bracket through the window is wider, a dynamic taller. */
+  const h=Math.floor(sym.length/w), inkL=st._inkL||sym;
+  const beamed=()=>st.heads.filter(hd=>hd.stem&&hd.beams>=1);
+  if(!beamed().length) return;
+  const bm=beamed().sort((a,b)=>a.x-b.x);
+  /* one continuous beam joins a group: ink along the beam's row between two stems' ends */
+  const joined=(a,b)=>{ if(a.stem.dir!==b.stem.dir||b.x-a.x>6*sp) return false; const y0=Math.min(a.stem.yEnd,b.stem.yEnd)-Math.round(0.3*sp), y1=Math.max(a.stem.yEnd,b.stem.yEnd)+Math.round(0.3*sp);
+    let n=0,k=0; for(let x=Math.round(Math.min(a.stem.x,b.stem.x));x<=Math.round(Math.max(a.stem.x,b.stem.x));x++){ k++; let inked=false; for(let y=Math.max(0,y0);y<=Math.min(h-1,y1)&&!inked;y++) if(sym[y*w+x]) inked=true; if(inked) n++; } return k>0&&n/k>0.85; };
+  const groups=[]; for(const hd of bm){ const g=groups.slice().reverse().find(g=>{ const l=g[g.length-1]; return (Math.abs(hd.x-l.x)<0.3*sp&&hd.stem.dir===l.stem.dir)||joined(l,hd); });   // a chord shares one stem; two voices in one column do not — and two voices' groups interleave, so the group is searched for, not the last one taken
+    if(g) g.push(hd); else groups.push([hd]); }
+  const figures=[];
+  for(const g of groups){
+    const dir=g[0].stem.dir, stems=g.map(hd=>hd.stem).sort((a,b)=>a.x-b.x);
+    const beamAt=x=>{ if(x<=stems[0].x) return stems[0].yEnd; if(x>=stems[stems.length-1].x) return stems[stems.length-1].yEnd;
+      for(let i=1;i<stems.length;i++) if(x<=stems[i].x){ const a=stems[i-1],b=stems[i]; return a.yEnd+(b.yEnd-a.yEnd)*(x-a.x)/Math.max(1,b.x-a.x); } return stems[0].yEnd; };
+    const x0=Math.max(0,Math.round(stems[0].x-1.0*sp)), x1=Math.min(w-1,Math.round(stems[stems.length-1].x+1.0*sp));
+    const gap=Math.max(1,Math.round(0.3*sp)); const pts=[]; const idx=new Map(); const linePts=[];
+    /* a thin line's pixels (a horizontal run of 0.8 sp and more, under 0.35 sp tall, off the staff's own lines) are
+       kept apart from the figure's: a bracket's line runs into its figure's gap closer than the cluster's reach */
+    const isLine=(x,y)=>{ if(st.lines.some(ly=>Math.abs(y-ly)<=1)) return false; let a=y,b=y; while(a>0&&inkL[(a-1)*w+x]) a--; while(b<h-1&&inkL[(b+1)*w+x]) b++; if(b-a+1>0.35*sp) return false;
+      let l=x,r=x; while(l>0&&inkL[y*w+l-1]) l--; while(r<w-1&&inkL[y*w+r+1]) r++; return r-l+1>=0.8*sp; };
+    for(let x=x0;x<=x1;x++){ const ye=beamAt(x); const ya=dir<0?ye-2.5*sp:ye+0.15*sp, yb=dir<0?ye-0.15*sp:ye+2.5*sp;
+      for(let y=Math.max(0,Math.round(ya));y<=Math.min(h-1,Math.round(yb));y++) if(inkL[y*w+x]){ if(isLine(x,y)){ linePts.push({x,y}); continue; } idx.set(y*w+x,pts.length); pts.push({x,y,c:-1}); } }
+    let nc=0; for(let i=0;i<pts.length;i++){ if(pts[i].c>=0) continue; const stack=[i]; pts[i].c=nc; while(stack.length){ const p=pts[stack.pop()];
+        for(let dy=-gap;dy<=gap;dy++) for(let dx=-gap;dx<=gap;dx++){ const j=idx.get((p.y+dy)*w+p.x+dx); if(j!==undefined&&pts[j].c<0){ pts[j].c=nc; stack.push(j); } } } nc++; }
+    const boxes=[]; for(const p of pts){ const b=boxes[p.c]||(boxes[p.c]={x0:p.x,x1:p.x,y0:p.y,y1:p.y,n:0}); b.x0=Math.min(b.x0,p.x); b.x1=Math.max(b.x1,p.x); b.y0=Math.min(b.y0,p.y); b.y1=Math.max(b.y1,p.y); b.n++; }
+    const fig=boxes.find(b=>{ const bw=b.x1-b.x0+1, bh=b.y1-b.y0+1; return bh>=0.7*sp&&bh<=1.5*sp&&bw>=0.35*sp&&bw<=1.2*sp&&b.n>=0.15*bw*bh&&b.n<=0.6*bw*bh; });   // a figure has paper inside its box: a solid block is a stroke's end (the Minuet)
+    if(!fig) continue;
+    figures.push({cx:(fig.x0+fig.x1)/2,cy:(fig.y0+fig.y1)/2});
+    /* A BRACKET SAYS WHAT THE TUPLET SPANS (page 2 of the triplet arpeggios, 8 Sep 2026: an eighth rest and two
+       beamed eighths under a bracket, four times a bar): thin lines beside the figure at its height — under
+       0.35 sp tall, 0.8 sp and longer — are the bracket, and everything on the bracket's side inside its reach is
+       the tuplet: the heads whose stems point at it, and the rests, which the bar's reading scales when it finds
+       them (st.tupletSpans). Without a bracket the beamed group is the tuplet, three columns or six. */
+    const fcy=(fig.y0+fig.y1)/2; const segs=linePts.filter(p=>Math.abs(p.y-fcy)<0.8*sp);
+    if(segs.length){
+      /* the bracket runs on past the window: followed along its row to its hooks, a gap of two pixels allowed */
+      const follow=(x,y,d)=>{ let miss=0,last=x; for(;x>=0&&x<w;x+=d){ if(inkL[y*w+x]||inkL[(y-1)*w+x]||inkL[(y+1)*w+x]){ last=x; miss=0; } else if(++miss>2) break; } return last; };
+      const L=segs.reduce((a,p)=>p.x<a.x?p:a), Rr=segs.reduce((a,p)=>p.x>a.x?p:a);
+      const xl=follow(L.x,L.y,-1), xr=follow(Rr.x,Rr.y,1);
+      /* a bracket ends in hooks — a tick of 0.3 sp and more standing off the line at each end; a hairpin's lines
+         and a slur's ends have none (page 2's bar 19 under a crescendo, Amazing Grace under a slur) */
+      const hook=(x,y)=>{ let best=0; for(const X of [x-1,x,x+1]){ if(X<0||X>=w) continue; let a=y,b=y; while(a>0&&inkL[(a-1)*w+X]) a--; while(b<h-1&&inkL[(b+1)*w+X]) b++; best=Math.max(best,b-a+1); } return best>=0.3*sp+2; };
+      if(hook(xl,L.y)&&hook(xr,Rr.y)){
+        const x0=xl-0.3*sp, x1=xr+0.3*sp;
+        (st.tupletSpans=st.tupletSpans||[]).push({x0,x1,dir});
+        for(const hd of st.heads) if(hd.x>=x0&&hd.x<=x1&&hd.stem&&hd.stem.dir===dir&&!hd.tuplet){ hd.dur*=2/3; hd.tuplet=3; }
+        continue; } }
+    const cols=new Set(g.map(hd=>Math.round(hd.x/(0.3*sp)))).size;                                        // heads of one chord share a column
+    if(cols%3===0) for(const hd of g){ hd.dur*=2/3; hd.tuplet=3; }
+  }
+  if(figures.length) st.heads=st.heads.filter(hd=>!figures.some(m=>Math.abs(m.cx-hd.x)<0.6*sp&&Math.abs(m.cy-hd.y)<0.8*sp));     // a figure read as a head is no head
+}
 /* a dot to the right of a head at its height lengthens it by half */
 function findDots(st,symComps,sp,barXs){
   const sym=st._sym, w=st._w, h=sym?sym.length/w:0;
@@ -612,12 +708,23 @@ function findDots(st,symComps,sp,barXs){
       /* a dot is round: the ink through its centre runs under 0.7 sp both ways — a flag's tail, a stem or a rest
          runs on vertically, a beam or a line's residue horizontally; a tie leaving the dot's side is thin */
       { const Y=Math.round(yc); if(!sym[Y*w+x]) continue; let a=Y,b=Y; while(a>0&&sym[(a-1)*w+x]) a--; while(b<h-1&&sym[(b+1)*w+x]) b++; if(b-a+1>0.7*sp) continue;
-        let l=x,r=x; while(l>0&&sym[Y*w+l-1]) l--; while(r<w-1&&sym[Y*w+r+1]) r++; if(r-l+1>0.7*sp) continue; }
+        let l=x,r=x; while(l>0&&sym[Y*w+l-1]) l--; while(r<w-1&&sym[Y*w+r+1]) r++; if(r-l+1>0.7*sp) continue;
+        /* …and the whole blob the disc sits in, not only the runs through its centre: a natural's crossbar beside
+           a head is short both ways at its middle but runs on into the upright (triplet arpeggios, page 2,
+           8 Sep 2026: a triplet eighth before a natural read dotted) */
+        /* — within 0.7 sp of the disc, the blob must hold no stroke (a vertical run of 0.9 sp or more). A tie
+           leaving the dot is thin all the way and reaches the next head only a spacing on (Game of Thrones keeps
+           its dotted halves). */
+        const cap=0.7*sp; const seen=new Set([Y*w+x]); const stack=[[x,Y]]; let big=false;
+        const vrun=(px,py)=>{ let a=py,b=py; while(a>0&&sym[(a-1)*w+px]) a--; while(b<h-1&&sym[(b+1)*w+px]) b++; return b-a+1; };
+        while(stack.length&&!big){ const [px,py]=stack.pop(); if(vrun(px,py)>=0.9*sp){ big=true; break; }
+          for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){ const X=px+dx,YY=py+dy; if(X<0||X>=w||YY<0||YY>=h||Math.abs(X-x)>cap||Math.abs(YY-Y)>cap) continue; const k=YY*w+X; if(seen.has(k)||!sym[k]) continue; seen.add(k); stack.push([X,YY]); } }
+        if(big) continue; }
       best=n/k; }
     return best; };
   for(const hd of st.heads){
     if(!hd.dur) continue;
-    const dot=symComps.find(c=>c.w>0.12*sp&&c.w<0.6*sp&&c.h>0.12*sp&&c.h<0.6*sp
+    const dot=symComps.find(c=>c.w>=0.2*sp&&c.w<0.6*sp&&c.h>=0.2*sp&&c.h<0.6*sp   // a dot is a fifth of a spacing and more each way; a two-pixel crumb off a flat's bowl is not (page 2 of the triplet arpeggios)
       &&c.x0>hd.hx1+0.1*sp&&c.x0<hd.hx1+1.3*sp&&Math.abs(c.cy-hd.y)<0.7*sp
       &&!barXs.some(bx=>Math.abs(bx-c.cx)<1.2*sp));
     if(dot||dotInk(hd)>0.7) hd.dur*=1.5;
@@ -635,7 +742,12 @@ function findAccidentals(st,symComps,sp,sym,w){
      a stem, not an accidental. */
   const inkL=st._inkL||sym, h=Math.floor(inkL.length/w);
   for(const hd of st.heads){
-    const x0=Math.max(0,Math.round(hd.hx0-1.3*sp)), x1=Math.max(0,Math.round(hd.hx0-0.15*sp));
+    /* THE WINDOW HOLDS THE WHOLE ACCIDENTAL (David, 8 Sep 2026: a C♯ read as C♭, so the piece transposed up a
+       tone put it back at C♯ and he saw a note that "still says C#"). A sharp is 1.1 sp wide and can sit a third
+       of a spacing clear of the head, which put its LEFT upright outside a window of 1.3 sp: one stroke was
+       left, the crossbars closed a hole beside it, and one stroke with a hole is a flat. 1.9 sp holds a sharp
+       with its gap; the "wider than any accidental" test below still throws out anything broader. */
+    const x0=Math.max(0,Math.round(hd.hx0-1.9*sp)), x1=Math.max(0,Math.round(hd.hx0-0.15*sp));
     const ya=Math.max(0,Math.round(hd.y-6*sp)), yb=Math.min(h-1,Math.round(hd.y+6*sp));       // tall enough that a bar line shows its whole height
     const strokes=[]; let cur=null;
     for(let x=x0;x<=x1;x++){ let run=0,best=0,t=-1,bt=-1; for(let y=ya;y<=yb;y++){ if(inkL[y*w+x]){ if(!run) t=y; run++; if(run>best){ best=run; bt=t; } } else run=0; }
@@ -654,8 +766,11 @@ function findAccidentals(st,symComps,sp,sym,w){
     if(Rt.x1-L.x0+1>1.3*sp) continue;                                                     // wider than any accidental
     let acc=null;
     if(strokes.length>=2) acc=(Rt.top-L.top>0.2*H&&Rt.bot-L.bot>0.2*H)?0:1;               // 0 natural · 1 sharp
-    else { let hole=false; if(st._holes) for(let y=Math.round(bot-1.3*sp);y<=bot&&!hole;y++) for(let x=L.x1+1;x<=Math.min(w-1,L.x1+Math.round(0.9*sp));x++) if(st._holes[y*w+x]){ hole=true; break; }
-      if(hole) acc=-1; }                                                                  // -1 flat
+    else { let hy0=1e9,hy1=-1; if(st._holes) for(let y=Math.round(bot-1.3*sp);y<=bot;y++) for(let x=L.x1+1;x<=Math.min(w-1,L.x1+Math.round(0.9*sp));x++) if(st._holes[y*w+x]){ if(y<hy0) hy0=y; if(y>hy1) hy1=y; }
+      /* A FLAT BELONGS TO THE HEAD AT ITS BOWL, not to anything its stem passes (triplet arpeggios, 8 Sep 2026:
+         with a window wide enough to hold a sharp, a flat before the lower note of a third reached the note above
+         it too). A sharp and a natural are symmetrical about their note's row and are left to the run's own test. */
+      if(hy1>=0){ const cy=(hy0+hy1)/2; if(Math.abs(hd.y-cy)<=0.7*sp) acc=-1; } }          // -1 flat
     if(acc===null) continue;
     hd.acc=acc; hd.accInfo={strokes:strokes.length,box:[L.x0,Rt.x1,top,bot]};
     for(const c of symComps) if(c.x0>=L.x0-1&&c.x1<=Rt.x1+Math.round(0.9*sp)&&c.y0>=top-1&&c.y1<=bot+1) c.isAcc=true;   // its components are not rests
@@ -680,7 +795,10 @@ function findRests(st,symComps,sp,bx0,bx1,heads){
   const mid=st.lines[2];
   for(const c of symComps){
     if(c.cx<bx0+0.3*sp||c.cx>bx1-0.3*sp) continue;
-    if(heads.some(hd=>c.x0<=hd.hx1+0.3*sp&&c.x1>=hd.hx0-0.3*sp&&c.y0<=hd.hy1+3*sp&&c.y1>=hd.hy0-3*sp)) continue;  // touches a note
+    /* touches a note: its box meets a head's box, or it stands on a head's stem. Not merely near one — a rest of
+       the lower voice sits right under the upper voice's note (triplet arpeggios, page 2, 8 Sep 2026: the eighth
+       rest under a dotted half and the one under a quarter were skipped, and the bar ran to nine beats) */
+    if(heads.some(hd=>(c.x0<=hd.hx1+0.3*sp&&c.x1>=hd.hx0-0.3*sp&&c.y0<=hd.hy1+0.3*sp&&c.y1>=hd.hy0-0.3*sp)||(hd.stem&&Math.abs(c.cx-hd.stem.x)<0.4*sp&&c.y0<=Math.max(hd.y,hd.stem.yEnd)&&c.y1>=Math.min(hd.y,hd.stem.yEnd)))) continue;
     if(c.w>0.8*sp&&c.w<2.0*sp&&c.h>0.3*sp&&c.h<0.9*sp&&Math.abs(c.cy-mid)<1.1*sp){
       const dTop=Math.min(...st.lines.map(ly=>Math.abs(c.y0-ly))), dBot=Math.min(...st.lines.map(ly=>Math.abs(c.y1-ly)));
       const whole=dTop<dBot;                      // a whole rest hangs from a line, a half rest sits on one

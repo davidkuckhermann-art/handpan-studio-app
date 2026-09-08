@@ -122,7 +122,7 @@ function rateAll(pans,score){
    → an hpd-2 piece plus a log of every substitution */
 function arrange(score,pan,shift,opts){
   opts=opts||{}; const pm=panMap(pan); const v=voices(score); const log=[];
-  const beats=v.beats; const sub=opts.sub||(hasSixteenths(score)?4:2); const slotsPerBar=beats*sub;
+  const beats=v.beats; const sub=opts.sub||gridOf(score); const slotsPerBar=beats*sub;
   const F=(t,f,h,extra)=>Object.assign({t,v:"field",f,hand:h},extra||{});
   const tOf=onset=>Math.round(onset*sub);
   // a pitch on the pan, or the nearest chord tone in the same direction, or an octave away
@@ -226,6 +226,17 @@ function adaptVoicings(bars,pm,log){
   });
 }
 function hasSixteenths(score){ return score.bars.some(b=>b.staffs.some(s=>s.cols.some(c=>c.dur<0.5-1e-9))); }
+/* THE GRID A SCORE NEEDS (8 Sep 2026, triplets): the smallest count of positions per beat on which every onset
+   lands — 2 for eighths, 4 for sixteenths, 3 for triplets, 6 when both share the page. The table draws up to 8
+   positions a beat; when no grid up to 8 lands everything, the one that lands the most onsets is taken (the
+   smallest among equals) and the rest move to their nearest position — a page of triplet arpeggios with one
+   dotted eighth and sixteenth in two bars is a triplet page, not a 12-a-beat one. */
+function gridOf(score){
+  const vals=[]; for(const b of score.bars) for(const s of b.staffs) for(const c of s.cols) if(c.onset!=null&&!c.rest) vals.push(c.onset);
+  const lands=k=>vals.filter(v=>Math.abs(v*k-Math.round(v*k))<0.02).length;
+  let best=4,bestN=-1; for(const k of [2,3,4,6,8]){ const n=lands(k); if(n===vals.length) return k; if(n>bestN){ best=k; bestN=n; } }
+  return best;
+}
 
 const api={rateAll,ratePan,arrange,voices,panMap,midiOf,nameOf};
 if(typeof module!=="undefined"&&module.exports) module.exports=api; else root.ScoreArrange=api;
