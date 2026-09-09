@@ -8360,7 +8360,16 @@ function fire(buf,at,gain){
    Generate fade and followHush all silence it without knowing it exists —
    and each oscillator carries its own stop() so that a gain ramped to zero
    can never leave one running. */
-const BASS_PK=0.42, BASS_ATT=0.008, BASS_TAIL=0.35, BASS_RING=[0.8,3.0];
+/* THE ENVELOPE IS FLATTER THAN IT WAS, AND THAT IS THE HEADROOM (David,
+   9 Sep: "sometimes with the bass notes, there's a little bit of distortion…
+   while still keeping the bass nice and fat"). Measured at C2, volume 100:
+   the note peaked at 0.568 while its body sustained at 0.328 — the peak is
+   the strike, and the master's soft clipper starts shaping at 0.72, so a bar
+   line where a pan stroke (up to 0.5) lands with the bass crossed it and the
+   sum was rounded off: on a low tone that is heard as grit. The peak comes
+   down by a fifth and the ring-out floor comes up to match, so the SUSTAINED
+   level — which is what makes it fat — is where it was. */
+const BASS_PK=0.33, BASS_ATT=0.008, BASS_TAIL=0.35, BASS_RING=[0.8,3.0], BASS_FLOOR=0.12;
 /* THE RANGE, in one place, so the note that sounds and the range the popup
    prints are the same arithmetic — a label worked out separately is a label
    that will one day lie. */
@@ -8400,12 +8409,21 @@ function fireBass(name,at,dur){
     const a=ctx.createGain(); a.gain.value=amp; o.connect(a); a.connect(lp);
     oscs.push(o); return a; };
   part(1,1); part(2,0.50); part(3,0.22);
+  /* THE FINGER, WITHOUT THE EDGE (David, 9 Sep: "sometimes with the bass notes,
+     there's a little bit of distortion… while still keeping the bass nice and
+     fat"). Measured: the note peaked at 0.569 while its body sustained at
+     0.328 — the peak was the strike, and the strike was a STEP: this partial
+     jumped from silence to full amplitude in one sample, which is a
+     discontinuity and therefore broadband. It rises over 2 ms now and starts
+     lower; the body below is untouched, so the fat is the same and the peak
+     costs the master's soft clipper (knee 0.72) far less at the bar line,
+     where the pan's stroke and the drums land on the same instant. */
   const tk=part(4.01,0.26);                      // the finger, gone in 70 ms
   tk.gain.setValueAtTime(0.26,st);
   tk.gain.exponentialRampToValueAtTime(0.0008,st+0.07);
   env.gain.setValueAtTime(0,st);
   env.gain.linearRampToValueAtTime(pk,st+BASS_ATT);             // the hit
-  env.gain.exponentialRampToValueAtTime(pk*0.06,st+ring*0.72);  // the ring-out
+  env.gain.exponentialRampToValueAtTime(pk*BASS_FLOOR,st+ring*0.72);  // the ring-out
   env.gain.linearRampToValueAtTime(0,end);                      // and into silence
   g.__at=st;
   for(const o of oscs){ o.start(st); o.stop(end+0.05); }
@@ -10616,6 +10634,24 @@ async function start(){
   sinkClockReset();
   preloadBank();
   C=compile(piece);
+  /* THE DRUMS MUST BE READY BEFORE THE FIRST DOWNBEAT (David, 9 Sep: "when I
+     start playback, the drums miss the first downbeat"). The rhythm's takes
+     are decoded and warped per STEP LENGTH, so the first play at a tempo — or
+     after a tempo change — found `HPSWGG.ready(sd)` false, asked for the
+     preparation and let that step pass in silence; by the time it landed the
+     downbeat was gone. Prepared here, in the gesture, exactly as the pan's own
+     samples are (preloadBank above): the step length is the one the coming
+     pulse will use. A preparation already done returns at once, so this costs
+     nothing on every later press. */
+  if(rhyOn&&window.HPSWGG&&HPSWGG.loaded()){
+    try{
+      HPSWGG.use(rhyGrooveId());
+      const p0=(pendingStart!=null?pendingStart:0), sec0=secOfPulse(p0), m0=SM(piece,sec0.name);
+      const fit0=rhyFit(m0);
+      if(fit0){ const sd0=pulseDurOf(p0)/fit0.spp;
+        if(!HPSWGG.ready(sd0)) await HPSWGG.prepare(sd0); }
+    }catch(e){}
+  }
   const beat=60/effBpm(); let t0=ctx.currentTime+0.12;
   const cBeats=SM(piece,piece.arrangement[0]).beats;
   if(countIn){ for(let i=0;i<cBeats;i++) fire(clickBuf(i===0),t0+i*beat,1);
