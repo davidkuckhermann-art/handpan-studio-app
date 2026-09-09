@@ -1716,13 +1716,16 @@ body.phone{--btpad:.12em}
 .btcap{position:relative; isolation:isolate; display:flex;
   flex-direction:inherit; align-items:center; gap:inherit;
   padding-inline:var(--btpad,.21em); max-width:calc(100% - 2px)}  /* its room, in the box */
-/* IN FULL SCREEN THE TILE KEEPS ITS DIGIT WITH ITS OWN ROOM (David, 9 Sep):
-   unclamped, the capsule is its digit plus its overhang, symmetric, and may
-   stand a few pixels past a narrow slot — instead of the whole table giving
-   zoom back 6% at a time until every slot was wide enough (the "jumps back"
-   of his report, up to ten steps on a two-digit tile). fsSqueezed stays as
-   the safety net; with the clamp gone it has nothing left to find. */
-body.fs .btcap,body.fs .sym.bt{max-width:none}
+/* IN FULL SCREEN THE TILE KEEPS ITS DIGIT — AND PAYS FOR IT WITH ITS OWN
+   PADDING, NOT WITH THE TABLE'S WIDTH (David, 9 Sep, twice). First: unclamped
+   the capsule holds its digit instead of making the whole table give zoom back
+   6% at a time (the "jumps back"). Then his screenshot of the badges cut off
+   at the table's edge — unclamped AND at full padding, a two-digit badge is
+   wider than its slot, so it widened the row until the table ran past the
+   screen. The ground is the digit plus a hairline here: the same trade the
+   listening view already makes (--btpad shrinks when the row is packed), so
+   the digit is never clipped and the row never grows. */
+body.fs .btcap,body.fs .sym.bt{max-width:none; --btpad:.12em}   /* measured: .21em put 7 badges outside their slot, .12em and .07em none */
 .btcap::before{content:""; position:absolute; z-index:-1;
   inset:calc((var(--symlh,1.02) - 1.206) * .5em + .101em) 0
         calc((var(--symlh,1.02) - 1.206) * .5em + .109em);
@@ -13718,6 +13721,14 @@ function render(){
   // the Hand keys light the hand the CURSOR's slot gets (a lane pick or the
   // chosen hand), so every cursor move — arrows included — repaints them
   if(editing&&typeof updateHandInd==="function") updateHandInd();
+  /* AND FULL SCREEN REFITS HERE, IN THE SAME BREATH AS THE RENDER (David,
+     9 Sep: "every time the table changes in the arrangement… there is a
+     flicker when the table changes on screen"). The mutation observer below
+     also refits, but on a 40 ms timer — long enough for the browser to paint
+     the new table at the OLD zoom and then jump, which is the flicker. Called
+     here the new table is measured and zoomed before anything is painted; the
+     observer stays for the mutations that do not come through render(). */
+  if(typeof fsOn==="function"&&fsOn()){ try{ fsZCap=Infinity; fsFit(); }catch(e){} }
 }
 /* ── THE WINDOW GROWS; THE MUSIC DOES NOT SHRINK ────────────────────────────
    David, 28 Aug: "I don't want to change player size, I'd like to extend the
@@ -21520,8 +21531,19 @@ function jamBreakInfo(ab){
 /* what the PAINT is looking at — the scheduler runs up to 0.4 s ahead of the
    ear, so the card and the marker must not ask its counter */
 let brkPaint=null, brkDimKey="";
+/* THE BREAK'S SPOT IS ALWAYS ON THE PAGE (David, 9 Sep: "the break should
+   always be grayed out so it's obvious where it sits, and this should already
+   happen when I change the break settings"). While the music runs and THIS
+   pass carries the break on the table you are looking at, the live painter
+   owns it — it knows the cycle and marks the bar that still sounds. Every
+   other moment falls through to the setting's own spot below: stopped,
+   between breaks, or on a table the break is not falling on this time round.
+   The bars are the same either way — the last L of the cycle — so the page
+   never stops saying where the break is. */
 function paintBrkDim(bk){
-  applyBrkDim((bk&&bk.cyc&&playing)?(bk.fromBar+"+"+bk.L+"@"+viewFromPulse()):"",bk);
+  if(bk&&bk.cyc&&playing&&(bk.tableFrom==null||bk.tableFrom===viewFromPulse())){
+    applyBrkDim(bk.fromBar+"+"+bk.L+"@"+viewFromPulse(),bk); return; }
+  paintBrkStill();
 }
 /* THE BREAK IS VISIBLE BEFORE A NOTE IS PLAYED (David, 29 Aug: "if the
    frequency is every cycle, please mark the break in the notation in the
@@ -21533,7 +21555,13 @@ function paintBrkDim(bk){
    the one setting whose answer is the same on every pass, so it is the one
    that can be shown standing still. */
 function brkStillInfo(){
-  if(!jamOn||!jam||!jam.brk||!jam.brk.on||Math.max(1,jam.brk.every)!==1||!C) return null;
+  /* EVERY SETTING, NOT ONLY "every cycle" (9 Sep). The old rule showed the
+     spot only when the break came every cycle, reasoning that with every 2nd
+     or 3rd a still page has no cycle count to answer with. True — but the
+     question the page answers is WHERE the break sits, and that is the same
+     bars every time; only WHICH pass takes them varies, and the live painter
+     says that while the music runs. */
+  if(!jamOn||!jam||!jam.brk||!jam.brk.on||!C) return null;
   let c; try{ c=brkCycle(); }catch(e){ return null; }
   const L=Math.max(1,Math.min(c.bars,jam.brk.len));
   // no tableFrom: standing still, every table shows the same thing
@@ -21543,7 +21571,6 @@ function brkStillInfo(){
    the live painter owns the grey — it knows which cycle this is — so this one
    stands aside. */
 function paintBrkStill(){
-  if(playing) return;
   const bk=brkStillInfo();
   applyBrkDim(bk?("still"+bk.fromBar+"+"+bk.L+"@"+viewFromPulse()):"",bk);
 }
