@@ -7065,7 +7065,9 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <div class="jsopt brkon">
     <div class="jshead"><span class="jsname">During the break</span><span id="bkOptHost"></span></div>
     <p class="jsdesc">The click can keep the time for you, or leave you to it. The
-      marker either walks the silent bars or waits on the last beat you heard.</p>
+      bass and the drums can carry on so you are playing against a band rather
+      than into silence. The marker either walks the silent bars or waits on the
+      last beat you heard.</p>
   </div>
   <div class="row"><span class="spacer"></span><button class="ctl" id="bkClose">Close</button></div>
 </dialog>
@@ -10038,8 +10040,8 @@ function jamBassBar(ab,bp){
   for(let k=0;k<Math.max(1,bp);k++){
     let d=0; try{ d=pulseDurOf(loopedPulse(ab+k)); }catch(e){}
     t+=(d>0.0005?d:0.12);
-    const bk=jamBreakInfo(ab+k+1);
-    if(bk&&bk.inBreak&&!bk.first) break;
+    if(!(jam&&jam.brk&&jam.brk.band)){ const bk=jamBreakInfo(ab+k+1);
+      if(bk&&bk.inBreak&&!bk.first) break; }        // …unless the band plays through it
   }
   return t;
 }
@@ -10098,7 +10100,12 @@ function sched(){
         const built=buildJamPiece(); piece=built; viewSec=built.arrangement[0]; selAi=0; viewPin=null;
         refresh(); fired=[]; lastPaint=-1; jamPaintChord(0); paintBrkStill();
       }
+      /* A BREAK SILENCES THE HANDPAN. Whether it silences the bass and the
+         rhythm too is now a setting (jam.brk.band) — the pan always rests, or
+         it would not be a break. */
       if(!mutedByPreview&&!brkMute&&!cpQuiet&&!panMute) for(const ev of (C.byPulse.get(p2)||[])) fireEvent(ev,at);
+      const brkBand=!!(jamOn&&jam.brk&&jam.brk.band);           // the band plays through it
+      const brkMuteV=brkMute&&!brkBand;                          // …so these two are not muted by the break
       /* THE BREAK'S CLICK IS ITS OWN INSTRUMENT (David, 29 Aug: "if
          'metronome keeps time' is activated in breaks settings, the metronome
          should play during the break, starting after the 1st beat, not on it.
@@ -10138,7 +10145,7 @@ function sched(){
          They keep the preview's and the break's silences; chord practice's
          "click only" and "silent" quiet the PAN, not these — they are their
          own voices with their own switches. */
-      if(bassOn&&!mutedByPreview&&!brkMute&&rel%m.bp===0){
+      if(bassOn&&!mutedByPreview&&!brkMuteV&&rel%m.bp===0){
         const nm=voiceChordAt(p2,sec,m);
         /* WHAT ELSE LANDS HERE: the pan's own strokes on this pulse (unless it
            is muted) and the rows the rhythm strikes on this step. The bass's
@@ -10160,7 +10167,7 @@ function sched(){
          feel all reach the drums. Not ready yet — first switch-on, or a
          tempo just changed — means the preparation is asked for and this
          step passes in silence. */
-      if(rhyOn&&window.HPSWGG&&HPSWGG.loaded()&&!mutedByPreview&&!brkMute){
+      if(rhyOn&&window.HPSWGG&&HPSWGG.loaded()&&!mutedByPreview&&!brkMuteV){
         HPSWGG.use(rhyGrooveId(m));
         const fit=rhyFit(m);
         if(fit){
@@ -22000,7 +22007,13 @@ function jamBrkNorm(b,cycBars){
   return {on:!!b.on,
     len:Math.max(1,Math.min(N,Math.round(+b.len)||2)),
     every:Math.max(1,Math.min(16,Math.round(+b.every)||2)),
-    click:!!b.click, marker:b.marker!==false};
+    click:!!b.click, marker:b.marker!==false,
+    /* THE BAND MAY PLAY THROUGH THE BREAK (David, 9 Sep: "give me an option to
+       keep drums and bass going during the break"). The pan falls silent, as a
+       break means; the bass and the rhythm carry on, so what you practise
+       against is a band waiting for you. Off by default — a break has always
+       been silence, and a stored jam from before this knows nothing of it. */
+    band:!!b.band};
 }
 function defaultJam(){
   const full=jamDefs().list.filter(c=>!c.miss&&c.group==="Triads");
@@ -22328,6 +22341,11 @@ function buildBrkWrap(){
     [["Silent",false,"The break is real silence"],
      ["Keeps time",true,"The click carries on through the break — if the metronome is on"]],
     ()=>!!jam.brk.click,v=>{ jam.brk.click=v; paintBrk(); saveJamLS(); });
+  const br=brkRow(w,"Bass & drums:"); br.classList.add("brkon");
+  brkPills(br,"Bass and drums during the break",
+    [["Stop",false,"Everything stops — the break is real silence"],
+     ["Keep going",true,"The bass and the rhythm carry on; only the handpan rests"]],
+    ()=>!!jam.brk.band,v=>{ jam.brk.band=v; paintBrk(); saveJamLS(); });
   const mr=brkRow(w,"Marker:"); mr.classList.add("brkon");
   brkPills(mr,"Marker during the break",
     [["Waits",false,"It stays on the last beat you heard and comes back with the music"],
@@ -22352,6 +22370,7 @@ function paintBrk(root){
       x.setAttribute("aria-pressed",String(on===(i===1)))); };
   set("Breaks",!!jam.brk.on);
   set("Metronome during the break",!!jam.brk.click);
+  set("Bass and drums during the break",!!jam.brk.band);
   set("Marker during the break",!!jam.brk.marker);
   const L=document.querySelector(".brkLen"); if(L) L.textContent=brkLenLabel();
   const E=document.querySelector(".brkEvery"); if(E) E.textContent=brkEveryLabel();
