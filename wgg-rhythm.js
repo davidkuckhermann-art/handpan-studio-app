@@ -343,6 +343,15 @@ W.fireStep=function(pi,at,sd){
     }
   }
 };
+/* HOW MANY ROWS STRIKE ON THIS STEP — what the bass asks before it hits, so
+   its attack can give way to a crowded instant (9 Sep). Counts the cells that
+   BEGIN here; a jingle's repeats and a ringing tail are not new strikes. */
+W.hitsAt=function(pi){
+  if(!groove||!W.ready()) return 0;
+  let n=0;
+  for(const row of ROWS) for(const c of row.cells) if(c.s===pi) n++;
+  return n;
+};
 /* the transport started again: round-robins restart, as WGG's start() does */
 W.restart=function(){ rr={}; RINGS={}; };
 })();

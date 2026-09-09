@@ -8373,11 +8373,23 @@ function bassMidi(name){
   const d=jamDefs().byName[name]; if(!d||d.root==null) return null;
   return bassLow+((((d.root-bassLow)%12)+12)%12);   // the one root inside the octave
 }
-function fireBass(name,at,dur){
+/* HOW MUCH THE STRIKE GIVES WAY, by how many voices land on the same instant
+   (David, 9 Sep: "is it not possible to duck the bass's attack when there's a
+   lot going on, just at the very first moment, to avoid clipping, while
+   keeping the general volume as it is?"). One sentence: the bass's STRIKE
+   gives way to the crowd it lands in; the body it settles to is the same
+   whatever happens, so the note is as fat as it ever was and only its first
+   30 ms are lighter — which is exactly the moment the mix has no room. */
+/* the depth, chosen by measuring the mix: past this the clipping barely
+   moves (0.191 → 0.174 → 0.167 % of samples for gentle, this, and a steeper
+   one still) while the strike keeps losing weight, so this is where it stops */
+function bassDuck(crowd){ return crowd<=1?1:crowd===2?0.80:crowd===3?0.62:crowd===4?0.52:crowd===5?0.45:0.38; }
+function fireBass(name,at,dur,crowd){
   if(!ctx||!dry) return;
   const midi=bassMidi(name); if(midi==null) return;
   if(at<ctx.currentTime-LATE_DROP) return;
   const pk=BASS_PK*(bassVol/100); if(!(pk>0)) return;   // the slider, all the way down, is silence
+  const duck=bassDuck(crowd||0), atk=pk*duck, body=pk*BASS_FLOOR;
   const st=Math.max(at,ctx.currentTime);
   /* THE RING IS THE BAR PLUS A LITTLE, held between a floor and a ceiling: at
      a fast tempo the note still speaks, at a slow one it dies away instead of
@@ -8415,10 +8427,19 @@ function fireBass(name,at,dur){
   const tk=part(4.01,0.26);                      // the finger, gone in 70 ms
   tk.gain.setValueAtTime(0.26,st);
   tk.gain.exponentialRampToValueAtTime(0.0008,st+0.07);
+  /* DUCK THE STRIKE, THEN REJOIN THE NOTE (9 Sep). Scaling the whole envelope
+     by the duck cost the body a quarter of its level — measured, 0.093 to
+     0.069 — which is precisely the fat David asked to keep. So the duck lasts
+     the first 90 ms and no longer: the note rises back onto the curve the
+     unducked note would have been on, and everything from there is identical.
+     Ducked or not, the same body, the same ring, the same length. */
+  const back=Math.min(0.09,ring*0.2);                            // where the duck releases
+  const onCurve=pk*Math.pow(BASS_FLOOR,back/(ring*0.72));        // …the level the note would have had there
   env.gain.setValueAtTime(0,st);
-  env.gain.linearRampToValueAtTime(pk,st+BASS_ATT);             // the hit
-  env.gain.exponentialRampToValueAtTime(pk*BASS_FLOOR,st+ring*0.72);  // the ring-out
-  env.gain.linearRampToValueAtTime(0,end);                      // and into silence
+  env.gain.linearRampToValueAtTime(atk,st+BASS_ATT);             // the hit, ducked into a crowd
+  env.gain.exponentialRampToValueAtTime(Math.max(onCurve,atk*0.02),st+back);   // back onto the note
+  env.gain.exponentialRampToValueAtTime(body,st+ring*0.72);      // the ring-out, as always
+  env.gain.linearRampToValueAtTime(0,end);                       // and into silence
   g.__at=st;
   for(const o of oscs){ o.start(st); o.stop(end+0.05); }
   live.push(g); if(live.length>120) live.splice(0,40);
@@ -8436,7 +8457,11 @@ let wggPend=null;
 function wggURL(name){
   const b=document.querySelector('script[src*="bank.js"]');
   const src=b?b.getAttribute("src"):"bank.js";
-  return src.replace(/bank\.js(\?.*)?$/,name+"?v=3");   // v=3: the reimport with pans, and the pan fix in the player (9 Sep)
+  /* THE VERSION MOVES WHENEVER ONE OF THE THREE FILES DOES — they share this
+     one query, and a browser that has the old copy under the same URL will
+     serve it (9 Sep: an edited wgg-rhythm.js kept its cached v=3 and the new
+     HPSWGG.hitsAt was simply not there). v=4: hitsAt, for the bass's duck. */
+  return src.replace(/bank\.js(\?.*)?$/,name+"?v=4");
 }
 function loadWgg(){
   if(window.HPSWGG&&window.HPSWGG.loaded()) return Promise.resolve();
@@ -10115,7 +10140,17 @@ function sched(){
          own voices with their own switches. */
       if(bassOn&&!mutedByPreview&&!brkMute&&rel%m.bp===0){
         const nm=voiceChordAt(p2,sec,m);
-        if(nm) fireBass(nm,at,jamBassBar(nextPulse,m.bp));
+        /* WHAT ELSE LANDS HERE: the pan's own strokes on this pulse (unless it
+           is muted) and the rows the rhythm strikes on this step. The bass's
+           attack gives way to them; see bassDuck. */
+        let crowd=0;
+        if(!panMute) for(const ev of (C.byPulse.get(p2)||[])) if(ev.v==="field"||ev.v==="perc") crowd++;
+        if(rhyOn&&window.HPSWGG&&HPSWGG.loaded()&&HPSWGG.hitsAt){
+          const f=rhyFit(m);
+          if(f){ const rowP=m.bp*Math.max(1,m.bpr||1), cyc=f.steps/f.spp, span=(cyc>rowP&&cyc%rowP===0)?cyc:rowP;
+            crowd+=HPSWGG.hitsAt(((rel%span)*f.spp)%f.steps); }
+        }
+        if(nm) fireBass(nm,at,jamBassBar(nextPulse,m.bp),crowd);
       }
       /* THE RHYTHM TRACK, under the same three mutes. The step is counted
          from the top of the current ROW — rel is the pulse within the
