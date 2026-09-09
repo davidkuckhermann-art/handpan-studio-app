@@ -1725,7 +1725,17 @@ body.phone{--btpad:.12em}
    screen. The ground is the digit plus a hairline here: the same trade the
    listening view already makes (--btpad shrinks when the row is packed), so
    the digit is never clipped and the row never grows. */
-body.fs .btcap,body.fs .sym.bt{max-width:none; --btpad:.12em}   /* measured: .21em put 7 badges outside their slot, .12em and .07em none */
+/* …AND THE CLAMP STAYS ON (David, 9 Sep, third look: "the badges are still so
+   large that they override the little separator lines"). max-width was what
+   held the badge 2 px inside its slot, so the gutter — where the separator is
+   drawn — stayed clear; without it the ground lay across the line and
+   dropCrossedLines then deleted the line. The clamp is back and the PADDING
+   is what gives way: at .21em the digit's ink (23.9 layout px) did not fit
+   the room the clamp leaves (21.8), which is what made the squeeze loop take
+   the zoom back; at .07em the room is 32 px and the digit fits with the
+   badge still inside its slot. Nothing crosses, nothing is clipped, and the
+   loop finds nothing. */
+body.fs .btcap,body.fs .sym.bt{--btpad:.07em}
 .btcap::before{content:""; position:absolute; z-index:-1;
   inset:calc((var(--symlh,1.02) - 1.206) * .5em + .101em) 0
         calc((var(--symlh,1.02) - 1.206) * .5em + .109em);
@@ -10326,7 +10336,18 @@ function drawMarkBox(m,barI,s,e,scope){
 function clearMarks(){
   clearSlotMarks();
   document.querySelectorAll(".cnow").forEach(el=>el.classList.remove("cnow"));
-  if(typeof clearBrkDim==="function") clearBrkDim();   // the break's grey goes with them
+  /* THE GREY BELONGS TO THE SETTING, NOT TO THE CLOCK (David, 9 Sep: "every
+     time you stop playback, the break row briefly flickers, comes back, and
+     then is gone again"). It used to be stripped here with everything else the
+     clock owns and put back at the end of stop() — and BETWEEN the two,
+     paintPulse() reads bounding rects. That read flushes style, so the browser
+     commits the undimmed bars and starts their .18s opacity transition;
+     re-adding the class a moment later runs it back. Measured on the stopped
+     page: .3 → 1 → .3. That IS the flicker.
+     So the clock gives up only what the clock owns, and the bars are handed to
+     the still painter in this same task — no flush in between, and when the
+     answer has not changed its key check touches no DOM at all. */
+  if(typeof brkClockOff==="function") brkClockOff();
 }
 /* EVERY NAVIGATOR THAT SHOWS THE ARRANGEMENT MARKS THE SOUNDING PART, and all
    of them mark it the same way (David, 31 Aug: "if we find a good solution, we
@@ -21559,13 +21580,20 @@ function brkStillInfo(){
      spot only when the break came every cycle, reasoning that with every 2nd
      or 3rd a still page has no cycle count to answer with. True — but the
      question the page answers is WHERE the break sits, and that is the same
-     bars every time; only WHICH pass takes them varies, and the live painter
-     says that while the music runs. */
+     bars every time; only WHICH pass takes them varies.
+     THE PAGE DOES HAVE A CYCLE COUNT, and it always did: the table in front of
+     you starts at an absolute pulse, and that pulse names its cycle. That is
+     why this asks jamBreakInfo rather than counting for itself (David, 9 Sep:
+     "it shows the line as a break even if it's not the correct table. If the
+     break comes every two tables, it also shows the break in the first
+     table"). The refusal above — paint nothing unless the break comes every
+     cycle — WAS the still painter's table safety, and when the refusal went
+     nothing stood in its place. The cycle arithmetic stays in the one function
+     that owns it, so the still page and the running music can never disagree
+     about which pass takes the break. */
   if(!jamOn||!jam||!jam.brk||!jam.brk.on||!C) return null;
-  let c; try{ c=brkCycle(); }catch(e){ return null; }
-  const L=Math.max(1,Math.min(c.bars,jam.brk.len));
-  // no tableFrom: standing still, every table shows the same thing
-  return {c,L,cyc:true,fromBar:c.bars-L};
+  let bk; try{ bk=jamBreakInfo(viewFromPulse()); }catch(e){ return null; }
+  return (bk&&bk.cyc)?bk:null;
 }
 /* Painted from the SETTING rather than from the clock. While the music runs
    the live painter owns the grey — it knows which cycle this is — so this one
@@ -21594,6 +21622,15 @@ function applyBrkDim(key,bk){
   if(!key||!bk) return;
   for(let i=0;i<bk.L;i++){ const el=els[bk.fromBar+i]; if(el) el.classList.add("brkdim"); }
   const f=els[bk.fromBar]; if(f) f.classList.add("brkfirst");   // it still sounds
+}
+/* THE CLOCK LETS GO, THE SETTING KEEPS SPEAKING. Everything the playhead owns
+   about the break goes — the pass we were painting, the lit slot in the
+   progression — and the notation's grey is not stripped but repainted from the
+   setting, which is what owns it once the music stops. */
+function brkClockOff(){
+  brkPaint=null;
+  document.querySelectorAll("#jamProg .jslot.brk").forEach(el=>el.classList.remove("brk"));
+  paintBrkStill();
 }
 function clearBrkDim(){
   brkDimKey=""; brkPaint=null;
