@@ -6867,8 +6867,20 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <div class="drow"><span>Hand colours</span>
     <span style="display:flex;gap:7px;align-items:center">
       <label class="ctl" id="colCtl" title="Hand colours — double-click to reset">
-        L <input type="color" id="colR" aria-label="Left-hand colour">
-        R <input type="color" id="colL" aria-label="Right-hand colour">
+        <!-- THE LETTER SITS ON ITS OWN HAND'S SWATCH (David, 9 Sep: "we have
+             fixed it four or five times and established that black is right and
+             green is left"). It kept coming back because ONE bug was fixed
+             TWICE, in two places, on 5 Sep: 98fc6fd corrected the visible
+             letters by swapping the inputs under them, which was right while
+             `colL` still held the black hand, and the same day's `hps.handsv`
+             migration corrected the data underneath, so `colL` came to hold the
+             LEFT hand's green. Each half was right alone; together they
+             cancelled and the row read backwards again. The ids now mean what
+             they say — `colL` is `handCol.l`, the left hand, green — so the
+             letter in front of each input is simply its own. Do not "fix" this
+             by moving the inputs again; check what `handCol.l` holds first. -->
+        L <input type="color" id="colL" aria-label="Left-hand colour">
+        R <input type="color" id="colR" aria-label="Right-hand colour">
         <span title="A stand-in note: one the pan did not have when a score was imported, replaced by the nearest that keeps the line. It comes back as written on a pan that has it.">✱ <input type="color" id="colS" aria-label="Stand-in note colour"></span></label>
       <button class="ctl" id="colReset" title="Hand colours back to black + green">↺</button></span></div>
   <div class="dsep" id="setFeelSep"></div>
@@ -22183,7 +22195,19 @@ function enterJam(){
      for jam should always be with chord selector", which existed because
      the band could only ride the chords slot. Desktop and tablet keep it. */
   clearBare();
-  if(PHONE&&!TABLET) setPan(true); else setChords(true);
+  /* …AND THE FOUR STILL TAKES IT (David, 9 Sep: "when I open the four-pan row,
+     it correctly closes the chord tab, but when I go to practice mode and I
+     come back to Jam mode, the chords tab is back"). The four and the chord tab
+     are ONE switch, and a switch has to hold whenever the room is built, not
+     only in the instant a button is pressed. `jamFour` is remembered across
+     rooms, so a jam re-entered with the band still up used to open on the
+     chords and contradict itself until he switched the band off and on again.
+     The jam's own default is set first and the four then takes it through the
+     same pair of functions the button uses — so `fourChordWas` records the
+     jam's "chords", and switching the band off in here brings them back, which
+     is exactly what pressing the button does. */
+  if(PHONE&&!TABLET) setPan(true);
+  else { setChords(true); if(fourAnyOn()) fourTakesChordTab(true); }
   updatePracticeBtn(); if(!PHONE) $("jampanel").classList.remove("hidden");
   paintTutorials();          // the jam note obeys the tutorial record now
   applyJam();
@@ -22197,7 +22221,13 @@ function leaveJam(){
   try{ $("grooveDlg").close(); }catch(e){}
   saveJamLS();
   jamOn=false; jamEditSlot=-1; document.body.classList.remove("jam");
-  fourChordWas=null;                         // the tab's memory belongs to the room
+  /* THE FOUR GIVES THE TAB BACK ON THE WAY OUT (9 Sep). Dropping the memory
+     was enough while entering a jam always turned the chords on again, which
+     is the very bug above; now that the four keeps the tab across the door,
+     leaving has to hand it back or Practice inherits a closed chord tab and no
+     four to explain it. Same pair of functions as the button: the band itself
+     stays remembered, so returning to the jam takes the tab again. */
+  fourTakesChordTab(false);                  // the tab's memory belongs to the room
   panMute=false; if(typeof paintPanMute==="function") paintPanMute();
   voicesLoad();                                   // back to the room we return to
   navDrop("jam");
