@@ -22211,6 +22211,7 @@ function enterJam(){
   if(jam.bpm) bpm=jam.bpm;
   navPush("jam","Practice",()=>leaveJam());
   jamOn=true; document.body.classList.add("jam");
+  paintModePills();          // As written | For my pan locks: a jam is on your pan
   voicesLoad();                                   // the jam's own bass and rhythm switches
   /* A JAM OPENS ON THE CHORDS (David, 29 Aug: "jam mode should always open
      with the chords view, even when I closed the app with pan view").
@@ -22259,6 +22260,7 @@ function leaveJam(){
   try{ $("grooveDlg").close(); }catch(e){}
   saveJamLS();
   jamOn=false; jamEditSlot=-1; document.body.classList.remove("jam");
+  paintModePills();          // …and the piece's own face comes back with the piece
   /* THE FOUR GIVES THE TAB BACK ON THE WAY OUT (9 Sep). Dropping the memory
      was enough while entering a jam always turned the chords on again, which
      is the very bug above; now that the four keeps the tab across the door,
@@ -29314,11 +29316,38 @@ function paintMyPanBtn(){
 }
 
 /* ---------------- wiring ---------------- */
+/* THE SWITCH'S FACE, AND ITS LOCK IN A JAM (David, 9 Sep: "since we said in
+   Jam mode that the chords always are transposed to the selected handpan
+   wherever it's visible, let's lock the function 'for my pan'"). A jam's
+   backing track is BUILT on the pan you have chosen — buildJamPiece reads
+   myPan — so its `writtenFor` is your own pan and refresh() draws no map at
+   all. As written and For my pan are the same thing in there, and offering the
+   choice only invites the question of what the other one would do.
+   ONE ELEMENT, THREE HOMES, so the lock goes on the buttons rather than on a
+   place: the pills are MOVED, not copied — into #myPanDlg on the desktop and
+   the tablet (the "one door to the pan"), and into #panNow on the phone, which
+   itself travels between the transport bar and the drawer. Disabling them here
+   covers every one of those.
+   `mode` itself is not touched. It is a session value, it decides nothing
+   while a jam is up, and leaving the room brings the piece's own face back
+   with no state to restore. */
+function paintModePills(){
+  const p=$("modePos"), t=$("modeTrans"); if(!p||!t) return;
+  const lock=(typeof jamOn!=="undefined"&&jamOn);
+  const m=lock?"trans":mode;          // a jam IS on your pan, whatever `mode` says
+  p.setAttribute("aria-pressed",String(m==="pos"));
+  t.setAttribute("aria-pressed",String(m==="trans"));
+  for(const b of [p,t]){
+    b.disabled=lock;
+    b.title=lock?"A jam is always built on the pan you have chosen"
+                :((typeof TIPS!=="undefined"&&TIPS[b.id])||"");
+  }
+}
 function setMode(m){
+  if(typeof jamOn!=="undefined"&&jamOn) return;   // locked while a jam is up
   if(m==="trans") reportClosed=false;   // asking for it again brings it back
   mode=m;
-  $("modePos").setAttribute("aria-pressed",m==="pos");
-  $("modeTrans").setAttribute("aria-pressed",m==="trans");
+  paintModePills();
   refresh();
 }
 function boot(){
