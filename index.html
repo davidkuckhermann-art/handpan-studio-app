@@ -5608,8 +5608,8 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <div class="pills" role="group" aria-label="Playback mode">
     <!-- SAID FROM THE STUDENT'S SIDE (David, 31 Aug — Zones stage 1):
          "By position | Transpose" became "As written | For my pan". -->
-    <button id="modePos" aria-pressed="true">As written</button>
-    <button id="modeTrans" aria-pressed="false">For my pan</button>
+    <button id="modePos" data-panmode="pos" aria-pressed="true">As written</button>
+    <button id="modeTrans" data-panmode="trans" aria-pressed="false">For my pan</button>
   </div>
   <!-- phone only: chords or pan, opposite the Table/Tab pills -->
   <span id="cpHost"></span>
@@ -5795,9 +5795,28 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
         right INSIDE the notation window, level with the play button
         (David, 27 Aug). The phone keeps its own copy in the jam tools. -->
    <span id="scoreheadR">
+     <!-- AND THE SWITCH ITSELF, BESIDE THE PAN IT IS ABOUT (David, 10 Sep:
+          "next to the pan selector drop-down menu on the top right of the
+          notation table, can you give me the as-written and for-my-pan
+          selector"). A SECOND face of one setting, at his word — the My pan
+          sheet keeps its own pair — so both are painted by paintModePills and
+          neither can drift. Practice and Edit only; a jam and chord practice
+          are always on the pan in hand, and the phone and tablet have their
+          own homes for it. In WORDS while the head has the room, and in the
+          phone's own two symbols when it starts to crowd the voices: see
+          fitHeadMode. -->
      <!-- the one door to the pan and the transpose choice (Zones stage 2);
           desktop only — the phone's drawer keeps its My pan section -->
      <button class="ctl" id="myPanBtn" aria-haspopup="dialog" title="The pan you are playing on, and whether the piece adapts to it"></button>
+     <!-- …AND THE SWITCH TO ITS RIGHT (David, 10 Sep, second look: "please
+          place this new switch on the right side of the pan selector
+          dropdown"). Reading order: which pan, then how the piece meets it.
+          The cell's total width is the same either way, so the fold below
+          measures exactly what it measured before. -->
+     <span class="pills hidden" id="headMode" role="group" aria-label="Playback mode">
+       <button id="modePos2" data-panmode="pos">As written</button>
+       <button id="modeTrans2" data-panmode="trans">For my pan</button>
+     </span>
      <button class="ctl hidden" id="jamSetBtn" title="Chord voicings and how adventurous the suggestions are"></button>
      <!-- BREAKS sits between the voicings and the generator (David, 29 Aug) -->
      <button class="ctl hidden" id="brkBtn" title="Scheduled silences — timing training"></button>
@@ -10082,11 +10101,37 @@ function jamBassChordAt(p){
    the name written on the bar, else the nearest one written before it in the
    loop (a jam tags a chord on the bar it starts on), else the chord the bar's
    own notes spell — barChordLabel's inference, the chord row's own reading. */
+/* …AND ON ANOTHER PAN THE WRITTEN NAME IS NOT WHAT SOUNDS (David, 10 Sep:
+   "it should, of course, always play the root note of the current arrangement
+   that is being played back with the pan that is chosen. If it's as written,
+   it should calculate the chords as written, and if it's transposed, of
+   course, it should use the transposed chords").
+   Measured before this: his D Kurd composition on an E Romanian Hijaz 20 had
+   the bass reading the WRITTEN tag in both modes, so it played C under a bar
+   that sounds A minor, and fell SILENT under Fmaj and B♭maj — bassMidi looks
+   the name up in this pan's own chords, and that pan can form neither. Half
+   the piece lost its bass and the other half argued with it.
+   So the tag is authoritative only on the pan the piece was written for —
+   which is every jam and every chord-practice stage, since both build their
+   piece FOR the pan in hand. Anywhere else the bar is asked what it sounds,
+   through barChordLabel, which is already mode-aware: as written it reads the
+   fields where they are, transposed it reads them where the map puts them.
+   A bar the guesser cannot name carries the last name it could, the same
+   carry-back the written tags get. */
 function voiceChordAt(p,sec,m){
-  const own=(C.byPulse.get(p)||[]).find(x=>x.chord); if(own) return own.chord;
-  const back=jamBassChordAt(p); if(back) return back;
-  try{ const bar=piece.sections[sec.name].bars[Math.floor((p-sec.pulse)/m.bp)];
-    const l=bar&&barChordLabel(bar); return l?l.name:null; }catch(e){ return null; }
+  const own=(C.byPulse.get(p)||[]).find(x=>x.chord);
+  const mine=(piece.writtenFor==null||myPanId===piece.writtenFor);
+  if(mine){
+    if(own) return own.chord;
+    const back=jamBassChordAt(p); if(back) return back;
+  }
+  try{
+    const bars=piece.sections[sec.name].bars, bi=Math.floor((p-sec.pulse)/m.bp);
+    for(let k=Math.min(bi,bars.length-1);k>=0;k--){
+      const l=bars[k]&&barChordLabel(bars[k]); if(l&&l.name) return l.name;
+    }
+  }catch(e){}
+  return null;      // nothing on this pan can be named: silence beats a wrong root
 }
 /* HOW LONG THE BAR IS, counted in the very pulses the scheduler is about to
    play, so the ring follows the tempo, the metre and a half-speed pass without
@@ -12301,7 +12346,20 @@ function barChordLabel(bar){
      piece, must not send its bars to the guesser, which knows only the
      major and minor triads the pan can form. Only a piece written for
      another pan and shown transposed is guessed from its sounding notes. */
-  const asW=mode==="pos"||myPanId===piece.writtenFor;
+  /* …AND "AS WRITTEN" IS NOT THE SAME AS "ON THE PAN IT WAS WRITTEN FOR"
+     (David, 10 Sep, his D Kurd composition on an E Romanian Hijaz 20: "when
+     'as written' is selected, the chords in the notation and in the chord tab
+     should still adapt to the new handpan … calculate which chords are created
+     on the new handpan and update the labels"). As written plays POSITION for
+     position, so on another pan the same fields sound different notes: his
+     B♭maj bar sounded B, D♯ and F♯, and the chord tab, which asks the pan for
+     the NAMED chord's fields, came back empty because that pan has no B♭, no D
+     and no F. The written name is true only while the pan in hand IS the pan
+     it was written for — which is still every jam, since a jam is built for
+     that pan, so the 4 Sep rule above is untouched. Everywhere else the name
+     is guessed from what actually sounds, and the chord tab, the pan's lights
+     and the notation then all describe one instrument. */
+  const asW=myPanId===piece.writtenFor;
   if(ev&&asW) return {name:ev.chord,inf:false};
   const g=inferChord(bar);
   return g?{name:g,inf:!ev}:null;
@@ -13808,6 +13866,10 @@ function render(){
      through to the setting's own spot whenever it does not. Wrapped because the
      break's state is declared far below and a render can run before it. */
   try{ paintBrkDim(playing?brkPaint:null); }catch(e){}
+  /* the head's As written / For my pan: which room shows it, and whether it has
+     the room for words — both are answered from the layout this render just
+     made, so they are answered here (10 Sep) */
+  try{ paintModePills(); }catch(e){}
 }
 /* ── THE WINDOW GROWS; THE MUSIC DOES NOT SHRINK ────────────────────────────
    David, 28 Aug: "I don't want to change player size, I'd like to extend the
@@ -13860,6 +13922,8 @@ function embedFit(){
   de.style.overflowY=(cb+foot>innerHeight+1)?"":"hidden";
 }
 addEventListener("resize",()=>{ if(!PHONE) embedFit(); });
+// …and the head's switch folds to its symbols when the window takes the room away
+addEventListener("resize",()=>{ try{ fitHeadMode(); }catch(e){} });
 /* AND WHENEVER THE CONTENT ITSELF CHANGES HEIGHT. embedFit used to run only
    from render() and on resize, so anything that repaints one card without a
    full render left the frame at its old height — David, 28 Aug: switching the
@@ -17630,15 +17694,48 @@ function panTriads(p,under){
      only on that pan's underside, so no chord with an F in it could be named
      and the notation showed nothing over those bars). The chord tab's own
      switch says whether the underside is played. */
-  const pcs=new Set([((p.ding%12)+12)%12,
-    ...p.fields.map(f=>((f.midi%12)+12)%12),
-    ...(under?(p.bottom||[]).map(b=>((b.midi%12)+12)%12):[])]);
+  const pcs=panPcSet(p,under);
   const out=[];
   for(const r of pcs){
     for(const [q,third] of [["maj",4],["min",3]]){
       const t=[r,(r+third)%12,(r+7)%12];
       if(t.every(pc=>pcs.has(pc)))
         out.push({name:spellPc(r).replace("♯","#")+q,pcs:t,root:r});
+    }
+  }
+  return out;
+}
+/* the pitch classes a pan can sound, the underside counted when it is in use —
+   read by the triads above and the sevenths below, so the two cannot disagree
+   about what the instrument has */
+function panPcSet(p,under){
+  return new Set([((p.ding%12)+12)%12,
+    ...p.fields.map(f=>((f.midi%12)+12)%12),
+    ...(under?(p.bottom||[]).map(b=>((b.midi%12)+12)%12):[])]);
+}
+/* AND THE SEVENTHS THIS PAN CAN FORM (David, 10 Sep: "let's teach the guesser
+   the seventh"). THIS REVERSES the note in chordPCs — "inference stays maj/min
+   triads only, so existing pieces' guessed chords do not change" — and it is
+   recorded as a reversal rather than quietly rewritten, because that line was
+   protecting something real: every unlabelled bar in every piece is named by
+   this guesser, so widening its vocabulary renames bars.
+   What made him ask: a bar on his A2 Low Pygmy 17 sounding D, E and B stood
+   unnamed, because no triad that pan can build holds both D and E — G major
+   has the D, E minor has the E — so the best reading left five of the bar's
+   twelve weight outside the chord, where the rule allows four point eight. The
+   bar is an E minor seventh with no third sounding, and there was no such word.
+   Only sevenths the pan can actually build, and only names the chord tables
+   already know, so a seventh reaches the bass and the chord tab like any other
+   name. A major triad is offered both its sevenths and coverage decides. */
+function panSevenths(p,under){
+  const pcs=panPcSet(p,under), D=jamDefs().byName, out=[];
+  for(const tr of panTriads(p,under)){
+    const m=tr.name.match(/^(.+?)(maj|min)$/); if(!m) continue;
+    for(const q of (m[2]==="min"?["min7"]:["maj7","7"])){
+      const n=m[1]+q; if(!D[n]) continue;
+      const t=chordPCs(n); if(!t||t.length<4) continue;
+      if(!t.every(pc=>pcs.has(pc))) continue;
+      out.push({name:n,pcs:t,root:tr.root,sev:t[3]});
     }
   }
   return out;
@@ -17652,12 +17749,33 @@ function inferChord(bar){
     const pc=((m%12)+12)%12, wt=ev.t===0?2:1;
     w.set(pc,(w.get(pc)||0)+wt); total+=wt; }
   if(total<2) return null;
-  let best=null,bestScore=-1;
-  for(const tr of panTriads(myPan,!topOnlyChords())){
-    let cov=0,hit=0;
-    for(const [pc,wt] of w) if(tr.pcs.includes(pc)){cov+=wt;hit++;}
-    const score=cov-(total-cov)*0.6+(w.has(tr.root)?0.3:0);
-    if(hit>=2&&cov>=total*0.6&&score>bestScore){bestScore=score;best=tr.name;}
+  let best=null,bestScore=-1,bestRoot=null;
+  const under=!topOnlyChords();
+  const fits=(c,need)=>{ let cov=0,hit=0;
+    for(const [pc,wt] of w) if(c.pcs.includes(pc)){cov+=wt;hit++;}
+    return (hit>=need&&cov>=total*0.6)
+      ? cov-(total-cov)*0.6+(w.has(c.root)?0.3:0) : null; };
+  /* A SEVENTH MAY NAME A BAR ONLY WHERE NO TRIAD CAN, OR WHERE IT IS THE
+     SEVENTH OF THE TRIAD THAT ALREADY WON (David, 10 Sep, shown the eleven
+     bars a free contest re-rooted: in Building Bridges A1 the last two rows
+     are the same figure, 3 5 7 over and over, and the one that ends 3 5 9 ·
+     3 5 8 flipped from C major to A minor 7 on the strength of a single A in
+     the last cell — A minor 7 accounts for A, C, E and G, so it covered one
+     stroke more and took the bar. He asked for the sevenths to keep the
+     triad's root, and this is that rule in one sentence.
+     Two more guards it carries: the seventh must actually SOUND, or a note
+     nobody played would rename every A minor bar on a pan that has a G; and
+     three of its four notes must be there, so a bare root and seventh is not
+     a chord. */
+  for(const tr of panTriads(myPan,under)){
+    const score=fits(tr,2);
+    if(score!=null&&score>bestScore){bestScore=score;best=tr.name;bestRoot=tr.root;}
+  }
+  for(const sv of panSevenths(myPan,under)){
+    if(!w.has(sv.sev)) continue;                       // its seventh must sound
+    if(best!=null&&sv.root!==bestRoot) continue;       // …and it keeps the winner's root
+    const score=fits(sv,3);
+    if(score!=null&&score>bestScore){bestScore=score;best=sv.name;}
   }
   return best;
 }
@@ -19245,6 +19363,29 @@ function edDeleteBars(b){
   refresh(); paintLoopFrame();
   toast(b.n===1?"Bar deleted":b.n+" bars deleted");
 }
+/* THE BAR UNDER THE PRESS (David, 10 Sep 2026: "Delete bar: should delete
+   the currently selected bar that I'm touching or clicking in. Insert new
+   bar: should insert an empty bar right behind the bar that I'm clicking
+   in") — in the arrangement editor and the groove editor alike, from the
+   mouse's right-click or the phone's long press. No loop is needed: the cell
+   the menu opened on names the bar. A groove keeps its four-bar cap (the
+   palette's b+ key has the same rule). Both snapshot(), so undo covers them;
+   the loop is dropped, since its pulses no longer name what they did. */
+function edBarAtCell(c){
+  const m=SM(piece,viewSec), sec=piece.sections[viewSec];
+  const rel=c.from-viewFromPulse();
+  if(rel<0||rel>=sec.bars.length*m.bp) return -1;
+  return Math.floor(rel/m.bp);
+}
+function edInsertBarAfter(bi){
+  const sec=piece.sections[viewSec];
+  if(grooveEdit&&sec.bars.length>=4){ toast("Four bars is the most for a groove"); return; }
+  snapshot();
+  sec.bars.splice(bi+1,0,[]);
+  loopSec=null;
+  refresh(); paintLoopFrame();
+  toast("Bar inserted after bar "+(bi+1));
+}
 function edCopyLoop(){
   if(!loopSec) return;
   const m=SM(piece,viewSec), sec=piece.sections[viewSec], base=viewFromPulse();
@@ -19292,10 +19433,25 @@ function edPopAt(x,y){
     loopSec?"Press inside the loop to copy it":"Loop the bars you want to copy first");
   mk("Paste",()=>edPasteAt(c.from-viewFromPulse()),canPaste,
     edClip?"Paste in the arrangement or groove editor":"Copy something first");
-  // whole bars can be removed outright (David, 27 Aug) — only when the loop
-  // sits ON the barlines, since half a bar is not a bar to delete
+  /* THE PRESSED BAR (David, 10 Sep): delete it, or insert an empty bar after
+     it — in the editors only, and NOT LISTED outside them ("these options
+     should not show up when you are not in edit mode, not even grayed out"):
+     a reader has no bars to change, so the menu stays Copy and Paste there.
+     Inside the editor they are greyed with the reason, like Copy and Paste. */
+  if(editing){
+    const bi=edBarAtCell(c);
+    const nBars=piece.sections[viewSec].bars.length;
+    const full=!!grooveEdit&&nBars>=4;
+    mk("Delete bar",()=>edDeleteBars({first:bi,n:1}),bi>=0&&nBars>1,
+      bi<0?"Press inside a bar":"A table keeps at least one bar");
+    mk("Insert new bar",()=>edInsertBarAfter(bi),bi>=0&&!full,
+      bi<0?"Press inside a bar":"Four bars is the most for a groove");
+  }
+  // a loop of whole bars can be removed as one (David, 27 Aug) — only when it
+  // sits ON the barlines, since half a bar is not a bar to delete; a
+  // one-bar loop is already the entry above
   const bars=edLoopBars();
-  if(inLoop&&bars) mk("Delete "+(bars.n===1?"bar":bars.n+" bars"),()=>edDeleteBars(bars),true);
+  if(inLoop&&bars&&bars.n>1) mk("Delete "+bars.n+" bars",()=>edDeleteBars(bars),true);
   document.body.appendChild(pop);
   const r=pop.getBoundingClientRect();
   pop.style.left=Math.max(8,Math.min(innerWidth-r.width-8,x-r.width/2))+"px";
@@ -24613,14 +24769,40 @@ function cpChallenge(){
 }
 /* the sequence as the exercise plays it: the triads (kept in `tri` for the
    voicing) and, with Add 7th, the seventh chords where the pan has them */
-function cpMakeSeq(){
-  const seq=cpWalking()?(cpRandomLs()?cpRandomSeq():cpWalk()):cpcfg.src==="challenge"?cpChallenge():cpCommon(); if(!seq) return null;
+/* the sevenths are a DRESSING on a sequence, and a re-rooted one wears it too */
+function cpDressSev(seq){
+  if(!seq) return null;
   seq.tri=seq.names.slice();
   if(cpcfg.sev==="7th"&&!seq.whole){
     seq.names=seq.tri.map(n=>cpSevName(n)||n);
     seq.romans=seq.romans.map((r,i)=>seq.names[i]!==seq.tri[i]?r+"7":r);
   }
   return seq;
+}
+function cpMakeSeq(){
+  return cpDressSev(cpWalking()?(cpRandomLs()?cpRandomSeq():cpWalk()):cpcfg.src==="challenge"?cpChallenge():cpCommon());
+}
+/* CHORD PRACTICE FOLLOWS THE PAN, AND ASKS NOTHING (David, 10 Sep: "when
+   switching handpans, the chord progression should automatically be transposed
+   to the new handpan. No dialog, no option toggle") — the jam's rule, in the
+   room next door. RE-ROOTED, not redrawn, at his word: the degrees you are
+   practising are kept and planted on the new pan's home, so i ♭VII ♭VI ♭VII
+   stays that shape in the new key. A pan that cannot build one of those
+   degrees, and the sequences that were never a template at all — the walk,
+   random, the challenge — fall through to a fresh draw, which for those is
+   already "every chord this pan has". */
+function cpPanMove(){
+  if(!cpOn||!cpStage||!cpSeq) return;
+  const k=cpKey();
+  let seq=null;
+  if(k&&!cpWalking()&&cpcfg.src!=="challenge"){
+    const tpl=JAM_PROGS.find(P=>P.n===cpLastTpl);
+    if(tpl&&tpl.min===(k.id==="minor"?1:0)) seq=cpDressSev(cpSeqFromTpl(tpl,k,true));
+  }
+  if(!seq) seq=cpMakeSeq();
+  if(!seq){ toast("This pan has no complete triads to practise"); return; }
+  cpSeq=seq;
+  cpApply(seq,{announce:true,autoplay:false});
 }
 /* the field the top voice SKIPS TO for the seventh: the seventh's field
    nearest above the fifth's, else the nearest below it */
@@ -24650,26 +24832,51 @@ function cpWalk(){
    in the chosen key, triads only for now. ALWAYS BOXES OF FOUR — a three-chord
    shape gives its home chord two boxes (David: "we can play the root chord
    twice as long, our chord sequences are always boxes of four"). */
+/* ONE TEMPLATE, ONE SEQUENCE — asked for twice now (10 Sep). Drawing a fresh
+   progression and re-rooting the one you are practising on a new pan are the
+   same arithmetic: the degrees are the template's, the root is the key's. It
+   lives here so the two callers cannot drift, and it answers null when the pan
+   cannot build one of the degrees. */
+/* THE NEAREST CHORD THIS PAN CAN ACTUALLY FORM. Same root in another quality
+   first — a minor where a major was asked for still sits on the degree the
+   progression means — and only then the closest root among the pan's own
+   chords in this key. Used when a progression is FOLLOWED to a new pan, never
+   when one is drawn fresh: a fresh draw should simply pick a template the pan
+   can build. */
+function cpNearChord(root,q){
+  const direct=jamProgChord(root,q); if(direct) return direct;
+  for(const x of ["min","maj","dim"]) if(x!==q){ const a=jamProgChord(root,x); if(a) return a; }
+  let best=null,bd=99;
+  for(const c of cpScaleChords()){
+    const d=Math.min((c.root-root+12)%12,(root-c.root+12)%12);
+    const same=c.name.endsWith(q);
+    if(d<bd||(d===bd&&same&&best&&!best.endsWith(q))){ bd=d; best=c.name; }
+  }
+  return best;
+}
+function cpSeqFromTpl(P,k,near){
+  const names=P.deg.map(([d,q])=>(near?cpNearChord:jamProgChord)((k.root+d)%12,q));
+  if(names.some(x=>x===null||x===undefined)) return null;   // this pan cannot build it
+  const label=P.n.replace(/\s*\(.*\)$/,"");
+  const ns=names.slice(), rs=label.split(/\s+/);
+  while(ns.length<4){
+    let hi=P.deg.findIndex(([d])=>d===0); if(hi<0) hi=ns.length-1;
+    ns.splice(hi+1,0,ns[hi]); rs.splice(hi+1,0,rs[hi]);
+  }
+  return {names:ns.slice(0,4),romans:rs.slice(0,4),label};
+}
 function cpCommon(){
   const k=cpKey(); if(!k) return null;
   const cands=[];
   for(const P of JAM_PROGS){
     if(P.min!==(k.id==="minor"?1:0)) continue;
     if(P.deg.some(([,q])=>q==="dom7")) continue;      // triads for now; sevenths later
-    const names=P.deg.map(([d,q])=>jamProgChord((k.root+d)%12,q));
-    if(names.some(x=>x===null)) continue;           // this pan cannot build it
-    cands.push({P,names});
+    if(cpSeqFromTpl(P,k)) cands.push({P});
   }
   let pool=cands.filter(c=>c.P.n!==cpLastTpl); if(!pool.length) pool=cands;
   if(!pool.length){ const w=cpWalk(); return w?{names:w.names.slice(0,4),romans:w.romans.slice(0,4),label:"Your chords"}:null; }
   const pick=pool[Math.floor(Math.random()*pool.length)]; cpLastTpl=pick.P.n;
-  const label=pick.P.n.replace(/\s*\(.*\)$/,"");
-  const names=pick.names.slice(), romans=label.split(/\s+/);
-  while(names.length<4){
-    let hi=pick.P.deg.findIndex(([d])=>d===0); if(hi<0) hi=names.length-1;
-    names.splice(hi+1,0,names[hi]); romans.splice(hi+1,0,romans[hi]);
-  }
-  return {names:names.slice(0,4),romans:romans.slice(0,4),label};
+  return cpSeqFromTpl(pick.P,k);
 }
 /* the piece: the jam's builder over a throwaway jam — its voicings and its
    grooves, none of its state */
@@ -29124,6 +29331,8 @@ function choosePan(id){
   try{ localStorage.setItem("hps.panId",id); }catch(e){}
   $("panPickDlg").close(); refresh();
   if(jamOn&&jam&&jam.slots.length&&wasPan&&wasId!==myPanId) jamPanMove(wasPan);
+  /* …and chord practice does the same, silently (David, 10 Sep) — see cpPanMove */
+  else if(typeof cpOn!=="undefined"&&cpOn&&cpStage&&wasId!==myPanId) cpPanMove();
   /* PICKING A PAN WHILE WRITING ASKS THE OBVIOUS QUESTION (David, 31 Aug:
      "if the user picks another pan from the normal pan selector while in
      edit mode, there can be a dialog asking if the user wants to switch the
@@ -29141,8 +29350,12 @@ function choosePan(id){
        box"). The door's question — play this piece as written or for my
        pan — has no meaning for a jam, which is always written for the pan in
        hand and has just been transposed to it by jamPanMove above. */
-    const mpd=$("myPanDlg");
-    if(!jamOn&&mpd&&!mpd.open&&!$("panMoveDlg").open&&!$("pieceInstrDlg").open) openDlg(mpd);
+    /* …AND NOT IN CHORD PRACTICE EITHER (David, 10 Sep: "the same should go
+       for the chord practice mode … No dialog, no option toggle"). Same reason
+       as the jam: the stage's progression is generated for the pan in hand and
+       cpPanMove has just re-rooted it, so there is nothing to ask. */
+    const mpd=$("myPanDlg"), gen=jamOn||(typeof cpOn!=="undefined"&&cpOn);
+    if(!gen&&mpd&&!mpd.open&&!$("panMoveDlg").open&&!$("pieceInstrDlg").open) openDlg(mpd);
   }
 }
 let pieceInstrAsk=null;
@@ -29329,16 +29542,56 @@ function paintMyPanBtn(){
    while a jam is up, and leaving the room brings the piece's own face back
    with no state to restore. */
 function paintModePills(){
-  const p=$("modePos"), t=$("modeTrans"); if(!p||!t) return;
   const lock=(typeof jamOn!=="undefined"&&jamOn);
   const m=lock?"trans":mode;          // a jam IS on your pan, whatever `mode` says
-  p.setAttribute("aria-pressed",String(m==="pos"));
-  t.setAttribute("aria-pressed",String(m==="trans"));
-  for(const b of [p,t]){
+  /* EVERY FACE OF ONE SETTING (10 Sep). There are two on the desktop now — the
+     head's and the My pan sheet's — and one on the phone, and they are the same
+     switch, so they are painted together by what they MEAN rather than by id. */
+  document.querySelectorAll("[data-panmode]").forEach(b=>{
+    const k=b.dataset.panmode;
+    b.setAttribute("aria-pressed",String(m===k));
     b.disabled=lock;
     b.title=lock?"A jam is always built on the pan you have chosen"
-                :((typeof TIPS!=="undefined"&&TIPS[b.id])||"");
+                :((typeof TIPS!=="undefined"&&TIPS[k==="pos"?"modePos":"modeTrans"])||"");
+  });
+  /* WHICH ROOMS CARRY THE HEAD'S PAIR: practice and edit, at David's word.
+     Written as "not the rooms that answer the question for you" rather than a
+     list of the rooms that happened to exist — a jam and chord practice are
+     always built on the pan in hand, the quizzes and Learn are not reading a
+     piece at all, and the phone and the tablet have their own homes for it. */
+  const hm=$("headMode");
+  if(hm){
+    /* read directly, not through window: quizOn, rqOn and learnOn are `let`,
+       so they are not properties of it, and a lookup that silently misses
+       would have shown this switch in the quizzes. The whole test is wrapped
+       because a render can reach here before those lines have run. */
+    let show=false;
+    try{ show=!PHONE&&!TABLET&&!lock&&!cpOn&&!quizOn&&!rqOn&&!learnOn; }catch(e){ show=false; }
+    hm.classList.toggle("hidden",!show);
+    if(show&&typeof fitHeadMode==="function") fitHeadMode();
   }
+}
+/* WORDS WHILE THERE IS ROOM, THE SYMBOLS WHEN THERE IS NOT (David, 10 Sep:
+   "when there is enough space and this doesn't get too close to the three
+   icons … it can be written. If it starts to get close to those … then please
+   revert to the symbols that we already implemented on mobile").
+   ONE SENTENCE: the head's right cell writes the switch in words while it
+   still clears the voices by HEAD_MODE_AIR, and wears the symbols when it does
+   not. It has to be measured rather than guessed at a breakpoint, because the
+   voices are POSITIONED ABSOLUTELY inside the centre cell — they take no width
+   in the grid, so nothing pushes back and the right cell would slide under
+   them in silence. Widest face first, one measurement, then step down: the
+   same ladder fitJamHead uses, and there is no transition on a word, so the
+   face that loses is never painted. */
+const HEAD_MODE_AIR=26;
+function fitHeadMode(){
+  const g=$("headMode"); if(!g||g.classList.contains("hidden")) return;
+  const sr=$("scoreheadR"), sc=$("sctools"), v=$("jamVoices");
+  if(!sr||!sc) return;
+  panModeFace(false,g);
+  const vr=v?v.getBoundingClientRect():null;
+  const busy=Math.max(sc.getBoundingClientRect().right,(vr&&vr.width)?vr.right:0);
+  if(sr.getBoundingClientRect().left-busy<HEAD_MODE_AIR) panModeFace(true,g);
 }
 function setMode(m){
   if(typeof jamOn!=="undefined"&&jamOn) return;   // locked while a jam is up
@@ -29526,6 +29779,10 @@ function boot(){
   });
   $("modePos").addEventListener("click",()=>setMode("pos"));
   $("modeTrans").addEventListener("click",()=>setMode("trans"));
+  // …and the head's own pair, the same setting through the same door
+  { const a=$("modePos2"), b=$("modeTrans2");
+    if(a) a.addEventListener("click",()=>setMode("pos"));
+    if(b) b.addEventListener("click",()=>setMode("trans")); }
   setView(view,{skipRender:true});   // body class + pill state before the first render
   $("viewTable").addEventListener("click",()=>setView("table"));
   $("viewFlow").addEventListener("click",()=>setView("flow"));
@@ -31633,14 +31890,18 @@ function fitDrawerTopRow(){
    its temporal dead zone at that moment and threw on the first paint.
    ◎ the field stays where it is · ⇅ the pitch moves. The words travel on in
    aria-label, so nothing is lost to a screen reader. */
-function panModeFace(sym){
-  const word={modePos:"As written",modeTrans:"For my pan"};
-  const symb={modePos:"\u25CE",modeTrans:"\u21C5"};
-  for(const id in word){
-    const b=$(id); if(!b) continue;
-    b.textContent=sym?symb[id]:word[id];
-    b.setAttribute("aria-label",word[id]);
-  }
+/* `root` scopes it to ONE face of the switch (10 Sep): the phone folds the pair
+   in its own bar and the desktop head folds its own, while the My pan sheet,
+   which has all the room in the world, keeps the words. Without a root it does
+   what it always did and speaks to every copy. */
+function panModeFace(sym,root){
+  const word={pos:"As written",trans:"For my pan"};
+  const symb={pos:"\u25CE",trans:"\u21C5"};
+  (root||document).querySelectorAll("[data-panmode]").forEach(b=>{
+    const k=b.dataset.panmode; if(!word[k]) return;
+    b.textContent=sym?symb[k]:word[k];
+    b.setAttribute("aria-label",word[k]);
+  });
 }
 function fitPanRow(){
   const row=$("panNow"), lab=$("panNowLab");
