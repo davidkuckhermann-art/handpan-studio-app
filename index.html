@@ -8521,13 +8521,14 @@ function fireBass(name,at,dur,crowd){
   oscs[0].onended=()=>{ const i=live.indexOf(g); if(i>=0) live.splice(i,1); };
 }
 
-/* ---------------- the jam's rhythm track (8 Sep 2026) --------------------
-   World Groove Grid's player under the jam. THREE FILES, FETCHED ON DEMAND
-   the first time the drum button is switched on — wgg-engine.js (WGG's
-   engine.js verbatim), wgg-rhythm.js (its player, on this app's clock and
-   graph) and wgg-bank.js (David's two grooves and the takes they need,
-   2.7 MB, built by make_wgg_bank.py from WGG's folder). With the button off
-   the app has not even heard of them. */
+/* ---------------- the jam's rhythm track (8 Sep 2026; WGG's core since 11 Sep)
+   World Groove Grid under the jam, FETCHED ON DEMAND the first time the drum
+   button is switched on: wgg/engine.js (WGG's engine.js verbatim, every
+   playback rule in WGGCore), wgg-rhythm.js (this app's clock and graph around
+   that core) and, under wgg/, the grooves and the sample bank — only the
+   instruments the grooves use. All of wgg/ is written by sync_wgg.py from
+   WGG's folder, run by hand. With the button off the app has not even heard
+   of them. */
 let wggPend=null;
 function wggURL(name){
   const b=document.querySelector('script[src*="bank.js"]');
@@ -8536,10 +8537,17 @@ function wggURL(name){
      one query, and a browser that has the old copy under the same URL will
      serve it (9 Sep: an edited wgg-rhythm.js kept its cached v=3 and the new
      HPSWGG.hitsAt was simply not there). v=4: hitsAt, for the bass's duck.
+     v=7 (11 Sep): the rhythm plays through WGG's own core now — wgg/engine.js,
+     wgg/bank/, grooves.json — brought across by sync_wgg.py; wgg-engine.js and
+     wgg-bank.js are gone. Every sync moves this.
+     v=6 (11 Sep): re-imported from the Groove Studio — the new cajon, which
+     took over the id "cajon", the re-cut one-shots, and three newly flagged
+     grooves, 18 in all. Its per-instrument EQ does NOT ride across: the bank
+     carries gains, and neither it nor this player builds the EQ chain.
      v=5 (10 Sep): the bank is rebuilt whenever David flags a rhythm for the jam
      in World Groove Grid — same URL, different contents, so the query has to
      move with it or the app keeps the grooves it already had. */
-  return src.replace(/bank\.js(\?.*)?$/,name+"?v=5");
+  return src.replace(/bank\.js(\?.*)?$/,name+"?v=7");
 }
 function loadWgg(){
   if(window.HPSWGG&&window.HPSWGG.loaded()) return Promise.resolve();
@@ -8548,9 +8556,20 @@ function loadWgg(){
     const sc=document.createElement("script"); sc.src=wggURL(name);
     sc.onload=res; sc.onerror=()=>rej(new Error(name+" could not be loaded"));
     document.head.appendChild(sc); });
-  wggPend=one("wgg-engine.js").then(()=>one("wgg-rhythm.js")).then(()=>one("wgg-bank.js"))
-    .then(()=>{ if(!window.HPSWGG||!window.HPS_WGG) throw new Error("the rhythm files loaded but were empty");
-      HPSWGG.attach(HPS_WGG); HPSWGG.setVolume(rhyVol); });
+  /* WORLD GROOVE GRID'S OWN CORE (11 Sep 2026, HANDPAN-CORE-HANDOVER.md): the
+     engine is wgg/engine.js, WGG's verbatim, and the samples a bank of files
+     under wgg/bank/ — both brought across by sync_wgg.py. The player fetches
+     the manifests and samples itself, by content name, only for the
+     instruments the chosen groove uses; the three small descriptions below
+     carry the version query because their names do not change. */
+  const base=wggURL("").replace(/\?.*$/,"")+"wgg/";
+  const json=name=>fetch(wggURL("wgg/"+name)).then(r=>{
+    if(!r.ok) throw new Error(name+" could not be loaded"); return r.json(); });
+  wggPend=one("wgg/engine.js").then(()=>one("wgg-rhythm.js"))
+    .then(()=>Promise.all([json("bank/instruments.json"),json("grooves.json"),json("SOURCE.json")]))
+    .then(([defs,grooves,source])=>{
+      if(!window.HPSWGG||!window.WGGCore) throw new Error("the rhythm files loaded but were empty");
+      HPSWGG.attach({base,defs,grooves,source}); HPSWGG.setVolume(rhyVol); });
   wggPend.catch(()=>{ wggPend=null; });     // a failed load may be retried
   return wggPend;
 }
@@ -31561,7 +31580,10 @@ if(PHONE){
   // the bell travels with the selector it sits beside, or the phone leaves it
   // orphaned in a row that is no longer shown — and there is then no way back
   { const pb=$("panPrefBtn"); if(pb) $("mPan").appendChild(pb); }
-  $("mMode").appendChild(document.querySelector('.pills[aria-label="Playback mode"]'));
+  /* by its own button, not by the group's label: the desktop head's #headMode
+     (10 Sep) wears the same aria-label, and a first-match lookup moved it
+     here instead once it stood earlier in the page */
+  $("mMode").appendChild($("modeTrans").closest(".pills"));
   $("mNota").appendChild($("notaBtn"));
   /* Chords or pan is a SWITCH on the phone, so it reads as pills — opposite
      the Table/Tab pair, which is the other "how am I reading this" choice
@@ -31998,7 +32020,7 @@ function placeDrawer(){
   const host=pn||pan;
   const ps=$("panSel"); if(ps) host.appendChild(ps);
   const pb=$("panPrefBtn"); if(pb) host.appendChild(pb);   // it travels too
-  const mp=document.querySelector('.pills[aria-label="Playback mode"]');
+  const mp=$("modeTrans")&&$("modeTrans").closest(".pills");   // the phone's own pair — see the menu move above
   if(mp) host.appendChild(mp);
   fitPanRow();
   // swing is something you feel your way to while playing, not a global (27
