@@ -3200,6 +3200,13 @@ body.phone #drawerExtra #jamColourWrap{width:auto}
 .fitpc{font-size:24px; font-weight:800; font-variant-numeric:tabular-nums}
 .fitsum{font-size:13px; color:var(--ink2)}
 .fitparts{color:var(--ink3)}
+/* the pinned-choices row: a reset for the pins on THIS pan, and a word on the
+   ones the rule no longer agrees with (David, 12 Sep) */
+.pinrow{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:8px 0 2px}
+.pinnote{font-size:12.5px; color:var(--ink3)}
+table.map tr.stale td{background:var(--dixie-soft)}
+.warn ul{margin:5px 0 0; padding-left:18px}
+.warn li{margin:2px 0}
 table.map{border-collapse:collapse; margin-top:10px; font-size:13px; width:100%; max-width:640px}
 table.map th{font-size:10.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
   color:var(--ink3); text-align:left; padding:3px 10px 3px 0; border-bottom:1px solid var(--rule)}
@@ -11850,7 +11857,7 @@ function splittable(fs,pair){
    away (9) still beats a semitone substitute in its own octave (20), which is
    his rule 1 written as arithmetic. Both floors and ceilings of d/12 are tried
    because a tritone is equally far either way and the cheaper reading wins. */
-const OCT_MEL=10, OCT_ACC=3, COST_DROP=40, INVERT_W=4, CLASH_W=8, UNPLAYABLE=60;
+const OCT_MEL=10, OCT_ACC=3, COST_DROP=40, INVERT_W=4, CLASH_W=8, UNPLAYABLE=3;
 function candCost(si,ti,melody){
   const d=ti-si;
   if(d===0) return {c:0,r:"exact"};
@@ -11947,7 +11954,15 @@ function transpose(){
       const ma=T.posMidi(a), mb=T.posMidi(b);
       if(ma!=null&&mb!=null&&ma>mb) tot+=INVERT_W*w;
     }
-    // decision 5 — a moment's notes must be divisible between two hands
+    /* decision 5 — a moment's notes should be divisible between two hands, but
+       this is a TIE-BREAK and nothing more. At 60 a chord it did to the notes
+       exactly what the old octave price did: on an F2 Low Pygmy 17 the search
+       collapsed E4 and F4 onto one field and G4 onto A4's, paying 1136 in wrong
+       notes to save 2280 in fingering, and leaving two exact matches (A♭3 and
+       B♭3) standing unused. The hands are re-derived by assignHands whichever
+       way this goes, and an awkward chord is a line in the report; a wrong
+       pitch is not. So playability may decide between equal notes and never
+       buy a note. */
     for(const grp of stacks){
       const ts=[...new Set(grp.map(f=>m[f]).filter(t=>t!=null))];
       if(!splittable(ts,pair)) tot+=UNPLAYABLE;
@@ -11959,31 +11974,46 @@ function transpose(){
       if(t!=null){ if(used.has(t)) tot+=2; used.set(t,1); } }
     return tot;
   }
-  // greedy start, then hill-climb over single reassignments
-  const m={};
-  for(const sf of srcFields) m[sf]=(sf in ov)?ov[sf]:cands[sf][0].tf;
-  let best=evalMap(m);
-  for(let pass=0;pass<6;pass++){
-    let improved=false;
-    for(const sf of srcFields){
-      if(sf in ov) continue;
-      const cur=m[sf];
-      for(const cand of cands[sf]){
-        if(cand.tf===cur) continue;
-        m[sf]=cand.tf; const v=evalMap(m);
-        if(v<best-1e-9){ best=v; improved=true; }
-        else m[sf]=cur;
-        if(m[sf]!==cur) break;
+  /* greedy start, then hill-climb over single reassignments — as a function of
+     the pins, so it can be asked the same question twice (David, 12 Sep: "add
+     the reset to auto and flag stale pins"). A pin outranks every rule in here,
+     which is what a pin is for; but a pin made to patch an older rule goes on
+     outranking the new one silently, and on an F2 Low Pygmy 17 two of them were
+     holding F4 and G4 away from the exact matches sitting free at A♭3 and B♭3 —
+     and collapsing two pairs of notes onto one field while they did it. So the
+     search is run a SECOND time with no pins at all, and the report says where
+     the two answers differ. The free run is exactly what the Reset button
+     would give, so the flag and the button always agree. */
+  function solve(o){
+    const m={};
+    for(const sf of srcFields) m[sf]=(sf in o)?o[sf]:cands[sf][0].tf;
+    let best=evalMap(m);
+    for(let pass=0;pass<6;pass++){
+      let improved=false;
+      for(const sf of srcFields){
+        if(sf in o) continue;
+        const cur=m[sf];
+        for(const cand of cands[sf]){
+          if(cand.tf===cur) continue;
+          m[sf]=cand.tf; const v=evalMap(m);
+          if(v<best-1e-9){ best=v; improved=true; }
+          else m[sf]=cur;
+          if(m[sf]!==cur) break;
+        }
       }
+      if(!improved) break;
     }
-    if(!improved) break;
+    return m;
   }
+  const m=solve(ov);
+  const nPins=Object.keys(ov).length, free=nPins?solve({}):m;
+  const samePlace=(a,b)=>(a==null&&b==null)||a===b;
   /* the report. THE FIT IS NOT THE SEARCH'S SCORE (decision 6): the search is
      told what to prefer, the percentage says what a student got. Notes and
      line are weighed 65/35 — a piece whose every note is right but whose tune
      jumps cannot read above 65, and that is the number that used to say 96. */
   let wSum=0,fit=0; const rows=[];
-  let nEx=0,nOc=0,nSub=0,nDrop=0,nMoved=0;
+  let nEx=0,nOc=0,nSub=0,nDrop=0,nMoved=0,nStale=0;
   for(const sf of [...srcFields].sort((a,b)=>a-b)){
     const tf=m[sf], w=use.get(sf); wSum+=w;
     const e=tf===null?{c:COST_DROP,r:"drop"}:cands[sf].find(x=>x.tf===tf)||{c:COST_DROP,r:"drop"};
@@ -11997,17 +12027,24 @@ function transpose(){
       : (off===0 ? (Math.abs(oct)===1?.55:.3) : .25);
     fit+=w*q;
     if(e.r==="exact")nEx++; else if(e.r==="octave")nOc++; else if(e.r==="drop")nDrop++; else nSub++;
-    rows.push({sf,tf,r:e.r,c:e.c,w,locked:sf in ov,mel:isMel(sf),oct,off});
+    const locked=sf in ov, stale=locked&&!samePlace(free[sf],tf);
+    if(stale) nStale++;
+    rows.push({sf,tf,r:e.r,c:e.c,w,locked,stale,auto:free[sf],mel:isMel(sf),oct,off});
   }
   const noteFit=fit/(wSum||1), line=lineKept(piece,S,T,m);
-  const violStacks=[];
+  /* the warning counts chord SHAPES, not strikes — the same three notes in
+     sixteen bars is one thing to learn, not sixteen things to worry about */
+  const violSeen=new Set(), violStacks=[];
   for(const grp of stacks){
     const ts=[...new Set(grp.map(f=>m[f]).filter(t=>t!=null))];
-    if(!splittable(ts,pair)) violStacks.push(grp);
+    if(splittable(ts,pair)) continue;
+    const k=grp.map(String).sort().join(",");
+    if(violSeen.has(k)) continue;
+    violSeen.add(k); violStacks.push(grp);
   }
   MAP=m;
   REPORT={rows,fit:Math.round(100*(.65*noteFit+.35*line)),noteFit:Math.round(100*noteFit),
-    line:Math.round(100*line),nEx,nOc,nSub,nDrop,nMoved,violStacks,cands};
+    line:Math.round(100*line),nEx,nOc,nSub,nDrop,nMoved,nPins,nStale,violStacks,cands};
   transHands();
 }
 /* HANDS UNDER TRANSPOSITION, SILENTLY (David, 8 Sep: "for transpositions, let's do it silently for now"). A piece
@@ -15424,12 +15461,26 @@ function phoneFit(){
     const availH=landH;
     sc.style.width=W+"px";             // measure the height at full width
     for(let i=0;i<2;i++){              // the narrower card can reflow slightly
-      // the TALLEST table decides the scale, so every table reads the same size
-      // — but only down to its sixth row, which is all that is ever shown
-      // (LAND_ROWS; see "THE SIX ALSO DECIDE THE SCALE" at landRowCap)
+      /* EACH SECTION IS FITTED TO THE STAGE ON ITS OWN (David, 12 Sep: "Let's
+         try this: Fit each section to the stage. Full card every time — and the
+         notes resize as you move A→B, which is the thing you objected to in
+         August").
+         THIS REVERSES 26 AUG, on the record and with his eyes open. That rule
+         answered a real complaint — "single symbols are smaller in the B
+         section" — by scaling every table by the TALLEST one, so a note never
+         changed size as the piece moved from A to B. What it cost was measured
+         for him on 12 Sep and is why he changed his mind: on Composition 1
+         Advanced the tall sections are 423px against A1's 382 and A2's 368, so
+         A1 gave up 30+31px of a 366px stage and A2 36+37 — a tenth of the card,
+         on every short section, forever. And the cause is often a single cell:
+         one four-note chord makes its row 66px → 102px, and measured here that
+         one cell took 13% off every single symbol in the piece.
+         So the scale is now the section you are LOOKING AT, still only down to
+         its sixth row (LAND_ROWS; see "THE SIX ALSO DECIDE THE SCALE" at
+         landRowCap). pieceNaturalHeight is left standing and uncalled — putting
+         the max() back is the whole of the way home if he wants August again. */
       const zz=parseFloat(sc.style.zoom)||1;
-      const natH=Math.max(sc.scrollHeight-rowsBeyond(sc,landCap)/zz,
-                          pieceNaturalHeight(parseFloat(sc.style.width)||W,landCap));
+      const natH=sc.scrollHeight-rowsBeyond(sc,landCap)/zz;
       if(natH<=0) break;
       /* THE FLOOR HAD TO COME DOWN. Tab wanted 0.327 here and was clamped at
          0.35, which is why it alone overflowed the band and slid 2px under
@@ -15448,8 +15499,16 @@ function phoneFit(){
          screen mode so that the tables actually extend"). 2.4 is the phone's
          honest maximum, W/540 on its screens; on a tablet W/540 is smaller
          than 2.4, and past it the 540px floor makes the card WIDER than the
-         stage — which is exactly the table that did not extend. */
-      z=Math.max(0.25,Math.min(TABLET?Math.max(1,W/540):2.4,availH/natH));
+         stage — which is exactly the table that did not extend.
+         …AND SINCE 12 SEP IT IS EVERY BUILD'S CEILING, because it is what makes
+         the per-section fit above safe. While the whole piece shared one zoom,
+         the tallest table held it down and the phone never reached 2.4. Fitted
+         alone, a SHORT section asks for far more — Canon in D's two-row Intro
+         wants 2.18 — and past W/540 the card cannot get any narrower, so the
+         zoom stops shrinking it and starts widening it off the screen. The
+         phone's 2.4 was never a design size either; W/540 is the same number
+         said honestly, and 2.4 stays as the outer guard. */
+      z=Math.max(0.25,Math.min(2.4,Math.max(1,W/540),availH/natH));
       sc.style.width=(W/z)+"px";
     }
   }
@@ -18658,6 +18717,14 @@ function renderReport(){
    +'</span></span></div>';
   h+='<label class="keepfo" title="A note this pan lacks stays foreign instead of moving to another field: drawn as its name in the stand-in colour, on no field, sounding at the pitch it should have — so another handpan can cover it. The map below is not used while this is on.">'
    +'<input type="checkbox" id="keepForeign"'+(keepForeign?" checked":"")+'> Keep missing notes foreign</label>';
+  /* A PIN OUTRANKS EVERY RULE — so there has to be a way back out (David,
+     12 Sep). The count is of this PAN's pins for this piece, which is exactly
+     what the button clears and exactly what the second solve left out. */
+  if(REPORT.nPins)
+    h+='<div class="pinrow"><button class="ctl" id="repReset" title="Clear the choices you pinned by hand for this piece on this pan, and let the rule choose again">'
+      +'Reset '+REPORT.nPins+' pinned choice'+(REPORT.nPins>1?'s':'')+' to auto</button>'
+      +(REPORT.nStale?'<span class="pinnote">'+(REPORT.nStale>1?REPORT.nStale+' of them no longer match':'one no longer matches')
+        +' what the rule would choose</span>':'')+'</div>';
   h+='<table class="map"><tr><th>Field</th><th>Sounds</th><th></th><th>On your pan</th><th>Match</th><th>Change</th></tr>';
   /* an underside place reads as its own number in brackets — the maker's
      spelling, and the same series the pan drawing numbers (David, 28 Aug) */
@@ -18669,16 +18736,29 @@ function renderReport(){
     for(const tf of myPan.posList())
       sel+='<option value="'+tf+'"'+((row.locked&&row.tf===tf)?" selected":"")+'>'+posName(tf)+' · '+myPan.posLabel(tf)+'</option>';
     sel+='<option value="drop"'+(row.locked&&row.tf===null?" selected":"")+'>drop</option></select>';
-    h+='<tr><td><b>'+posName(row.sf)+'</b></td><td>'+srcPan.posLabel(row.sf)+'</td><td>→</td>'
+    h+='<tr'+(row.stale?' class="stale"':'')+'><td><b>'+posName(row.sf)+'</b></td><td>'+srcPan.posLabel(row.sf)+'</td><td>→</td>'
       +'<td>'+tgt+'</td><td><span class="tagx '+row.r+'">'+tag(row.r)+'</span></td><td>'+sel+'</td></tr>';
   }
   h+='</table>';
+  if(REPORT.nStale){
+    h+='<div class="warn"><b>Pinned by hand, and now out of step with the rule:</b><ul>';
+    for(const row of REPORT.rows){
+      if(!row.stale) continue;
+      const pin=row.tf===null?'dropped':posName(row.tf)+' · '+myPan.posLabel(row.tf);
+      const auto=row.auto===null||row.auto===undefined?'dropped':posName(row.auto)+' · '+myPan.posLabel(row.auto);
+      h+='<li>Field <b>'+posName(row.sf)+'</b> ('+srcPan.posLabel(row.sf)+') is pinned to <b>'+pin
+        +'</b> — the rule would choose <b>'+auto+'</b>.</li>';
+    }
+    h+='</ul></div>';
+  }
   if(REPORT.violStacks.length)
-    h+='<div class="warn"><b>'+REPORT.violStacks.length+' chord'+(REPORT.violStacks.length>1?"s":"")
+    h+='<div class="warn"><b>'+REPORT.violStacks.length+' chord shape'+(REPORT.violStacks.length>1?"s":"")
       +'</b> cannot be shared between two hands on this pan — the notes play, but check the fingering.</div>';
   R.innerHTML=h;
   const rx=$("repX");
   if(rx) rx.addEventListener("click",()=>{ reportClosed=true; renderReport(); });
+  const rr=$("repReset");
+  if(rr) rr.addEventListener("click",()=>{ delete overrides[myPanId]; saveOv(); refresh(); });
   const kf=$("keepForeign"); if(kf) kf.addEventListener("change",()=>{ keepForeign=kf.checked; render(); if(ctx) preloadBank(); });   // the notes now foreign need their samples
   R.querySelectorAll("select").forEach(s=>s.addEventListener("change",()=>{
     /* positions are numbers OR "b1"-style strings now, so neither side of
