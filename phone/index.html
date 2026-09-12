@@ -4175,8 +4175,28 @@ html[data-theme="zones-dark"]{
 /* — the transposition report becomes an overlay sheet: in the page flow it
      sat half under the resting bar ("only half visible") */
 body.phone #report:not(.hidden){position:fixed; left:10px; right:10px;
-  top:64px; bottom:96px; overflow:auto; z-index:60; margin:0;
+  top:64px; bottom:96px; overflow-y:auto; overflow-x:hidden; z-index:60; margin:0;
   box-shadow:var(--shadow)}
+/* THE SHEET SCROLLS ONE WAY ONLY (David, 12 Sep: "on mobile, when the
+   transposition window opens, please don't have it scrollable horizontally.
+   It should be fixed horizontally, so it only scrolls vertically"). Hiding the
+   sideways scroll alone would only hide the problem, so the table is made to
+   FIT: measured at 375 px the sheet holds 353 and the map wanted 399, all of it
+   the Change column — a select sizes itself to its longest option, and one of
+   those is now "Keep note foreign". So the phone lays the table out fixed, in
+   shares of the width it actually has, and the select is told to take its
+   column rather than its content. */
+body.phone table.map{table-layout:fixed; width:100%; max-width:100%; font-size:12px}
+body.phone table.map th,body.phone table.map td{padding-right:4px; overflow:hidden;
+  text-overflow:ellipsis}
+body.phone table.map th:nth-child(1),body.phone table.map td:nth-child(1){width:11%}
+body.phone table.map th:nth-child(2),body.phone table.map td:nth-child(2){width:16%}
+body.phone table.map th:nth-child(3),body.phone table.map td:nth-child(3){width:5%}
+body.phone table.map th:nth-child(4),body.phone table.map td:nth-child(4){width:22%}
+body.phone table.map th:nth-child(5),body.phone table.map td:nth-child(5){width:20%}
+body.phone table.map th:nth-child(6),body.phone table.map td:nth-child(6){width:26%}
+body.phone table.map select{width:100%; min-width:0; max-width:100%; font-size:11.5px; padding:2px}
+body.phone .tagx{padding:2px 4px; letter-spacing:.02em}
 /* THE ROOM SELECTOR (David, 31 Aug, from mockups-navisle.html: "drop the
    isle idea and go for a simple drop-down button. The writing should be
    normal size and on the left side of the selector can be the name of the
@@ -18821,21 +18841,47 @@ function labelPills(withNum){
    the pins and the table then says everything, rather than a mode that decides
    again behind the drop-downs. A note that already transposes exactly is never
    touched by either — there is nothing to keep it from. */
+/* WHAT EACH NOTE HAD BEFORE THE BUTTON TOOK IT (David, 12 Sep: "when I have
+   selected All that cannot be transposed directly and then afterwards I click
+   Out of this pan's scale, please have those notes that are now not going to be
+   foreign revert to the setting they had before, so I can switch back and forth
+   between these two options"). Kept per piece and pan beside the overrides
+   themselves, so a reload does not strand a note on a setting nobody chose.
+   `set` is the positions the last button took; `prev` holds only those that had
+   a setting before, so a position in `set` and not in `prev` was on auto. */
+let bulkPrev={};
+function bulkUndo(){
+  const rec=bulkPrev[myPanId]; if(!rec) return;
+  const ov=overrides[myPanId]||{};
+  for(const sf of rec.set||[]){
+    /* a note the student has since changed BY HAND is theirs, not the button's:
+       leave it exactly as they set it */
+    if(ov[sf]!==FOREIGN) continue;
+    if(rec.prev&&Object.prototype.hasOwnProperty.call(rec.prev,sf)) ov[sf]=rec.prev[sf];
+    else delete ov[sf];
+  }
+  delete bulkPrev[myPanId];
+}
 function keepForeignBulk(onlyOutOfScale){
   if(!MAP||!REPORT||!srcPan||!myPan) return;
+  bulkUndo();                                  // the other button's notes go back first
   const ivs=myPan.posList().filter(p=>p!==0).map(p=>myPan.posIv(p)).filter(v=>v!=null);
   const pcs=new Set(ivs.map(v=>((v%12)+12)%12));
-  overrides[myPanId]=overrides[myPanId]||{};
-  let n=0;
+  const ov=overrides[myPanId]=overrides[myPanId]||{};
+  const rec={set:[],prev:{}};
   for(const row of REPORT.rows){
     if(row.sf===0) continue;
     const si=srcPan.posIv(row.sf); if(si==null) continue;
     if(ivs.includes(si)) continue;                                  // it has its own place here
     if(onlyOutOfScale&&pcs.has(((si%12)+12)%12)) continue;          // the pan has it, an octave away
-    if(overrides[myPanId][row.sf]!==FOREIGN){ overrides[myPanId][row.sf]=FOREIGN; n++; }
+    if(ov[row.sf]===FOREIGN) continue;                              // already, and by hand
+    if(Object.prototype.hasOwnProperty.call(ov,row.sf)) rec.prev[row.sf]=ov[row.sf];
+    ov[row.sf]=FOREIGN; rec.set.push(row.sf);
   }
+  if(rec.set.length) bulkPrev[myPanId]=rec;
   saveOv(); refresh();
   if(ctx) preloadBank();                     // the notes now foreign need their own samples
+  const n=(REPORT.rows||[]).filter(r=>r.tf===FOREIGN).length;
   toast(n?(n+" note"+(n>1?"s":"")+" kept foreign — change any of them in the table")
          :"Nothing to keep: every note here has its own place on this pan");
 }
@@ -18872,8 +18918,8 @@ function renderReport(){
      12 Sep). The count is of this PAN's pins for this piece, which is exactly
      what the button clears and exactly what the second solve left out. */
   if(REPORT.nPins)
-    h+='<div class="pinrow"><button class="ctl" id="repReset" title="Clear the choices you pinned by hand for this piece on this pan, and let the rule choose again">'
-      +'Reset '+REPORT.nPins+' pinned choice'+(REPORT.nPins>1?'s':'')+' to auto</button>'
+    h+='<div class="pinrow"><button class="ctl" id="repReset" title="Clear every choice pinned for this piece on this pan — by hand or by the buttons below — and let the rule choose again">'
+      +'Reset</button>'
       +(REPORT.nStale?'<span class="pinnote">'+(REPORT.nStale>1?REPORT.nStale+' of them no longer match':'one no longer matches')
         +' what the rule would choose</span>':'')+'</div>';
   h+='<table class="map"><tr><th>Field</th><th>Sounds</th><th></th><th>On your pan</th><th>Match</th><th>Change</th></tr>';
@@ -18912,7 +18958,7 @@ function renderReport(){
   const rx=$("repX");
   if(rx) rx.addEventListener("click",()=>{ reportClosed=true; renderReport(); });
   const rr=$("repReset");
-  if(rr) rr.addEventListener("click",()=>{ delete overrides[myPanId]; saveOv(); refresh(); });
+  if(rr) rr.addEventListener("click",()=>{ delete overrides[myPanId]; delete bulkPrev[myPanId]; saveOv(); refresh(); });
   const kfs=$("kfScale"), kfa=$("kfAll");
   if(kfs) kfs.addEventListener("click",()=>keepForeignBulk(true));
   if(kfa) kfa.addEventListener("click",()=>keepForeignBulk(false));
@@ -18927,8 +18973,10 @@ function renderReport(){
     saveOv(); refresh();
   }));
 }
-function saveOv(){ try{localStorage.setItem("hps.ov."+piece.id,JSON.stringify(overrides))}catch(e){} }
-function loadOv(){ try{overrides=JSON.parse(localStorage.getItem("hps.ov."+piece.id)||"{}")}catch(e){overrides={}} }
+function saveOv(){ try{localStorage.setItem("hps.ov."+piece.id,JSON.stringify(overrides));
+  localStorage.setItem("hps.ovb."+piece.id,JSON.stringify(bulkPrev)); }catch(e){} }
+function loadOv(){ try{overrides=JSON.parse(localStorage.getItem("hps.ov."+piece.id)||"{}")}catch(e){overrides={}}
+  try{bulkPrev=JSON.parse(localStorage.getItem("hps.ovb."+piece.id)||"{}")}catch(e){bulkPrev={}} }
 
 function refresh(){
   /* stamped on every refresh, so the spec stays current through renames and
