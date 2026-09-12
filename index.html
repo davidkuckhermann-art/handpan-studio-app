@@ -3197,6 +3197,7 @@ body.phone #drawerExtra #jamColourWrap{width:auto}
 /* the pinned-choices row: a reset for the pins on THIS pan, and a word on the
    ones the rule no longer agrees with (David, 12 Sep) */
 .pinrow{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:8px 0 2px}
+.rsico{display:none}                       /* the word is the desktop's face */
 .pinnote{font-size:12.5px; color:var(--ink3)}
 table.map tr.stale td{background:var(--dixie-soft)}
 .warn ul{margin:5px 0 0; padding-left:18px}
@@ -3318,7 +3319,16 @@ body.haspan:not(.phone):not(.editing) #panwrap{flex:0 1 auto; min-width:0; margi
 .pvmid{display:flex; flex-direction:column; align-items:center; gap:0;
   min-width:0; flex:0 1 auto}
 #pvwrap.sides .pvmid #pvsvg{max-width:100%}
-.pvside{display:flex; flex-direction:column; align-items:center; gap:9px; flex:none}
+.pvside{display:flex; flex-direction:column; align-items:center; gap:9px; flex:none; position:relative}
+/* THE NAME STANDS IN THE GUTTER, NOT UNDER THE DRAWING (David, 12 Sep). It is
+   taken out of the column's flow so it cannot widen it — the column must stay
+   the badges' width, or the drawing pays for the name twice — and it is allowed
+   to overhang to the right, into the corner a circle in a square never reaches.
+   `visibility:visible` because the column itself is hidden in this view: the
+   badges are kept for their width alone. */
+.pvside.pvnamecol{align-self:stretch}
+.pvside>.pvchord{visibility:visible; position:absolute; left:0; bottom:0;
+  margin:0; white-space:nowrap; text-align:left; pointer-events:none}
 /* a DEFINITE width, not flex-auto: WebKit collapses a viewBox-only svg to
    zero under width:auto in a flex row — David's "the pan tab still doesn't
    show the pan" (26 Aug). Not a percentage either: the card shrink-to-fits
@@ -3573,7 +3583,9 @@ body.phone #pcbar{font-size:11.5px}
   letter-spacing:-.01em; color:var(--ink); line-height:1.15; min-height:28px}
 .pvchord.inf{color:var(--ink3); font-style:italic; font-weight:700}
 body.phone .pvchord{font-size:26px}
-body:not(.phone) #panbox .pvchord{margin-top:-3px}   /* a little more room under the pan on the desktop (David, 3 Sep: "very, very close") */
+/* (the desktop's `margin-top:-3px` went with the name — it pulled the label UP
+   toward the drawing, which is the one thing the name no longer does, and its
+   id beat the gutter rule's margin:0 for as long as it stood) */
 .pvlamps{display:flex; align-items:center; gap:8px; margin-top:2px}
 .lamp{width:30px; height:30px; border-radius:50%; display:grid; place-items:center;
   font-size:13px; font-weight:800; border:1.5px solid; transition:background .12s,color .12s}
@@ -4191,6 +4203,18 @@ body.phone table.map th:nth-child(5),body.phone table.map td:nth-child(5){width:
 body.phone table.map th:nth-child(6),body.phone table.map td:nth-child(6){width:26%}
 body.phone table.map select{width:100%; min-width:0; max-width:100%; font-size:11.5px; padding:2px}
 body.phone .tagx{padding:2px 4px; letter-spacing:.02em}
+/* RESET BECOMES THE UNDO SYMBOL AND GIVES ITS ROW BACK (David, 12 Sep). It sits
+   beside the close, whose containing block is #report — the only positioned
+   ancestor — so the row it lives in may collapse to nothing without taking the
+   button with it. The button is given its OWN display here rather than leaning
+   on .ctl's: a grid with place-items centre, the same way .ib centres every
+   other icon in the app, so the glyph cannot drift to an edge. */
+body.phone #repReset{position:absolute; top:7px; right:39px; width:26px; height:26px;
+  padding:0; display:grid; place-items:center; border-radius:8px}
+body.phone #repReset .rstxt{display:none}
+body.phone #repReset .rsico{display:block; width:17px; height:17px}
+body.phone .resetrow{margin:0}
+body.phone .resetrow:not(.hasnote){height:0; overflow:visible}
 /* THE ROOM SELECTOR (David, 31 Aug, from mockups-navisle.html: "drop the
    isle idea and go for a simple drop-down button. The writing should be
    normal size and on the left side of the selector can be the name of the
@@ -17150,15 +17174,42 @@ function renderPanPanelInner(){
     d.className="pvside "+cls; d.innerHTML=html; return d; };
   const left=side("pvleft",pvLeftHTML()), right=side("pvright",pvRightHTML());
   if(panMode!=="strokes"){         // a chord has no hand: the name takes the lamps' place (Both too)
-    /* the flanks stay, hidden, so this view is exactly as wide as the other —
-       see "ONE SIZE FOR BOTH VIEWS" in the stylesheet */
-    for(const f of [left,right]){ f.style.visibility="hidden"; f.setAttribute("aria-hidden","true"); }
+    /* THE NAME TAKES THE GUTTER THE BADGES LEAVE, AND THE OTHER GUTTER IS GIVEN
+       BACK TO THE DRAWING (David, 12 Sep: "put the chord label in the lower-left
+       corner of that tab so it doesn't touch the handpan … there might even be a
+       few more pixels' space for the handpan to grow"). This is the rule the
+       app already wrote for landscape on 2 Sep — the progression stands BESIDE
+       the pan, in the flank's place — brought to portrait at last.
+
+       Why it grows the drawing, which took measuring to see: fitPortraitStack
+       sizes the picture as min(width the card has left, height it has left),
+       and the width subtracts EVERY .pvside in the card. On a 375pt phone that
+       was 32+10 twice — 84px taken out of the width for two columns showing
+       nothing — while 70px of height sat unused below the card, so the width
+       was always the smaller of the two and the height never mattered. That is
+       also why moving the name alone changed nothing: the name is chrome, and
+       chrome is on the HEIGHT side.
+
+       So: the left gutter stays and keeps the badges' width (they are hidden,
+       not removed, so the column is the same width in both views and the name
+       cannot widen it); the name is placed at its lower-left, overhanging into
+       the corner the circle does not reach; and the RIGHT gutter is not
+       appended at all, which is the 42px the drawing gains. The cost, and
+       David took it knowingly: the chord view's drawing is one gutter wider
+       than the strokes view's, so switching between them is no longer the
+       exact same size — the 28 Aug rule, given up on purpose. */
+    left.style.visibility="hidden"; left.setAttribute("aria-hidden","true");
+    /* the gutter is as tall as its badges and the row centres it, so `bottom:0`
+       inside it landed the name halfway up the card; stretched, the column is
+       the drawing's own height and its foot is the drawing's foot — which is
+       the corner David asked for */
+    left.classList.add("pvnamecol");
     const mid=document.createElement("div"); mid.className="pvmid";
     mid.appendChild(pan.firstChild);
     const nm=document.createElement("div"); nm.className="pvchord"; nm.id="pvchord";
-    mid.appendChild(nm);
+    left.appendChild(nm);          // visible again by its own rule, inside a hidden column
     wrap.classList.add("sides");
-    wrap.append(left,mid,right);
+    wrap.append(left,mid);
   } else {
     /* The badges FLANK the pan everywhere (David, 26 Aug — he asked for them
        back at the sides: the row underneath cost ~50px of height and he wants
@@ -18911,9 +18962,20 @@ function renderReport(){
   /* A PIN OUTRANKS EVERY RULE — so there has to be a way back out (David,
      12 Sep). The count is of this PAN's pins for this piece, which is exactly
      what the button clears and exactly what the second solve left out. */
+  /* ONE BUTTON, TWO FACES (David, 12 Sep: "on phone, can you make the reset
+     button an undo symbol so it doesn't need its own row"). The markup carries
+     both the word and the glyph and the CSS picks; on the phone the button
+     lifts out of the flow to sit beside the close, and its row — which then
+     holds nothing but the stale note — collapses to nothing when there is no
+     note to hold. The row is never display:none'd, because the button is
+     absolutely positioned INSIDE it and would go with it. */
   if(REPORT.nPins)
-    h+='<div class="pinrow"><button class="ctl" id="repReset" title="Clear every choice pinned for this piece on this pan — by hand or by the buttons below — and let the rule choose again">'
-      +'Reset</button>'
+    h+='<div class="pinrow resetrow'+(REPORT.nStale?' hasnote':'')+'">'
+      +'<button class="ctl" id="repReset" title="Clear every choice pinned for this piece on this pan — by hand or by the buttons below — and let the rule choose again" aria-label="Reset">'
+      +'<svg class="rsico" viewBox="0 0 24 24" aria-hidden="true"><g transform="translate(0.5 -2)">'
+      +'<path d="M9.5 5.5 4.5 10.5l5 5" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>'
+      +'<path d="M4.5 10.5h8a6 6 0 0 1 0 12H9" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>'
+      +'</g></svg><span class="rstxt">Reset</span></button>'
       +(REPORT.nStale?'<span class="pinnote">'+(REPORT.nStale>1?REPORT.nStale+' of them no longer match':'one no longer matches')
         +' what the rule would choose</span>':'')+'</div>';
   h+='<table class="map"><tr><th>Field</th><th>Sounds</th><th></th><th>On your pan</th><th>Match</th><th>Change</th></tr>';
