@@ -2032,6 +2032,27 @@ body.phone:not(.tablet) .slot.n3 .sym{font-size:20px}
 body.phone:not(.tablet) .slot.n3 .sym.d2{font-size:17px}
 body.phone:not(.tablet) .slot.n2 .sym.gh{font-size:22.5px}
 body.phone:not(.tablet) .slot.n3 .sym.gh{font-size:18px}
+/* …AND LANDSCAPE GIVES THE NAMES BACK (David, 12 Sep: "in landscape mode on
+   mobile … can you bring back the chords that are written in the notation? …
+   by the way, there's extra space on the top and on the bottom"). His 5 Sep
+   ruling stands exactly where he made it: PORTRAIT has no room, and the stacks
+   above bought that height fairly. Sideways is a different room — the stage
+   leaves air even on the piece's TALLEST section — so the same table can afford
+   the 12px reserve and say its chords.
+   THE RENDERER NOW WRITES THE NAME ON EVERY BUILD and this takes it away again
+   in portrait, rather than the renderer asking which way up the phone is. That
+   is not a preference: the phone REFITS on rotation instead of re-rendering
+   (see refitScore), so a name decided at render time would not appear until
+   something else happened to redraw the table. Decided in CSS, the turn is
+   enough — the same reason the edit row's slot lines are always in the DOM.
+   THE RESERVE GOES BACK WITH IT, to the slot's own 1px, so portrait stands
+   exactly as tall as it did and the 5 Sep ladder keeps its bargain.
+   Chord practice's LISTEN table is out of this: it sizes its own label by the
+   column (body.cplisten) and has shown one on the phone all along. */
+@media (orientation:portrait){
+  body.phone:not(.tablet):not(.cplisten) .chordlab{display:none}
+  body.phone:not(.tablet):not(.cplisten) .slot.haschord{padding-top:1px}
+}
 
 /* ---- chord row ---- */
 /* no margin of its own: the distance to the notation frame is #belowrow's
@@ -12749,7 +12770,18 @@ function barChordSpans(bar,m){
      pieces: 69 bars became 77, and the eight are exactly the B sections he is
      looking at. */
   const p1=barPcSet(s1), p2=barPcSet(s2);
-  const solid=(t,p)=>p.has(t[0])&&p.has(t[1])&&t.filter(pc=>p.has(pc)).length>=3;
+  /* …AND THE THIRD MAY BE MISSING WHERE THE INSTRUMENT CANNOT MEAN ANYTHING
+     ELSE (David, 12 Sep, the second half of B1 bar 2 on his D Kurd: D A C G,
+     which the guesser already names Dmin7 — only the guard refused it, for want
+     of the F). A D chord on a pan with no F♯ can only be minor: the third is not
+     ambiguous there, it is merely unplayed. So the third must sound UNLESS this
+     pan cannot build the other quality on that root. Measured over all 21
+     pieces: four bars change, all of them Flavourful Freestyle 2's B sections,
+     bar 2, each becoming Amin7 | Dmin7. Nothing else in the repertoire moves. */
+  const panPcs=panPcSet(myPan,!topOnlyChords());
+  const thirdSure=t=>{ const iv=(((t[1]-t[0])%12)+12)%12;
+    return !panPcs.has((t[0]+(iv===3?4:3))%12); };
+  const solid=(t,p)=>p.has(t[0])&&(p.has(t[1])||thirdSure(t))&&t.filter(pc=>p.has(pc)).length>=3;
   if(!solid(t1,p1)||!solid(t2,p2)) return one;
   const a1=barAccomp(s1), a2=barAccomp(s2);
   if(![...a2].some(pc=>!a1.has(pc))) return one;           // the accompaniment held; only the melody moved
@@ -15863,7 +15895,16 @@ function renderTableView(sc,lanes){
          practice's LISTEN table keeps its own column-sized label (its rule
          is body.cplisten's, 4 Sep). The room the name took goes to the
          stacked glyphs — see `body.phone:not(.tablet) .slot.n2` in the sheet. */
-      const noNames=lanes||(PHONE&&!TABLET&&!(typeof lsOn!=="undefined"&&lsOn));
+      /* …AND SINCE 12 SEP THE TABLE WRITES THEM ON EVERY BUILD, the phone
+         included, because it is CSS that decides whether they are seen: his
+         5 Sep ruling is about PORTRAIT, where there is no room, and the phone
+         refits on rotation rather than re-rendering, so a table that asked the
+         orientation here would turn into landscape still mute. The portrait
+         rule beside the ladder in the sheet hides the label and gives back the
+         12px, so portrait is the table it has been since 5 Sep. The TAB is
+         still nameless everywhere — that is `lanes`, and its cell is two hands
+         deep with nowhere to put a name. */
+      const noNames=lanes;
       /* ONE LABEL PER CHORD (12 Sep). A bar that changes at the half writes
          its second name over the cell the change lands on, so the table says
          what the chord row and the bass say. */
