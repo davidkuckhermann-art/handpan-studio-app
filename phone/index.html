@@ -4683,6 +4683,29 @@ body.phone .gmini i{font-size:10px}
   .edslot{display:flex; flex-direction:column; align-items:center; justify-content:flex-end;
     height:48px; overflow:hidden; border-radius:6px; margin:1px; padding-bottom:1px}
   .edslot.cur{background:var(--dixie-soft); box-shadow:inset 0 0 0 2px var(--dixie)}
+  /* THE GROOVE'S GRID IN THE EDIT ROW TOO (David, 12 Sep: "on mobile, in the
+     edit row, can you display slot lines when they are activated in the
+     notation?"). Same mark, same switch: one hairline at the start of each cell
+     inside the beat, never at the beat's own edge — the beat's border already
+     says that — and it comes and goes with body.slotlines. The elements are
+     ALWAYS in the DOM and only their display is gated, because the settings
+     toggle flips that class and repaints nothing; drawing them at paint time
+     would leave the row unchanged until something else redrew it.
+     IT CANNOT BE THE SLOT'S OWN ::before, the way the score's is. .edslot clips
+     — a stack has to be cut to the cell's fixed height (3 Sep) — so a line in
+     the gutter is swallowed, and one drawn inside the slot is nibbled by its 6px
+     corners. So the line hangs off the BEAT, which is positioned and does not
+     clip, and is placed from the same geometry the grid columns are: 1px of
+     padding, then k of sub of what is left, less half a line. That lands its
+     centre in the middle of the 2px gutter — the very place --subgap puts the
+     score's. The 15 and 5 are the slot's own inset (12px or 2px of beat padding,
+     the slot's 1px margin, and the score's own 2px), and both are constant
+     whatever the cell's height, which is why the taller tab cell needs no second
+     rule. */
+  .edsline{position:absolute; display:none; width:1px; background:var(--rule2);
+    top:15px; bottom:5px; pointer-events:none;
+    left:calc(1px + (100% - 2px) * var(--k) / var(--sn) - 0.5px)}
+  body.slotlines .edsline{display:block}
   /* THE TAB'S CELL IS TWO LANES (David, 3 Sep) — the green hand above, the
      black below, each lane sized for its own count; the row is a little
      taller in the tab for it ("let's make the editing row a bit taller").
@@ -19218,6 +19241,18 @@ function paintEditDeck(){
           laneHand={sec:viewSec,at:rel,hand:e.clientY<r.top+r.height/2?"L":"R"}; }
         cursor=rel; refresh(); });
       be.appendChild(sl);
+    }
+    /* …and the cell boundaries inside the beat get the score's slot lines.
+       --sn is the COLUMN count, not the number of slots drawn: a window clamped
+       at the end of the piece leaves the grid at m.sub columns, so the divisor
+       has to be the grid's. The lines themselves stop at the last slot there is.
+       They are absolutely positioned, so they are out of flow and take no grid
+       cell of their own. */
+    const nSl=be.querySelectorAll(".edslot").length;
+    be.style.setProperty("--sn",m.sub);
+    for(let k=1;k<nSl;k++){
+      const ln=document.createElement("i"); ln.className="edsline";
+      ln.style.setProperty("--k",k); be.appendChild(ln);
     }
     box.appendChild(be);
   }
