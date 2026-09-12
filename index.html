@@ -1983,12 +1983,14 @@ body:not(.phone) .beat.tbeat{padding:5px 1px 4px}
 .chordlab{position:absolute; top:-2px; left:0; right:0; text-align:center; font-size:10.5px;
   font-weight:700; color:var(--ink3); font-family:Figtree,sans-serif; pointer-events:none}
 .slot.haschord{padding-top:12px}
-/* NO CHORD LABELS WHILE EDITING (David, 3 Sep: "we can drop the chord labels
-   in edit mode") — on the phone the label is what collided with the symbols
-   once WebKit's 9px font floor made it as large as they are; and the slot
-   gives back the 12px it reserved for it, so the table stands shorter */
-body.editing .chordlab{display:none}
-body.editing .slot.haschord{padding-top:1px}
+/* THE CHORD LABELS ARE BACK IN THE EDITORS (David, 12 Sep: "it also means we
+   should probably bring back the chord names in table view. On desktop, that's
+   not a problem") — REVERSING his 3 Sep "we can drop the chord labels in edit
+   mode", and recorded as a reversal rather than quietly deleted. What changed
+   is that a chord can be WRITTEN now: an editor that hides the names cannot
+   show you what you just wrote. The phone is untouched either way — its table
+   has drawn no names since 5 Sep (see noNames), and its own answer is still
+   open. */
 /* THE PHONE'S TABLE HAS NO CHORD ROW, AND THE STACKS TAKE ITS ROOM (David,
    5 Sep: "on mobile, let's get rid of the chord names and that whole chord
    name row in the notation table, and use the additional space for the
@@ -6669,6 +6671,24 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   </div>
 </dialog>
 
+<!-- WRITING A CHORD BY HAND (David, 12 Sep: "yes, add the chord picker to the
+     editor"). The guesser earns a bar's chords; this overrules it, and it is
+     the only way to say a chord the notes do not spell on their own — the bars
+     the split rule refuses to guess (Canon in D's B bar 2, Baran's arpeggios).
+     THE LIST IS THE PAN'S OWN VOCABULARY, jamDefs().list, the same chords the
+     jam offers: the bass looks a name up on the pan in hand, so a chord this
+     instrument cannot form would be written and then fall silent. -->
+<dialog id="setChordDlg">
+  <h3>Chord here</h3>
+  <p class="hint" id="scdWhere"></p>
+  <div class="row" id="scdList" style="flex-wrap:wrap; gap:6px; margin:8px 0 0; max-height:46vh; overflow:auto"></div>
+  <div class="row" style="margin:12px 0 0">
+    <button class="ctl" id="scdClear">Clear chord</button>
+    <span class="spacer"></span>
+    <button class="ctl" id="scdCancel">Cancel</button>
+  </div>
+</dialog>
+
 <dialog id="panMoveDlg">
   <h3>Transpose the jam?</h3>
   <p class="hint" id="pmText"></p>
@@ -9518,7 +9538,7 @@ function chapterAt(t){
 function showChapter(i){
   if(!book||i===bookCur||!book.chapters[i]) return;
   const b=book; bookCur=i;
-  loadPiece(b.chapters[i]);
+  openPiece(b.chapters[i]);      // a chapter brings its pan, like any opened piece
   book=b; b.chapters[i]=piece;     // the live copy: the author's edits to this chapter's map stay in the book
   lastFollowPaint=null;            // the new chapter is painted at once
 }
@@ -9546,6 +9566,7 @@ function secOfPulse(pi){ let cur=C.secStarts[0];
 
 /* ---------------- state ---------------- */
 let piece=null, C=null, myPanId="d-kurd-9", myPan=null, srcPan=null;
+let piecePanUnknown=false;   // the loaded piece named a pan this device cannot honour (see openPiece)
 let mode="pos", MAP=null, REPORT=null, overrides={};
 let bpm=72, halfSpeed=false, countIn=false, takGlyph="T";
 let metOn=(localStorage.getItem("hps.met")||"0")==="1";
@@ -10147,10 +10168,21 @@ function voiceChordAt(p,sec,m){
   try{
     const bars=piece.sections[sec.name].bars, bi=Math.floor((p-sec.pulse)/m.bp);
     for(let k=Math.min(bi,bars.length-1);k>=0;k--){
-      const l=bars[k]&&barChordLabel(bars[k]); if(l&&l.name) return l.name;
+      const sp=bars[k]&&barChordSpans(bars[k],m);       // the chord it LEAVES off under
+      if(sp&&sp.length&&sp[sp.length-1].name) return sp[sp.length-1].name;
     }
   }catch(e){}
   return null;      // nothing on this pan can be named: silence beats a wrong root
+}
+/* THE SPANS OF THE BAR A PULSE FALLS IN, with each span's length in pulses —
+   what the bass strikes on and how long it may ring (12 Sep). */
+function voiceSpansAt(p,sec,m){
+  try{
+    const bars=piece.sections[sec.name].bars, bi=Math.floor((p-sec.pulse)/m.bp);
+    const sp=barChordSpans(bars[bi],m);
+    if(!sp.length) return null;
+    return sp.map((x,i)=>({t:x.t,name:x.name,len:(i+1<sp.length?sp[i+1].t:m.bp)-x.t}));
+  }catch(e){ return null; }
 }
 /* HOW LONG THE BAR IS, counted in the very pulses the scheduler is about to
    play, so the ring follows the tempo, the metre and a half-speed pass without
@@ -10266,8 +10298,18 @@ function sched(){
          They keep the preview's and the break's silences; chord practice's
          "click only" and "silent" quiet the PAN, not these — they are their
          own voices with their own switches. */
-      if(bassOn&&!mutedByPreview&&!brkMuteV&&rel%m.bp===0){
-        const nm=voiceChordAt(p2,sec,m);
+      /* …AND IT FOLLOWS THE CHORD, NOT THE BAR LINE (David, 12 Sep 2026). The
+         9 Sep rule — "have it hit with the first beat of the bar" — was written
+         when a bar was one chord; it is kept as the common case, since a bar
+         with one span has its span at pulse 0. A bar that carries two strikes
+         twice, and each note rings for its OWN span rather than the whole bar.
+         A bar whose chord is carried over from an earlier one still strikes on
+         the bar line, through voiceChordAt's carry-back. */
+      if(bassOn&&!mutedByPreview&&!brkMuteV){
+        const inBar=((rel%m.bp)+m.bp)%m.bp;
+        const spans=voiceSpansAt(p2,sec,m), hit=spans&&spans.find(x=>x.t===inBar);
+        const nm=hit?hit.name:(inBar===0?voiceChordAt(p2,sec,m):null);
+        const ring=hit?hit.len:m.bp;
         /* WHAT ELSE LANDS HERE: the pan's own strokes on this pulse (unless it
            is muted) and the rows the rhythm strikes on this step. The bass's
            attack gives way to them; see bassDuck. */
@@ -10278,7 +10320,7 @@ function sched(){
           if(f){ const rowP=m.bp*Math.max(1,m.bpr||1), cyc=f.steps/f.spp, span=(cyc>rowP&&cyc%rowP===0)?cyc:rowP;
             crowd+=HPSWGG.hitsAt(((rel%span)*f.spp)%f.steps); }
         }
-        if(nm) fireBass(nm,at,jamBassBar(nextPulse,m.bp),crowd);
+        if(nm) fireBass(nm,at,jamBassBar(nextPulse,ring),crowd);
       }
       /* THE RHYTHM TRACK, under the same three mutes. The step is counted
          from the top of the current ROW — rel is the pulse within the
@@ -10579,8 +10621,8 @@ function paintPulse(pi,seek){
     if((panOn||landIdx>=0)&&(panMode!=="strokes"||(!seek&&(playing||follow)))) paintPan(pi);
     markPlayingChips(cur.ai);
     document.querySelectorAll(".cchip.playing").forEach(el=>el.classList.remove("playing"));
-    const bar=Math.floor(rel/SM(piece,cur.name).bp);
-    const cc=document.querySelector('.cchip[data-cbar="'+bar+'"]');
+    const mB=SM(piece,cur.name), bar=Math.floor(rel/mB.bp);
+    const cc=chipAt(document,bar,((rel%mB.bp)+mB.bp)%mB.bp);
     if(cc) cc.classList.add("playing");
   }
 }
@@ -12356,7 +12398,98 @@ function mapPulse(t){
     }
   return a[a.length-1].p;
 }
-function barChordLabel(bar){
+/* ── TWO CHORDS IN ONE BAR (David, 12 Sep 2026) ──────────────────────────────
+   "Right now the bass cannot deal well with the situation when a chord change
+   happens twice in a bar. For example, in the Flavourful Freestyle 2 intro
+   there is a chord change every half bar, and the bass doesn't follow."
+   It could not: the bass struck on the bar line alone, and a bar carried ONE
+   name. Worse, where two chords shared a bar the guesser named the BLEND —
+   77 bars of the built-in pieces were called something that is neither of the
+   chords in them (Canon in D's "Gmaj7" is G then D).
+   A BAR IS NOW A LIST OF SPANS, decided by one sentence: a written chord wins
+   wherever it sits; otherwise the bar splits at the half only where each half
+   spells a COMPLETE triad of its own, the two roots differ, and SOMETHING NEW
+   REPEATS in the second half; otherwise it is one chord, as it always was.
+   THE LAST TEST IS DAVID'S OWN, and it is the one that does the work (12 Sep:
+   "this is quite a common case in handpan pieces: the accompaniment is the
+   same, but the melody moves. It doesn't mean that the harmony moves with it
+   every time"). The notes struck twice or more in a half ARE the accompaniment;
+   if the second half repeats nothing new, the harmony has not moved and a
+   passing melody note may not rename the bar. His Composition 1 A1 bar 4 is
+   C E G · C E G · C E C · C E A — C and E repeat throughout while the left hand
+   walks G G C A, so it stays C major.
+   THE OTHER TWO GUARDS were found the same way, by measuring all 21 built-in
+   pieces (489 bars) and showing him the list each time: a plain half-split
+   moved 227 bars, demanding a complete triad in each half moved 93 (it killed
+   Flavourful Freestyle 1's "Amin7", whose E nobody plays), and his
+   accompaniment test brings it to 69 — 48 of them bars that are misnamed today.
+   HALVES ONLY. A chord change anywhere else is written, not guessed: the
+   guesser earns a second chord per bar, never a third. */
+function chordRootPc(name){ const t=chordPCs(name); return t?t[0]:null; }
+function barPcSet(evs){
+  const s=new Set();
+  for(const e of evs){ if(e.v!=="field") continue; const mi=effMidi(e.f); if(mi==null) continue;
+    s.add(((mi%12)+12)%12); }
+  return s;
+}
+/* what REPEATS in a stretch is its accompaniment — the figure under the tune */
+function barAccomp(evs){
+  const c=new Map();
+  for(const e of evs){ if(e.v!=="field") continue; const mi=effMidi(e.f); if(mi==null) continue;
+    const pc=((mi%12)+12)%12; c.set(pc,(c.get(pc)||0)+1); }
+  return new Set([...c].filter(([,n])=>n>=2).map(([pc])=>pc));
+}
+function barChordSpans(bar,m){
+  if(!bar||!bar.length) return [];
+  const asW=myPanId===piece.writtenFor;
+  /* WRITTEN CHORDS WIN, AND ALL OF THEM DO. The format has always allowed a
+     chord at any position; the reader kept the first and threw the rest away,
+     so the "Verse (chords)" demo has carried an unread Dmin at every half bar
+     since the day it was written. Same-position duplicates are one chord. */
+  if(asW){
+    const seen=new Set(), tags=[];
+    for(const e of bar) if(e.chord&&!seen.has(e.t)){ seen.add(e.t); tags.push({t:e.t,name:e.chord,inf:false}); }
+    if(tags.length){
+      tags.sort((a,b)=>a.t-b.t);
+      /* A CHORD WRITTEN LATE DOES NOT SILENCE THE BAR'S OPENING (12 Sep, found
+         the moment the picker first wrote one: setting the half-bar chord of a
+         bar whose first half was guessed left that first half nameless, because
+         a written chord used to speak for the whole bar). The opening span is
+         then read from the notes BEFORE the first written chord — local
+         evidence, not a carry — and a bar whose chords all start at 0, which is
+         every jam bar and every built-in piece, is untouched. */
+      if(tags[0].t>0){
+        const g=inferChord(bar.filter(e=>e.t<tags[0].t));
+        if(g) tags.unshift({t:0,name:g,inf:true});
+      }
+      return tags;
+    }
+  }
+  const ev=bar.find(e=>e.chord), whole=inferChord(bar);
+  const one=whole?[{t:0,name:whole,inf:!ev}]:[];
+  const bp=m&&m.bp;
+  if(!bp||bp<4||bp%2) return one;          // no metre to split by, or no half to split at
+  const half=bp/2;
+  const cut=(a,b)=>bar.filter(e=>e.t>=a&&e.t<b).map(e=>Object.assign({},e,{t:e.t-a}));
+  const s1=cut(0,half), s2=cut(half,bp);
+  const h1=inferChord(s1), h2=inferChord(s2);
+  if(!h1||!h2||h1===h2) return one;
+  const r1=chordRootPc(h1), r2=chordRootPc(h2);
+  if(r1==null||r2==null||r1===r2) return one;              // a seventh is not a chord change
+  const t1=chordPCs(h1), t2=chordPCs(h2);
+  if(!t1||!t2) return one;
+  const p1=barPcSet(s1), p2=barPcSet(s2);
+  if(!t1.slice(0,3).every(pc=>p1.has(pc))||!t2.slice(0,3).every(pc=>p2.has(pc))) return one;
+  const a1=barAccomp(s1), a2=barAccomp(s2);
+  if(![...a2].some(pc=>!a1.has(pc))) return one;           // the accompaniment held; only the melody moved
+  return [{t:0,name:h1,inf:true},{t:half,name:h2,inf:true}];
+}
+/* the chord a bar OPENS under — every room that shows one name per bar reads
+   this, and it is the first span, so the name and the row can never disagree */
+function barChordLabel(bar,m){
+  if(!bar) return null;
+  const sp=barChordSpans(bar,m);
+  if(sp.length) return {name:sp[0].name,inf:sp[0].inf};
   const ev=bar.find(e=>e.chord);
   /* THE WRITTEN NAME IS TRUE WHEN NOTHING IS TRANSPOSED (David, 4 Sep, a jam
      on his D Kurd 19 whose Emin7 bar read "Cmaj" and whose Emin7♭5 read
@@ -15425,7 +15558,11 @@ function renderTableView(sc,lanes){
          is body.cplisten's, 4 Sep). The room the name took goes to the
          stacked glyphs — see `body.phone:not(.tablet) .slot.n2` in the sheet. */
       const noNames=lanes||(PHONE&&!TABLET&&!(typeof lsOn!=="undefined"&&lsOn));
-      const bc=noNames?null:barChordLabel(bar);   // no chord names in the tab, by David's call
+      /* ONE LABEL PER CHORD (12 Sep). A bar that changes at the half writes
+         its second name over the cell the change lands on, so the table says
+         what the chord row and the bass say. */
+      const spans=noNames?[]:barChordSpans(bar,m);
+      const bc=spans.length?{name:spans[0].name,inf:spans[0].inf}:null;   // the bar's opening chord, where one name is wanted
       /* minmax(0,1fr), NOT 1fr (David, 29 Aug: "on mobile, there are some
          issues in the notation now with uneven cells"). A bare `1fr` is
          `minmax(auto,1fr)`, so a column can never shrink below its content's
@@ -15495,10 +15632,12 @@ function renderTableView(sc,lanes){
                in tab and the space should not be reserved") — hence this branch.
                AND NEITHER DOES THE PHONE'S TABLE (5 Sep, see noNames above). */
             if(t===0&&!noNames) sl.classList.add("haschord");
-            if(t===0&&bc){
+            const sp=spans.find(x=>x.t===t);
+            if(sp){
+              if(t!==0) sl.classList.add("haschord");   // the mid-bar name takes the same reserve
               const cl=document.createElement("div");
-              cl.className="chordlab"+(bc.inf?" inf":"");
-              cl.innerHTML=fmtChord(bc.name); sl.appendChild(cl); }
+              cl.className="chordlab"+(sp.inf?" inf":"");
+              cl.innerHTML=fmtChord(sp.name); sl.appendChild(cl); }
             for(const ev of evs) sl.appendChild(symEl(ev));
             capUnderside(sl);
           }
@@ -16225,8 +16364,9 @@ function landChordColumn(secName){
   const col=document.createElement("div"); col.className="landchords";
   col.dataset.sec=secName;
   const sec=piece&&piece.sections[secName];
+  const mLand=piece&&piece.sections[secName]?SM(piece,secName):null;
   if(sec) sec.bars.forEach((bar,bi)=>{
-    const bc=barChordLabel(bar); if(!bc) return;
+    const bc=barChordLabel(bar,mLand); if(!bc) return;
     const n=document.createElement("span"); n.className="lname"+(bc.inf?" inf":"");
     n.innerHTML=fmtChord(bc.name); n.dataset.cbar=bi;
     if(bc.inf) n.title="Chord guessed from the notes — not notated";
@@ -16879,7 +17019,7 @@ function paintPanChord(pi){
   const secObj=piece.sections[sec.name]; if(!secObj) return;   // a stale pulse map (a swapped piece)
   const m=SM(piece,sec.name), bars=secObj.bars;
   const bar=bars[Math.floor((pi-sec.pulse)/m.bp)]; if(!bar) return;
-  const bc=barChordLabel(bar); if(!bc) return;
+  const bc=barChordLabel(bar,m); if(!bc) return;
   for(const lab of labs){ lab.innerHTML=fmtChord(bc.name); lab.classList.toggle("inf",!!bc.inf);
     lab.title=bc.inf?"Chord guessed from the notes — not notated":bc.name; }
   for(const f of chordFields(bc.name)) for(const g of els(pvId(f))) g.classList.add("clit");
@@ -17073,7 +17213,7 @@ function renderFlowSection(sc,nm,ai,absStart){
   let r4=false, strip=false;
   const labels=[];
   sec.bars.forEach((bar,bi)=>{
-    const bc=barChordLabel(bar); labels[bi]=bc; if(bc) strip=true;
+    const bc=barChordLabel(bar,m); labels[bi]=bc; if(bc) strip=true;
     const byT=new Map();
     for(const ev of bar){ if(!byT.has(ev.t)) byT.set(ev.t,[]); byT.get(ev.t).push(ev); }
     for(const evs of byT.values())
@@ -17801,11 +17941,14 @@ function inferChord(bar){
 function renderChordRow(){
   const box=$("chordbox"), wrap=$("chordwrap");
   box.innerHTML="";
-  const sec=piece.sections[viewSec];
+  const sec=piece.sections[viewSec], mRow=SM(piece,viewSec);
   const chips=[];
+  /* ONE CHIP PER CHORD, NOT PER BAR (David, 12 Sep: "show both chords in the
+     chord row"). A bar that changes at the half puts two chips up; every other
+     bar looks exactly as it did. */
   if(chordRowOn) sec.bars.forEach((bar,bi)=>{
-    const bc=barChordLabel(bar);
-    if(bc) chips.push({name:bc.name,bi,inferred:bc.inf});
+    for(const sp of barChordSpans(bar,mRow))
+      chips.push({name:sp.name,bi,t:sp.t,inferred:sp.inf});
   });
   wrap.classList.toggle("hidden",!chips.length);
   if(!chips.length) return;
@@ -17826,6 +17969,7 @@ function renderChordRow(){
     const nm=document.createElement("div"); nm.className="cname"+(ch.inferred?" inf":"");
     nm.innerHTML=fmtChord(ch.name); if(ch.inferred) nm.title="Chord guessed from the notes — not notated";
     const c=document.createElement("div"); c.className="cchip"; c.dataset.cbar=ch.bi;
+    c.dataset.ct=ch.t||0;                 // where in the bar this chord starts
     c.style.setProperty("--cs",(fewest/counts[i]).toFixed(3));
     for(const f of chordFields(ch.name)){
       const el=document.createElement("span"); el.className="sym";
@@ -17847,10 +17991,22 @@ function renderChordRow(){
      disagree, so they answer to one cursor. */
   const pi=panCursor(), sc=secOfPulse(pi);
   if(sc&&sc.name===viewSec){
-    const bi=Math.floor((pi-sc.pulse)/SM(piece,sc.name).bp);
-    const cc=box.querySelector('.cchip[data-cbar="'+bi+'"]');
+    const mm=SM(piece,sc.name), rel=pi-sc.pulse;
+    const bi=Math.floor(rel/mm.bp), inBar=((rel%mm.bp)+mm.bp)%mm.bp;
+    const cc=chipAt(box,bi,inBar);        // the chord in force, not merely the bar
     if(cc) cc.classList.add("playing");
   }
+}
+/* WHICH CHIP IS PLAYING, now that a bar may hold two: the last chord whose
+   own position has been reached (12 Sep). Both painters ask this one function,
+   or the row and the playhead could disagree inside a split bar. */
+function chipAt(box,bi,inBar){
+  let pick=null;
+  for(const el of (box||document).querySelectorAll('.cchip[data-cbar="'+bi+'"]')){
+    const t=+el.dataset.ct||0;
+    if(t<=inBar&&(!pick||t>=(+pick.dataset.ct||0))) pick=el;
+  }
+  return pick;
 }
 /* A RUN OF ADJACENT UNDERSIDE NOTES SHARES ONE GROUND (David, 29 Aug — C2/C5
    of mockups-chordcard.html). Called on whatever element directly holds the
@@ -19443,10 +19599,13 @@ function edPopAt(x,y){
      from a dead gesture). Now the entries are always there, greyed with the
      reason, so the long press teaches itself. */
   const pop=document.createElement("div"); pop.id="editPop";
-  const mk=(label,fn,ok,why)=>{ const b=document.createElement("button");
+  /* `tip` is what a SHORT label owes the reader: − Bar and ＋ Bar say the
+     action in two characters and the title says which bar they touch. */
+  const mk=(label,fn,ok,why,tip)=>{ const b=document.createElement("button");
     b.className="ctl"; b.textContent=label;
     if(!ok){ b.disabled=true; b.title=why||""; }
-    else b.addEventListener("click",ev=>{ ev.stopPropagation(); edPopClose(); fn(); });
+    else { if(tip) b.title=tip;
+      b.addEventListener("click",ev=>{ ev.stopPropagation(); edPopClose(); fn(); }); }
     pop.appendChild(b); };
   mk("Copy",edCopyLoop,canCopy,
     loopSec?"Press inside the loop to copy it":"Loop the bars you want to copy first");
@@ -19461,10 +19620,42 @@ function edPopAt(x,y){
     const bi=edBarAtCell(c);
     const nBars=piece.sections[viewSec].bars.length;
     const full=!!grooveEdit&&nBars>=4;
-    mk("Delete bar",()=>edDeleteBars({first:bi,n:1}),bi>=0&&nBars>1,
-      bi<0?"Press inside a bar":"A table keeps at least one bar");
-    mk("Insert new bar",()=>edInsertBarAfter(bi),bi>=0&&!full,
-      bi<0?"Press inside a bar":"Four bars is the most for a groove");
+    /* THE DECK'S OWN WORDS, FOR THE ROOM THEY SAVE (David, 12 Sep: "so that it
+       doesn't need too much space, we can exchange the Delete bar and Insert
+       new bar with − bar and + bar"). Asked for the phone, said here for every
+       platform: one menu with one vocabulary beats two labels for one action,
+       and these are the words the editor's deck already uses.
+       WORTH KNOWING, and why the titles spell it out: the DECK's − Bar takes
+       the LAST bar (28 Aug), while these act on THE BAR UNDER THE PRESS. Same
+       words, different reach, because the press is what names the bar here. */
+    mk("− Bar",()=>edDeleteBars({first:bi,n:1}),bi>=0&&nBars>1,
+      bi<0?"Press inside a bar":"A table keeps at least one bar",
+      "Delete the bar you pressed");
+    mk("＋ Bar",()=>edInsertBarAfter(bi),bi>=0&&!full,
+      bi<0?"Press inside a bar":"Four bars is the most for a groove",
+      "Insert an empty bar after the one you pressed");
+    /* …AND THE CHORD OF THE PRESSED POSITION (David, 12 Sep). Not the bar's
+       start: pressing at the half writes the second chord of a half-bar
+       change, which is exactly what the guesser refuses to invent.
+       A CHORD RIDES ON THE NOTES IT STARTS WITH — that is how every written
+       chord in the built-in pieces is stored, and it is what makes it survive
+       transposing, copying and the codes — so the entry asks for a position
+       that HAS notes rather than inventing a carrier event nobody can see. */
+    /* THE PRESS RESOLVES TO A BEAT, NOT TO A SIXTEENTH — cellAtPoint answers
+       with the cell, whose own position is the beat's first slot — and the
+       chord takes the FIRST NOTE INSIDE THAT BEAT. Pressing the beat where the
+       harmony turns is the gesture; hunting the exact sixteenth under the
+       finger is not, and on a phone it would be impossible. A beat with no
+       notes at all has nothing to carry the chord, and says so. */
+    const mBar=SM(piece,viewSec), relC=c.from-viewFromPulse();
+    const tIn=bi>=0?((relC%mBar.bp)+mBar.bp)%mBar.bp:-1;
+    const inBeat=bi>=0?(piece.sections[viewSec].bars[bi]||[])
+      .filter(e=>e.t>=tIn&&e.t<tIn+mBar.sub):[];
+    const tAt=inBeat.length?Math.min(...inBeat.map(e=>e.t)):-1;
+    const own=inBeat.find(e=>e.chord&&e.t===tAt);
+    mk(own?"Change chord — "+own.chord:"Set chord…",
+      ()=>edOpenChordPick(bi,tAt), bi>=0&&tAt>=0,
+      bi<0?"Press inside a bar":"Press on a beat that has notes — a chord is written on the note it starts with");
   }
   // a loop of whole bars can be removed as one (David, 27 Aug) — only when it
   // sits ON the barlines, since half a bar is not a bar to delete; a
@@ -19765,12 +19956,13 @@ function loadPiece(p){
   /* the piece's own pan spec is tried BEFORE the D Kurd downgrade (31 Aug) —
      a hand-typed pan travels with the music now, so the phone gains the
      instrument the composition was written on instead of nine plain fields */
+  piecePanUnknown=false;
   if(!allPans().find(x=>x.id===piece.writtenFor)){
     const spec=piece.panSpec;
     if(spec&&spec.id===piece.writtenFor&&adoptPanSpec(spec))
       toast("Added “"+spec.name+"” — the pan this piece was written for");
     else { toast("Unknown pan '"+piece.writtenFor+"' — showing on D Kurd");
-           piece.writtenFor="d-kurd-9"; }
+           piece.writtenFor="d-kurd-9"; piecePanUnknown=true; }
   }
   bpm=piece.tempo||72; loopSec=null; cursor=0; histClear("piece"); viewSec=piece.arrangement[0]; selAi=0; viewPin=null; mapSel=null; mapHist=[];
   if((piece.syncMap||[]).length&&!videoSeen) setSyncMode(true);
@@ -19778,6 +19970,46 @@ function loadPiece(p){
   if(playing) stop();
   pendingStart=null;                     // a fresh piece starts at its top
   refresh();
+}
+/* ── A PIECE BRINGS ITS PAN (David, 12 Sep 2026) ─────────────────────────────
+   "When a piece is opened from the coursebook chapters, a pasted link, or an
+   import, it should always open together with the pan related to that piece.
+   Let's make this the default. Also, from the library, whenever a composition
+   is opened, the corresponding pan should also be opened. We don't need a
+   dialogue for that."
+   THIS REPLACES THE DIALOGUE HE ASKED FOR THE DAY BEFORE — recorded as a
+   reversal rather than quietly rewritten: the question "your pan or the
+   piece's?" is not asked at all now, and the pan simply follows the music.
+   ONE DOOR, NOT A RULE INSIDE loadPiece. loadPiece is also how the app
+   rebuilds a piece for itself — a jam turned into a composition, the groove
+   bench, a new blank piece, the editor's undo, the last piece at start-up —
+   and those must not move the student's instrument. So the rule lives in the
+   four doors a STUDENT opens a piece through: the library, a coursebook's
+   chapters, an import or pasted code, and a share link at start-up.
+   THE PAN THEN STAYS (David: yes to "does it stay afterwards") — it is saved
+   exactly as a pan picked by hand is, so leaving the piece for a jam keeps the
+   instrument, and the app reopens on the pan it closed on. The saved pan is
+   read in boot() long before this runs, so a link's pan still wins at start-up.
+   AND A PIECE WHOSE PAN THIS DEVICE CANNOT HONOUR MOVES NOTHING. A composition
+   carries its own pan since 31 Aug, so this is only an old piece naming a pan
+   it does not carry; loadPiece downgrades that to D Kurd to draw it, and
+   following that downgrade would put the student on an instrument nobody
+   chose. */
+function openPiece(p){
+  loadPiece(p);                       // adopts the piece's own pan on arrival
+  followPiecePan();
+}
+function followPiecePan(){
+  if(piecePanUnknown) return;         // a downgrade is not a choice
+  const id=piece&&piece.writtenFor;
+  if(!id||id===myPanId) return;
+  if(!allPans().some(x=>x.id===id)) return;
+  myPanId=id;
+  try{ localStorage.setItem("hps.panId",id); }catch(e){}
+  refresh();
+  /* the only word said about it: no dialogue, but the instrument under the
+     notation has just changed and the chip alone is easy to miss */
+  toast("On "+panById(id).name+" — the pan this piece is written for");
 }
 function copyText(t,msg){
   (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject())
@@ -19857,7 +20089,7 @@ function renderLib(){
     if(p._saved){ const x=document.createElement("span"); x.className="ppib ldel"; x.textContent="✕"; x.title="Delete";
       x.addEventListener("click",e=>{ e.stopPropagation(); const l=savedPieces(); l.splice(p._i,1); setSaved(l); renderLib(); }); b.appendChild(x); }
     b.addEventListener("click",()=>{ const clean=Object.assign({},p); delete clean._saved; delete clean._i;
-      try{ loadPiece(clean); dlg.close(); }catch(e){ toast("Could not open: "+(e&&e.message||e)); } });
+      try{ openPiece(clean); dlg.close(); }catch(e){ toast("Could not open: "+(e&&e.message||e)); } });
     L.appendChild(b);
   };
   if(!rows.length){ const d=document.createElement("div"); d.className="ppempty";
@@ -23430,11 +23662,11 @@ const qzNorm=n=>String(n).replace(/♯/g,"#").replace(/♭/g,"b").toLowerCase();
 function qzPieceChords(){
   if(!piece||!piece.sections) return [];
   const out=new Set();
-  for(const s of Object.values(piece.sections))
-    for(const bar of (s.bars||[])){
-      const bc=barChordLabel(bar);
-      if(bc&&bc.name) out.add(qzNorm(bc.name));
-    }
+  for(const [nm,s] of Object.entries(piece.sections)){
+    const mq=SM(piece,nm);
+    for(const bar of (s.bars||[]))
+      for(const sp of barChordSpans(bar,mq)) if(sp.name) out.add(qzNorm(sp.name));
+  }
   return [...out];
 }
 function qzPool(){
@@ -28675,7 +28907,7 @@ function applyFile(kind,obj){
     return true;
   }
   if(kind==="jam") return importJam(obj);
-  loadPiece(obj); toast("Opened: "+(obj.title||"Untitled")); return true;
+  openPiece(obj); toast("Opened: "+(obj.title||"Untitled")); return true;
 }
 let wrongFile=null;
 function offerOpenElsewhere(kind,obj){
@@ -29544,6 +29776,53 @@ function paintMyPanBtn(){
   const s=$("mpPanName"); if(s) s.textContent=nm;
 }
 
+/* THE CHORD A BAR IS TOLD TO STAND UNDER (David, 12 Sep). Written onto EVERY
+   event at that position, which is how the built-in pieces store it (a stacked
+   chord carries the name on each of its notes), so deleting one note of the
+   stack does not take the chord with it. */
+let scdAt=null, scdWired=false;
+function edChordNameAt(bi,t){
+  const bar=(piece.sections[viewSec].bars||[])[bi]||[];
+  const e=bar.find(x=>x.chord&&x.t===t);
+  return e?e.chord:null;
+}
+function edWriteChord(bi,t,name){
+  const bar=(piece.sections[viewSec].bars||[])[bi]; if(!bar) return;
+  snapshot();
+  for(let i=0;i<bar.length;i++) if(bar[i].t===t){
+    const ev=Object.assign({},bar[i]);
+    if(name) ev.chord=name; else delete ev.chord;
+    bar[i]=ev;
+  }
+  refresh();
+  toast(name?("Chord written: "+name):"Chord cleared — the app reads it from the notes again");
+}
+function edOpenChordPick(bi,t){
+  scdAt={bi,t};
+  const cur=edChordNameAt(bi,t), host=$("scdList");
+  const m=SM(piece,viewSec);
+  host.innerHTML="";
+  for(const c of jamDefs().list){
+    const b=document.createElement("button");
+    b.className="ctl"+(cur===c.name?" on":"");
+    b.innerHTML=fmtChord(c.name);
+    b.addEventListener("click",()=>{ $("setChordDlg").close(); edWriteChord(bi,t,c.name); });
+    host.appendChild(b);
+  }
+  /* WHERE IT LANDS, IN THE WORDS OF THE SCORE: the bar of the open table, and
+     the beat inside it — a chord written at the half is the whole point. */
+  const beat=Math.floor(t/m.sub)+1, off=t%m.sub;
+  $("scdWhere").textContent="Bar "+(bi+1)+" of "+viewSec+", beat "+beat+(off?" (+"+off+")":"")
+    +(cur?" — now: "+cur:" — now read from the notes");
+  $("scdClear").disabled=!cur;
+  if(!scdWired){
+    scdWired=true;
+    $("scdCancel").addEventListener("click",()=>$("setChordDlg").close());
+    $("scdClear").addEventListener("click",()=>{ $("setChordDlg").close();
+      if(scdAt) edWriteChord(scdAt.bi,scdAt.t,null); });
+  }
+  openDlg($("setChordDlg"));
+}
 /* ---------------- wiring ---------------- */
 /* THE SWITCH'S FACE, AND ITS LOCK IN A JAM (David, 9 Sep: "since we said in
    Jam mode that the chords always are transposed to the selected handpan
@@ -29561,8 +29840,21 @@ function paintMyPanBtn(){
    while a jam is up, and leaving the room brings the piece's own face back
    with no state to restore. */
 function paintModePills(){
-  const lock=(typeof jamOn!=="undefined"&&jamOn);
-  const m=lock?"trans":mode;          // a jam IS on your pan, whatever `mode` says
+  const jamLock=(typeof jamOn!=="undefined"&&jamOn);
+  /* …AND IT IS GREY ON THE PIECE'S OWN PAN (David, 12 Sep 2026: "the
+     as-written and for my pan selector, can we grey it out when the pan is
+     selected that the piece was written for?"). A piece written for the pan in
+     hand is never transposed — the 6 Sep rule, which is why refresh() draws no
+     map there — so the two sides mean the same thing and the switch has
+     nothing to decide. Since the pan now follows the piece through every
+     student door, this is what an opened piece normally looks like, and the
+     switch wakes up the moment the student chooses another instrument.
+     Stated once, so all three faces of the switch say it: the phone's drawer,
+     the desktop head, and the My pan sheet. */
+  let ownPan=false;
+  try{ ownPan=!jamLock&&!!piece&&myPanId===piece.writtenFor; }catch(e){ ownPan=false; }
+  const lock=jamLock||ownPan;
+  const m=jamLock?"trans":ownPan?"pos":mode;   // a jam IS on your pan, whatever `mode` says
   /* EVERY FACE OF ONE SETTING (10 Sep). There are two on the desktop now — the
      head's and the My pan sheet's — and one on the phone, and they are the same
      switch, so they are painted together by what they MEAN rather than by id. */
@@ -29570,7 +29862,8 @@ function paintModePills(){
     const k=b.dataset.panmode;
     b.setAttribute("aria-pressed",String(m===k));
     b.disabled=lock;
-    b.title=lock?"A jam is always built on the pan you have chosen"
+    b.title=jamLock?"A jam is always built on the pan you have chosen"
+           :ownPan?"This piece is written for the pan you are holding — there is nothing to transpose"
                 :((typeof TIPS!=="undefined"&&TIPS[k==="pos"?"modePos":"modeTrans"])||"");
   });
   /* WHICH ROOMS CARRY THE HEAD'S PAIR: practice and edit, at David's word.
@@ -29585,7 +29878,7 @@ function paintModePills(){
        would have shown this switch in the quizzes. The whole test is wrapped
        because a render can reach here before those lines have run. */
     let show=false;
-    try{ show=!PHONE&&!TABLET&&!lock&&!cpOn&&!quizOn&&!rqOn&&!learnOn; }catch(e){ show=false; }
+    try{ show=!PHONE&&!TABLET&&!jamLock&&!cpOn&&!quizOn&&!rqOn&&!learnOn; }catch(e){ show=false; }
     hm.classList.toggle("hidden",!show);
     if(show&&typeof fitHeadMode==="function") fitHeadMode();
   }
@@ -29616,6 +29909,13 @@ function setMode(m){
   if(typeof jamOn!=="undefined"&&jamOn) return;   // locked while a jam is up
   if(m==="trans") reportClosed=false;   // asking for it again brings it back
   mode=m;
+  /* …AND IT IS REMEMBERED (David, 12 Sep 2026: "the for my pan / written state
+     should also be remembered"), with the piece and the pan, so the app comes
+     back in the state it closed in. Written HERE and nowhere else: this is the
+     only place `mode` is ever assigned after boot, and a jam or chord practice
+     paints its own face without touching the value, so what is stored is always
+     the student's own last choice. */
+  try{ localStorage.setItem("hps.mode",mode); }catch(e){}
   paintModePills();
   refresh();
 }
@@ -29632,6 +29932,12 @@ function boot(){
      every time the page opened */
   try{ const saved=localStorage.getItem("hps.panId");
     if(saved&&allPans().some(p=>p.id===saved)) myPanId=saved; }catch(e){}
+  /* the As written / For my pan choice comes back with the pan (12 Sep). Read
+     before the first piece loads, so the opening render is already in it, and
+     validated rather than trusted — an old or hand-edited value falls back to
+     as written. */
+  try{ const sm=localStorage.getItem("hps.mode");
+    if(sm==="pos"||sm==="trans") mode=sm; }catch(e){}
   paintPanSel();
   /* WRAPPED, not passed. `openPanPick` takes a flag now, and handing the
      listener the bare function makes the click EVENT that flag — truthy — so
@@ -30963,7 +31269,10 @@ function boot(){
     const w=DEMOS.find(p=>p.id===WANT_PIECE);
     if(w) p0=w; else toast("No built-in piece called \""+WANT_PIECE+"\"");
   }
-  loadPiece(p0||DEMOS.find(p=>p.id==="composition-2")||DEMOS[0]);
+  /* a LINK or ?piece= is a door the student came through, so its pan follows;
+     the default demo is the app opening itself and moves nobody's instrument */
+  if(p0) openPiece(p0);
+  else loadPiece(DEMOS.find(p=>p.id==="composition-2")||DEMOS[0]);
   restoreSession();
   try{ ensureCtx(); preloadBank(); }catch(e){}   // warm the bank before the first tap
 }
