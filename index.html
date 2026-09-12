@@ -11851,7 +11851,7 @@ function splittable(fs,pair){
    away (9) still beats a semitone substitute in its own octave (20), which is
    his rule 1 written as arithmetic. Both floors and ceilings of d/12 are tried
    because a tritone is equally far either way and the cheaper reading wins. */
-const OCT_MEL=10, OCT_ACC=3, COST_DROP=40, INVERT_W=4, CLASH_W=8, UNPLAYABLE=3;
+const OCT_MEL=10, OCT_ACC=3, COST_DROP=40, INVERT_W=4, CLASH_W=8;
 function candCost(si,ti,melody){
   const d=ti-si;
   if(d===0) return {c:0,r:"exact"};
@@ -11921,6 +11921,26 @@ function transpose(){
     list.push({tf:null,c:COST_DROP,r:"drop"});
     cands[sf]=list;
   }
+  /* AN EXACT MATCH IS NEVER GIVEN AWAY (David, 12 Sep: "if there is a correct
+     note available to transpose to (an exact match), that should always be
+     chosen"). A weight could not promise this and did not deliver it: across
+     the library 131 positions that HAD their exact interval on the target pan
+     were pushed off it by a position that had none, which then sat in the
+     other's home. So the exact matches are settled BEFORE the search and the
+     search is not allowed to spend them. Nothing contends for them — two
+     positions of one pan stand at different intervals above its ding, so no
+     two can be exact to the same place — and a position with no exact match is
+     simply not covered by the rule, which is why the Canon's C5, homeless on a
+     D Kurd, is still free to take the A4 beside it. A pin David set by hand
+     still outranks this: it is his own decision, and the stale flag tells him
+     when it differs from what the rule would do. */
+  const exact={};
+  for(const sf of srcFields){
+    if(sf===0) continue;
+    const si=S.posIv(sf); if(si==null) continue;
+    const home=targets.find(tf=>T.posIv(tf)===si);
+    if(home!==undefined) exact[sf]=home;
+  }
   const ov=overrides[myPanId]||{};
   function evalMap(m){
     let tot=0;
@@ -11948,19 +11968,27 @@ function transpose(){
       const ma=T.posMidi(a), mb=T.posMidi(b);
       if(ma!=null&&mb!=null&&ma>mb) tot+=INVERT_W*w;
     }
-    /* decision 5 — a moment's notes should be divisible between two hands, but
-       this is a TIE-BREAK and nothing more. At 60 a chord it did to the notes
-       exactly what the old octave price did: on an F2 Low Pygmy 17 the search
-       collapsed E4 and F4 onto one field and G4 onto A4's, paying 1136 in wrong
-       notes to save 2280 in fingering, and leaving two exact matches (A♭3 and
-       B♭3) standing unused. The hands are re-derived by assignHands whichever
-       way this goes, and an awkward chord is a line in the report; a wrong
-       pitch is not. So playability may decide between equal notes and never
-       buy a note. */
+    /* decision 5 — PLAYABILITY MAY NEVER OVERRULE THE NOTES (David, 12 Sep:
+       "playability should never overrule correct transposition of a pan").
+       It was a force of 60 a chord and it did to the notes exactly what the old
+       octave price did: on an F2 Low Pygmy 17 the search collapsed E4 and F4
+       onto one field and G4 onto A4's, paying 1136 in wrong notes to save 2280
+       in fingering, and left the exact matches at A♭3 and B♭3 standing unused.
+       Lowering the number was not enough — any weight at all can tip some
+       decision somewhere. So it is now a STRICT tie-break, and provably one:
+       every musical term above is a whole number (usage weights, candCost
+       bands, CLASH_W, INVERT_W and the duplicate 2 are all integers), so a
+       playability contribution held strictly below 1 cannot change which map
+       wins on notes — it can only separate two maps the notes score exactly
+       alike. The hands are re-derived by assignHands whichever way this goes,
+       which is what David chose when he picked re-splitting over moving a note;
+       an awkward chord is a line in the report and a wrong pitch is not. */
+    let nBad=0;
     for(const grp of stacks){
       const ts=[...new Set(grp.map(f=>m[f]).filter(t=>t!=null))];
-      if(!splittable(ts,pair)) tot+=UNPLAYABLE;
+      if(!splittable(ts,pair)) nBad++;
     }
+    tot+=nBad/(stacks.length+1);
     /* decision 3 — two positions may share a place; it is a real loss, so it
        is priced, but far under an octave of travel. */
     const used=new Map();
@@ -11978,7 +12006,8 @@ function transpose(){
      search is run a SECOND time with no pins at all, and the report says where
      the two answers differ. The free run is exactly what the Reset button
      would give, so the flag and the button always agree. */
-  function solve(o){
+  function solve(pins){
+    const o=Object.assign({},exact,pins);       // exact matches first, a hand-set pin over them
     const m={};
     for(const sf of srcFields) m[sf]=(sf in o)?o[sf]:cands[sf][0].tf;
     let best=evalMap(m);
@@ -12750,13 +12779,29 @@ function barAccomp(evs){
 function barChordSpans(bar,m){
   if(!bar||!bar.length) return [];
   const asW=myPanId===piece.writtenFor;
+  /* …AND A WRITTEN CHORD SURVIVES BEING TRANSPOSED (David, 12 Sep, of a
+     Greensleeves bar on his D Kurd 19: "even if I go to the editor and I
+     manually change the first chord here to B-flat major, the notation still
+     writes it as C7, and the bass still plays the C"). This test was
+     `myPanId===piece.writtenFor` alone, so on ANY other pan every written
+     chord in the piece was thrown away and the name came from the guesser —
+     which is why his edit had no effect anywhere: not in the label, not in the
+     notation, not under the bass, all three of which read this one function.
+     A name written for the piece's own pan is true there and a whole tone out
+     on a D Kurd, so it is not used as it stands: it is moved by the same
+     distance the notes moved (transChordShift) and spelled in the pan in
+     hand. A piece shown AS WRITTEN on a foreign pan still gets the guesser —
+     there the positions sound notes nobody transposed, so the written name is
+     not a name for what is sounding (David, 10 Sep). */
+  const shift=transChordShift(), readWritten=asW||(mode==="trans"&&MAP);
   /* WRITTEN CHORDS WIN, AND ALL OF THEM DO. The format has always allowed a
      chord at any position; the reader kept the first and threw the rest away,
      so the "Verse (chords)" demo has carried an unread Dmin at every half bar
      since the day it was written. Same-position duplicates are one chord. */
-  if(asW){
+  if(readWritten){
     const seen=new Set(), tags=[];
-    for(const e of bar) if(e.chord&&!seen.has(e.t)){ seen.add(e.t); tags.push({t:e.t,name:e.chord,inf:false}); }
+    for(const e of bar) if(e.chord&&!seen.has(e.t)){ seen.add(e.t);
+      tags.push({t:e.t,name:shift?shiftChordName(e.chord,shift,myPan):e.chord,inf:false}); }
     if(tags.length){
       tags.sort((a,b)=>a.t-b.t);
       /* A CHORD WRITTEN LATE DOES NOT SILENCE THE BAR'S OPENING (12 Sep, found
@@ -18335,9 +18380,20 @@ function inferChord(bar){
   if(total<2) return null;
   let best=null,bestScore=-1,bestRoot=null,bestDown=false,bestRootW=-1;
   const under=!topOnlyChords();
-  const fits=(c,need)=>{ let cov=0,hit=0;
+  /* A TRIAD THAT IS ALL THERE IS ALWAYS A CANDIDATE (David, 12 Sep: "fix the
+     chord guesser to prefer the triad"). The 0.6 floor is there to stop a
+     two-of-three guess from naming a bar that is mostly something else — it
+     was never meant to veto a triad every one of whose notes is sounding.
+     Greensleeves B1 bar 1 on its own E Kurd is C, F♯, A, G, E: C major has all
+     three of its tones there and covers 7 of the bar's 12, which missed the
+     floor of 7.2 BY A FIFTH OF A BEAT, so no triad could name the bar and the
+     field was left to the sevenths — where D7 took it while playing no D at
+     all. `whole` lets a complete triad past the floor; it still has to win on
+     score, and nothing that passed before stops passing. */
+  const fits=(c,need,whole)=>{ let cov=0,hit=0;
     for(const [pc,wt] of w) if(c.pcs.includes(pc)){cov+=wt;hit++;}
-    return (hit>=need&&cov>=total*0.6)
+    const enough=(whole&&hit>=c.pcs.length)||cov>=total*0.6;
+    return (hit>=need&&enough)
       ? cov-(total-cov)*0.6+(w.has(c.root)?0.3:0) : null; };
   /* A SEVENTH MAY NAME A BAR ONLY WHERE NO TRIAD CAN, OR WHERE IT IS THE
      SEVENTH OF THE TRIAD THAT ALREADY WON (David, 10 Sep, shown the eleven
@@ -18370,7 +18426,7 @@ function inferChord(bar){
      reading B♭maj7 into F major, because that bar splits and shows its first
      half rather than a whole-bar name. */
   for(const tr of panTriads(myPan,under)){
-    const score=fits(tr,2); if(score==null) continue;
+    const score=fits(tr,2,true); if(score==null) continue;
     const rw=w.get(tr.root)||0, dn=down.has(tr.root);
     let better=score>bestScore+1e-9;
     if(!better&&Math.abs(score-bestScore)<1e-9)
@@ -18379,9 +18435,26 @@ function inferChord(bar){
   }
   for(const sv of panSevenths(myPan,under)){
     if(!w.has(sv.sev)) continue;                       // its seventh must sound
-    if(best!=null&&sv.root!==bestRoot) continue;       // …and it keeps the winner's root
-    const score=fits(sv,3);
-    if(score!=null&&score>bestScore){bestScore=score;best=sv.name;}
+    /* …and it keeps the winning TRIAD's root. It used to read `best!=null`,
+       but bestRoot is only ever set by the triad loop above — so the moment one
+       seventh took an untriadable bar, every later seventh was compared against
+       a null root and thrown away, and the bar went to whichever seventh the
+       pan happens to list first. That is how Greensleeves' bar went to D7 at
+       5.6 while A minor 7, which plays its own root and scored 7.5, was never
+       allowed to answer. Where no triad won, the sevenths now settle it on
+       score, as they always should have. */
+    if(bestRoot!=null&&sv.root!==bestRoot) continue;
+    /* THE SAME FOOTING DECIDES A TIE HERE AS AMONG THE TRIADS. Fast Arpeggios
+       A2 bar 3 is C:3 E:2 F:3 G:1 A:1 D:2, where D minor 7 and F major 7 both
+       score exactly 7.5 — and it was settled by the order the pan happens to
+       list its sevenths. Root on the downbeat first, then the root heard most,
+       which gives F (three strikes) over D (two). */
+    const score=fits(sv,3); if(score==null) continue;
+    const rw=w.get(sv.root)||0, dn=down.has(sv.root);
+    let better=score>bestScore+1e-9;
+    if(!better&&Math.abs(score-bestScore)<1e-9)
+      better=(dn&&!bestDown)||(dn===bestDown&&rw>bestRootW);
+    if(better){ bestScore=score; best=sv.name; bestDown=dn; bestRootW=rw; }
   }
   return best;
 }
@@ -20904,7 +20977,28 @@ function jamChordDefs(){
 let JAMDEFC=null;
 /* a chord root's letter, as the pan in hand spells it — every chord name in the
    app is built through this, so a D♭ pan says D♭maj and a C♯ pan C♯maj */
-function spellPc(pc){ pc=((pc%12)+12)%12; return (myPan&&myPan.spell&&myPan.spell[pc])||PCN[pc]; }
+function spellPcOn(P,pc){ pc=((pc%12)+12)%12; return (P&&P.spell&&P.spell[pc])||PCN[pc]; }
+function spellPc(pc){ return spellPcOn(myPan,pc); }
+/* THE SAME CHORD, NAMED ON ANOTHER PAN. One transposer for every caller — the
+   jam's ♭/♯ buttons, a written chord read while transposed, and a written
+   chord stored back into the piece's own key — so the three can never spell
+   the same move differently. `P` is the pan whose spelling to use; a D♭ pan
+   says D♭maj where a C♯ pan says C♯maj (David, 4 Sep). */
+function shiftChordName(name,n,P){
+  const m=String(name).match(/^([A-Ga-g])([b♭#♯]?)(.*)$/);
+  if(!m) return name;
+  let r=PC[m[1].toUpperCase()];
+  if(m[2]==="#"||m[2]==="♯")r++; if(m[2]==="b"||m[2]==="♭")r--;
+  return spellPcOn(P||myPan,r+n)+m[3];
+}
+/* HOW FAR THE PIECE HAS MOVED, as a chord name feels it: the distance between
+   the two dings, which is exactly the transposition, because every position is
+   matched to the target by its interval ABOVE the ding. Zero unless a map is
+   actually up, so "as written" and the piece's own pan are untouched. */
+function transChordShift(){
+  if(mode!=="trans"||!MAP||!srcPan||!myPan) return 0;
+  return ((myPan.ding-srcPan.ding)%12+12)%12;
+}
 function jamDefs(){
   if(!JAMDEFC||JAMDEFC.panId!==myPanId||JAMDEFC.topOnly!==topOnlyChords()){
     const list=jamChordDefs(), byName={};
@@ -22128,13 +22222,7 @@ function fitJamTitle(){
 // dashed, playing silent bars — transposing back restores them (David, 26 Aug).
 function jamTranspose(n){
   if(!jam.slots.length){ toast("No chords to transpose"); return; }
-  jam.slots=jam.slots.map(s=>{
-    const m=String(s.chord).match(/^([A-Ga-g])([b♭#♯]?)(.*)$/);
-    if(!m) return s;
-    let r=PC[m[1].toUpperCase()];
-    if(m[2]==="#"||m[2]==="♯")r++; if(m[2]==="b"||m[2]==="♭")r--;
-    return {chord:spellPc(r+n)+m[3],bars:s.bars};
-  });
+  jam.slots=jam.slots.map(s=>({chord:shiftChordName(s.chord,n),bars:s.bars}));
   jamEditSlot=-1;
   try{ $("jamDlg").close(); }catch(e){}
   applyJam();
@@ -30296,17 +30384,27 @@ function paintMyPanBtn(){
    chord carries the name on each of its notes), so deleting one note of the
    stack does not take the chord with it. */
 let scdAt=null, scdWired=false;
+/* THE PIECE IS STORED IN ITS OWN KEY, AND THE EDITOR SPEAKS THE PAN IN HAND
+   (David, 12 Sep). The picker offers the vocabulary of the pan he is holding,
+   so while transposed he picks B♭maj — but the piece is written for an E Kurd,
+   where that bar is Cmaj, and storing the D-Kurd name would make the piece
+   wrong on its own pan. So a name goes IN shifted back to the piece's key and
+   comes OUT shifted forward again, by the one shift both readings use. */
 function edChordNameAt(bi,t){
   const bar=(piece.sections[viewSec].bars||[])[bi]||[];
   const e=bar.find(x=>x.chord&&x.t===t);
-  return e?e.chord:null;
+  if(!e) return null;
+  const shift=transChordShift();
+  return shift?shiftChordName(e.chord,shift,myPan):e.chord;
 }
 function edWriteChord(bi,t,name){
   const bar=(piece.sections[viewSec].bars||[])[bi]; if(!bar) return;
   snapshot();
+  const shift=transChordShift();
+  const stored=(name&&shift)?shiftChordName(name,-shift,srcPan):name;
   for(let i=0;i<bar.length;i++) if(bar[i].t===t){
     const ev=Object.assign({},bar[i]);
-    if(name) ev.chord=name; else delete ev.chord;
+    if(stored) ev.chord=stored; else delete ev.chord;
     bar[i]=ev;
   }
   refresh();
