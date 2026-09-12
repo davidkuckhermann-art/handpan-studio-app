@@ -1273,7 +1273,7 @@ body.phone #panPickDlg{width:100%; max-height:82vh}
   padding:2px 7px; border:1px solid var(--rule); color:var(--ink3); background:var(--card)}
 .lbadge.vid{color:var(--steel,#33607E); border-color:var(--steel-soft,#EBF1F5); background:var(--steel-soft,#EBF1F5)}
 #libDlg .lback{border:none; background:none; font:inherit; font-size:18px; line-height:1; color:var(--ink2); cursor:pointer; padding:0 4px 0 0; display:none; box-shadow:none}
-#libDlg .ppfoot{display:flex; align-items:center; gap:8px}
+#libDlg .ppfoot{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
 #libDlg .ppib.ldel{color:var(--clay)}
 body.phone #libDlg{width:100%; max-height:84vh}
 body.phone #libDlg .folders{width:100%; border-right:0; background:none}
@@ -6182,16 +6182,21 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <button class="ctl" id="spScales">Open the Scale Library</button>
   </div>
   <h4 class="dsec later">Share &amp; files</h4>
-  <div class="row" style="margin-top:0">
+  <!-- THESE FOUR MOVE (David, 12 Sep). They are named so the boot can lift them
+       into the library's Import / Export window, on both builds. The
+       "Share &amp; files" heading above stays behind — the window has a title of
+       its own, and this sheet is kept whole for whatever it is next asked to
+       be. -->
+  <div class="row" id="spFilesRow" style="margin-top:0">
     <button class="ctl" id="cpCode">Copy code</button>
     <button class="ctl" id="cpLink">Copy link</button>
     <button class="ctl" id="dlFile">Save .hps file</button>
     <button class="ctl" id="impFile">Open file…</button>
     <input type="file" id="impFileInput" accept=".hps,.hpj,.hpg,.txt" class="hidden">
   </div>
-  <p class="hint">Arrangements are <b>.hps</b> files · jams <b>.hpj</b> · grooves <b>.hpg</b>. Paste a code or a link to import:</p>
+  <p class="hint" id="spFilesHint">Arrangements are <b>.hps</b> files · jams <b>.hpj</b> · grooves <b>.hpg</b>. Paste a code or a link to import:</p>
   <textarea id="impTxt" placeholder="HPS1:…"></textarea>
-  <div class="row"><button class="ctl on" id="impBtn">Import</button></div>
+  <div class="row" id="spImpRow"><button class="ctl on" id="impBtn">Import</button></div>
   <div id="spGoWrap">
     <div class="shsep"></div>
     <h4 class="dsec">This piece</h4>
@@ -6744,7 +6749,25 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <div class="lbody"><div class="folders" id="libFolders"></div><div class="pplist" id="libList"></div></div>
   <div class="ppfoot"><button class="ctl on" id="saveBtn">Save current piece</button>
   <button class="ctl" id="libNewBtn">New piece…</button>
+  <!-- IMPORT / EXPORT IS A DOOR IN THE LIBRARY'S FOOT (David, 12 Sep: "at the
+       bottom row, let's add a new button import/export. Here should be the whole
+       copy code, copy link, save HPS file, open file, the pasting field, the
+       import field"). Everything behind it is the SAME elements, moved out of
+       the share sheet at boot, so every handler keeps working. -->
+  <button class="ctl" id="libIO">Import / Export…</button>
   <span class="spacer"></span><button class="ctl" id="libClose">Close</button></div>
+</dialog>
+
+<!-- THE FILE WINDOW (David, 12 Sep). It opens ON TOP of the library, so closing
+     it puts you back where you were — the folder you had open and the search you
+     had typed are still standing. Its body is EMPTY in the markup on purpose:
+     the controls are MOVED in from the share sheet at boot, which is how this
+     app has always given one set of controls a second home — same ids, same
+     handlers, one copy of each. -->
+<dialog id="ioDlg" aria-label="Import and export">
+  <h3>Import / Export</h3>
+  <div id="ioBody"></div>
+  <div class="row"><span class="spacer"></span><button class="ctl" id="ioClose">Close</button></div>
 </dialog>
 
 <!-- The phone's menu: a bottom sheet. Its controls are the SAME elements moved
@@ -11979,7 +12002,7 @@ const TIPS={
   playBtn:"Play or pause — space bar does the same",
   countBtn:"Count a bar in before playing",
   libBtn:"Your saved pieces",
-  shareBtn:"Library — save, load and share this piece, this jam, or this groove",
+  shareBtn:"Library — your saved arrangements, and the import and export tools",
   editBtn:"Write and change the notation",
   menuBtn:"Everything else",
   bpmCtl:"Speed, in beats per minute",
@@ -24714,9 +24737,29 @@ function paintEditDoors(){
   /* the Arrangement | Groove switch shows only while an editor is open, and
      only on the desktop — the phone's ⋮ sheet has its two rows (Zones stage 1) */
   const show=!!editing&&!document.body.classList.contains("phone");
-  ["edSwLab","edSwitch","edDoneBtn"].forEach(id=>{
+  ["edSwLab","edSwitch"].forEach(id=>{
     const e=$(id); if(e) e.classList.toggle("hidden",!show);
   });
+  /* …BUT DONE SHOWS IN EVERY EDITOR, ON EVERY BUILD (David, 12 Sep: "for both
+     the arrangement and the groove editor on mobile, we need a 'Check Done' box
+     at the top right of the notation table… so people have an obvious way to
+     save their groove and leave the editor").
+     IT WAS NEVER A DESKTOP BUTTON — it was written beside the switch above and
+     inherited the switch's rule, which is exactly the kind of rule that names
+     the rooms it happened to know. The switch is desktop-only for a reason (the
+     phone's ⋮ sheet carries its two rows); Done had none. On the phone the way
+     out of an editor had quietly become the Back arrow, which says nothing about
+     saving, and that is the hole this closes.
+     ONE GATE, `editing`, FOR ONE BUTTON — no second regulator for the phone. It
+     needs none: it sits at the right end of #viewrow, which is the strip
+     directly above the notation card on every build, and the phone's editors
+     leave that end of the strip empty. Landscape hides #viewrow whole while
+     editing, which is right — sideways is the music stand, editing never stops
+     there, and the groove bench asks for portrait outright.
+     The tablet is a phone BUILD whose `phone` CLASS comes and goes with the
+     orientation, so the old rule also made Done blink in and out as an iPad was
+     turned. It no longer can. */
+  { const e=$("edDoneBtn"); if(e) e.classList.toggle("hidden",!editing); }
   if(typeof paintRoomTrack==="function") paintRoomTrack();   // Edit lights its slot
   /* THE CHORDS TAB RESTS IN THE EDITORS (David, 31 Aug) — here rather than
      in the Edit toggle's handler, so the bench's own entry paths disable it
@@ -28838,6 +28881,14 @@ function shareContext(){
   if(jamOn) return "jam";
   return "piece";
 }
+/* AN IMPORT CLOSES THE ROOM IT WAS STARTED FROM (12 Sep). The paste box and the
+   file button live in the Import / Export window now, which stands over the
+   library — and the sheet they came from is still their home in the markup, so
+   the success path names the job rather than one of the rooms. The library goes
+   too: what you asked for is open on the stand behind it. */
+function closeFileDlgs(){
+  for(const id of ["ioDlg","libDlg","shareDlg"]){ const d=$(id); if(d&&d.open) d.close(); }
+}
 function openShareForContext(){
   const c=shareContext();
   if(c==="piece"){
@@ -30542,7 +30593,16 @@ function boot(){
   $("undoBtn").addEventListener("click",doUndo);
   $("redoBtn").addEventListener("click",doRedo);
   paintUndo();
-  $("shareBtn").addEventListener("click",openShareForContext);
+  /* ONE BUTTON, ONE DESTINATION (David, 12 Sep: "when the library button is
+     clicked or touched, please open directly the Arrangement Library… the
+     library button should always go to the same arrangement library"). It used
+     to open a sheet that was a lobby with one door in it, and in a jam or on the
+     groove bench a DIFFERENT sheet again — one button meaning three things.
+     openShareForContext and both sheets are left standing, wired and whole, at
+     his word: "we don't need the option to save and load jams for now. Let's
+     keep the option available for later, but take this option away from the
+     menu." Nothing calls it; nothing is deleted. */
+  $("shareBtn").addEventListener("click",openLib);
   $("shareClose").addEventListener("click",()=>$("shareDlg").close());
   $("cpCode").addEventListener("click",()=>copyText("HPS1:"+enc(shareable()),"Code copied"));
   $("cpLink").addEventListener("click",()=>{
@@ -30557,13 +30617,13 @@ function boot(){
   $("impFileInput").addEventListener("change",e=>{
     const f=e.target.files[0]; if(!f) return;
     f.text().then(txt=>{
-      if(openAnyText(txt)) $("shareDlg").close();
+      if(openAnyText(txt)) closeFileDlgs();
       else toast("That file could not be read");
     });
     e.target.value="";
   });
   $("impBtn").addEventListener("click",()=>{
-    if(openAnyText($("impTxt").value)) $("shareDlg").close();
+    if(openAnyText($("impTxt").value)) closeFileDlgs();
     else toast("That code could not be read"); });
   $("followBtn").addEventListener("click",()=>{ follow=!follow;
     if(follow){ if(playing) stop(); ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank();
@@ -31155,6 +31215,18 @@ function boot(){
   $("jamSugBtn").addEventListener("click",()=>{ jamSugOn=!jamSugOn; renderJamDlg(); });
   window.addEventListener("resize",()=>{ if(jamOn) fitJamTitle(); });
   $("libClose").addEventListener("click",()=>$("libDlg").close());
+  /* THE FILE CONTROLS TAKE THEIR SECOND HOME (David, 12 Sep), on both builds in
+     the same round. The SAME elements, not copies — cpCode, cpLink, dlFile, the
+     file input, the paste box and Import keep their ids and the handlers already
+     bound to them, so nothing else in this file had to learn a new address. */
+  {
+    const ioHost=$("ioBody");
+    for(const id of ["spFilesRow","spFilesHint","impTxt","spImpRow"]) ioHost.appendChild($(id));
+  }
+  /* the window stands ON the library rather than replacing it: close it and the
+     library is still there, still in the folder you were reading */
+  $("libIO").addEventListener("click",()=>openDlg($("ioDlg")));
+  $("ioClose").addEventListener("click",()=>$("ioDlg").close());
   $("libSearch").addEventListener("input",e=>{ LIB.q=e.target.value; renderLib(); });
   $("libBack").addEventListener("click",()=>{ LIB.open=false; LIB.q=""; $("libSearch").value=""; renderLib(); });
   /* where the piece is filed: the course and the lesson, from the Sections sheet */
@@ -33237,7 +33309,7 @@ if(PHONE){
   $("shareBtn").innerHTML='<span aria-hidden="true" style="font-size:16px">🗂</span>';
   setTimeout(()=>{ placeDrawer(); drawerGesture(); },0);
   $("shareBtn").setAttribute("aria-label","Library");
-  $("shareBtn").title="Library — save, load and share this piece, this jam, or this groove";
+  $("shareBtn").title="Library — your saved arrangements, and the import and export tools";
   snapTabletHome();      // …before the first placement moves anything
   syncTabletSkin();
   placePhoneControls();
