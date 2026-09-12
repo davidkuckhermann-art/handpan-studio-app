@@ -3178,6 +3178,7 @@ body.phone #drawerExtra #jamColourWrap{width:auto}
 .fitline{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
 .fitpc{font-size:24px; font-weight:800; font-variant-numeric:tabular-nums}
 .fitsum{font-size:13px; color:var(--ink2)}
+.fitparts{color:var(--ink3)}
 table.map{border-collapse:collapse; margin-top:10px; font-size:13px; width:100%; max-width:640px}
 table.map th{font-size:10.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
   color:var(--ink3); text-align:left; padding:3px 10px 3px 0; border-bottom:1px solid var(--rule)}
@@ -11676,7 +11677,71 @@ async function doExport(fmt){
 /* ---------------- transposition ----------------
    Positions → intervals above the ding; one consistent decision per source
    field for the whole piece; hard playability constraints can veto a free
-   match; every decision overridable (stored per piece+pan).             */
+   match; every decision overridable (stored per piece+pan).
+
+   THE ONE MECHANISM — WHAT A POSITION DOES IN THE PIECE DECIDES WHAT IT KEEPS
+   (David, 12 Sep 2026, of the Canon in D on a D Kurd 19: "why does the melody
+   have crazy jumps … while on the original E chord 21 the melody has a very
+   nice natural direction", and then "this is not only a canon and D issue,
+   I've heard it several times in different pieces as well"):
+
+     The top note of its moment is MELODY; anything under it is ACCOMPANIMENT.
+     A melody position takes the note nearest to where it belongs, staying in
+     its own octave for up to a whole tone rather than leaving it. An
+     accompaniment position takes the CORRECT note, whichever octave holds it —
+     it is carrying the harmony, and a wrong bass note is a wrong chord.
+     Either way, a note that must leave its octave goes to the NEAREST one.
+
+   WHAT THIS REPLACED, AND WHY IT SOUNDED LIKE THAT. The old candCost graded
+   the note NAME and barely the register: exact 0, ANY octave 1, a substitute
+   5–7 — and a substitute's octave was not priced at all, because the cost came
+   from the pitch class alone. Beside the one-hand stack constraint at 40 a
+   violation, register was small change, so the search bought octave leaps by
+   the handful to pay for everything else. Measured over the 21 built-in pieces
+   against every tier-1 pan — 651 combinations, 6200 decisions — 958 positions
+   moved an octave or more, 114 of them by two or three octaves, while the fit
+   still read 84–99 %. In the Canon on a D Kurd 19, reported "96 %": the
+   ground's bass G3 had an exact match at F3 underneath and was dragged up to
+   F4 on the top shell, on top of the melody; B2, the lowest note of the piece,
+   became A5, the HIGHEST note of the pan, because A3 and A4 were taken and the
+   +2 duplicate nudge sent it to the one free octave; and the melody's C5,
+   which a D Kurd has nowhere to put (no B♭4 in the gap between A4 and C5),
+   fell to B♭3 — four of the B section's fifteen melodic steps became sevenths,
+   ninths and a twelfth. The other eleven were already perfect: ONE position
+   was doing all the damage.
+
+   EXTENDED INSTRUMENTS WERE THE WORST, which is what David noticed. More
+   fields means more octaves of the same note standing free, and the duplicate
+   nudge sent a note to whichever octave nobody had claimed — on an extended
+   pan, the extreme top or bottom. A nine-note pan has nowhere to fling a note,
+   so its lines survived by accident.
+
+   THE SIX DECISIONS, in the order they bite (David, 12 Sep, answering six
+   questions put to him before any of this was built):
+     1. Melody prefers its own octave, up to a whole tone away; accompaniment
+        prefers the correct note, whatever the octave. His words for the second
+        half: "if the correct note is only available in a different octave,
+        that note should be used. But if the same note is also available in
+        the correct octave, that should always be prioritized."
+     2. With nothing in the register at all, TAKE THE OCTAVE — a leap you can
+        see in the report beats a hole in the melody.
+     3. The NEAREST octave always, even when it means two positions of the
+        piece land on the same field. A three-octave leap is a bigger lie than
+        two notes sharing a place.
+     4. A note keeps its place in the ORDER: if it sounded under another note
+        it should still sound under it. Strong, not absolute — an octave is
+        allowed as a last resort. This is what stops the bass climbing over
+        the melody, and it is measured from the piece, not from a pitch: the
+        same scan that decides melody-or-accompaniment records which positions
+        sounded above which.
+     5. A chord one hand cannot hold on the new pan is RE-SPLIT between the
+        hands, not moved an octave. The old code grouped notes by the hand they
+        were WRITTEN with and demanded the targets be pan-adjacent — but
+        transHands re-derives every hand anyway, so the only question that
+        matters is whether a moment's notes can be divided between two hands at
+        all. assignHands does the dividing; this asks the weaker question.
+     6. The fit percentage grades REGISTER AND LINE as well as note names, so
+        "96 %" can never again sit over a wrecked melody.                    */
 function fieldUsage(p){
   const u=new Map();
   for(const nm of p.arrangement){ const m=SM(p,nm);
@@ -11686,26 +11751,137 @@ function fieldUsage(p){
         u.set(ev.f,(u.get(ev.f)||0)+w); } }
   return u;
 }
-function oneHandStacks(p){
+/* WHO IS THE TOP, AND WHO IS UNDER WHOM — one scan, two answers (decisions 1
+   and 4). At every moment of the piece the highest-sounding position is that
+   moment's melody and everything else is under it; a position is weighed the
+   way fieldUsage weighs it, so the classification agrees with the cost it
+   feeds. `pairs` is the order to preserve — each entry is [lower, higher] as
+   the piece sounded them. A position that is the top as often as it is buried
+   counts as melody: the tune is what a student follows, and the doubt is
+   better spent on the line. */
+function voiceRoles(p,S){
+  const top=new Map(), under=new Map(), pairMap=new Map();
+  const add=(m,f,w)=>m.set(f,(m.get(f)||0)+w);
+  for(const nm of p.arrangement){ const m=SM(p,nm);
+    for(const bar of p.sections[nm].bars||[]){
+      const byT=new Map();
+      for(const ev of bar){ if(ev.v!=="field") continue;
+        if(!byT.has(ev.t)) byT.set(ev.t,[]); byT.get(ev.t).push(ev.f); }
+      for(const [t,fs] of byT){
+        const w=(t%m.sub===0?2:1)+(t===0?1:0);
+        const ns=[...new Set(fs)].map(f=>({f,midi:S.posMidi(f)})).filter(o=>o.midi!=null)
+                                 .sort((a,b)=>a.midi-b.midi);
+        /* A NOTE SOUNDING ALONE SAYS NOTHING ABOUT ITS ROLE. The Canon's ground
+           runs an eighth-note arpeggio under a melody that moves in quarters,
+           so every bass note is the only note of its moment half the time —
+           counting those made the ground's A3 the "top" three times against
+           two and turned the bass into melody. Only a moment with two notes in
+           it can tell them apart; a position never heard against another is
+           melody by default, which is what a single line is. */
+        if(ns.length<2) continue;
+        const hi=ns[ns.length-1].midi;
+        for(const o of ns) add(o.midi===hi?top:under,o.f,w);
+        for(let i=0;i<ns.length;i++) for(let j=i+1;j<ns.length;j++)
+          if(ns[i].midi<ns[j].midi) pairMap.set(ns[i].f+"<"+ns[j].f,[ns[i].f,ns[j].f]);
+      } } }
+  const melody=new Map();
+  for(const f of new Set([...top.keys(),...under.keys()]))
+    melody.set(f,(top.get(f)||0)>=(under.get(f)||0));
+  return {melody,order:[...pairMap.values()]};
+}
+/* THE NOTES OF ONE MOMENT, whoever was written to play them (decision 5).
+   Only three or more are worth asking about: one or two notes always go one to
+   each hand. */
+function sameTimeGroups(p){
   const out=[];
-  for(const nm of p.arrangement) for(const bar of p.sections[nm].bars){
+  for(const nm of p.arrangement) for(const bar of p.sections[nm].bars||[]){
     const byT=new Map();
     for(const ev of bar){ if(ev.v!=="field") continue;
-      const k=ev.t+"|"+ev.hand; if(!byT.has(k)) byT.set(k,[]); byT.get(k).push(ev.f); }
-    for(const fs of byT.values()) if(fs.length>1) out.push(fs);
+      if(!byT.has(ev.t)) byT.set(ev.t,[]); byT.get(ev.t).push(ev.f); }
+    for(const fs of byT.values()){ const u=[...new Set(fs)]; if(u.length>2) out.push(u); }
   }
   return out;
 }
-function candCost(si,ti){
+/* Can these places be divided between two hands at all? Each hand takes at
+   most two, and two in one hand must be a pair it can strike (handPair — the
+   ring's neighbours, the ding with 1 or 2, and two underside notes a step
+   apart on the same side). More than four notes at one moment, nobody can. */
+function splittable(fs,pair){
+  const n=fs.length;
+  if(n<=2) return true;
+  if(n>4) return false;
+  const ok=g=>g.length<2||(g.length===2&&pair(g[0],g[1]));
+  for(let mask=0;mask<(1<<n);mask++){
+    const L=[],R=[];
+    for(let k=0;k<n;k++) ((mask>>k)&1?R:L).push(fs[k]);
+    if(L.length>2||R.length>2) continue;
+    if(ok(L)&&ok(R)) return true;
+  }
+  return false;
+}
+/* THE COST OF PUTTING A SOURCE INTERVAL IN A TARGET PLACE. The distance splits
+   into the octaves moved and the note error left over, and the two roles weigh
+   those two numbers opposite ways — that is the whole mechanism, and the only
+   place a decision about register is made. The bands are chosen so that for a
+   MELODY note a whole tone in its own octave (4) beats the correct note an
+   octave away (10) while a minor third (18) does not — David's "up to a whole
+   tone"; and so that for an ACCOMPANIMENT note the correct note three octaves
+   away (9) still beats a semitone substitute in its own octave (20), which is
+   his rule 1 written as arithmetic. Both floors and ceilings of d/12 are tried
+   because a tritone is equally far either way and the cheaper reading wins. */
+const OCT_MEL=10, OCT_ACC=3, COST_DROP=40, INVERT_W=4, CLASH_W=8, UNPLAYABLE=60;
+function candCost(si,ti,melody){
   const d=ti-si;
   if(d===0) return {c:0,r:"exact"};
-  if(Math.abs(d)%12===0) return {c:1,r:"octave"};
-  const pc=((d%12)+12)%12, near=Math.min(pc,12-pc);
-  if(near<=1) return {c:6,r:"sub"};             // same degree, other quality — mood changes
-  return {c:3+near,r:"sub"};
+  let best=null;
+  for(const oct of new Set([Math.floor(d/12),Math.ceil(d/12)])){
+    const a=Math.abs(d-12*oct), o=Math.abs(oct);
+    if(a>6) continue;
+    const c=melody ? (a<=2?2*a:12+2*a) + OCT_MEL*o
+                   : (a===0?0:18+2*a)  + OCT_ACC*o;
+    if(!best||c<best.c) best={c,r:a===0?"octave":"sub"};
+  }
+  return best||{c:COST_DROP,r:"sub"};
+}
+/* HOW MUCH OF THE MELODY STILL MOVES THE WAY IT WAS WRITTEN (decision 6) —
+   the top note of each moment, bar by bar, step by step; a step counts as kept
+   when it lands within a semitone of the written one, which forgives the major
+   third that becomes a minor third and forgives nothing that leaps. */
+function lineKept(p,S,T,m){
+  let kept=0,tot=0;
+  for(const nm of p.arrangement) for(const bar of p.sections[nm].bars||[]){
+    const byT=new Map();
+    for(const ev of bar){ if(ev.v!=="field") continue;
+      if(!byT.has(ev.t)) byT.set(ev.t,[]); byT.get(ev.t).push(ev.f); }
+    const seq=[...byT.keys()].sort((a,b)=>a-b).map(t=>{
+      let bf=null,bm=-1e9;
+      for(const f of byT.get(t)){ const mi=S.posMidi(f); if(mi!=null&&mi>bm){bm=mi;bf=f;} }
+      return bf; }).filter(f=>f!=null);
+    for(let i=1;i<seq.length;i++){
+      const wa=S.posMidi(seq[i-1]), wb=S.posMidi(seq[i]);
+      if(wa==null||wb==null) continue;
+      tot++;
+      const ta=m[seq[i-1]], tb=m[seq[i]];
+      if(ta==null||tb==null) continue;
+      const xa=T.posMidi(ta), xb=T.posMidi(tb);
+      if(xa==null||xb==null) continue;
+      if(Math.abs((xb-xa)-(wb-wa))<=1) kept++;
+    } }
+  return tot?kept/tot:1;
 }
 function transpose(){
-  const S=srcPan, T=myPan, use=fieldUsage(piece), stacks=oneHandStacks(piece);
+  const S=srcPan, T=myPan, use=fieldUsage(piece);
+  const roles=voiceRoles(piece,S), pair=handPair(T), pairS=handPair(S);
+  /* ONLY WHAT TRANSPOSING MADE WORSE (decision 5). A moment of four notes can
+     never be shared by two hands that hold two each — and the Canon in D has
+     several, three notes in one hand at t=0 under its own arrangement, on the
+     pan it was WRITTEN for. Holding the target pan to a standard the source
+     pan never met would have the search paying octaves to fix something that
+     was always a stretch, and the report crying about seven chords that play
+     the same as they always did. So a chord is judged only if it was
+     divisible where it came from. */
+  const stacks=sameTimeGroups(piece).filter(g=>splittable(g,pairS));
+  const isMel=f=>roles.melody.get(f)!==false;          // unheard positions read as melody
   const srcFields=[...use.keys()].sort((a,b)=>use.get(b)-use.get(a));
   /* EVERY PLACE ON THE TARGET PAN IS A CANDIDATE, the underside included
      (David, 28 Aug: a bottom note should "remap like any other note"). The
@@ -11714,35 +11890,53 @@ function transpose(){
   const cands={};   // per src position: [{tf,c,r}...] + drop
   for(const sf of srcFields){
     if(sf===0){ cands[sf]=[{tf:0,c:0,r:"exact"}]; continue; }
-    const si=S.posIv(sf), list=[];
+    const si=S.posIv(sf), mel=isMel(sf), list=[];
     if(si!=null) for(const tf of targets){
       const ti=T.posIv(tf); if(ti==null) continue;
-      list.push(Object.assign({tf},candCost(si,ti)));
+      list.push(Object.assign({tf},candCost(si,ti,mel)));
     }
     list.sort((a,b)=>a.c-b.c);
-    list.push({tf:null,c:12,r:"drop"});
+    list.push({tf:null,c:COST_DROP,r:"drop"});
     cands[sf]=list;
   }
   const ov=overrides[myPanId]||{};
   function evalMap(m){
-    let tot=0, viol=0;
+    let tot=0;
     for(const sf of srcFields){
-      if(m[sf]===null){ tot+=use.get(sf)*12; continue; }
-      const e=cands[sf].find(x=>x.tf===m[sf]); tot+=use.get(sf)*(e?e.c:20);
+      if(m[sf]===null){ tot+=use.get(sf)*COST_DROP; continue; }
+      const e=cands[sf].find(x=>x.tf===m[sf]); tot+=use.get(sf)*(e?e.c:60);
     }
-    // hard-ish constraints as heavy penalties
+    /* decision 4 — a position that sounded under another still sounds under it.
+       Weighed by the rarer of the two, so a passing collision costs less than
+       the bass sitting on the tune all piece long. */
+    for(const [lo,hi] of roles.order){
+      const a=m[lo], b=m[hi];
+      if(a==null||b==null) continue;
+      const w=Math.min(use.get(lo)||1,use.get(hi)||1);
+      /* TWO NOTES OF ONE MOMENT MAY NOT BECOME ONE. David let two positions of
+         the piece share a place (decision 3) — a place is shared over a whole
+         piece and nothing is lost by it. Two notes struck TOGETHER are a
+         different matter: they collapse into a single field hit twice, so the
+         octave or the interval between them simply disappears and the chord is
+         a note short. Left at the +2 nudge it happened at 1126 moments across
+         the library, an octave C5+C4 arriving as one B3 struck twice. Priced
+         above an octave of travel, because a note that moved can still be
+         heard and a note that vanished cannot. */
+      if(a===b){ tot+=CLASH_W*w; continue; }
+      const ma=T.posMidi(a), mb=T.posMidi(b);
+      if(ma!=null&&mb!=null&&ma>mb) tot+=INVERT_W*w;
+    }
+    // decision 5 — a moment's notes must be divisible between two hands
     for(const grp of stacks){
-      const ts=grp.map(f=>m[f]).filter(t=>t!==null&&t!==undefined);
-      if(ts.length<2) continue;
-      for(let i=0;i<ts.length;i++) for(let j=i+1;j<ts.length;j++){
-        if(ts[i]===ts[j]) viol++;
-        else if(!T.adjacent(ts[i],ts[j])) viol++;
-      }
+      const ts=[...new Set(grp.map(f=>m[f]).filter(t=>t!=null))];
+      if(!splittable(ts,pair)) tot+=UNPLAYABLE;
     }
+    /* decision 3 — two positions may share a place; it is a real loss, so it
+       is priced, but far under an octave of travel. */
     const used=new Map();
     for(const sf of srcFields){ const t=m[sf];
-      if(t!==null&&t!==undefined){ if(used.has(t)) tot+=2; used.set(t,1); } }
-    return tot+viol*40;
+      if(t!=null){ if(used.has(t)) tot+=2; used.set(t,1); } }
+    return tot;
   }
   // greedy start, then hill-climb over single reassignments
   const m={};
@@ -11763,26 +11957,36 @@ function transpose(){
     }
     if(!improved) break;
   }
-  // report
+  /* the report. THE FIT IS NOT THE SEARCH'S SCORE (decision 6): the search is
+     told what to prefer, the percentage says what a student got. Notes and
+     line are weighed 65/35 — a piece whose every note is right but whose tune
+     jumps cannot read above 65, and that is the number that used to say 96. */
   let wSum=0,fit=0; const rows=[];
-  let nEx=0,nOc=0,nSub=0,nDrop=0;
+  let nEx=0,nOc=0,nSub=0,nDrop=0,nMoved=0;
   for(const sf of [...srcFields].sort((a,b)=>a-b)){
     const tf=m[sf], w=use.get(sf); wSum+=w;
-    const e=tf===null?{c:12,r:"drop"}:cands[sf].find(x=>x.tf===tf)||{c:12,r:"drop"};
-    fit+=w*(e.c===0?1:e.c===1?.85:e.c<=6?.55:e.c<12?.35:0);
+    const e=tf===null?{c:COST_DROP,r:"drop"}:cands[sf].find(x=>x.tf===tf)||{c:COST_DROP,r:"drop"};
+    const si=S.posIv(sf), ti=tf===null?null:T.posIv(tf);
+    let oct=0,off=0;
+    if(si!=null&&ti!=null){ const d=ti-si; oct=Math.round(d/12); off=Math.abs(d-12*oct); if(off>6){oct+=Math.sign(d);off=Math.abs(d-12*oct);} }
+    if(tf!==null&&Math.abs(oct)>=1) nMoved++;
+    const q = tf===null ? 0
+      : (si!=null&&ti!=null&&si===ti) ? 1
+      : oct===0 ? (off<=2?.8:.35)
+      : (off===0 ? (Math.abs(oct)===1?.55:.3) : .25);
+    fit+=w*q;
     if(e.r==="exact")nEx++; else if(e.r==="octave")nOc++; else if(e.r==="drop")nDrop++; else nSub++;
-    rows.push({sf,tf,r:e.r,c:e.c,w,locked:sf in ov});
+    rows.push({sf,tf,r:e.r,c:e.c,w,locked:sf in ov,mel:isMel(sf),oct,off});
   }
+  const noteFit=fit/(wSum||1), line=lineKept(piece,S,T,m);
   const violStacks=[];
   for(const grp of stacks){
-    const ts=grp.map(f=>m[f]).filter(t=>t!==null&&t!==undefined);
-    let bad=false;
-    for(let i=0;i<ts.length;i++) for(let j=i+1;j<ts.length;j++)
-      if(ts[i]===ts[j]||!T.adjacent(ts[i],ts[j])) bad=true;
-    if(bad) violStacks.push(grp);
+    const ts=[...new Set(grp.map(f=>m[f]).filter(t=>t!=null))];
+    if(!splittable(ts,pair)) violStacks.push(grp);
   }
   MAP=m;
-  REPORT={rows,fit:Math.round(100*fit/(wSum||1)),nEx,nOc,nSub,nDrop,violStacks,cands};
+  REPORT={rows,fit:Math.round(100*(.65*noteFit+.35*line)),noteFit:Math.round(100*noteFit),
+    line:Math.round(100*line),nEx,nOc,nSub,nDrop,nMoved,violStacks,cands};
   transHands();
 }
 /* HANDS UNDER TRANSPOSITION, SILENTLY (David, 8 Sep: "for transpositions, let's do it silently for now"). A piece
@@ -12530,8 +12734,23 @@ function barChordSpans(bar,m){
   if(r1==null||r2==null||r1===r2) return one;              // a seventh is not a chord change
   const t1=chordPCs(h1), t2=chordPCs(h2);
   if(!t1||!t2) return one;
+  /* THE FIFTH IS THE NOTE MUSIC DROPS (David, 12 Sep, his Flavourful Freestyle 2
+     transposed onto an E Romanian Hijaz 20: "why are the chord changes on the
+     third beats not recognized?"). The guard used to demand root, third AND
+     fifth in each half. His B3 bars turn to B7 at the half — B, D♯ and A sound,
+     the F♯ never does — so a real change was refused for want of the one chord
+     tone every player leaves out. It now asks for the ROOT and the THIRD, which
+     are what name a chord, plus a THIRD TONE of the chord itself, so a triad
+     still needs all three and a seventh may drop its fifth. Nothing is invented:
+     two notes can never name a chord here.
+     WHAT KEEPS HIS EARLIER VETOES OUT is the accompaniment test below, not this
+     one: Flavourful Freestyle 1's "Amin7" (A C G, no E) and Composition 1's
+     "Amin" both repeat nothing new in the second half. Measured over all 21
+     pieces: 69 bars became 77, and the eight are exactly the B sections he is
+     looking at. */
   const p1=barPcSet(s1), p2=barPcSet(s2);
-  if(!t1.slice(0,3).every(pc=>p1.has(pc))||!t2.slice(0,3).every(pc=>p2.has(pc))) return one;
+  const solid=(t,p)=>p.has(t[0])&&p.has(t[1])&&t.filter(pc=>p.has(pc)).length>=3;
+  if(!solid(t1,p1)||!solid(t2,p2)) return one;
   const a1=barAccomp(s1), a2=barAccomp(s2);
   if(![...a2].some(pc=>!a1.has(pc))) return one;           // the accompaniment held; only the melody moved
   return [{t:0,name:h1,inf:true},{t:half,name:h2,inf:true}];
@@ -14168,23 +14387,58 @@ let natCache={key:"",h:0};
    does (see "THE SIX ALSO DECIDE THE SCALE" at landRowCap). */
 function pieceNaturalHeight(W,cap){
   const names=Object.keys(piece.sections);
-  const key=view+"|"+(view==="flow"?flowSize+"|"+(flowAll?"a|":""):"")+Math.round(W)+"|"+(cap||0)+"|"+(piece.title||"")+"|"+names.join(",");
+  /* `editing` IS PART OF THE KEY BECAUSE THE RULER NOW OBEYS #score (12 Sep).
+     Two of those rules turn on the editor — the 53px slot floor is
+     `:not(.editing)`, and since 12 Sep the chord names come back in the
+     editors — so the same piece at the same width genuinely measures two
+     heights, and a key that cannot tell them apart would hand the editor the
+     reading room's ruler. Before the fix above the ruler matched neither, so
+     nothing depended on the difference and the omission never showed. */
+  const key=view+"|"+(view==="flow"?flowSize+"|"+(flowAll?"a|":""):"")+Math.round(W)+"|"+(cap||0)+"|"+(piece.title||"")+"|"+names.join(",")+"|"+(editing?"e":"r");
   if(natCache.key===key) return natCache.h;
+  /* THE RULER IS THE CARD **AND THE MUSIC** — the same two levels the screen
+     has (David, 12 Sep: "why is this notation not using the available vertical
+     space?"). This div stood in for the CARD alone: `.score` is
+     `<div class="score" id="scorecard">`, and the rows were appended straight
+     into it, so the `<div id="score">` that sits between them on screen was
+     missing from the ruler. Every rule written for the MUSIC level therefore
+     missed it, and the ruler measured a table the card never draws:
+       body.phone.design-table #score .secname{display:none}
+     — so the ruler drew a section name ("A3") the card hides, 19px per
+     section; and
+       body.phone:not(.tablet):not(.editing) #score .slot{min-height:53px}
+     — which the ruler never applied, so outside the editor it under-measured
+     the same table instead. Measured on Composition 1 Advanced at 1000×460:
+     the ruler said 398px where the card draws 350, so the landscape zoom came
+     out 0.920 instead of 0.973 and ~44px of a 366px stage went unused on EVERY
+     section, the tallest included.
+     The fix is the shape, not a correction factor: build both levels and hand
+     the id to the inner one for as long as the reading takes, so the ruler
+     matches every `#score` rule there is now and every one written later. The
+     live element parks its id meanwhile — an id has to be unique for `$("score")`
+     to keep answering, and the swap is synchronous, so nothing can look
+     between. */
   const tmp=document.createElement("div");
   tmp.className="score";
   tmp.style.cssText="position:absolute; visibility:hidden; left:-10000px; top:0; width:"+W+"px";
+  const mus=document.createElement("div");
+  tmp.appendChild(mus);
   document.body.appendChild(tmp);
+  const live=$("score"), liveId=live?live.id:"";
+  if(live) live.removeAttribute("id");
+  mus.id="score";
   const save=viewSec;
   let h=0;
   try{
-    if(view==="flow"&&flowAll){ renderFlowView(tmp); h=tmp.scrollHeight; }
+    if(view==="flow"&&flowAll){ renderFlowView(mus); h=tmp.scrollHeight; }
     else for(const nm of names){
-      viewSec=nm; tmp.innerHTML="";
-      if(view==="flow") renderFlowView(tmp);   // tmp carries a width, so the packer can measure there
-      else renderTableView(tmp,view==="tab");
+      viewSec=nm; mus.innerHTML="";
+      if(view==="flow") renderFlowView(mus);   // tmp carries a width, so the packer can measure there
+      else renderTableView(mus,view==="tab");
       h=Math.max(h,tmp.scrollHeight-(cap?rowsBeyond(tmp,cap):0));   // tmp is unzoomed
     }
   }catch(e){}
+  finally{ mus.removeAttribute("id"); if(live) live.id=liveId; }
   viewSec=save; tmp.remove();
   natCache={key,h};
   return h;
@@ -18306,7 +18560,14 @@ function renderReport(){
    +'stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></button>'
    +'<div class="fitline"><span class="fitpc">'+REPORT.fit+'%</span>'
    +'<span class="fitsum"><b>'+srcPan.pan.name+' → '+myPan.pan.name+'</b><br>'
-   +REPORT.nEx+' exact · '+REPORT.nOc+' octave · '+REPORT.nSub+' substituted · '+REPORT.nDrop+' dropped</span></div>';
+   +REPORT.nEx+' exact · '+REPORT.nOc+' octave · '+REPORT.nSub+' substituted · '+REPORT.nDrop+' dropped'
+   /* THE PERCENTAGE IS TWO NUMBERS, AND IT SAYS SO (David, 12 Sep, decision 6):
+      the notes that arrived, and how much of the melody still moves the way it
+      was written. Shown apart because they fail apart — the old single number
+      read 96% over a tune that leapt a ninth four times a phrase. */
+   +'<br><span class="fitparts">'+REPORT.noteFit+'% of the notes · '+REPORT.line
+   +'% of the melody\u2019s steps'+(REPORT.nMoved?' · '+REPORT.nMoved+' changed octave':'')
+   +'</span></span></div>';
   h+='<label class="keepfo" title="A note this pan lacks stays foreign instead of moving to another field: drawn as its name in the stand-in colour, on no field, sounding at the pitch it should have — so another handpan can cover it. The map below is not used while this is on.">'
    +'<input type="checkbox" id="keepForeign"'+(keepForeign?" checked":"")+'> Keep missing notes foreign</label>';
   h+='<table class="map"><tr><th>Field</th><th>Sounds</th><th></th><th>On your pan</th><th>Match</th><th>Change</th></tr>';
@@ -18325,8 +18586,8 @@ function renderReport(){
   }
   h+='</table>';
   if(REPORT.violStacks.length)
-    h+='<div class="warn"><b>'+REPORT.violStacks.length+' stack'+(REPORT.violStacks.length>1?"s":"")
-      +'</b> cannot keep both notes under one hand on this pan — the notes play, but check the fingering.</div>';
+    h+='<div class="warn"><b>'+REPORT.violStacks.length+' chord'+(REPORT.violStacks.length>1?"s":"")
+      +'</b> cannot be shared between two hands on this pan — the notes play, but check the fingering.</div>';
   R.innerHTML=h;
   const rx=$("repX");
   if(rx) rx.addEventListener("click",()=>{ reportClosed=true; renderReport(); });
