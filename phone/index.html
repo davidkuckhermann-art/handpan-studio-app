@@ -3332,9 +3332,10 @@ body.haspan:not(.phone):not(.editing) #panwrap{flex:0 1 auto; min-width:0; margi
    to overhang to the right, into the corner a circle in a square never reaches.
    `visibility:visible` because the column itself is hidden in this view: the
    badges are kept for their width alone. */
-.pvside.pvnamecol{align-self:stretch}
-.pvside>.pvchord{visibility:visible; position:absolute; left:0; bottom:0;
-  margin:0; white-space:nowrap; text-align:left; pointer-events:none}
+/* the name hangs on the card's lower-left, out of the row so the drawing
+   centres on the card and not on the row (David, 12 Sep) */
+#panbox>.pvchord{position:absolute; left:8px; bottom:6px; margin:0;
+  white-space:nowrap; text-align:left; pointer-events:none}
 /* a DEFINITE width, not flex-auto: WebKit collapses a viewBox-only svg to
    zero under width:auto in a flex row — David's "the pan tab still doesn't
    show the pan" (26 Aug). Not a percentage either: the card shrink-to-fits
@@ -17021,6 +17022,35 @@ function landSwipe(dir){
     $("landClose").addEventListener("click",()=>landClose(0));
     $("landMenu").addEventListener("click",openPanMenu);
   } }
+/* THE NAME FITS THE CORNER THE CIRCLE LEAVES. Geometry, not a guessed cap: the
+   label is anchored at the card's lower-left, and at the height of its TOP edge
+   — its nearest edge to the shell's centre line — the circle's left edge is
+   cx − √(r² − dy²). Everything to the left of that, less a few pixels of air,
+   is the label's. Short names never reach it and are left alone; only a long
+   one is set smaller, and only as much as it needs. Found by testing the widest
+   name the picker can make, B♭min7♭5, which ran 68 of 470 sampled points into
+   the drawing while every ordinary name touched nothing.
+   Shrinking is safe in one pass: the label is anchored by its BOTTOM, so a
+   smaller font moves its top down and away from the shell, never toward it. */
+function fitPanChordName(){
+  const box=$("panbox"); if(!box) return;
+  const ch=box.querySelector(":scope > .pvchord"), svg=$("pvsvg");
+  if(!ch||!svg||!ch.textContent) return;
+  if(ch.dataset.fitFor===ch.textContent) return;      // only when the name changes
+  ch.style.fontSize="";
+  let shell=null;
+  svg.querySelectorAll("circle,ellipse").forEach(c=>{ const b=c.getBoundingClientRect();
+    if(!shell||b.width>shell.w) shell={w:b.width,cx:b.x+b.width/2,cy:b.y+b.height/2,r:b.width/2}; });
+  const nr=ch.getBoundingClientRect();
+  if(shell&&nr.width){
+    const dy=Math.abs(shell.cy-nr.top);
+    const edge=dy>=shell.r?box.getBoundingClientRect().right:shell.cx-Math.sqrt(shell.r*shell.r-dy*dy);
+    const room=Math.max(40,edge-nr.left-6);
+    if(nr.width>room)
+      ch.style.fontSize=(parseFloat(getComputedStyle(ch).fontSize)*room/nr.width).toFixed(2)+"px";
+  }
+  ch.dataset.fitFor=ch.textContent;
+}
 function renderPanPanel(){
   const r=renderPanPanelInner();
   if(landIdx>=0) landPanPaint();       // the landscape ring's pan wears the same settings
@@ -17033,10 +17063,12 @@ function renderPanPanel(){
      net for anything else; it cannot be the whole answer, because a frame
      that is not being composited delivers no observations at all. */
   else embedFit();
+  fitPanChordName();
   return r;
 }
 function renderPanPanelInner(){
   const box=$("panbox");
+  let panelChordName=null;
   // the phone's editor lives in the pinned deck, not the pan card — the card
   // would render under a hidden #belowrow anyway (26 Aug, ABC'd)
   /* THE PAN CARD IS THE EDITOR'S KEYBOARD on the desktop — renderEditbar
@@ -17179,43 +17211,35 @@ function renderPanPanelInner(){
   const side=(cls,html)=>{ const d=document.createElement("div");
     d.className="pvside "+cls; d.innerHTML=html; return d; };
   const left=side("pvleft",pvLeftHTML()), right=side("pvright",pvRightHTML());
-  if(panMode!=="strokes"){         // a chord has no hand: the name takes the lamps' place (Both too)
-    /* THE NAME TAKES THE GUTTER THE BADGES LEAVE, AND THE OTHER GUTTER IS GIVEN
-       BACK TO THE DRAWING (David, 12 Sep: "put the chord label in the lower-left
-       corner of that tab so it doesn't touch the handpan … there might even be a
-       few more pixels' space for the handpan to grow"). This is the rule the
-       app already wrote for landscape on 2 Sep — the progression stands BESIDE
-       the pan, in the flank's place — brought to portrait at last.
+  if(panMode!=="strokes"){         // a chord has no hand, so nothing flanks the drawing
+    /* THE DRAWING STAYS CENTRED AND THE NAME IS NOT IN THE ROW AT ALL (David,
+       12 Sep, twice: "put the chord label in the lower-left corner of that tab
+       so it doesn't touch the handpan … there might even be a few more pixels'
+       space for the handpan to grow", then — seeing it pushed sideways — "the
+       handpan should stay horizontally centered, and the chord label should
+       move left of it").
 
-       Why it grows the drawing, which took measuring to see: fitPortraitStack
-       sizes the picture as min(width the card has left, height it has left),
-       and the width subtracts EVERY .pvside in the card. On a 375pt phone that
-       was 32+10 twice — 84px taken out of the width for two columns showing
-       nothing — while 70px of height sat unused below the card, so the width
-       was always the smaller of the two and the height never mattered. That is
-       also why moving the name alone changed nothing: the name is chrome, and
-       chrome is on the HEIGHT side.
+       The first attempt gave the name the left gutter and released the right.
+       That grew the drawing, but a row of [gutter][drawing] centres the ROW,
+       so the drawing itself sat half a gutter right of the card's middle. The
+       gutters exist to hold the hand badges; a chord has no hand, so in this
+       view there is nothing to put beside the drawing and no gutter to keep.
 
-       So: the left gutter stays and keeps the badges' width (they are hidden,
-       not removed, so the column is the same width in both views and the name
-       cannot widen it); the name is placed at its lower-left, overhanging into
-       the corner the circle does not reach; and the RIGHT gutter is not
-       appended at all, which is the 42px the drawing gains. The cost, and
-       David took it knowingly: the chord view's drawing is one gutter wider
-       than the strokes view's, so switching between them is no longer the
-       exact same size — the 28 Aug rule, given up on purpose. */
-    left.style.visibility="hidden"; left.setAttribute("aria-hidden","true");
-    /* the gutter is as tall as its badges and the row centres it, so `bottom:0`
-       inside it landed the name halfway up the card; stretched, the column is
-       the drawing's own height and its foot is the drawing's foot — which is
-       the corner David asked for */
-    left.classList.add("pvnamecol");
+       So the row holds the drawing ALONE — centred by its own justify-content,
+       and free to take the whole card width — and the name is placed on the
+       CARD, out of the flow entirely, at its lower-left. Out of the flow it
+       cannot push the drawing anywhere, cannot widen a column, and costs no
+       height: fitPortraitStack subtracts every .pvside from the width and the
+       card's chrome from the height, and an absolutely positioned label is
+       neither. What stops it touching the pan is geometry, not luck — a circle
+       leaves its square's corners empty, and at the label's height the shell
+       is a hundred pixels to the right. Measured, not eyeballed. */
     const mid=document.createElement("div"); mid.className="pvmid";
     mid.appendChild(pan.firstChild);
-    const nm=document.createElement("div"); nm.className="pvchord"; nm.id="pvchord";
-    left.appendChild(nm);          // visible again by its own rule, inside a hidden column
     wrap.classList.add("sides");
-    wrap.append(left,mid);
+    wrap.append(mid);
+    panelChordName=document.createElement("div");
+    panelChordName.className="pvchord"; panelChordName.id="pvchord";
   } else {
     /* The badges FLANK the pan everywhere (David, 26 Aug — he asked for them
        back at the sides: the row underneath cost ~50px of height and he wants
@@ -17225,6 +17249,9 @@ function renderPanPanelInner(){
     wrap.append(left,pan.firstChild,right);
   }
   box.appendChild(wrap);
+  /* on the CARD, after the row, so it is positioned against the card and takes
+     no part in the row's centring */
+  if(panelChordName) box.appendChild(panelChordName);
   const tapField=panSoundField;      // top level since 2 Sep: the landscape ring taps the same way
   /* :not(.pvb) — the underside groups share .pvf so they inherit the whole
      flash machinery for free, but they carry data-b and would come through
@@ -17609,6 +17636,7 @@ function paintPanChord(pi){
   const bc=barChordLabel(bar,m); if(!bc) return;
   for(const lab of labs){ lab.innerHTML=fmtChord(bc.name); lab.classList.toggle("inf",!!bc.inf);
     lab.title=bc.inf?"Chord guessed from the notes — not notated":bc.name; }
+  fitPanChordName();      // cheap: it returns at once unless the name actually changed
   for(const f of chordFields(bc.name)) for(const g of els(pvId(f))) g.classList.add("clit");
   // chord practice: the most common way to play it, deeper (David, 2 Sep)
   if(cpOn) for(const f of cpSuggested(bc.name)) for(const g of els(pvId(f))) g.classList.add("csug");
