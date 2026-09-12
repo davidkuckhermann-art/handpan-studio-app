@@ -18244,12 +18244,14 @@ function panSevenths(p,under){
 // beat-1 stack weighs double. Shown lighter than notated chords.
 function inferChord(bar){
   const w=new Map(); let total=0;
+  const down=new Set();                 // what is struck ON the bar's first beat
   for(const ev of bar){ if(ev.v!=="field") continue;
     const m=effMidi(ev.f); if(m==null) continue;
     const pc=((m%12)+12)%12, wt=ev.t===0?2:1;
-    w.set(pc,(w.get(pc)||0)+wt); total+=wt; }
+    w.set(pc,(w.get(pc)||0)+wt); total+=wt;
+    if(ev.t===0) down.add(pc); }
   if(total<2) return null;
-  let best=null,bestScore=-1,bestRoot=null;
+  let best=null,bestScore=-1,bestRoot=null,bestDown=false,bestRootW=-1;
   const under=!topOnlyChords();
   const fits=(c,need)=>{ let cov=0,hit=0;
     for(const [pc,wt] of w) if(c.pcs.includes(pc)){cov+=wt;hit++;}
@@ -18267,9 +18269,31 @@ function inferChord(bar){
      nobody played would rename every A minor bar on a pan that has a G; and
      three of its four notes must be there, so a bare root and seventh is not
      a chord. */
+  /* WHEN TWO READINGS TIE, THE MUSIC'S OWN FOOTING DECIDES (David, 12 Sep: "I
+     think this rule ignores that the downbeat of the bar should carry more
+     weight"). His Flavourful Freestyle 1 A4 bar 2 is C E C C E A C G: C major
+     and A minor each account for seven of nine, an exact tie — and it was
+     settled by the order the pan happens to list its chords, which chose A
+     minor; A minor 7 then won outright by explaining the single G as well. So
+     one A and one G outvoted a C struck four times and standing on beat 1.
+     The tie now goes to the chord whose ROOT IS PLAYED ON THE DOWNBEAT, and
+     failing that to the root heard most. Only a TIE is decided here: a reading
+     that explains more of the bar still wins outright, and the seventh rule
+     above is untouched, so a seventh still has to keep the winning triad's
+     root — which is what turns his bars into plain C major.
+     Measured over all 21 pieces, both formulations (downbeat first, or weight
+     alone) give the SAME 17 bars, and he judged them: the Flavourful Freestyle
+     1 bars become C major, as he hears them ("3 and 5 are the dominant notes
+     here, and the A8 is just a passing note"), and Let It Be B2 bar 4 keeps
+     reading B♭maj7 into F major, because that bar splits and shows its first
+     half rather than a whole-bar name. */
   for(const tr of panTriads(myPan,under)){
-    const score=fits(tr,2);
-    if(score!=null&&score>bestScore){bestScore=score;best=tr.name;bestRoot=tr.root;}
+    const score=fits(tr,2); if(score==null) continue;
+    const rw=w.get(tr.root)||0, dn=down.has(tr.root);
+    let better=score>bestScore+1e-9;
+    if(!better&&Math.abs(score-bestScore)<1e-9)
+      better=(dn&&!bestDown)||(dn===bestDown&&rw>bestRootW);
+    if(better){ bestScore=score; best=tr.name; bestRoot=tr.root; bestDown=dn; bestRootW=rw; }
   }
   for(const sv of panSevenths(myPan,under)){
     if(!w.has(sv.sev)) continue;                       // its seventh must sound
