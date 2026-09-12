@@ -3216,6 +3216,7 @@ table.map td{padding:4px 10px 4px 0; border-bottom:1px solid var(--rule2); font-
 .tagx.octave{background:var(--steel-soft); color:var(--steel)}
 .tagx.sub{background:var(--dixie-soft); color:var(--amber-ink)}
 .tagx.drop{background:var(--dust); color:var(--ink3)}
+.tagx.foreign{background:rgba(162,26,241,.12); color:var(--hand-s)}
 table.map select{font-size:12.5px; border:1px solid var(--rule); border-radius:6px; padding:2px 4px; background:var(--card)}
 .warn{margin-top:9px; font-size:13px; color:var(--ink2); background:var(--dixie-soft);
   border:1px solid rgba(var(--dixie-rgb),.35); border-radius:9px; padding:8px 11px}
@@ -9869,7 +9870,12 @@ function foreignOf(ev){
      "keep them foreign"): fo:true with oi. Foreign in every mode wherever this pan lacks the interval; home
      on a pan that has it. The stand-in field it also carries is what an older build plays. */
   if(ev.fo&&ev.oi!=null){ for(const p of myPan.posList()){ if(p!==0&&myPan.posIv(p)===ev.oi) return {pos:p}; } const midi=myPan.ding+ev.oi; return {pos:null,midi,name:spellPc(midi%12)}; }
-  if(!keepForeign||mode!=="trans"||!MAP||!srcPan) return null;
+  /* …AND KEPT FOREIGN BY THE MAP (David, 12 Sep). This was a single session-wide
+     switch that bypassed the field map for EVERY note at once; it is now one
+     more place a note can be sent, chosen per position in the report's own
+     drop-down and stored with the other overrides. So the map is the only thing
+     that decides, and the drop-downs show the whole truth. */
+  if(mode!=="trans"||!MAP||!srcPan||MAP[ev.f]!==FOREIGN) return null;
   const iv=(ev.sub&&ev.oi!=null)?ev.oi:srcPan.posIv(ev.f); if(iv==null) return null;
   if(iv===0) return {pos:0};
   for(const p of myPan.posList()){ if(p!==0&&myPan.posIv(p)===iv) return {pos:p}; }
@@ -11857,6 +11863,13 @@ function splittable(fs,pair){
    away (9) still beats a semitone substitute in its own octave (20), which is
    his rule 1 written as arithmetic. Both floors and ceilings of d/12 are tried
    because a tritone is equally far either way and the cheaper reading wins. */
+/* KEEP THIS NOTE FOREIGN — a place a note can be sent that is not a place on the
+   pan (David, 12 Sep: "give each drop-down menu an additional option: Keep note
+   foreign"). It rides in `overrides` beside a position and the drop's null, so
+   one store holds every decision a student can make about a note. It cannot be
+   mistaken for a position: those are numbers or "b…", and isBotPos reads the
+   first character. */
+const FOREIGN="foreign";
 const OCT_MEL=10, OCT_ACC=3, COST_DROP=40, INVERT_W=4, CLASH_W=8;
 function candCost(si,ti,melody){
   const d=ti-si;
@@ -11885,13 +11898,17 @@ function lineKept(p,S,T,m){
       let bf=null,bm=-1e9;
       for(const f of byT.get(t)){ const mi=S.posMidi(f); if(mi!=null&&mi>bm){bm=mi;bf=f;} }
       return bf; }).filter(f=>f!=null);
+    /* a note kept foreign sounds at the new ding plus its own interval, which
+       is a real pitch and belongs in the line like any other */
+    const sounds=(sf,tgt)=>{ if(tgt===FOREIGN){ const iv=S.posIv(sf); return iv==null?null:T.ding+iv; }
+      return tgt==null?null:T.posMidi(tgt); };
     for(let i=1;i<seq.length;i++){
       const wa=S.posMidi(seq[i-1]), wb=S.posMidi(seq[i]);
       if(wa==null||wb==null) continue;
       tot++;
       const ta=m[seq[i-1]], tb=m[seq[i]];
       if(ta==null||tb==null) continue;
-      const xa=T.posMidi(ta), xb=T.posMidi(tb);
+      const xa=sounds(seq[i-1],ta), xb=sounds(seq[i],tb);
       if(xa==null||xb==null) continue;
       if(Math.abs((xb-xa)-(wb-wa))<=1) kept++;
     } }
@@ -11951,6 +11968,10 @@ function transpose(){
   function evalMap(m){
     let tot=0;
     for(const sf of srcFields){
+      /* a note kept foreign sounds at the pitch it should have, so it costs the
+         music nothing and takes no place on the pan — which is why it is out of
+         every term below as well */
+      if(m[sf]===FOREIGN) continue;
       if(m[sf]===null){ tot+=use.get(sf)*COST_DROP; continue; }
       const e=cands[sf].find(x=>x.tf===m[sf]); tot+=use.get(sf)*(e?e.c:60);
     }
@@ -11959,7 +11980,7 @@ function transpose(){
        the bass sitting on the tune all piece long. */
     for(const [lo,hi] of roles.order){
       const a=m[lo], b=m[hi];
-      if(a==null||b==null) continue;
+      if(a==null||b==null||a===FOREIGN||b===FOREIGN) continue;
       const w=Math.min(use.get(lo)||1,use.get(hi)||1);
       /* TWO NOTES OF ONE MOMENT MAY NOT BECOME ONE. David let two positions of
          the piece share a place (decision 3) — a place is shared over a whole
@@ -11991,7 +12012,7 @@ function transpose(){
        an awkward chord is a line in the report and a wrong pitch is not. */
     let nBad=0;
     for(const grp of stacks){
-      const ts=[...new Set(grp.map(f=>m[f]).filter(t=>t!=null))];
+      const ts=[...new Set(grp.map(f=>m[f]).filter(t=>t!=null&&t!==FOREIGN))];
       if(!splittable(ts,pair)) nBad++;
     }
     tot+=nBad/(stacks.length+1);
@@ -11999,7 +12020,7 @@ function transpose(){
        is priced, but far under an octave of travel. */
     const used=new Map();
     for(const sf of srcFields){ const t=m[sf];
-      if(t!=null){ if(used.has(t)) tot+=2; used.set(t,1); } }
+      if(t!=null&&t!==FOREIGN){ if(used.has(t)) tot+=2; used.set(t,1); } }
     return tot;
   }
   /* greedy start, then hill-climb over single reassignments — as a function of
@@ -12042,25 +12063,45 @@ function transpose(){
      line are weighed 65/35 — a piece whose every note is right but whose tune
      jumps cannot read above 65, and that is the number that used to say 96. */
   let wSum=0,fit=0; const rows=[];
-  let nEx=0,nOc=0,nSub=0,nDrop=0,nMoved=0,nStale=0;
+  let nEx=0,nOc=0,nSub=0,nDrop=0,nMoved=0,nStale=0,nFor=0,wFor=0;
   for(const sf of [...srcFields].sort((a,b)=>a-b)){
     const tf=m[sf], w=use.get(sf); wSum+=w;
-    const e=tf===null?{c:COST_DROP,r:"drop"}:cands[sf].find(x=>x.tf===tf)||{c:COST_DROP,r:"drop"};
-    const si=S.posIv(sf), ti=tf===null?null:T.posIv(tf);
+    /* A NOTE KEPT FOREIGN IS THE RIGHT NOTE IN NO PLACE. It sounds at the pitch
+       it should have — the new ding plus its own interval — so for the NOTES
+       and the LINE it is as good as an exact match. What it costs is a place to
+       strike, which is a third thing this percentage never measured, and
+       folding it into the other two read 100 % over ten notes the pan cannot
+       play — the very shape of "96 % over a wrecked melody" that the number was
+       re-based to stop. So the score keeps its two parts honest and is then
+       scaled by the share of the piece that LANDS on the pan at all. */
+    const isFor=tf===FOREIGN;
+    const e=isFor?{c:0,r:"foreign"}
+      :tf===null?{c:COST_DROP,r:"drop"}:cands[sf].find(x=>x.tf===tf)||{c:COST_DROP,r:"drop"};
+    const si=S.posIv(sf), ti=(isFor||tf===null)?null:T.posIv(tf);
     let oct=0,off=0;
     if(si!=null&&ti!=null){ const d=ti-si; oct=Math.round(d/12); off=Math.abs(d-12*oct); if(off>6){oct+=Math.sign(d);off=Math.abs(d-12*oct);} }
-    if(tf!==null&&Math.abs(oct)>=1) nMoved++;
-    const q = tf===null ? 0
+    if(!isFor&&tf!==null&&Math.abs(oct)>=1) nMoved++;
+    const q = isFor ? 1
+      : tf===null ? 0
       : (si!=null&&ti!=null&&si===ti) ? 1
       : oct===0 ? (off<=2?.8:.35)
       : (off===0 ? (Math.abs(oct)===1?.55:.3) : .25);
     fit+=w*q;
-    if(e.r==="exact")nEx++; else if(e.r==="octave")nOc++; else if(e.r==="drop")nDrop++; else nSub++;
-    const locked=sf in ov, stale=locked&&!samePlace(free[sf],tf);
+    if(isFor) wFor+=w;
+    if(e.r==="foreign")nFor++; else if(e.r==="exact")nEx++; else if(e.r==="octave")nOc++;
+    else if(e.r==="drop")nDrop++; else nSub++;
+    /* a note kept foreign is never "stale". The stale flag asks whether the rule
+       would put this note in a different PLACE, and keeping it foreign is not a
+       choice of place at all — it says the note should keep its own pitch
+       instead. Comparing the two would flag every one of these the moment they
+       were asked for. */
+    const locked=sf in ov, stale=locked&&tf!==FOREIGN&&!samePlace(free[sf],tf);
     if(stale) nStale++;
     rows.push({sf,tf,r:e.r,c:e.c,w,locked,stale,auto:free[sf],mel:isMel(sf),oct,off});
   }
   const noteFit=fit/(wSum||1), line=lineKept(piece,S,T,m);
+  /* how much of the piece a student can actually strike on this pan */
+  const playable=wSum?(wSum-wFor)/wSum:1;
   /* the warning counts chord SHAPES, not strikes — the same three notes in
      sixteen bars is one thing to learn, not sixteen things to worry about */
   const violSeen=new Set(), violStacks=[];
@@ -12072,8 +12113,9 @@ function transpose(){
     violSeen.add(k); violStacks.push(grp);
   }
   MAP=m;
-  REPORT={rows,fit:Math.round(100*(.65*noteFit+.35*line)),noteFit:Math.round(100*noteFit),
-    line:Math.round(100*line),nEx,nOc,nSub,nDrop,nMoved,nPins,nStale,violStacks,cands};
+  REPORT={rows,fit:Math.round(100*(.65*noteFit+.35*line)*playable),noteFit:Math.round(100*noteFit),
+    playable:Math.round(100*playable),
+    line:Math.round(100*line),nEx,nOc,nSub,nDrop,nMoved,nFor,nPins,nStale,violStacks,cands};
   transHands();
 }
 /* HANDS UNDER TRANSPOSITION, SILENTLY (David, 8 Sep: "for transpositions, let's do it silently for now"). A piece
@@ -18770,26 +18812,62 @@ function labelPills(withNum){
     c.textContent=(withNum&&n&&c.dataset.showsnum==="1")?(c.dataset.base+n):c.dataset.base;
   });
 }
+/* THE TWO WAYS A NOTE CAN BE MISSING (David, 12 Sep). `onlyOutOfScale` keeps
+   only the notes this pan has NOWHERE — its scale does not contain them, so it
+   cannot sound them at any octave; otherwise every note without an exact match
+   is kept, which takes in the ones the pan has only an octave away. Measured
+   over the 21 pieces against every tier-1 pan: 450 positions against 1216, and
+   the two choices differ in 277 of the 651 combinations. One shot: it writes
+   the pins and the table then says everything, rather than a mode that decides
+   again behind the drop-downs. A note that already transposes exactly is never
+   touched by either — there is nothing to keep it from. */
+function keepForeignBulk(onlyOutOfScale){
+  if(!MAP||!REPORT||!srcPan||!myPan) return;
+  const ivs=myPan.posList().filter(p=>p!==0).map(p=>myPan.posIv(p)).filter(v=>v!=null);
+  const pcs=new Set(ivs.map(v=>((v%12)+12)%12));
+  overrides[myPanId]=overrides[myPanId]||{};
+  let n=0;
+  for(const row of REPORT.rows){
+    if(row.sf===0) continue;
+    const si=srcPan.posIv(row.sf); if(si==null) continue;
+    if(ivs.includes(si)) continue;                                  // it has its own place here
+    if(onlyOutOfScale&&pcs.has(((si%12)+12)%12)) continue;          // the pan has it, an octave away
+    if(overrides[myPanId][row.sf]!==FOREIGN){ overrides[myPanId][row.sf]=FOREIGN; n++; }
+  }
+  saveOv(); refresh();
+  if(ctx) preloadBank();                     // the notes now foreign need their own samples
+  toast(n?(n+" note"+(n>1?"s":"")+" kept foreign — change any of them in the table")
+         :"Nothing to keep: every note here has its own place on this pan");
+}
 function renderReport(){
   const R=$("report");
   if(mode!=="trans"||!REPORT||reportClosed){ R.classList.add("hidden"); return; }
   R.classList.remove("hidden");
-  const tag=r=>({exact:"Exact",octave:"Octave",sub:"Substituted",drop:"Dropped"})[r]||r;
+  const tag=r=>({exact:"Exact",octave:"Octave",sub:"Substituted",drop:"Dropped",foreign:"Foreign"})[r]||r;
   let h='<button class="ib" id="repX" title="Close — it comes back when you choose For my pan">'
    +'<svg viewBox="0 0 24 24" width="13" height="13"><path d="M7 7l10 10M17 7L7 17" fill="none" '
    +'stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></button>'
    +'<div class="fitline"><span class="fitpc">'+REPORT.fit+'%</span>'
    +'<span class="fitsum"><b>'+srcPan.pan.name+' → '+myPan.pan.name+'</b><br>'
-   +REPORT.nEx+' exact · '+REPORT.nOc+' octave · '+REPORT.nSub+' substituted · '+REPORT.nDrop+' dropped'
+   +REPORT.nEx+' exact · '+REPORT.nOc+' octave · '+REPORT.nSub+' substituted'
+   +(REPORT.nFor?' · '+REPORT.nFor+' foreign':'')+' · '+REPORT.nDrop+' dropped'
    /* THE PERCENTAGE IS TWO NUMBERS, AND IT SAYS SO (David, 12 Sep, decision 6):
       the notes that arrived, and how much of the melody still moves the way it
       was written. Shown apart because they fail apart — the old single number
       read 96% over a tune that leapt a ninth four times a phrase. */
    +'<br><span class="fitparts">'+REPORT.noteFit+'% of the notes · '+REPORT.line
    +'% of the melody\u2019s steps'+(REPORT.nMoved?' · '+REPORT.nMoved+' changed octave':'')
+   +(REPORT.playable<100?' · only '+REPORT.playable+'% of it lands on this pan':'')
    +'</span></span></div>';
-  h+='<label class="keepfo" title="A note this pan lacks stays foreign instead of moving to another field: drawn as its name in the stand-in colour, on no field, sounding at the pitch it should have — so another handpan can cover it. The map below is not used while this is on.">'
-   +'<input type="checkbox" id="keepForeign"'+(keepForeign?" checked":"")+'> Keep missing notes foreign</label>';
+  /* KEEP MISSING NOTES FOREIGN — two one-shot actions now, not a switch (David,
+     12 Sep). Each one PINS the notes it names to Keep note foreign in their own
+     drop-downs, so what the table shows is the whole truth and any single note
+     can be changed back by hand afterwards. Reset above clears them like any
+     other pin. Out of scale is the narrower of the two: a note this pan has
+     nowhere at all, as against one it has only in another octave. */
+  h+='<div class="pinrow"><span class="pinnote">Keep missing notes foreign:</span>'
+    +'<button class="ctl" id="kfScale" title="Notes this pan does not have at ANY octave — it cannot sound them at all. They stay at the pitch they should have, on no field, so another handpan can cover them.">Out of this pan\u2019s scale</button>'
+    +'<button class="ctl" id="kfAll" title="Every note without an exact match here, including those the pan has only in another octave. They stay at the pitch they should have, on no field.">All that cannot be transposed directly</button></div>';
   /* A PIN OUTRANKS EVERY RULE — so there has to be a way back out (David,
      12 Sep). The count is of this PAN's pins for this piece, which is exactly
      what the button clears and exactly what the second solve left out. */
@@ -18804,11 +18882,13 @@ function renderReport(){
   const posName=p=>p===null||p===undefined?"—"
     :isBotPos(p)?"("+botIdx(p)+")":(p===0?"D":String(p));
   for(const row of REPORT.rows){
-    const tgt=row.tf===null?"—":posName(row.tf)+" · "+myPan.posLabel(row.tf);
+    const tgt=row.tf===FOREIGN?("no field · "+srcPan.posLabel(row.sf))
+      :row.tf===null?"—":posName(row.tf)+" · "+myPan.posLabel(row.tf);
     let sel='<select data-sf="'+row.sf+'"><option value="auto">auto</option>';
     for(const tf of myPan.posList())
       sel+='<option value="'+tf+'"'+((row.locked&&row.tf===tf)?" selected":"")+'>'+posName(tf)+' · '+myPan.posLabel(tf)+'</option>';
-    sel+='<option value="drop"'+(row.locked&&row.tf===null?" selected":"")+'>drop</option></select>';
+    sel+='<option value="foreign"'+((row.locked&&row.tf===FOREIGN)?" selected":"")+'>Keep note foreign</option>'
+      +'<option value="drop"'+(row.locked&&row.tf===null?" selected":"")+'>drop</option></select>';
     h+='<tr'+(row.stale?' class="stale"':'')+'><td><b>'+posName(row.sf)+'</b></td><td>'+srcPan.posLabel(row.sf)+'</td><td>→</td>'
       +'<td>'+tgt+'</td><td><span class="tagx '+row.r+'">'+tag(row.r)+'</span></td><td>'+sel+'</td></tr>';
   }
@@ -18817,8 +18897,9 @@ function renderReport(){
     h+='<div class="warn"><b>Pinned by hand, and now out of step with the rule:</b><ul>';
     for(const row of REPORT.rows){
       if(!row.stale) continue;
-      const pin=row.tf===null?'dropped':posName(row.tf)+' · '+myPan.posLabel(row.tf);
-      const auto=row.auto===null||row.auto===undefined?'dropped':posName(row.auto)+' · '+myPan.posLabel(row.auto);
+      const place=p=>p===FOREIGN?'kept foreign'
+        :(p===null||p===undefined)?'dropped':posName(p)+' · '+myPan.posLabel(p);
+      const pin=place(row.tf), auto=place(row.auto);
       h+='<li>Field <b>'+posName(row.sf)+'</b> ('+srcPan.posLabel(row.sf)+') is pinned to <b>'+pin
         +'</b> — the rule would choose <b>'+auto+'</b>.</li>';
     }
@@ -18832,13 +18913,16 @@ function renderReport(){
   if(rx) rx.addEventListener("click",()=>{ reportClosed=true; renderReport(); });
   const rr=$("repReset");
   if(rr) rr.addEventListener("click",()=>{ delete overrides[myPanId]; saveOv(); refresh(); });
-  const kf=$("keepForeign"); if(kf) kf.addEventListener("change",()=>{ keepForeign=kf.checked; render(); if(ctx) preloadBank(); });   // the notes now foreign need their samples
+  const kfs=$("kfScale"), kfa=$("kfAll");
+  if(kfs) kfs.addEventListener("click",()=>keepForeignBulk(true));
+  if(kfa) kfa.addEventListener("click",()=>keepForeignBulk(false));
   R.querySelectorAll("select").forEach(s=>s.addEventListener("change",()=>{
     /* positions are numbers OR "b1"-style strings now, so neither side of
        this may be coerced with a unary + any more */
     const sf=isBotPos(s.dataset.sf)?s.dataset.sf:+s.dataset.sf, v=s.value;
     overrides[myPanId]=overrides[myPanId]||{};
     if(v==="auto") delete overrides[myPanId][sf];
+    else if(v==="foreign") overrides[myPanId][sf]=FOREIGN;
     else overrides[myPanId][sf]=v==="drop"?null:(isBotPos(v)?v:+v);
     saveOv(); refresh();
   }));
@@ -20806,7 +20890,6 @@ let jamOn=false, jamPrev=null, jamEditSlot=-1, jam=null, jamSugOn=false;
    student asks for Transposed again (David, 26 Aug) — it is a briefing, not
    a permanent fixture, and it was un-closeable in every view. */
 let reportClosed=false;
-let keepForeign=false;   // For my pan: missing notes stay foreign instead of moving to another field (David, 8 Sep) — a session setting
 const JAM_MAX=8;   // longest progression jam mode takes for now (David, 26 Aug)
 const jpc=m=>((m%12)+12)%12;
 
