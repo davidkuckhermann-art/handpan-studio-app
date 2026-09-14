@@ -173,7 +173,12 @@ function draw(score,opts){
 }
 
 /* the clef, the key signature and the metre at a line's head */
-const SHARPS=[10,7,11,8,5,9,6], FLATS=[6,9,5,8,4,7,3];       // treble steps; bass is two lower
+/* THE KEY SIGNATURE'S PLACES, as diatonic steps with C4 = 0, in the order they are written.
+   On a bass staff the same accidental stands FOURTEEN steps lower — two octaves — which puts it
+   one staff position below its treble place, the way every engraver writes it. (Fourteen, not two:
+   two left every flat of an E flat piece hanging in the gap under the treble staff, and the bass
+   staff with none. David, 14 Sep: "the lower two flats should sit in the bass clef staff".) */
+const SHARPS=[10,7,11,8,5,9,6], FLATS=[6,9,5,8,4,7,3], BASS_DROP=14;
 function drawHead(svg,clef,fifths,top,x,sp,metre){
   if(clef==="t"){
     const gx=x, gy=top;
@@ -188,7 +193,7 @@ function drawHead(svg,clef,fifths,top,x,sp,metre){
   }
   const n=Math.abs(fifths), list=(fifths>=0?SHARPS:FLATS).slice(0,n);
   for(const s0 of list){
-    const step=s0-(clef==="t"?0:2), y=yOf(step,clef,top,sp);
+    const step=s0-(clef==="t"?0:BASS_DROP), y=yOf(step,clef,top,sp);
     if(fifths>=0) glyph(svg,G.sharp,x+sp*0.4,y,sp,{fill:"none",stroke:INK,"stroke-width":0.13,"stroke-linecap":"round"});
     else { glyph(svg,G.flatStem,x+sp*0.4,y,sp,{fill:"none",stroke:INK,"stroke-width":0.12,"stroke-linecap":"round"});
            glyph(svg,G.flatBowl,x+sp*0.4,y,sp,{fill:"none",stroke:INK,"stroke-width":0.15,"stroke-linecap":"round"}); }
