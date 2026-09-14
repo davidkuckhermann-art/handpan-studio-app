@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Score to MIDI — reads printed notation from a picture</title>
+<style>
+  :root{
+    --paper:#faf8f4; --card:#ffffff; --ink:#15130f; --soft:#6b6459; --rule:#e2ddd3;
+    --violet:#6E5A8C; --violet-soft:#f1edf6; --green:#3f8c50; --bad:#bf5346; --head:#d94f3d;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0; height:100%}
+  body{background:var(--paper); color:var(--ink); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+       display:flex; flex-direction:column}
+  header{padding:14px 20px; border-bottom:1px solid var(--rule); background:var(--card); display:flex; align-items:baseline; gap:14px; flex-wrap:wrap}
+  h1{font:600 19px/1.2 Georgia,"Times New Roman",serif; margin:0}
+  header .lede{color:var(--soft); font-size:13px; margin:0}
+  main{flex:1; display:flex; min-height:0}
+  aside{width:218px; border-right:1px solid var(--rule); background:var(--card); padding:12px; overflow:auto; flex:none}
+  section.work{flex:1; overflow:auto; padding:18px 20px 80px}
+  .drop{border:1.5px dashed var(--rule); border-radius:12px; padding:16px 10px; text-align:center; color:var(--soft);
+        font-size:13px; cursor:pointer; background:var(--paper)}
+  .drop b{display:block; color:var(--ink); margin-bottom:2px; font-size:13px}
+  .drop.over{border-color:var(--violet); background:var(--violet-soft)}
+  .page{display:flex; gap:8px; align-items:center; padding:6px; border:1px solid var(--rule); border-radius:9px;
+        margin-top:8px; background:var(--card); cursor:grab}
+  .page.sel{border-color:var(--violet); background:var(--violet-soft)}
+  .page img{width:42px; height:54px; object-fit:cover; object-position:top; border-radius:4px; border:1px solid var(--rule); background:#fff}
+  .page .nm{flex:1; min-width:0; font-size:12px}
+  .page .nm b{display:block; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .page .nm span{color:var(--soft)}
+  .page .x{border:0; background:none; color:var(--soft); font-size:16px; cursor:pointer; padding:2px 4px; line-height:1}
+  .page .x:hover{color:var(--bad)}
+  .bar{display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:14px}
+  .f{display:flex; flex-direction:column; gap:3px}
+  .f label{font-size:11px; color:var(--soft); text-transform:uppercase; letter-spacing:.06em}
+  .f input,.f select{font:14px/1.2 inherit; padding:6px 8px; border:1px solid var(--rule); border-radius:7px; background:var(--card); color:var(--ink)}
+  .f input[type=text]{width:190px}
+  .f input[type=number]{width:74px}
+  button.go{font:600 14px/1 inherit; padding:9px 16px; border-radius:8px; border:1px solid var(--ink); background:var(--ink); color:#fff; cursor:pointer}
+  button.go:hover{background:#000}
+  button.play{font:600 14px/1 inherit; padding:9px 18px; border-radius:8px; border:1px solid var(--head); background:var(--head); color:#fff; cursor:pointer}
+  button.play:hover{filter:brightness(.94)}
+  button.ghost{font:14px/1 inherit; padding:9px 13px; border-radius:8px; border:1px solid var(--rule); background:var(--card); color:var(--ink); cursor:pointer}
+  button.ghost:hover{border-color:var(--soft)}
+  button:disabled{opacity:.45; cursor:default}
+  .chips{display:flex; gap:7px; flex-wrap:wrap; margin-bottom:14px}
+  .chip{font-size:12px; padding:4px 10px; border-radius:99px; border:1px solid var(--rule); background:var(--card); color:var(--soft)}
+  .chip.vio{border-color:#d9cfe8; background:var(--violet-soft); color:var(--violet)}
+  .sheet{background:var(--card); border:1px solid var(--rule); border-radius:12px; padding:14px 8px; overflow:auto; position:relative}
+  .empty{color:var(--soft); text-align:center; padding:70px 20px; font-size:14px}
+  h2.sec{font:600 13px/1 -apple-system,sans-serif; text-transform:uppercase; letter-spacing:.07em; color:var(--soft); margin:26px 0 10px}
+  .scanpage{position:relative; margin-bottom:16px; display:inline-block; max-width:100%}
+  .scanpage img{display:block; max-width:100%; border:1px solid var(--rule); border-radius:8px; background:#fff}
+  .ph{position:absolute; width:3px; background:var(--head); border-radius:2px; opacity:0; pointer-events:none;
+      box-shadow:0 0 0 1px rgba(255,255,255,.65); transition:opacity .12s}
+  .ph.on{opacity:.92}
+  details{margin-top:20px; border-top:1px solid var(--rule); padding-top:12px}
+  summary{cursor:pointer; font-size:13px; color:var(--soft)}
+  pre{font:12px/1.5 ui-monospace,Menlo,monospace; background:var(--card); border:1px solid var(--rule);
+      border-radius:8px; padding:10px; overflow:auto; max-height:300px; color:var(--soft)}
+  .note{font-size:12px; color:var(--soft); margin:10px 0 0}
+  .chip.edit{border-color:#bfe0d8; background:#eaf6f3; color:#1f7a6b}
+  button.tiny{font-size:12px; padding:4px 10px}
+  .editbar{position:fixed; display:none; gap:4px; align-items:center; z-index:20;
+           background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:4px 6px;
+           box-shadow:0 6px 18px rgba(0,0,0,.13)}
+  .editbar span{font:600 12px/1 -apple-system,sans-serif; color:#1f7a6b; padding:0 6px 0 2px; min-width:34px}
+  .editbar button{font:15px/1 Georgia,serif; width:26px; height:26px; border:1px solid var(--rule);
+                  background:var(--paper); border-radius:6px; cursor:pointer; color:var(--ink)}
+  .editbar button:hover{border-color:#1f7a6b; color:#1f7a6b}
+</style>
+</head>
+<body>
+<header>
+  <h1>Score to MIDI</h1>
+  <p class="lede">Drop a picture of printed music. It is read note by note, drawn back as notation, and saved as a MIDI file. Click anywhere in the music to hear it from there.</p>
+</header>
+<main>
+  <aside>
+    <div class="drop" id="drop"><b>Add pages</b>drop, paste, or click
+      <input type="file" id="file" accept="image/*" multiple hidden></div>
+    <div id="pages"></div>
+    <p class="note" id="pagesNote">Several pictures become one piece, in this order.</p>
+  </aside>
+  <section class="work" id="work">
+    <div class="bar">
+      <div class="f"><label for="title">Title</label><input type="text" id="title" value="Score"></div>
+      <div class="f"><label for="tempo">Tempo ♩=</label><input type="number" id="tempo" value="100" min="20" max="300"></div>
+      <div class="f"><label for="num">Metre</label><input type="number" id="num" value="4" min="1" max="32"></div>
+      <div class="f"><label for="den">over</label>
+        <select id="den"><option>2</option><option selected>4</option><option>8</option><option>16</option></select></div>
+      <div class="f"><label for="layout">Tracks</label>
+        <select id="layout">
+          <option value="auto" selected>Auto — two staffs on one, more apart</option>
+          <option value="combined">One track (piano)</option>
+          <option value="separate">One track per staff</option>
+        </select></div>
+      <div class="f"><label for="rep">Repeats</label>
+        <select id="rep"><option value="1" selected>Play them out</option><option value="0">Ignore</option></select></div>
+      <button class="play" id="play" disabled>▶ Play</button>
+      <button class="go" id="save" disabled>Save .mid</button>
+      <button class="ghost" id="json" disabled>Save reading as JSON</button>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="chips" id="editbox"><span class="chip edit" id="editCount" style="display:none"></span>
+      <button class="ghost tiny" id="reset" style="display:none">Undo the corrections</button></div>
+    <div class="sheet" id="sheet"><p class="empty">No page yet. Drop a picture of a score on the left.</p></div>
+    <div id="scans"></div>
+    <details id="logBox"><summary>What the reader said</summary><pre id="log"></pre></details>
+  </section>
+</main>
+<div id="edit" class="editbar">
+  <span id="editName"></span>
+  <button data-a="1" title="Sharp (s)">♯</button>
+  <button data-a="0" title="Natural (n)">♮</button>
+  <button data-a="-1" title="Flat (f)">♭</button>
+  <button data-a="x" title="No accidental (backspace)">✕</button>
+</div>
+
+<script src="score-reader.js"></script>
+<script src="score-engrave.js"></script>
+<script src="score-midi.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const PAGES=[];
+let SEL=null, TEMPO_TYPED=false, SVG=null;
+
+/* ═══ the pictures ══════════════════════════════════════════════════ */
+function grayOf(data,w,h){
+  const g=new Uint8Array(w*h);
+  for(let i=0,j=0;i<g.length;i++,j+=4){ const a=data[j+3]/255;
+    g[i]=Math.round((0.299*data[j]+0.587*data[j+1]+0.114*data[j+2])*a+255*(1-a)); }
+  return g;
+}
+function addFiles(files){
+  const imgs=[...files].filter(f=>/^image\//.test(f.type));
+  if(!imgs.length) return;
+  let left=imgs.length;
+  for(const f of imgs){
+    const url=URL.createObjectURL(f), img=new Image();
+    img.onload=()=>{
+      const c=document.createElement("canvas"); c.width=img.naturalWidth; c.height=img.naturalHeight;
+      const x=c.getContext("2d",{willReadFrequently:true}); x.drawImage(img,0,0);
+      const w=c.width,h=c.height;
+      const page={name:f.name||"pasted.png",url,w,h,gray:grayOf(x.getImageData(0,0,w,h).data,w,h),score:null,scale:1};
+      PAGES.push(page); paintPages();
+      setTimeout(()=>{ readPage(page); if(!--left) done(); },0);
+    };
+    img.onerror=()=>{ if(!--left) done(); };
+    img.src=url;
+  }
+  function done(){ paintPages(); rebuild(); }
+}
+function readPage(p){
+  try{ p.score=ScoreReader.read({w:p.w,h:p.h,gray:p.gray}); }
+  catch(e){ p.score=null; p.error=String(e&&e.message||e); }
+  if(p.score&&(!p.score.bars||!p.score.bars.length)){ p.error="no staff notation found in this picture"; p.score=null; }
+  /* SMALL PRINT IS READ AT TWICE ITS SIZE, so every coordinate the reader gives back is in the
+     doubled picture; the playhead divides by this to land on the picture on screen */
+  if(p.score){ p.scale=p.score.scale||1; for(const b of p.score.bars) b._page=p; }
+}
+function paintPages(){
+  const host=$("pages"); host.innerHTML="";
+  PAGES.forEach((p,i)=>{
+    const d=document.createElement("div");
+    d.className="page"+(SEL===p?" sel":""); d.draggable=true;
+    d.innerHTML='<img alt=""><div class="nm"><b></b><span></span></div><button class="x" title="Remove">×</button>';
+    d.querySelector("img").src=p.url;
+    d.querySelector("b").textContent=p.name;
+    d.querySelector("span").textContent=p.error?p.error:p.score?(p.score.bars.length+" bars · "+p.score.notes.length+" notes"):"reading…";
+    if(p.error) d.querySelector("span").style.color="var(--bad)";
+    d.addEventListener("click",e=>{ if(e.target.classList.contains("x")) return;
+      SEL=p; paintPages(); const el=document.getElementById("scan-"+i); if(el) el.scrollIntoView({behavior:"smooth",block:"start"}); });
+    d.querySelector(".x").addEventListener("click",()=>{ stop(); PAGES.splice(i,1); if(SEL===p) SEL=null; paintPages(); rebuild(); });
+    d.addEventListener("dragstart",()=>{ window._drag=p; });
+    d.addEventListener("dragover",e=>e.preventDefault());
+    d.addEventListener("drop",e=>{ e.preventDefault(); const s=window._drag; if(!s||s===p) return;
+      stop(); PAGES.splice(PAGES.indexOf(s),1); PAGES.splice(PAGES.indexOf(p),0,s); paintPages(); rebuild(); });
+    host.appendChild(d);
+  });
+  $("pagesNote").textContent=PAGES.length>1?"Several pictures become one piece, in this order. Drag to reorder.":"Several pictures become one piece, in this order.";
+}
+/* ═══ the pages as one score ════════════════════════════════════════ */
+function merged(){
+  const ok=PAGES.filter(p=>p.score);
+  if(!ok.length) return null;
+  const bars=[], cuts=[]; let at=0, tempo=null;
+  for(const p of ok){
+    for(const c of (p.score.sectionCuts||[])) if(c>0) cuts.push(at+c);
+    /* THE BARS ARE NUMBERED ACROSS THE WHOLE PIECE, not from one on every page: two pages each
+       counting from one gave a repeat that opened at "bar 3" and closed at "bar 3". */
+    for(const b of p.score.bars){ b._gi=bars.length; b.n=bars.length+1; bars.push(b); }
+    at+=p.score.bars.length;
+    if(!tempo&&p.score.tempo) tempo=p.score.tempo;
+  }
+  const f=ok[0].score;
+  return {bars,sectionCuts:cuts,meter:f.meter,key:f.key,sp:f.sp,tempo,
+          notes:ok.flatMap(p=>p.score.notes),log:ok.flatMap(p=>[p.name+":",...p.score.log])};
+}
+const KEYS=["C","G","D","A","E","B","F♯","C♯"], KEYSF=["C","F","B♭","E♭","A♭","D♭","G♭","C♭"];
+const keyLabel=f=>(f>=0?KEYS[Math.min(7,f)]:KEYSF[Math.min(7,-f)])+" major";
+
+function rebuild(){
+  stop(); POS=0;
+  const score=merged();
+  const chips=$("chips"); chips.innerHTML="";
+  for(const id of ["save","json","play"]) $(id).disabled=!score;
+  if(!score){ $("sheet").innerHTML='<p class="empty">No page read yet. Drop a picture of a score on the left.</p>';
+              $("scans").innerHTML=""; $("log").textContent=PAGES.map(p=>p.name+": "+(p.error||"")).join("\n"); return; }
+  if(!TEMPO_TYPED&&score.tempo) $("tempo").value=score.tempo.bpm;
+  if(!$("num").dataset.typed) $("num").value=Math.max(1,Math.round(score.meter.beats*(+$("den").value)/4));
+
+  const chip=(t,cls,tip)=>{ const s=document.createElement("span"); s.className="chip "+(cls||""); s.textContent=t; if(tip) s.title=tip; chips.appendChild(s); };
+  const nq=score.bars.filter(b=>b.q).length;
+  const nrep=score.bars.filter(b=>b.repeatStart||b.repeatEnd).length;
+  let nStaff=0; for(const b of score.bars) nStaff=Math.max(nStaff,b.staffs.length);
+  chip(score.bars.length+" bars · "+score.notes.length+" notes","","Every note head found, filled and hollow.");
+  chip(nStaff+(nStaff===1?" staff":" staffs"),"",nStaff===2?"Two staffs: one instrument, two hands. They share a track unless you say otherwise.":"Each staff becomes its own track unless you say otherwise.");
+  chip(keyLabel(score.key.fifths),"","The key signature, read after the clef. Every pitch follows from it.");
+  chip(score.meter.beats+" quarter notes a bar","","What most bars add up to. The printed metre's digits are not read; set them above if they differ.");
+  if(nrep) chip("repeat signs found","","A bar line with two dots. A MIDI file has no repeats of its own, so they are played out and marked.");
+  chip(nq?(nq+(nq===1?" bar":" bars")+" uncertain"):"every bar adds up", nq?"vio":"",
+       nq?"Bars whose notes do not add up, or with a head between two positions. Violet in the notation below.":"Every bar's notes add up to the metre.");
+  if(score.tempo) chip("♩ = "+score.tempo.bpm+" read from the page","vio","The tempo mark above the first staff.");
+
+  const host=$("sheet"); host.innerHTML="";
+  SVG=Engrave.draw(score,{width:Math.max(680,host.clientWidth-20),sp:9,denom:+$("den").value});
+  SVG.style.cursor="pointer"; SVG.addEventListener("click",clickSheet);
+  SVG.addEventListener("pointerdown",downSheet);
+  host.appendChild(SVG);
+  select(null); editChip();
+  paintScans();
+  $("log").textContent=score.log.join("\n");
+}
+function paintScans(){
+  const host=$("scans"); host.innerHTML="";
+  const ok=PAGES.filter(p=>p.score);
+  if(!ok.length) return;
+  const h2=document.createElement("h2"); h2.className="sec"; h2.textContent="The pictures behind the reading";
+  host.appendChild(h2);
+  PAGES.forEach((p,i)=>{
+    if(!p.score) return;
+    const d=document.createElement("div"); d.className="scanpage"; d.id="scan-"+i;
+    const im=document.createElement("img"); im.src=p.url; im.alt=p.name;
+    const ph=document.createElement("div"); ph.className="ph";
+    im.style.cursor="pointer";
+    im.addEventListener("click",e=>clickScan(p,e));
+    d.appendChild(im); d.appendChild(ph); host.appendChild(d);
+    p._el=d; p._img=im; p._ph=ph;
+  });
+}
+/* ═══ a rudimentary piano ═══════════════════════════════════════════ */
+/* One sample, rendered once at A4 and resampled for every note: a stack of partials running
+   slightly sharp the way a string's do, a hammer's noise under the attack, and an exponential
+   decay. It is not a piano; it is enough to hear whether the reading is right. */
+let AC=null, BUF=null;
+function pianoBuffer(ctx){
+  const sr=ctx.sampleRate, len=Math.floor(sr*3.4), b=ctx.createBuffer(1,len,sr), d=b.getChannelData(0);
+  const f0=440, partials=[[1,1],[2,0.44],[3,0.22],[4,0.13],[5,0.08],[6,0.05],[7,0.03],[9,0.02]];
+  for(let i=0;i<len;i++){
+    const t=i/sr; let v=0;
+    for(const [n,g] of partials){
+      const fn=f0*n*(1+0.0005*n*n);
+      v+=g*Math.sin(2*Math.PI*fn*t)*Math.exp(-t*(1.05+0.62*n));
+    }
+    if(t<0.014) v+=(Math.random()*2-1)*0.30*(1-t/0.014);
+    d[i]=v*Math.min(1,t/0.003)*Math.exp(-t*0.72)*0.20;
+  }
+  return b;
+}
+function audio(){
+  if(!AC){ AC=new (window.AudioContext||window.webkitAudioContext)(); BUF=pianoBuffer(AC); }
+  if(AC.state==="suspended") AC.resume();
+  return AC;
+}
+/* ═══ playing what was read ═════════════════════════════════════════ */
+let PLAN=null, T0=0, TICK=null, RAF=null, LIVE=[], playing=false, SPB=0.6, POS=0;
+function opts(){
+  const s=merged()||{meter:{beats:4}};
+  return {title:$("title").value||"Score", tempo:+$("tempo").value||100,
+          beats:s.meter.beats, denom:+$("den").value,
+          layout:$("layout").value, repeats:$("rep").value==="1"};
+}
+function play(from){
+  const score=merged(); if(!score) return;
+  stop();
+  let plan; try{ plan=ScoreMidi.events(score,opts()); }catch(e){ alert(e.message||e); return; }
+  const ctx=audio();
+  PLAN=plan; SPB=60/(+$("tempo").value||100);
+  POS=Math.max(0,Math.min(plan.end-0.01,from===undefined?POS:from));
+  /* PLAYING FROM A PLACE IS PLAYING FROM ITS BEAT: the clock is simply set back, so the notes, the
+     playhead and the file all keep the one timeline they already share. */
+  T0=ctx.currentTime+0.12-POS*SPB; playing=true;
+  $("play").textContent="■ Stop";
+  let next=0; while(next<plan.notes.length&&plan.notes[next].at<POS) next++;
+  TICK=setInterval(()=>{
+    if(!playing) return;
+    const ahead=ctx.currentTime-T0+0.4;
+    while(next<PLAN.notes.length&&PLAN.notes[next].at*SPB<ahead){
+      const n=PLAN.notes[next++];
+      const src=ctx.createBufferSource(); src.buffer=BUF;
+      src.playbackRate.value=Math.pow(2,(n.midi-69)/12);
+      const g=ctx.createGain();
+      const at=T0+n.at*SPB, off=at+Math.max(0.12,n.dur*SPB);
+      g.gain.setValueAtTime(Math.min(1,n.vel/110)*0.9,at);
+      g.gain.setTargetAtTime(0.0001,off,0.09);                 // the damper falls at the note's end
+      src.connect(g); g.connect(ctx.destination);
+      src.start(at); src.stop(off+0.6);
+      LIVE.push(src);
+    }
+    if(ctx.currentTime-T0>PLAN.end*SPB+1.2){ POS=0; stop(); }
+  },25);
+  RAF=requestAnimationFrame(follow);
+}
+function stop(){
+  if(playing&&AC&&PLAN) POS=Math.max(0,Math.min(PLAN.end,(AC.currentTime-T0)/SPB));
+  playing=false;
+  if(TICK){ clearInterval(TICK); TICK=null; }
+  if(RAF){ cancelAnimationFrame(RAF); RAF=null; }
+  for(const s of LIVE){ try{ s.stop(); }catch(e){} }
+  LIVE=[];
+  $("play").textContent="▶ Play";
+  paintHeads(POS,false);                       // it stays where it stopped, ready to go on
+}
+/* the playhead, on the painted notation and on the picture it was read from */
+function follow(){
+  if(!playing||!PLAN){ return; }
+  paintHeads((AC.currentTime-T0)/SPB,true);
+  RAF=requestAnimationFrame(follow);
+}
+/* THE PLAYHEAD IS A PLACE, NOT ONLY A MOVEMENT: a click puts it somewhere and leaves it there, and
+   the space bar or the Play button starts from wherever it stands. One function paints it, whether
+   the music is running or waiting. */
+function paintHeads(beat,scroll){
+  if(!PLAN) return;
+  const rows=PLAN.rows;
+  let row=null;
+  for(const r of rows){ if(beat>=r.at&&beat<r.at+r.len){ row=r; break; } }
+  if(!row) row=rows[rows.length-1];
+  if(row){
+    const f=Math.max(0,Math.min(0.999,(beat-row.at)/row.len));
+    const a=headOnSheet(row.index,f), b=headOnScan(row.bar,f);
+    if(!scroll) return;
+    /* THE PAGE FOLLOWS THE PLAYHEAD THE READER IS LOOKING AT. Both move; scrolling to keep both in
+       view is impossible, and always choosing the painted one drags anyone watching the picture
+       straight back. Whichever is nearer the middle of the window is the one that is followed. */
+    const w=$("work").getBoundingClientRect(), mid=(w.top+w.bottom)/2;
+    const near=[a,b].filter(Boolean).sort((p,q)=>Math.abs((p[0]+p[1])/2-mid)-Math.abs((q[0]+q[1])/2-mid))[0];
+    if(near) keepInView(near[0],near[1]);
+  }
+}
+function headOnSheet(bi,f){
+  if(!SVG||!SVG.__bars) return null;
+  const b=SVG.__bars[bi]; if(!b) return null;
+  if(!SVG.__head){
+    const r=document.createElementNS("http://www.w3.org/2000/svg","rect");
+    r.setAttribute("fill","#d94f3d"); r.setAttribute("width","2.6"); r.setAttribute("rx","1.3");
+    SVG.appendChild(r); SVG.__head=r;
+  }
+  const r=SVG.__head;
+  r.setAttribute("x",(b.x+b.w*f).toFixed(1)); r.setAttribute("y",b.top.toFixed(1));
+  r.setAttribute("height",(b.bottom-b.top).toFixed(1)); r.setAttribute("opacity","0.85");
+  const t=SVG.getBoundingClientRect().top;
+  return [t+b.top,t+b.bottom];
+}
+function headOnScan(bar,f){
+  const p=bar._page; if(!p||!p._ph||!p._img) return null;
+  for(const q of PAGES) if(q._ph&&q!==p) q._ph.classList.remove("on");
+  const sc=(p.scale||1), k=p._img.clientWidth/p.w;            // the reader's pixels to the picture on screen
+  const sys=p.score.systems[bar.sysIndex];
+  if(!sys||!sys.staffs.length) return null;
+  const sp=p.score.sp;
+  const y0=(sys.staffs[0].lines[0]-1.6*sp)/sc, y1=(sys.staffs[sys.staffs.length-1].lines[4]+1.6*sp)/sc;
+  const x=(bar.x0+(bar.x1-bar.x0)*f)/sc;
+  const ph=p._ph;
+  ph.style.left=(x*k)+"px"; ph.style.top=(y0*k)+"px"; ph.style.height=((y1-y0)*k)+"px";
+  ph.classList.add("on");
+  const t=p._el.getBoundingClientRect().top;
+  return [t+y0*k,t+y1*k];
+}
+function keepInView(top,bottom){
+  const w=$("work"), r=w.getBoundingClientRect();
+  if(bottom>r.bottom-20) w.scrollTop+=bottom-(r.bottom-20);
+  else if(top<r.top+20) w.scrollTop-=(r.top+20)-top;
+}
+/* ═══ correcting a note ═════════════════════════════════════════════
+   A HEAD IN THE PAINTED SCORE IS THE NOTE ITSELF. Take hold of one and drag: it moves by staff
+   steps, the same steps the reader measured it in, and where it lands is the pitch. The three
+   buttons put a sharp, a natural or a flat in front of it. Every correction is written into the
+   reading, so the drawing, the playback and the MIDI file are all one thing and always agree. */
+let SELN=null, DRAG=null;
+const keyAcc=()=>ScoreReader.keyAccidentals((merged()||{key:{fifths:0}}).key.fifths||0);
+function repitch(n){
+  const bar=n.acc===undefined||n.acc===null?null:{[n.step]:n.acc};
+  n.midi=ScoreReader.pitchOf(n.step,keyAcc(),bar);
+  n.name=ScoreReader.noteName(n.midi);
+}
+/* WHAT IT WAS IS RECORDED BEFORE IT CHANGES, not after — the first version asked the note what it
+   used to be once it already said something else, and no correction was ever marked as one. */
+function remember(n){ if(!n._was) n._was={step:n.step,acc:n.acc,midi:n.midi}; }
+function markEdited(n){
+  if(!n._was) return;
+  n.edited=(n.step!==n._was.step)||((n.acc===undefined?null:n.acc)!==(n._was.acc===undefined?null:n._was.acc));
+}
+function sound(n){
+  const ctx=audio(); const src=ctx.createBufferSource(); src.buffer=BUF;
+  src.playbackRate.value=Math.pow(2,(n.midi-69)/12);
+  const g=ctx.createGain(); g.gain.setValueAtTime(0.85,ctx.currentTime);
+  g.gain.setTargetAtTime(0.0001,ctx.currentTime+0.55,0.12);
+  src.connect(g); g.connect(ctx.destination); src.start(); src.stop(ctx.currentTime+1.4);
+}
+function redraw(keep){
+  const sc=merged(); if(!sc) return;
+  const host=$("sheet"); const sv=host.scrollLeft, wv=$("work").scrollTop;
+  host.innerHTML="";
+  SVG=Engrave.draw(sc,{width:Math.max(680,host.clientWidth-20),sp:9,denom:+$("den").value});
+  SVG.style.cursor="pointer"; SVG.addEventListener("click",clickSheet);
+  SVG.addEventListener("pointerdown",downSheet);
+  host.appendChild(SVG); host.scrollLeft=sv; $("work").scrollTop=wv;
+  if(keep&&SELN) select(SVG.__heads.find(h=>h.note===SELN.note)||null);
+  paintHeads(POS,false);
+  editChip();
+}
+function select(h){
+  if(SELN&&SELN.head) SELN.head.setAttribute("stroke-width",SELN.head.dataset.sw||SELN.head.getAttribute("stroke-width"));
+  SELN=h||null;
+  const box=$("edit");
+  if(!SELN){ box.style.display="none"; return; }
+  const r=SELN.grip.getBoundingClientRect(), w=$("work").getBoundingClientRect();
+  box.style.display="flex";
+  /* above the note, or below it when the note is too near the top of the window */
+  const above=r.top-box.offsetHeight-8;
+  box.style.left=Math.max(6,Math.min(innerWidth-box.offsetWidth-6,Math.round(r.left+r.width/2-box.offsetWidth/2)))+"px";
+  box.style.top=Math.round(above>8?above:r.bottom+8)+"px";
+  $("editName").textContent=SELN.note.name||"";
+}
+function downSheet(e){
+  const h=e.target&&e.target.__h; if(!h) return;
+  e.preventDefault();
+  select(h);
+  remember(h.note);
+  DRAG={h,y0:e.clientY,step0:h.note.step,moved:false};
+  try{ SVG.setPointerCapture(e.pointerId); }catch(err){}
+}
+function moveSheet(e){
+  if(!DRAG) return;
+  const sp=SVG.__sp, d=Math.round((e.clientY-DRAG.y0)/(sp/2));
+  if(d!==0) DRAG.moved=true;
+  const step=DRAG.step0-d;
+  if(step===DRAG.h.note.step) return;
+  DRAG.h.note.step=step; markEdited(DRAG.h.note); repitch(DRAG.h.note);
+  const y=DRAG.h.cy+(DRAG.step0-step)*(sp/2);
+  DRAG.h.head.setAttribute("cy",y); DRAG.h.grip.setAttribute("cy",y);
+  $("editName").textContent=DRAG.h.note.name;
+}
+function upSheet(e){
+  if(!DRAG) return;
+  const moved=DRAG.moved, n=DRAG.h.note; DRAG=null;
+  try{ SVG.releasePointerCapture(e.pointerId); }catch(err){}
+  if(moved){ sound(n); redraw(true); }
+}
+function setAcc(a){
+  if(!SELN) return;
+  const n=SELN.note;
+  remember(n);
+  if(a===null) delete n.acc; else n.acc=a;
+  markEdited(n); repitch(n); sound(n); redraw(true);
+}
+function resetEdits(){
+  const sc=merged(); if(!sc) return;
+  for(const b of sc.bars) for(const st of b.staffs) for(const c of st.cols) for(const n of (c.notes||[]))
+    if(n._was){ n.step=n._was.step; if(n._was.acc===undefined) delete n.acc; else n.acc=n._was.acc;
+                n.midi=n._was.midi; n.name=ScoreReader.noteName(n.midi); delete n.edited; delete n._was; }
+  select(null); redraw(false);
+}
+function editChip(){
+  const sc=merged(); if(!sc) return;
+  let n=0; for(const b of sc.bars) for(const st of b.staffs) for(const c of st.cols) for(const x of (c.notes||[])) if(x.edited) n++;
+  const c=$("editCount"), r=$("reset");
+  c.style.display=n?"":"none"; r.style.display=n?"":"none";
+  c.textContent=n+(n===1?" note corrected":" notes corrected");
+}
+
+/* ═══ saving ════════════════════════════════════════════════════════ */
+function download(bytes,name,type){
+  const b=new Blob([bytes],{type}); const a=document.createElement("a");
+  a.href=URL.createObjectURL(b); a.download=name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+const safe=s=>(String(s).replace(/♭/g,"b").replace(/♯/g,"#").replace(/[^\w \-.]+/g,"_").trim()||"score");
+$("save").addEventListener("click",()=>{
+  const score=merged(); if(!score) return;
+  try{ download(ScoreMidi.build(score,opts()),safe($("title").value)+".mid","audio/midi"); }
+  catch(e){ alert("Could not write the file: "+(e.message||e)); }
+});
+$("json").addEventListener("click",()=>{
+  const score=merged(); if(!score) return;
+  const out={title:$("title").value,meter:score.meter,key:score.key,tempo:score.tempo,
+             sectionCuts:score.sectionCuts,bars:score.bars};
+  download(JSON.stringify(out,(k,v)=>k.startsWith("_")?undefined:v,1),safe($("title").value)+".json","application/json");
+});
+$("play").addEventListener("click",()=>{ playing?stop():play(); });
+$("reset").addEventListener("click",resetEdits);
+for(const b of document.querySelectorAll("#edit button"))
+  b.addEventListener("click",()=>setAcc(b.dataset.a==="x"?null:+b.dataset.a));
+
+/* ═══ clicking a place in the music ═════════════════════════════════ */
+/* A CLICK ANYWHERE ON A SCORE, PAINTED OR SCANNED, IS A PLACE IN TIME. The bar under the pointer
+   and how far across it the click fell give a beat; playing starts there. A bar that is played
+   twice starts at its first turn — the place on the page is what was pointed at, not the pass. */
+function seek(beat){
+  const was=playing;
+  if(was) stop();
+  POS=Math.max(0,beat);
+  if(!PLAN){ try{ PLAN=ScoreMidi.events(merged(),opts()); }catch(e){ return; } }
+  if(was) play(POS); else paintHeads(POS,false);
+}
+function beatAtBar(gi,f){
+  const rows=(PLAN&&PLAN.rows)||(()=>{ const sc=merged(); try{ return ScoreMidi.events(sc,opts()).rows; }catch(e){ return null; } })();
+  if(!rows) return null;
+  const r=rows.find(r=>r.index===gi); if(!r) return null;
+  return r.at+r.len*Math.max(0,Math.min(0.999,f));
+}
+function clickSheet(e){
+  if(!SVG||!SVG.__bars) return;
+  if(e.target&&e.target.__h) return;                 // a head is a note to correct, not a place to go
+  const r=SVG.getBoundingClientRect(), x=e.clientX-r.left, y=e.clientY-r.top;
+  const sc=merged(); if(!sc) return;
+  let best=null;
+  SVG.__bars.forEach((b,i)=>{ if(!b) return;
+    if(x>=b.x&&x<b.x+b.w&&y>=b.top-6&&y<=b.bottom+6) best={b,i}; });
+  if(!best) return;
+  const gi=(sc.bars[best.i]||{})._gi; if(gi===undefined) return;
+  const beat=beatAtBar(gi,(x-best.b.x)/best.b.w);
+  if(beat!==null) seek(beat);
+}
+function clickScan(p,e){
+  const k=p._img.clientWidth/p.w, sc=p.scale||1, sp=p.score.sp;
+  const r=p._img.getBoundingClientRect();
+  const X=((e.clientX-r.left)/k)*sc, Y=((e.clientY-r.top)/k)*sc;
+  let sys=-1;
+  p.score.systems.forEach((s,i)=>{ if(!s.staffs.length) return;
+    if(Y>=s.staffs[0].lines[0]-3*sp&&Y<=s.staffs[s.staffs.length-1].lines[4]+3*sp) sys=i; });
+  if(sys<0) return;
+  const bar=p.score.bars.find(b=>b.sysIndex===sys&&X>=b.x0&&X<=b.x1);
+  if(!bar||bar._gi===undefined) return;
+  const beat=beatAtBar(bar._gi,(X-bar.x0)/(bar.x1-bar.x0));
+  if(beat!==null) seek(beat);
+}
+/* ═══ wiring ════════════════════════════════════════════════════════ */
+const drop=$("drop");
+drop.addEventListener("click",()=>$("file").click());
+$("file").addEventListener("change",e=>{ addFiles(e.target.files); e.target.value=""; });
+drop.addEventListener("dragover",e=>{ e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave",()=>drop.classList.remove("over"));
+drop.addEventListener("drop",e=>{ e.preventDefault(); drop.classList.remove("over"); addFiles(e.dataTransfer.files); });
+document.addEventListener("dragover",e=>e.preventDefault());
+document.addEventListener("drop",e=>{ e.preventDefault(); if(e.dataTransfer&&e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+document.addEventListener("paste",e=>{ const f=[...(e.clipboardData&&e.clipboardData.files||[])]; if(f.length) addFiles(f); });
+document.addEventListener("pointermove",moveSheet);
+document.addEventListener("pointerup",upSheet);
+document.addEventListener("keydown",e=>{
+  if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+  if(SELN){
+    if(e.key==="ArrowUp"||e.key==="ArrowDown"){ e.preventDefault();
+      remember(SELN.note); SELN.note.step+=e.key==="ArrowUp"?1:-1; markEdited(SELN.note); repitch(SELN.note); sound(SELN.note); redraw(true); return; }
+    if(e.key==="s"){ setAcc(1); return; }
+    if(e.key==="f"){ setAcc(-1); return; }
+    if(e.key==="n"){ setAcc(0); return; }
+    if(e.key==="Backspace"||e.key==="Delete"){ e.preventDefault(); setAcc(null); return; }
+    if(e.key==="Escape"){ select(null); return; }
+  }
+});
+document.addEventListener("keydown",e=>{ if(e.code==="Space"&&!/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)){ e.preventDefault(); playing?stop():play(); } });
+$("tempo").addEventListener("input",()=>{ TEMPO_TYPED=true; });
+$("num").addEventListener("input",()=>{ $("num").dataset.typed="1"; });
+for(const id of ["den","layout","rep"]) $(id).addEventListener("change",rebuild);
+window.addEventListener("resize",()=>{ clearTimeout(window._rz); window._rz=setTimeout(rebuild,200); });
+</script>
+</body>
+</html>
