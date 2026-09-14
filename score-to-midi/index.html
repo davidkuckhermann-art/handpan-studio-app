@@ -39,6 +39,7 @@
   .f input,.f select{font:14px/1.2 inherit; padding:6px 8px; border:1px solid var(--rule); border-radius:7px; background:var(--card); color:var(--ink)}
   .f input[type=text]{width:190px}
   .f input[type=number]{width:74px}
+  .f input[type=range]{width:110px; accent-color:var(--head)}
   button.go{font:600 14px/1 inherit; padding:9px 16px; border-radius:8px; border:1px solid var(--ink); background:var(--ink); color:#fff; cursor:pointer}
   button.go:hover{background:#000}
   button.play{font:600 14px/1 inherit; padding:9px 18px; border-radius:8px; border:1px solid var(--head); background:var(--head); color:#fff; cursor:pointer}
@@ -66,6 +67,7 @@
   pre{font:12px/1.5 ui-monospace,Menlo,monospace; background:var(--card); border:1px solid var(--rule);
       border-radius:8px; padding:10px; overflow:auto; max-height:300px; color:var(--soft)}
   .note{font-size:12px; color:var(--soft); margin:10px 0 0}
+  .audionote{margin:0 0 10px; font-size:12px; color:var(--bad)}
   .chip.edit{border-color:#bfe0d8; background:#eaf6f3; color:#1f7a6b}
   button.tiny{font-size:12px; padding:4px 10px}
   .editbar{position:fixed; display:none; gap:4px; align-items:center; z-index:20;
@@ -105,11 +107,15 @@
       <div class="f"><label for="rep">Repeats</label>
         <select id="rep"><option value="1" selected>Play them out</option><option value="0">Ignore</option></select></div>
       <button class="play" id="play" disabled>▶ Play</button>
+      <div class="f"><label for="vol">Volume</label><input type="range" id="vol" min="0" max="300" value="100" title="How loud the piano is"></div>
+      <button class="ghost" id="test" title="Reopen the sound output and play one note">Test sound</button>
       <button class="go" id="save" disabled>Save .mid</button>
       <button class="ghost" id="json" disabled>Save reading as JSON</button>
     </div>
+    <p class="audionote" id="audioState"></p>
     <div class="chips" id="chips"></div>
     <div class="chips" id="editbox"><span class="chip edit" id="editCount" style="display:none"></span>
+      <button class="ghost tiny" id="undo" disabled>Undo</button>
       <button class="ghost tiny" id="reset" style="display:none">Undo the corrections</button></div>
     <div class="sheet" id="sheet"><p class="empty">No page yet. Drop a picture of a score on the left.</p></div>
     <div id="scans"></div>
@@ -121,7 +127,8 @@
   <button data-a="1" title="Sharp (s)">♯</button>
   <button data-a="0" title="Natural (n)">♮</button>
   <button data-a="-1" title="Flat (f)">♭</button>
-  <button data-a="x" title="No accidental (backspace)">✕</button>
+  <button data-a="x" title="No accidental (0)">✕</button>
+  <button data-a="del" title="Delete this note (backspace)">🗑</button>
 </div>
 
 <script src="score-reader.js"></script>
@@ -215,6 +222,14 @@ function rebuild(){
   if(!score){ $("sheet").innerHTML='<p class="empty">No page read yet. Drop a picture of a score on the left.</p>';
               $("scans").innerHTML=""; $("log").textContent=PAGES.map(p=>p.name+": "+(p.error||"")).join("\n"); return; }
   if(!TEMPO_TYPED&&score.tempo) $("tempo").value=score.tempo.bpm;
+  /* A BAR THAT IS NOT A WHOLE NUMBER OF QUARTER NOTES IS WRITTEN IN EIGHTHS (Für Elise in 3/8,
+     14 Sep 2026: a bar and a half of quarter notes was offered as 2/4). The reader counts a bar in
+     quarter notes and cannot see the printed digits; where the count is a whole number, 4 is the
+     honest guess and 6/8 will show as 3/4, which sounds the same and is yours to correct. */
+  if(!$("den").dataset.typed){
+    const b=score.meter.beats;
+    $("den").value=(Math.abs(b-Math.round(b))>0.01&&Math.abs(b*2-Math.round(b*2))<0.01)?"8":"4";
+  }
   if(!$("num").dataset.typed) $("num").value=Math.max(1,Math.round(score.meter.beats*(+$("den").value)/4));
 
   const chip=(t,cls,tip)=>{ const s=document.createElement("span"); s.className="chip "+(cls||""); s.textContent=t; if(tip) s.title=tip; chips.appendChild(s); };
@@ -291,11 +306,56 @@ function pianoBuffer(ctx){
   }
   return b;
 }
+/* THE SOUND IS UNLOCKED BY THE FIRST TOUCH ANYWHERE ON THE PAGE, not only by the Play button. A
+   browser will only let a page make sound from inside something the person did, and some browsers
+   refuse a context that was not started that way — the page then looks as though it is playing and
+   is silent. So the context is opened, resumed and given a silent sample on the first pointer or
+   key event, and the attempt repeats until the browser says "running". If it never does, the page
+   says so under the button instead of pretending. */
+let MASTER=null;
 function audio(){
-  if(!AC){ AC=new (window.AudioContext||window.webkitAudioContext)(); BUF=pianoBuffer(AC); }
-  if(AC.state==="suspended") AC.resume();
+  if(!AC){ AC=new (window.AudioContext||window.webkitAudioContext)();
+           MASTER=AC.createGain(); MASTER.gain.value=vol(); MASTER.connect(AC.destination); BUF=null; }
+  if(AC.state!=="running"&&AC.resume) AC.resume();
   return AC;
 }
+function out(){ audio(); return MASTER; }
+function vol(){ const v=+((document.getElementById("vol")||{}).value||100); return Math.max(0,Math.min(3,v/100)); }
+function buffer(){ if(!BUF) BUF=pianoBuffer(audio()); return BUF; }
+/* A CONTEXT IS BOUND TO THE OUTPUT IT WAS OPENED ON. Change the output afterwards - headphones in,
+   a speaker chosen, a screen with its own sound connected - and some browsers keep the old one:
+   the tab still shows its little speaker and nothing is heard. Reopening the audio is the cure, and
+   the test tone does exactly that before it sounds. */
+function resetAudio(){
+  try{ if(AC&&AC.close) AC.close(); }catch(e){}
+  AC=null; MASTER=null; BUF=null;
+}
+function testTone(){
+  stop(); resetAudio();
+  const ctx=audio(), g=ctx.createGain(), o=ctx.createOscillator();
+  o.type="triangle"; o.frequency.value=440;
+  g.gain.setValueAtTime(0.0001,ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.5,ctx.currentTime+0.02);
+  g.gain.setTargetAtTime(0.0001,ctx.currentTime+0.8,0.12);
+  o.connect(g); g.connect(out()); o.start(); o.stop(ctx.currentTime+1.4);
+  audioState("audio reopened — "+ctx.state+", "+ctx.sampleRate+" Hz. If you heard the tone, press Play; if not, the sound is going somewhere other than these speakers.");
+}
+function unlock(){
+  let ctx; try{ ctx=audio(); }catch(e){ audioState("this browser will not open an audio output"); return; }
+  try{ const s=ctx.createBufferSource(); s.buffer=ctx.createBuffer(1,1,ctx.sampleRate);
+       s.connect(ctx.destination); s.start(0); }catch(e){}
+  if(ctx.state==="running"){
+    document.removeEventListener("pointerdown",unlock,true);
+    document.removeEventListener("keydown",unlock,true);
+    audioState("");
+  }
+}
+function audioState(msg){
+  const el=$("audioState"); if(!el) return;
+  el.textContent=msg!==undefined?msg:(AC&&AC.state!=="running"?("the browser is holding the sound back ("+AC.state+") — click the page once, then Play"):"");
+}
+document.addEventListener("pointerdown",unlock,true);
+document.addEventListener("keydown",unlock,true);
 /* ═══ playing what was read ═════════════════════════════════════════ */
 let PLAN=null, T0=0, TICK=null, RAF=null, LIVE=[], playing=false, SPB=0.6, POS=0;
 function opts(){
@@ -308,7 +368,8 @@ function play(from){
   const score=merged(); if(!score) return;
   stop();
   let plan; try{ plan=ScoreMidi.events(score,opts()); }catch(e){ alert(e.message||e); return; }
-  const ctx=audio();
+  const ctx=audio(); buffer();
+  if(ctx.state!=="running"){ audioState(); }
   PLAN=plan; SPB=60/(+$("tempo").value||100);
   POS=Math.max(0,Math.min(plan.end-0.01,from===undefined?POS:from));
   /* PLAYING FROM A PLACE IS PLAYING FROM ITS BEAT: the clock is simply set back, so the notes, the
@@ -321,13 +382,13 @@ function play(from){
     const ahead=ctx.currentTime-T0+0.4;
     while(next<PLAN.notes.length&&PLAN.notes[next].at*SPB<ahead){
       const n=PLAN.notes[next++];
-      const src=ctx.createBufferSource(); src.buffer=BUF;
+      const src=ctx.createBufferSource(); src.buffer=buffer();
       src.playbackRate.value=Math.pow(2,(n.midi-69)/12);
       const g=ctx.createGain();
       const at=T0+n.at*SPB, off=at+Math.max(0.12,n.dur*SPB);
       g.gain.setValueAtTime(Math.min(1,n.vel/110)*0.9,at);
       g.gain.setTargetAtTime(0.0001,off,0.09);                 // the damper falls at the note's end
-      src.connect(g); g.connect(ctx.destination);
+      src.connect(g); g.connect(out());
       src.start(at); src.stop(off+0.6);
       LIVE.push(src);
     }
@@ -412,6 +473,19 @@ function keepInView(top,bottom){
    buttons put a sharp, a natural or a flat in front of it. Every correction is written into the
    reading, so the drawing, the playback and the MIDI file are all one thing and always agree. */
 let SELN=null, DRAG=null;
+/* ONE STEP BACK AT A TIME. Every correction pushes the way back onto a stack, and Command-Z (or
+   Control-Z) walks it. "Undo the corrections" is the other thing: it puts the whole reading back as
+   it came off the page. */
+const UNDO=[];
+function step(label,undo){ UNDO.push({label,undo}); if(UNDO.length>300) UNDO.shift(); undoChip(); }
+function snapshot(n){ const was={step:n.step,acc:n.acc,midi:n.midi,name:n.name,edited:n.edited};
+  return ()=>{ n.step=was.step; if(was.acc===undefined) delete n.acc; else n.acc=was.acc;
+               n.midi=was.midi; n.name=was.name; if(was.edited) n.edited=true; else delete n.edited; }; }
+function undoOne(){
+  const a=UNDO.pop(); if(!a) return;
+  a.undo(); undoChip(); select(null); redraw(false);
+}
+function undoChip(){ const b=$("undo"); if(b){ b.disabled=!UNDO.length; b.textContent=UNDO.length?("Undo "+UNDO[UNDO.length-1].label):"Undo"; } }
 const keyAcc=()=>ScoreReader.keyAccidentals((merged()||{key:{fifths:0}}).key.fifths||0);
 function repitch(n){
   const bar=n.acc===undefined||n.acc===null?null:{[n.step]:n.acc};
@@ -426,11 +500,11 @@ function markEdited(n){
   n.edited=(n.step!==n._was.step)||((n.acc===undefined?null:n.acc)!==(n._was.acc===undefined?null:n._was.acc));
 }
 function sound(n){
-  const ctx=audio(); const src=ctx.createBufferSource(); src.buffer=BUF;
+  const ctx=audio(); const src=ctx.createBufferSource(); src.buffer=buffer();
   src.playbackRate.value=Math.pow(2,(n.midi-69)/12);
   const g=ctx.createGain(); g.gain.setValueAtTime(0.85,ctx.currentTime);
   g.gain.setTargetAtTime(0.0001,ctx.currentTime+0.55,0.12);
-  src.connect(g); g.connect(ctx.destination); src.start(); src.stop(ctx.currentTime+1.4);
+  src.connect(g); g.connect(out()); src.start(); src.stop(ctx.currentTime+1.4);
 }
 function redraw(keep){
   const sc=merged(); if(!sc) return;
@@ -462,7 +536,7 @@ function downSheet(e){
   e.preventDefault();
   select(h);
   remember(h.note);
-  DRAG={h,y0:e.clientY,step0:h.note.step,moved:false};
+  DRAG={h,y0:e.clientY,step0:h.note.step,moved:false,back:snapshot(h.note)};
   try{ SVG.setPointerCapture(e.pointerId); }catch(err){}
 }
 function moveSheet(e){
@@ -478,22 +552,38 @@ function moveSheet(e){
 }
 function upSheet(e){
   if(!DRAG) return;
-  const moved=DRAG.moved, n=DRAG.h.note; DRAG=null;
+  const moved=DRAG.moved, n=DRAG.h.note, DRAG0=DRAG; DRAG=null;
   try{ SVG.releasePointerCapture(e.pointerId); }catch(err){}
-  if(moved){ sound(n); redraw(true); }
+  if(moved){ step("the move",DRAG0.back); sound(n); redraw(true); }
 }
 function setAcc(a){
   if(!SELN) return;
   const n=SELN.note;
-  remember(n);
+  remember(n); step(a===null?"the accidental":"the "+(a>0?"sharp":a<0?"flat":"natural"),snapshot(n));
   if(a===null) delete n.acc; else n.acc=a;
   markEdited(n); repitch(n); sound(n); redraw(true);
+}
+/* A DELETED NOTE LEAVES ITS SILENCE BEHIND. Taking a note out of a chord leaves the others; taking
+   out the last note of a column would leave a hole in the bar, so the column becomes a rest of the
+   same length and everything after it stays where it was. */
+const restKindFor=d=>d>=4?"whole":d>=2?"half":d>=1?"quarter":d>=0.5?"eighth":d>=0.25?"sixteenth":"thirtysecond";
+function deleteNote(){
+  if(!SELN) return;
+  const n=SELN.note, c=SELN.col;
+  const i=c.notes.indexOf(n); if(i<0) return;
+  const hadRest=c.rest;
+  c.notes.splice(i,1);
+  const becameRest=!c.notes.length;
+  if(becameRest) c.rest={x:c.x,dur:c.dur,kind:restKindFor(c.dur),made:true};
+  step("the delete",()=>{ c.notes.splice(i,0,n); if(becameRest) c.rest=hadRest||null; });
+  select(null); redraw(false);
 }
 function resetEdits(){
   const sc=merged(); if(!sc) return;
   for(const b of sc.bars) for(const st of b.staffs) for(const c of st.cols) for(const n of (c.notes||[]))
     if(n._was){ n.step=n._was.step; if(n._was.acc===undefined) delete n.acc; else n.acc=n._was.acc;
                 n.midi=n._was.midi; n.name=ScoreReader.noteName(n.midi); delete n.edited; delete n._was; }
+  UNDO.length=0; undoChip();
   select(null); redraw(false);
 }
 function editChip(){
@@ -524,8 +614,11 @@ $("json").addEventListener("click",()=>{
 });
 $("play").addEventListener("click",()=>{ playing?stop():play(); });
 $("reset").addEventListener("click",resetEdits);
+$("undo").addEventListener("click",undoOne);
+$("test").addEventListener("click",testTone);
+$("vol").addEventListener("input",()=>{ if(MASTER) MASTER.gain.value=vol(); });
 for(const b of document.querySelectorAll("#edit button"))
-  b.addEventListener("click",()=>setAcc(b.dataset.a==="x"?null:+b.dataset.a));
+  b.addEventListener("click",()=>{ if(b.dataset.a==="del") deleteNote(); else setAcc(b.dataset.a==="x"?null:+b.dataset.a); });
 
 /* ═══ clicking a place in the music ═════════════════════════════════ */
 /* A CLICK ANYWHERE ON A SCORE, PAINTED OR SCANNED, IS A PLACE IN TIME. The bar under the pointer
@@ -584,20 +677,24 @@ document.addEventListener("paste",e=>{ const f=[...(e.clipboardData&&e.clipboard
 document.addEventListener("pointermove",moveSheet);
 document.addEventListener("pointerup",upSheet);
 document.addEventListener("keydown",e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="z"&&!/^(INPUT|TEXTAREA)$/.test(e.target.tagName)){
+    e.preventDefault(); undoOne(); return; }
   if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
   if(SELN){
     if(e.key==="ArrowUp"||e.key==="ArrowDown"){ e.preventDefault();
-      remember(SELN.note); SELN.note.step+=e.key==="ArrowUp"?1:-1; markEdited(SELN.note); repitch(SELN.note); sound(SELN.note); redraw(true); return; }
+      remember(SELN.note); step("the move",snapshot(SELN.note)); SELN.note.step+=e.key==="ArrowUp"?1:-1; markEdited(SELN.note); repitch(SELN.note); sound(SELN.note); redraw(true); return; }
     if(e.key==="s"){ setAcc(1); return; }
     if(e.key==="f"){ setAcc(-1); return; }
     if(e.key==="n"){ setAcc(0); return; }
-    if(e.key==="Backspace"||e.key==="Delete"){ e.preventDefault(); setAcc(null); return; }
+    if(e.key==="Backspace"||e.key==="Delete"){ e.preventDefault(); deleteNote(); return; }
+    if(e.key==="0"){ setAcc(null); return; }
     if(e.key==="Escape"){ select(null); return; }
   }
 });
 document.addEventListener("keydown",e=>{ if(e.code==="Space"&&!/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)){ e.preventDefault(); playing?stop():play(); } });
 $("tempo").addEventListener("input",()=>{ TEMPO_TYPED=true; });
 $("num").addEventListener("input",()=>{ $("num").dataset.typed="1"; });
+$("den").addEventListener("change",()=>{ $("den").dataset.typed="1"; });
 for(const id of ["den","layout","rep"]) $(id).addEventListener("change",rebuild);
 window.addEventListener("resize",()=>{ clearTimeout(window._rz); window._rz=setTimeout(rebuild,200); });
 </script>

@@ -1,6 +1,6 @@
 /* score-reader.js — reads engraved staff notation from a bitmap.
 
-   COPIED, NOT SHARED. Source: Handpan Studio, score-reader.js at commit 8b12be8 (14 Sep 2026).
+   COPIED, NOT SHARED. Source: Handpan Studio, score-reader.js at commit 683726f (14 Sep 2026).
    Fixes made here do not travel back on their own, and neither do fixes made there: port them
    deliberately, one at a time, and say which commit you took. Refresh with copy-reader.command.
 
@@ -147,6 +147,48 @@ function holes(ink,w,h){              // white regions not connected to the bord
 }
 
 /* ─────────────────────────── the reading ─────────────────────────── */
+/* ─────────────────────── a clef inside a staff (14 Sep 2026) ───────────────────────
+   A CLEF SIGN INSIDE A STAFF IS THE SAME SHAPE AS THE CLEF AT THE HEAD OF A STAFF ON THE SAME PAGE.
+   That is the whole rule, and it needs no invented thresholds: every page prints its own clefs,
+   correctly located and at the right size, so a candidate is simply laid on the same small grid as
+   those and the ink compared. A first attempt asked instead whether a shape was tall and spanned
+   the staff; 685 stems with beams answered yes and twenty scores were ruined.
+
+   Für Elise's left hand climbs into the treble and comes back, and both signs used to be read as
+   notes while everything after them was read in the wrong clef — whole systems an octave and a half
+   out. Measured over all 43 pictures: a real mid-staff clef scores 0.61 to 0.79 against the page's
+   own, and the best thing that is not one scores 0.52. */
+const CLEF_GW=14, CLEF_GH=22, CLEF_MATCH=0.60;
+function clefGrid(sym,w,box){
+  const g=new Float32Array(CLEF_GW*CLEF_GH);
+  const bw=box.x1-box.x0+1, bh=box.y1-box.y0+1;
+  for(let y=0;y<CLEF_GH;y++) for(let x=0;x<CLEF_GW;x++){
+    const x0=box.x0+Math.floor(x*bw/CLEF_GW), x1=box.x0+Math.max(Math.floor((x+1)*bw/CLEF_GW),Math.floor(x*bw/CLEF_GW)+1);
+    const y0=box.y0+Math.floor(y*bh/CLEF_GH), y1=box.y0+Math.max(Math.floor((y+1)*bh/CLEF_GH),Math.floor(y*bh/CLEF_GH)+1);
+    let n=0,m=0; for(let b=y0;b<y1;b++) for(let a=x0;a<x1;a++){ m++; if(sym[b*w+a]) n++; }
+    g[y*CLEF_GW+x]=m?n/m:0;
+  }
+  return g;
+}
+function clefIoU(a,b){ let i=0,u=0; for(let k=0;k<a.length;k++){ i+=Math.min(a[k],b[k]); u+=Math.max(a[k],b[k]); } return u?i/u:0; }
+function findClefChanges(staffs,symComps,sym,w,sp,log){
+  const T={t:[],b:[]};
+  for(const st of staffs) if(st.clefBox&&T[st.clef].length<2) T[st.clef].push(clefGrid(sym,w,st.clefBox));
+  for(const st of staffs){
+    st.clefs=[{x:-1e9,clef:st.clef,topIdx:st.topIdx}];
+    for(const c of symComps){
+      if(c.x0<=st.clefX1+2*sp) continue;
+      if(c.cy<st.top-3*sp||c.cy>st.bot+3*sp) continue;
+      if(c.w<0.8*sp||c.w>3.5*sp||c.h<1.8*sp||c.h>7.5*sp) continue;
+      const g=clefGrid(sym,w,c);
+      let bestK=null,bestS=0;
+      for(const k of ["t","b"]) for(const t of T[k]){ const v=clefIoU(g,t); if(v>bestS){ bestS=v; bestK=k; } }
+      if(bestS>=CLEF_MATCH) st.clefs.push({x:c.x0,clef:bestK,topIdx:bestK==="t"?10:-2,box:c,score:+bestS.toFixed(2)});
+    }
+    st.clefs.sort((a,b)=>a.x-b.x);
+    if(st.clefs.length>1&&log) log.push(`clef change on a ${st.clef==="t"?"treble":"bass"} staff: `+st.clefs.slice(1).map(k=>k.clef+" at "+Math.round(k.x)+" ("+k.score+")").join(", "));
+  }
+}
 function readScore(img,opts){
   opts=opts||{};
   const log=[]; const {w,h}=img;
@@ -196,9 +238,12 @@ function readScore(img,opts){
     const tall=found;
     st.clef=tall&&tall.y1>st.bot+0.8*sp?"t":"b";                       // the treble clef's tail hangs below the staff; the bass clef stays inside
     st.clefX1=tall?tall.x1:st.x0+2.5*sp;
+    st.clefBox=tall||null;                       // the page's own example of this clef, for matching
     // top-line diatonic index (C4 = 0): treble top line F5 = 10, bass top line A3 = -2
     st.topIdx=st.clef==="t"?10:-2;
   }
+  findClefChanges(staffs,symComps,sym,w,sp,log);
+
   /* systems: a piano system is two staffs — a treble and the staff under it (a bass, or a treble when the
      left hand climbs). Lyrics between them can widen the gap to 14 sp. A bass never opens a system while a
      treble stands alone above it. */
@@ -587,13 +632,22 @@ function findHeads(ink,sym,symLab,symComps,w,h,st,sp,log){
      in the space under the staff read 0.4 of a step off from the top line and was flagged, though it rounded to
      the right note). Between two lines the step is half their own gap; beyond the outer lines the outer gap
      carries on. */
+  const clefAt=x=>{ let c=st.clefs?st.clefs[0]:{clef:st.clef,topIdx:st.topIdx};
+    if(st.clefs) for(const k of st.clefs) if(k.x<=x+0.3*sp) c=k; return c; };
   const L=st.lines; const posOf=y=>{ let i=0; while(i<L.length-2&&y>L[i+1]) i++; const gap=L[i+1]-L[i]; return 2*i+(y-L[i])/(gap/2); };
   for(const hd of heads){
     const pos=posOf(hd.y); const stepsDown=Math.round(pos);
-    const idx=st.topIdx-stepsDown;                              // diatonic index, C4 = 0
-    hd.step=idx; hd.clef=st.clef;
+    const cl=clefAt(hd.x);
+    const idx=cl.topIdx-stepsDown;                              // diatonic index, C4 = 0
+    hd.step=idx; hd.clef=cl.clef;
     hd.offGrid=Math.abs(pos-stepsDown);                         // 0 = dead centre, 0.5 = between two positions
     if(hd.offGrid>0.3) hd.q=true;
+  }
+  /* nothing inside a clef sign is a note: its dots and its curls erode to head-sized cores */
+  if(st.clefs&&st.clefs.length>1){
+    const boxes=st.clefs.filter(k=>k.box).map(k=>k.box);
+    for(let i=heads.length-1;i>=0;i--){ const hd=heads[i];
+      if(boxes.some(b=>hd.x>b.x0-0.3*sp&&hd.x<b.x1+1.8*sp&&hd.y>b.y0-0.4*sp&&hd.y<b.y1+0.4*sp)) heads.splice(i,1); }
   }
   // duplicates (a filled head also caught as a hole never happens; two eroded blobs of one head can): keep one per position
   heads.sort((a,b)=>a.x-b.x);
