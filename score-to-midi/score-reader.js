@@ -1,6 +1,6 @@
 /* score-reader.js — reads engraved staff notation from a bitmap.
 
-   COPIED, NOT SHARED. Source: Handpan Studio, score-reader.js at commit 19c18cd (14 Sep 2026).
+   COPIED, NOT SHARED. Source: Handpan Studio, score-reader.js at commit 8b12be8 (14 Sep 2026).
    Fixes made here do not travel back on their own, and neither do fixes made there: port them
    deliberately, one at a time, and say which commit you took. Refresh with copy-reader.command.
 
@@ -690,9 +690,15 @@ function findRepeats(ink,w,h,sys,sp,xs){
   const side=(X,dir)=>{                                  // the best column of two dots on one side
     for(const st of sys.staffs){
       const yA=st.top+1.5*sp, yB=st.top+2.5*sp;          // the two middle spaces
+      /* A DOT IS NOT A NOTE HEAD, and the reader already knows where every head is (more11 and
+         more18, 14 Sep 2026: a chord standing hard against a bar line put a head in each middle
+         space and opened a repeat that is not printed). Asked of the heads themselves, not of a
+         proxy for them. */
+      const onHead=(cx,cy)=>st.heads.some(hd=>cx>hd.hx0-0.35*sp&&cx<hd.hx1+0.35*sp&&cy>hd.hy0-0.35*sp&&cy<hd.hy1+0.35*sp);
       let best=0;
       for(let d=0.35*sp;d<=1.9*sp;d+=0.08*sp){
         const cx=X+dir*d;
+        if(onHead(cx,yA)||onHead(cx,yB)) continue;
         best=Math.max(best,Math.min(dot(cx,yA),dot(cx,yB)));
       }
       /* 0.6: a repeat dot fills its own box, a fragment of a stem or a beam does not fill both
@@ -701,7 +707,10 @@ function findRepeats(ink,w,h,sys,sp,xs){
     }
     return false;
   };
-  xs.forEach((X,i)=>{ const end=side(X,-1), start=side(X,+1); if(end||start) out.set(i,{end,start}); });
+  /* NOTHING CLOSES A REPEAT AT THE HEAD OF A SYSTEM: the first bar line of a system stands right
+     after the clef, the key and the metre, and those read as dots often enough (the Minuet's 3/4,
+     the triplet pages', a B flat in more1). Only an opening is looked for there. */
+  xs.forEach((X,i)=>{ const end=i>0&&side(X,-1), start=side(X,+1); if(end||start) out.set(i,{end,start}); });
   return out;
 }
 
@@ -758,8 +767,11 @@ function readStem(hd,sym,w,h,sp,st,forced){
     close();
     beams=Math.max(beams,runs);
   }
-  hd.beams=Math.min(beams,2);
-  hd.dur=hd.hollow?2:beams===0?1:beams===1?0.5:0.25;
+  /* EVERY BEAM HALVES THE NOTE, and the count was clamped at two — so a thirty-second read as a
+     sixteenth and Für Elise's fast passages came out at twice their length, twelve of them filling
+     a bar of three eighths twice over (14 Sep 2026). */
+  hd.beams=Math.min(beams,4);
+  hd.dur=hd.hollow?2:beams===0?1:0.5/Math.pow(2,hd.beams-1);
 }
 
 /* TUPLETS (8 Sep 2026 — a page of triplet arpeggios, David: "look at the timing in the third bar"): a small figure —
@@ -930,13 +942,55 @@ function hasTallStroke(c,sym,w,sp){                                   // for res
 function findRests(st,symComps,sp,bx0,bx1,heads){
   const out=[];
   const mid=st.lines[2];
-  for(const c of symComps){
+  /* A GLYPH A STAFF LINE CUT IN TWO IS STILL ONE GLYPH (Für Elise, 14 Sep 2026: an eighth rest
+     whose stroke crossed a line came apart into a blob above and a tail below; the blob had the
+     proportions of a half rest and put two beats into a bar of three eighths, and the rest itself
+     was never read). In this bar's band, pieces that stand in one column and are separated by no
+     more than a line's thickness are put back together before anything is named. What the line
+     ITSELF leaves behind is not a piece of anything and is dropped first: either a crumb, or the
+     band of contact where a glyph sat ON a line — solid, lying on the line, and at least three
+     times as wide as it is tall. (Amazing Grace's whole rest hangs from a line and keeps such a
+     band above it; joined to the rest it made a glyph too tall to be one, and bar 1 lost its rest
+     on both staves.) A rest that merely sits on a line has its centre half a spacing off it and
+     is no wider than twice its height, so it stays. */
+    const onLine=c=>st.lines.some(ly=>Math.abs(c.cy-ly)<=0.15*sp);
+    const remnant=c=>(c.h<=0.25*sp&&c.w<0.8*sp)||(c.n>=0.8*c.w*c.h&&c.w>=3*c.h&&onLine(c));
+    const piece=c=>c.cx>bx0-0.5*sp&&c.cx<bx1+0.5*sp&&c.cy>st.top-3.5*sp&&c.cy<st.bot+3.5*sp&&!remnant(c);
+    const parts=symComps.filter(piece).map(c=>({x0:c.x0,x1:c.x1,y0:c.y0,y1:c.y1,w:c.w,h:c.h,n:c.n,cx:c.cx,cy:c.cy,isAcc:c.isAcc,src:[c]}));
+    let joined=true;
+    while(joined){ joined=false;
+      outer:
+      for(let i=0;i<parts.length;i++) for(let j=i+1;j<parts.length;j++){
+        const a=parts[i],b=parts[j];
+        const lo=Math.max(a.x0,b.x0), hi=Math.min(a.x1,b.x1);
+        const over=hi-lo+1, narrow=Math.min(a.w,b.w);
+        const gap=Math.max(a.y0,b.y0)-Math.min(a.y1,b.y1);
+        if(over<0.4*narrow||gap>0.3*sp) continue;
+        /* …AND THE SEAM MUST LIE ON A LINE, or the rule joins things a line never touched
+           (Amazing Grace lost two durations to it on the first try). The cut was made by a staff
+           line, so the join is only allowed where one runs. */
+        const seam=(Math.min(a.y1,b.y1)+Math.max(a.y0,b.y0))/2;
+        if(!st.lines.some(ly=>Math.abs(seam-ly)<=0.35*sp)) continue;
+        const m={x0:Math.min(a.x0,b.x0),x1:Math.max(a.x1,b.x1),y0:Math.min(a.y0,b.y0),y1:Math.max(a.y1,b.y1),
+                 n:a.n+b.n,isAcc:a.isAcc||b.isAcc,src:a.src.concat(b.src)};
+        m.w=m.x1-m.x0+1; m.h=m.y1-m.y0+1;
+        m.cx=(a.cx*a.n+b.cx*b.n)/(a.n+b.n); m.cy=(a.cy*a.n+b.cy*b.n)/(a.n+b.n);
+        parts.splice(j,1); parts.splice(i,1,m); joined=true; break outer;
+      }
+    }
+  for(const c of parts){
     if(c.cx<bx0+0.3*sp||c.cx>bx1-0.3*sp) continue;
     /* touches a note: its box meets a head's box, or it stands on a head's stem. Not merely near one — a rest of
        the lower voice sits right under the upper voice's note (triplet arpeggios, page 2, 8 Sep 2026: the eighth
        rest under a dotted half and the one under a quarter were skipped, and the bar ran to nine beats) */
     if(heads.some(hd=>(c.x0<=hd.hx1+0.3*sp&&c.x1>=hd.hx0-0.3*sp&&c.y0<=hd.hy1+0.3*sp&&c.y1>=hd.hy0-0.3*sp)||(hd.stem&&Math.abs(c.cx-hd.stem.x)<0.4*sp&&c.y0<=Math.max(hd.y,hd.stem.yEnd)&&c.y1>=Math.min(hd.y,hd.stem.yEnd)))) continue;
-    if(c.w>0.8*sp&&c.w<2.0*sp&&c.h>0.3*sp&&c.h<0.9*sp&&Math.abs(c.cy-mid)<1.1*sp){
+    /* A WHOLE OR HALF REST IS A SOLID BLOCK — and that is what tells it from the piece of some
+       other glyph that happens to be block-shaped (Für Elise, 14 Sep 2026: a sixteenth rest cut in
+       two where it crosses a staff line left a top fragment of exactly these proportions, and six
+       bars gained a half rest of two beats in a bar of three eighths). Measured over the whole
+       corpus: every real whole and half rest fills 0.97 or more of its box; every fragment fills
+       0.63 or less. */
+    if(c.w>0.8*sp&&c.w<2.0*sp&&c.h>0.3*sp&&c.h<0.9*sp&&Math.abs(c.cy-mid)<1.1*sp&&c.n>=0.75*c.w*c.h){
       const dTop=Math.min(...st.lines.map(ly=>Math.abs(c.y0-ly))), dBot=Math.min(...st.lines.map(ly=>Math.abs(c.y1-ly)));
       const whole=dTop<dBot;                      // a whole rest hangs from a line, a half rest sits on one
       out.push({x:c.cx,dur:whole?4:2,kind:whole?"whole":"half"});
@@ -947,6 +1001,19 @@ function findRests(st,symComps,sp,bx0,bx1,heads){
       out.push({x:c.cx,dur:1,kind:"quarter"});
     else if(c.h>1.6*sp&&c.h<2.3*sp&&c.w>0.6*sp&&c.w<1.2*sp&&c.cy>st.top-0.5*sp&&c.cy<st.bot+0.5*sp&&c.n<0.5*c.w*c.h)
       out.push({x:c.cx,dur:0.5,kind:"eighth"});
+    /* A FLAGGED REST ADDS A SPACING AND A BLOB FOR EVERY FLAG (Für Elise, the Lawrence Rosen
+       edition, 14 Sep 2026: three quarters of its bars would not add up, every one of them short by
+       a sixteenth, because a sixteenth rest was not known and was simply passed over). One flag is
+       the eighth rest above, at about 1.8 spacings; each further flag adds a spacing and hangs
+       another blob out to the LEFT of the stroke, which is why a flagged rest is wider than the
+       quarter rest it is as tall as — the quarter rest is a narrow ribbon that doubles back, 0.9 to
+       1.1 spacings across, where a sixteenth rest measures 1.3. Measured on Elise, Brahms, the
+       Minuet and Let It Be; the quarter rest's own clause above is untouched. */
+    else if(c.h>2.4*sp&&c.h<4.4*sp&&c.w>=1.15*sp&&c.w<2.0*sp&&c.cy>st.top-0.6*sp&&c.cy<st.bot+0.6*sp
+            &&!c.isAcc&&c.n<0.42*c.w*c.h&&!hasTallStroke(c,st._sym,st._w,sp)){
+      const flags=Math.max(2,Math.min(3,Math.round(c.h/sp-0.85)));
+      out.push({x:c.cx,dur:flags===2?0.25:0.125,kind:flags===2?"sixteenth":"thirtysecond"});
+    }
   }
   out.sort((a,b)=>a.x-b.x); return out.filter((r,i)=>!i||r.x-out[i-1].x>0.4*sp);   // one rest per place (a glyph and its line remnant are two symbols)
 }
