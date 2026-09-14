@@ -52,8 +52,12 @@
   .sheet{background:var(--card); border:1px solid var(--rule); border-radius:12px; padding:14px 8px; overflow:auto; position:relative}
   .empty{color:var(--soft); text-align:center; padding:70px 20px; font-size:14px}
   h2.sec{font:600 13px/1 -apple-system,sans-serif; text-transform:uppercase; letter-spacing:.07em; color:var(--soft); margin:26px 0 10px}
-  .scanpage{position:relative; margin-bottom:16px; display:inline-block; max-width:100%}
-  .scanpage img{display:block; max-width:100%; border:1px solid var(--rule); border-radius:8px; background:#fff}
+  .scanpage{position:relative; margin-bottom:16px; display:block; width:var(--scanw,46%); max-width:100%}
+  .scanpage img{display:block; width:100%; border:1px solid var(--rule); border-radius:8px; background:#fff}
+  .sechead{display:flex; align-items:center; gap:12px; margin:26px 0 10px}
+  .sechead h2{margin:0}
+  .sechead input[type=range]{width:150px; accent-color:var(--head)}
+  .sechead .pct{font-size:12px; color:var(--soft); min-width:34px}
   .ph{position:absolute; width:3px; background:var(--head); border-radius:2px; opacity:0; pointer-events:none;
       box-shadow:0 0 0 1px rgba(255,255,255,.65); transition:opacity .12s}
   .ph.on{opacity:.92}
@@ -235,12 +239,28 @@ function rebuild(){
   paintScans();
   $("log").textContent=score.log.join("\n");
 }
+const SCANW="scoreToMidi.scanWidth";
+function scanWidth(){ const v=+(localStorage.getItem(SCANW)||46); return v>=15&&v<=100?v:46; }
+function setScanWidth(v){
+  localStorage.setItem(SCANW,String(v));
+  document.documentElement.style.setProperty("--scanw",v+"%");
+  if(playing||POS) paintHeads(POS,false);          // the playhead follows the picture's new width
+}
 function paintScans(){
   const host=$("scans"); host.innerHTML="";
   const ok=PAGES.filter(p=>p.score);
   if(!ok.length) return;
+  /* THE PICTURE IS SHOWN AT THE SIZE YOU CHOOSE, not at the size it was scanned (David, 14 Sep:
+     "it is very, very large and takes up several screens"). One width governs every page, and the
+     playhead needs no adjusting: it already measures the picture as it stands on screen. */
+  const head=document.createElement("div"); head.className="sechead";
   const h2=document.createElement("h2"); h2.className="sec"; h2.textContent="The pictures behind the reading";
-  host.appendChild(h2);
+  const sl=document.createElement("input"); sl.type="range"; sl.min="15"; sl.max="100"; sl.step="1";
+  sl.value=String(scanWidth()); sl.title="How wide the pictures are shown";
+  const pct=document.createElement("span"); pct.className="pct"; pct.textContent=sl.value+"%";
+  sl.addEventListener("input",()=>{ setScanWidth(+sl.value); pct.textContent=sl.value+"%"; });
+  head.appendChild(h2); head.appendChild(sl); head.appendChild(pct);
+  host.appendChild(head);
   PAGES.forEach((p,i)=>{
     if(!p.score) return;
     const d=document.createElement("div"); d.className="scanpage"; d.id="scan-"+i;
@@ -551,6 +571,7 @@ function clickScan(p,e){
   if(beat!==null) seek(beat);
 }
 /* ═══ wiring ════════════════════════════════════════════════════════ */
+document.documentElement.style.setProperty("--scanw",scanWidth()+"%");
 const drop=$("drop");
 drop.addEventListener("click",()=>$("file").click());
 $("file").addEventListener("change",e=>{ addFiles(e.target.files); e.target.value=""; });
