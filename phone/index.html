@@ -6231,7 +6231,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
            there can be a dialog asking if the user wants to switch the
            composition to a different instrument. That way we don't need
            another button on an already very, very cramped interface." The
-           move lives in askPieceInstrument now — see choosePan. -->
+           move lives in choosePan now: the pan in hand is the piece's (17 Sep). -->
     </div>
     <div id="edChips">
       <!-- groove workbench only (26 Aug, David: "save and load commands") -->
@@ -6826,18 +6826,6 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
        would be a control to keep in step for nothing. -->
   <div class="row" style="justify-content:flex-end;margin:12px 0 0">
     <button class="ctl" id="flowMenuClose">Done</button></div>
-</dialog>
-<!-- PICKING A PAN WHILE WRITING (David, 31 Aug): the composition may follow
-     you onto the new instrument, or stay on the one it was written for. The
-     jam's panMoveDlg above asks the same kind of question about a
-     progression; this is its sibling for a piece. -->
-<dialog id="pieceInstrDlg">
-  <h3>Write for this pan?</h3>
-  <p class="hint" id="piText"></p>
-  <div class="row" style="margin:8px 0 0">
-    <button class="ctl on" id="piYes">Write for it</button>
-    <button class="ctl" id="piNo">Keep the old one</button>
-  </div>
 </dialog>
 
 <!-- WRITING A CHORD BY HAND (David, 12 Sep: "yes, add the chord picker to the
@@ -19321,7 +19309,12 @@ function refresh(){
      the WRITTEN positions each time and nothing writes it back, so a
      second pan is always reached from the original, never from the last
      transposition's compromises. */
-  if(mode==="trans"&&piece.writtenFor!==myPanId) transpose(); else {MAP=null;REPORT=null;}
+  /* …AND NEVER WHILE EDITING (David, 17 Sep: "while in edit mode, let's simply
+     gray out the selector and have the pan always on as written, never on
+     For my pan, because it doesn't make any sense in edit mode"): the editor
+     works on the piece as written, whatever the remembered choice is, and the
+     choice comes back with reading. */
+  if(mode==="trans"&&!editing&&piece.writtenFor!==myPanId) transpose(); else {MAP=null;REPORT=null;}
   render(); renderPanPanel(); renderReport();
   updateLinkBtn();
   C=compile(piece);
@@ -31136,10 +31129,10 @@ function choosePan(id){
      composition to a different instrument. That way we don't need another
      button on an already very, very cramped interface"). Same shape as the
      jam's own askPanMove, which asks the same thing about a progression. */
-  else if(editing&&!grooveEdit&&wasId!==id&&id!==piece.writtenFor) askPieceInstrument(id);
+  else if(editing&&!grooveEdit&&wasId!==id&&id!==piece.writtenFor) edAdoptPan();   // no question: the pan in hand is the piece's (17 Sep)
   /* …and if the picker was reached through the header's pan button, the piece
      question comes up now, on the pan just chosen. Last, so the two dialogs
-     that askPanMove / askPieceInstrument may raise are not talked over. */
+     that askPanMove may raise is not talked over. */
   if(panPickThenMine){
     panPickThenMine=false;
     /* NOT IN A JAM (David, 9 Sep: "this is not actually a piece, it's a jam,
@@ -31152,36 +31145,29 @@ function choosePan(id){
        as the jam: the stage's progression is generated for the pan in hand and
        cpPanMove has just re-rooted it, so there is nothing to ask. */
     const mpd=$("myPanDlg"), gen=jamOn||(typeof cpOn!=="undefined"&&cpOn);
-    if(!gen&&mpd&&!mpd.open&&!$("panMoveDlg").open&&!$("pieceInstrDlg").open) openDlg(mpd);
+    if(!gen&&mpd&&!mpd.open&&!$("panMoveDlg").open) openDlg(mpd);
   }
 }
-let pieceInstrAsk=null;
-function askPieceInstrument(id){
-  const p=panById(id); if(!p) return;
-  pieceInstrAsk=p.id;
-  $("piText").textContent="You are writing “"+(piece.title||"Untitled")+"” for "
-    +srcPan.pan.name+". Write it for "+p.name+" instead? What you have written "
-    +"stays exactly where it is — only the instrument it is played on changes.";
-  $("piYes").textContent="Write for "+p.name;
-  $("piNo").textContent="Keep "+srcPan.pan.name;
-  openDlg($("pieceInstrDlg"));
-}
-/* THE PIECE MOVES HOUSE, AND WHAT IS WRITTEN STAYS EXACTLY WHERE IT IS —
-   grooveSetRef's rule, for the whole composition (David, 31 Aug). The score
-   is position-based, so the numbers on the page do not move: only the
-   instrument they are described against does, and the piece then sounds and
-   labels as that pan. Undoable like every other edit, and the bench redraws
-   because the cached drawing belongs to the old pan. */
-function setPieceInstrument(id){
-  const p=panById(id);
-  if(!p||p.id===piece.writtenFor) return;
-  snapshot();
-  piece.writtenFor=p.id;
+/* THE PAN IN HAND IS THE PAN THE ARRANGEMENT IS WRITTEN FOR, WHILE EDITING
+   (David, 17 Sep: "whichever pan is selected when an arrangement is saved
+   defines what the arrangement is written for … We never ask. The user can
+   simply select whatever scale they want and edit the piece. The moment it is
+   saved, the scale that is selected is saved with the arrangement"). No
+   question at the door and none from the picker: entering the editor, and
+   choosing another pan inside it, make the piece this pan's — the numbers stay
+   where they are (the score is position-based), and the editor sounds and
+   labels the pan under your hands. The "Write for this pan?" dialog of 31 Aug
+   is gone with this. Undoable when chosen mid-edit; silent at the door, where
+   nothing has been written yet. */
+function edAdoptPan(quiet){
+  if(!editing||grooveEdit||!piece||!myPanId||piece.writtenFor===myPanId) return false;
+  const p=panById(myPanId); if(!p) return false;
+  if(!quiet) snapshot();
+  piece.writtenFor=p.id; piecePanUnknown=false;
   const spec=panSpecFor(p.id); if(spec) piece.panSpec=spec; else delete piece.panSpec;
-  edPanFor=null;                       // the drawing belongs to the old pan
-  refresh();
-  if(!PHONE) try{ renderEditbar(); }catch(e){}
-  toast("Now written for "+p.name);
+  edPanFor=null;
+  if(!quiet){ refresh(); if(!PHONE) try{ renderEditbar(); }catch(e){} toast("Now written for "+p.name); }
+  return true;
 }
 function renderPanPick(){
   const L=$("ppList"); if(!L) return;
@@ -31407,10 +31393,11 @@ function paintModePills(){
      switch wakes up the moment the student chooses another instrument.
      Stated once, so all three faces of the switch say it: the phone's drawer,
      the desktop head, and the My pan sheet. */
-  let ownPan=false;
+  let ownPan=false, edLock=false;
   try{ ownPan=!jamLock&&!!piece&&myPanId===piece.writtenFor; }catch(e){ ownPan=false; }
-  const lock=jamLock||ownPan;
-  const m=jamLock?"trans":ownPan?"pos":mode;   // a jam IS on your pan, whatever `mode` says
+  try{ edLock=!jamLock&&!!editing; }catch(e){ edLock=false; }   // the editor is always As written (17 Sep)
+  const lock=jamLock||ownPan||edLock;
+  const m=jamLock?"trans":(ownPan||edLock)?"pos":mode;   // a jam IS on your pan, whatever `mode` says
   /* EVERY FACE OF ONE SETTING (10 Sep). There are two on the desktop now — the
      head's and the My pan sheet's — and one on the phone, and they are the same
      switch, so they are painted together by what they MEAN rather than by id. */
@@ -31420,6 +31407,7 @@ function paintModePills(){
     b.disabled=lock;
     b.title=jamLock?"A jam is always built on the pan you have chosen"
            :ownPan?"This piece is written for the pan you are holding — there is nothing to transpose"
+           :edLock?"The editor works on the piece as written"
                 :((typeof TIPS!=="undefined"&&TIPS[k==="pos"?"modePos":"modeTrans"])||"");
   });
   /* WHICH ROOMS CARRY THE HEAD'S PAIR: practice and edit, at David's word.
@@ -32017,6 +32005,7 @@ function boot(){
     else navDrop("edit");
     editing=!editing; $("editBtn").classList.toggle("on",editing); paintEditDoors();
     updatePracticeBtn();   // …and the room lamps: Practice rests while Edit is lit
+    if(editing&&edAdoptPan(true)) refresh();   // the pan in hand is the piece's, from the door (17 Sep)
     if(editing) stampPieceSig();     // the piece as it was, for "did anything change"
     document.body.classList.toggle("editing",editing);
     if(!editing&&window.edFxOpen) edFxOpen(false);   // the Effects pop-up leaves with the editor
@@ -32672,9 +32661,6 @@ function boot(){
   $("csImp").addEventListener("click",()=>{
     if(ctxShareLoad($("csTxt").value)) $("ctxShareDlg").close();
     else toast("That code could not be read"); });
-  $("piYes").addEventListener("click",()=>{ $("pieceInstrDlg").close();
-    const id=pieceInstrAsk; pieceInstrAsk=null; if(id) setPieceInstrument(id); });
-  $("piNo").addEventListener("click",()=>{ $("pieceInstrDlg").close(); pieceInstrAsk=null; });
   $("pmYes").addEventListener("click",()=>{ $("panMoveDlg").close(); doPanMove(); });
   $("pmNo").addEventListener("click",()=>{ $("panMoveDlg").close(); panMove=null; renderJamPanel(); });
   $("geSave").addEventListener("click",()=>grooveExit(true));
