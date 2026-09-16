@@ -16106,24 +16106,38 @@ function fitBeatGlyphs(root){
     const br=be.getBoundingClientRect(), cs=getComputedStyle(be);
     const L=br.left+parseFloat(cs.borderLeftWidth||0)+1;
     const R=br.right-parseFloat(cs.borderRightWidth||0)-1;
+    /* FINER THAN SIXTEENTHS ON THE PHONE: ONE SIZE FOR THE COUNT (David, 17 Sep,
+       "option a"): a count with more than four slots is 10px a stroke at
+       phone width, and the pairwise fit below — a floor of 42%, a stacked
+       slot drawn larger, the tab's lanes never shrunk — came out as 10, 15,
+       25, 15, 10, 25, 15 and 32px glyphs in 8px slots. Here every glyph in
+       the count takes the one scale the narrowest slot allows, no floor, in
+       the table and the tab alike; it reads as a run, which is what it is.
+       The desktop keeps the pairwise fit — its slots have the room. */
+    const dense=PHONE&&!TABLET&&be.children.length>4;
+    if(dense){
+      let g=1; for(const q of ink) if(q.h>0) g=Math.min(g,Math.max(2,q.slot-2)/(2*q.h));
+      for(const q of ink) q.g=g;
+    } else {
     for(const q of ink) if(q.h>0) q.g=Math.min(q.g,(q.c-L)/q.h,(R-q.c)/q.h,1);
-    for(let pass=0;pass<2;pass++)
-      for(let i=1;i<ink.length;i++){
-        const A=ink[i-1], B=ink[i], d=B.c-A.c;
-        if(d-(A.g*A.h+B.g*B.h)>=BEATGAP-0.01) continue;
-        const give=(A.slot<=B.slot)?A:B, keep=(give===A)?B:A;
-        if(give.h<=0) continue;
-        give.g=Math.max(FLOORG,Math.min(give.g,(d-BEATGAP-keep.g*keep.h)/give.h));
-      }
-    { const wide=Math.max.apply(null,ink.map(q=>q.slot));
-      let i=0;
-      while(i<ink.length){
-        if(ink[i].slot>=wide-0.5){ i++; continue; }
-        let j=i; while(j+1<ink.length&&ink[j+1].slot<wide-0.5) j++;
-        let mn=1; for(let k=i;k<=j;k++) mn=Math.min(mn,ink[k].g);
-        for(let k=i;k<=j;k++) ink[k].g=mn;
-        i=j+1;
-      } }
+      for(let pass=0;pass<2;pass++)
+        for(let i=1;i<ink.length;i++){
+          const A=ink[i-1], B=ink[i], d=B.c-A.c;
+          if(d-(A.g*A.h+B.g*B.h)>=BEATGAP-0.01) continue;
+          const give=(A.slot<=B.slot)?A:B, keep=(give===A)?B:A;
+          if(give.h<=0) continue;
+          give.g=Math.max(FLOORG,Math.min(give.g,(d-BEATGAP-keep.g*keep.h)/give.h));
+        }
+      { const wide=Math.max.apply(null,ink.map(q=>q.slot));
+        let i=0;
+        while(i<ink.length){
+          if(ink[i].slot>=wide-0.5){ i++; continue; }
+          let j=i; while(j+1<ink.length&&ink[j+1].slot<wide-0.5) j++;
+          let mn=1; for(let k=i;k<=j;k++) mn=Math.min(mn,ink[k].g);
+          for(let k=i;k<=j;k++) ink[k].g=mn;
+          i=j+1;
+        } }
+    }
     /* A SLOT THAT IS NOT SHRINKING IS NOT TOUCHED AT ALL (David, 31 Aug, with a
        screenshot of ordinary chords: "the numbers sat nicely on top of each
        other before, now they are bumping into each other").
@@ -20850,7 +20864,12 @@ function edPopAt(x,y){
     row.appendChild(lab);
     const opts=[[2,"2"],[3,"3"],[4,"4"],[5,"5"],[6,"6"],[7,"7"],[8,"8"],[0,"Grid"]];
     for(const [n,txt] of opts){ const b=document.createElement("button"); b.className="ctl"+((have?have.n===n:(n===0&&rg))?" on":""); b.textContent=txt;
+      /* THE PHONE STOPS AT A 32ND (David, 17 Sep: "on mobile, let's make 32nd
+         notes the fastest that can be played"): a stroke shorter than a 32nd
+         — n more than 32·(counts)/den — is greyed there with the reason. */
+      const fine=n>0&&PHONE&&!TABLET&&n>32*(rg?rg.len/rg.per:1)/mBar.den+1e-9;
       if(!rg){ b.disabled=true; b.title=why; }
+      else if(fine){ b.disabled=true; b.title="Finer than a 32nd — desktop only"; }
       else { b.title=n?n+" strokes, equally spaced, over "+tupLenWords(rg.len,rg.per):"Back on the table's grid";
         b.addEventListener("click",ev=>{ ev.stopPropagation(); edPopClose(); edSetTup(rg.bar,rg.from,rg.len,n,rg.per); }); }
       row.appendChild(b); }
