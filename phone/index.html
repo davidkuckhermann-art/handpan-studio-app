@@ -3957,6 +3957,19 @@ dialog .dsec.later{margin-top:16px}
 #editPop .tuprow .lab{font-size:12px; font-weight:700; margin-right:4px; white-space:nowrap}
 #editPop .tuprow .ctl{padding:7px 10px; min-width:34px}
 #editPop .tuprow .ctl.on{background:var(--ink); color:var(--paper)}
+/* THE PHONE'S PRESS MENU IS A CARD, NOT A ROW (David, 17 Sep, a screenshot of
+   the menu running off the right edge with "Clear / loop" and "− / Bar" broken
+   over two lines and "Set chord…" cut in half): it spans the screen with an
+   8px margin, its actions sit in a grid of three equal single-line buttons
+   (a long chord name is ellipsised, never wrapped), and the strokes row is a
+   caption over nine equal chips — 2…8 and Grid — that fit any phone width.
+   The desktop keeps its two lines. */
+body.phone #editPop.two{left:8px !important; right:8px; width:auto; max-width:none; padding:8px}
+body.phone #editPop.two .poprow{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px}
+body.phone #editPop.two .poprow .ctl{min-width:0; padding:10px 8px; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; text-align:center}
+body.phone #editPop.two .tuprow{display:grid; grid-template-columns:repeat(9,minmax(0,1fr)); gap:4px; padding-top:8px; margin-top:2px}
+body.phone #editPop.two .tuprow .lab{grid-column:1 / -1; margin:0 0 4px}
+body.phone #editPop.two .tuprow .ctl{min-width:0; padding:9px 0; font-size:14px; display:block; text-align:center}
 /* a range's GAP slot: the stretch before its first stroke in a count — no
    position, nothing to press */
 .slot.gap, .edslot.gap{cursor:default}
@@ -15880,19 +15893,20 @@ function paintLoopFrame(){
      (David, 26 Aug). Two pixels, taken off the cells, symmetrical. */
   const PAD=2;
   /* the frame walks CELLS — or, in edit mode, the SLOTS, since the loop can
-     be finer than a cell there (17 Sep); a slot's box is read against the
-     score's, because its offsetParent is the cell */
-  const bySlot=editing&&view!=="flow", scr=bySlot?sc.getBoundingClientRect():null;
+     be finer than a cell there (17 Sep). Offsets, not client rects: the
+     phone's score is zoomed, and a client rect is in screen pixels while the
+     SVG lives in the score's own units — a slot's offsetParent is its cell, so
+     its left is the cell's plus its own. */
+  const bySlot=editing&&view!=="flow";
   sc.querySelectorAll(".nrow").forEach(row=>{
     let l=Infinity,r=-Infinity,t=Infinity,b=-Infinity;
     if(bySlot){
       row.querySelectorAll(".beat > [data-rel]").forEach(sl=>{
         const p=viewFromPulse()+(+sl.dataset.rel), cell=sl.parentElement;
         if(p>=loopSec.from&&p<loopSec.to){
-          const q=sl.getBoundingClientRect(), c=cell.getBoundingClientRect();
-          const x0=q.left-scr.left+sc.scrollLeft, x1=q.right-scr.left+sc.scrollLeft;
+          const x0=cell.offsetLeft+sl.offsetLeft, x1=x0+sl.offsetWidth;
           l=Math.min(l,x0); r=Math.max(r,x1);
-          t=Math.min(t,c.top-scr.top+sc.scrollTop); b=Math.max(b,c.bottom-scr.top+sc.scrollTop);
+          t=Math.min(t,cell.offsetTop); b=Math.max(b,cell.offsetTop+cell.offsetHeight);
         }
       });
     } else row.querySelectorAll(".beat").forEach(cell=>{
@@ -20806,7 +20820,9 @@ function edPopAt(x,y){
       .filter(e=>e.t>=cIn.start&&e.t<cIn.start+cIn.len):[];
     const tAt=inBeat.length?Math.min(...inBeat.map(e=>e.t)):-1;
     const own=inBeat.find(e=>e.chord&&e.t===tAt);
-    mk(own?"Change chord — "+own.chord:"Set chord…",
+    /* the phone's card has three buttons to a line, so the chord's name is the
+       label there — "Chord · Fmaj" — rather than a sentence cut short */
+    mk(own?(PHONE&&!TABLET?"Chord · "+own.chord:"Change chord — "+own.chord):"Set chord…",
       ()=>edOpenChordPick(bi,tAt), bi>=0&&tAt>=0,
       bi<0?"Press inside a bar":"Press on a beat that has notes — a chord is written on the note it starts with");
   }
