@@ -140,6 +140,48 @@ function holes(ink,w,h){              // white regions not connected to the bord
 }
 
 /* ─────────────────────────── the reading ─────────────────────────── */
+/* ─────────────────────── a clef inside a staff (14 Sep 2026) ───────────────────────
+   A CLEF SIGN INSIDE A STAFF IS THE SAME SHAPE AS THE CLEF AT THE HEAD OF A STAFF ON THE SAME PAGE.
+   That is the whole rule, and it needs no invented thresholds: every page prints its own clefs,
+   correctly located and at the right size, so a candidate is simply laid on the same small grid as
+   those and the ink compared. A first attempt asked instead whether a shape was tall and spanned
+   the staff; 685 stems with beams answered yes and twenty scores were ruined.
+
+   Für Elise's left hand climbs into the treble and comes back, and both signs used to be read as
+   notes while everything after them was read in the wrong clef — whole systems an octave and a half
+   out. Measured over all 43 pictures: a real mid-staff clef scores 0.61 to 0.79 against the page's
+   own, and the best thing that is not one scores 0.52. */
+const CLEF_GW=14, CLEF_GH=22, CLEF_MATCH=0.60;
+function clefGrid(sym,w,box){
+  const g=new Float32Array(CLEF_GW*CLEF_GH);
+  const bw=box.x1-box.x0+1, bh=box.y1-box.y0+1;
+  for(let y=0;y<CLEF_GH;y++) for(let x=0;x<CLEF_GW;x++){
+    const x0=box.x0+Math.floor(x*bw/CLEF_GW), x1=box.x0+Math.max(Math.floor((x+1)*bw/CLEF_GW),Math.floor(x*bw/CLEF_GW)+1);
+    const y0=box.y0+Math.floor(y*bh/CLEF_GH), y1=box.y0+Math.max(Math.floor((y+1)*bh/CLEF_GH),Math.floor(y*bh/CLEF_GH)+1);
+    let n=0,m=0; for(let b=y0;b<y1;b++) for(let a=x0;a<x1;a++){ m++; if(sym[b*w+a]) n++; }
+    g[y*CLEF_GW+x]=m?n/m:0;
+  }
+  return g;
+}
+function clefIoU(a,b){ let i=0,u=0; for(let k=0;k<a.length;k++){ i+=Math.min(a[k],b[k]); u+=Math.max(a[k],b[k]); } return u?i/u:0; }
+function findClefChanges(staffs,symComps,sym,w,sp,log){
+  const T={t:[],b:[]};
+  for(const st of staffs) if(st.clefBox&&T[st.clef].length<2) T[st.clef].push(clefGrid(sym,w,st.clefBox));
+  for(const st of staffs){
+    st.clefs=[{x:-1e9,clef:st.clef,topIdx:st.topIdx}];
+    for(const c of symComps){
+      if(c.x0<=st.clefX1+2*sp) continue;
+      if(c.cy<st.top-3*sp||c.cy>st.bot+3*sp) continue;
+      if(c.w<0.8*sp||c.w>3.5*sp||c.h<1.8*sp||c.h>7.5*sp) continue;
+      const g=clefGrid(sym,w,c);
+      let bestK=null,bestS=0;
+      for(const k of ["t","b"]) for(const t of T[k]){ const v=clefIoU(g,t); if(v>bestS){ bestS=v; bestK=k; } }
+      if(bestS>=CLEF_MATCH) st.clefs.push({x:c.x0,clef:bestK,topIdx:bestK==="t"?10:-2,box:c,score:+bestS.toFixed(2)});
+    }
+    st.clefs.sort((a,b)=>a.x-b.x);
+    if(st.clefs.length>1&&log) log.push(`clef change on a ${st.clef==="t"?"treble":"bass"} staff: `+st.clefs.slice(1).map(k=>k.clef+" at "+Math.round(k.x)+" ("+k.score+")").join(", "));
+  }
+}
 function readScore(img,opts){
   opts=opts||{};
   const log=[]; const {w,h}=img;
@@ -170,28 +212,66 @@ function readScore(img,opts){
        staff's left edge that is not the brace (tall and thin) or a system line (hairline), grown rightwards while
        the next piece overlaps or touches the union in x; a key signature stands off by half a spacing or more. */
     const near=symComps.filter(c=>c.y1>st.top-2*sp&&c.y0<st.bot+2*sp&&c.w>0.3*sp&&c.h>0.5*sp&&c.h<9*sp&&!(c.h>5*sp&&c.w<1.6*sp)).sort((a,b)=>a.x0-b.x0);
-    let u=null; for(const c of near){ if(c.x0<st.x0-sp) continue; if(!u){ if(c.x0>=st.x0+3*sp) break; u={x0:c.x0,x1:c.x1,y0:c.y0,y1:c.y1,n:c.n}; continue; }
-      if(c.x0>u.x1+0.3*sp) break; u.x1=Math.max(u.x1,c.x1); u.y0=Math.min(u.y0,c.y0); u.y1=Math.max(u.y1,c.y1); u.n+=c.n; }
-    const tall=u&&u.x1>st.x0+1.4*sp?u:null;
+    /* THE UNION STARTS ON A PIECE THAT CROSSES THE STAFF (Brahms' Lullaby, 13 Sep 2026: a chord symbol and two
+       fingerings sit above the first staff at its left edge, the leftmost of them opened the union, the next
+       piece was too far right to join it, and the treble clef never got in — the melody of three systems was
+       read in the bass clef, an octave and a half low). A clef stands ON its staff; a symbol floating above it
+       is not a clef, whatever its x. */
+    const onStaff=c=>c.y1>st.top+0.5*sp&&c.y0<st.bot-0.5*sp;
+    /* …AND IT IS CLEF-SIZED, OR THE SEARCH GOES ON (a cello-and-guitar duet, 13 Sep 2026: "Vc." and "Guit." are
+       printed over the first inches of every staff, so the union was a word, never a clef, and every staff
+       fell to the bass default — the guitar's treble staffs included). A union that closes narrower than 1.4 sp
+       or shorter than 2.5 sp is not the clef; the next piece opens a new one, out to 8 sp from the staff's start. */
+    const clefLike=v=>v&&v.x1-v.x0+1>=1.4*sp&&v.y1-v.y0+1>=2.5*sp;
+    let u=null, found=null; for(const c of near){ if(c.x0<st.x0-sp) continue; if(c.x0>=st.x0+20*sp) break;   // 20 sp: "Acoustic Guitar" spelled out over the first staff puts the clef 17 sp in
+      if(u&&c.x0>u.x1+0.3*sp){ if(clefLike(u)){ found=u; break; } u=null; }
+      if(!u){ if(!onStaff(c)) continue; u={x0:c.x0,x1:c.x1,y0:c.y0,y1:c.y1,n:c.n}; continue; }
+      u.x1=Math.max(u.x1,c.x1); u.y0=Math.min(u.y0,c.y0); u.y1=Math.max(u.y1,c.y1); u.n+=c.n; }
+    if(!found&&clefLike(u)) found=u;
+    const tall=found;
     st.clef=tall&&tall.y1>st.bot+0.8*sp?"t":"b";                       // the treble clef's tail hangs below the staff; the bass clef stays inside
     st.clefX1=tall?tall.x1:st.x0+2.5*sp;
+    st.clefBox=tall||null;                       // the page's own example of this clef, for matching
     // top-line diatonic index (C4 = 0): treble top line F5 = 10, bass top line A3 = -2
     st.topIdx=st.clef==="t"?10:-2;
   }
+  findClefChanges(staffs,symComps,sym,w,sp,log);
+
   /* systems: a piano system is two staffs — a treble and the staff under it (a bass, or a treble when the
      left hand climbs). Lyrics between them can widen the gap to 14 sp. A bass never opens a system while a
      treble stands alone above it. */
+  /* A SYSTEM IS WHAT THE SYSTEM LINE JOINS (a violin-cello-piano trio, 14 Sep 2026: four staffs a system,
+     paired two and two, so every bar became two and the melody alternated between the violin and the piano).
+     Staffs joined by a continuous vertical line at their left edge — the line every score draws down the front
+     of a system — are one system, however many; the two-staff rules below serve the pages that draw none. */
+  const xL=Math.min(...staffs.map(s=>s.x0)), xR=Math.max(...staffs.map(s=>s.x0));      // the page's left edges: instrument names blur where a first system's lines begin
+  const joinedByLine=(a,b)=>{ const y0=Math.round(a.bot), y1=Math.round(b.top); if(y1-y0<2) return true;
+    for(let x=Math.max(1,Math.round(xL-2.5*sp));x<=Math.min(w-2,Math.round(xR+3*sp));x++){ let n=0; for(let y=y0;y<=y1;y++) if(inkL[y*w+x]||inkL[y*w+x-1]||inkL[y*w+x+1]) n++; if(n>=0.8*(y1-y0+1)) return true; } return false; };   // 0.8: the Canon's line covers 82 % of its gap; a system break shows 8 % at most
   for(const st of staffs){
     const prev=cur&&cur.staffs[cur.staffs.length-1];
+    if(prev&&joinedByLine(prev,st)){ cur.staffs.push(st); st.lower=true; continue; }
     /* a treble followed by a bass is one system whatever lies between (five verses of lyrics can push
        the bass 20 sp down); two trebles pair only when close */
-    if(cur&&cur.staffs.length<2&&((prev.clef==="t"&&st.clef==="b")||(st.top-prev.bot<14*sp&&!(prev.clef==="b"&&st.clef==="t")))){ cur.staffs.push(st); st.lower=true; }
+    /* a bass staff over a treble one is a system break in a piano score — and the system itself in a duet
+       (cello over guitar, 13 Sep 2026): paired when they stand close, under 8 sp apart */
+    if(cur&&cur.staffs.length<2&&((prev.clef==="t"&&st.clef==="b")||(st.top-prev.bot<14*sp&&!(prev.clef==="b"&&st.clef==="t"))||(prev.clef==="b"&&st.clef==="t"&&st.top-prev.bot<8*sp))){ cur.staffs.push(st); st.lower=true; }
     else { cur={staffs:[st]}; systems.push(cur); }
   }
   /* heads first, from the clef on — so the signature steps can tell a note from a glyph */
   for(const sys of systems) for(const st of sys.staffs){
     st._eroded=eroded; st._erR=erR; st._inkL=inkL; st._sym=sym; st._w=w; st._compById=compById; st.keyX1=st.clefX1; st.heads=findHeads(ink,sym,symLab,symComps,w,h,st,sp,log);
     for(const hd of st.heads) readStem(hd,sym,w,h,sp,st);
+    /* THE HEADS OF ONE CHORD SHARE ONE STEM (Brahms' Lullaby, 13 Sep 2026: a two-note chord's upper head saw the
+       stem run as far down to the lower head as up to its end, chose down, and read its beam off the other head —
+       a quarter chord as an eighth). Heads in one column whose stems disagree take the stem whose far end lies
+       farthest outside the chord, and read their beams again from it. */
+    { const cols=[]; for(const hd of st.heads.slice().sort((a,b)=>a.x-b.x)){ const c=cols[cols.length-1]; if(c&&Math.abs(hd.x-c[0].x)<0.3*sp) c.push(hd); else cols.push([hd]); }
+      for(const c of cols){ const withStem=c.filter(hd=>hd.stem); if(withStem.length<2||new Set(withStem.map(hd=>hd.stem.dir)).size<2) continue;
+        const xs=withStem.map(hd=>hd.stem.x); if(Math.max(...xs)-Math.min(...xs)>0.3*sp) continue;   // two stem lines are two voices, not a chord (the triplet pages' dotted eighth over a triplet head)
+        const yMin=Math.min(...c.map(hd=>hd.hy0)), yMax=Math.max(...c.map(hd=>hd.hy1));
+        const out=hd=>hd.stem.dir<0?yMin-hd.stem.yEnd:hd.stem.yEnd-yMax;
+        const pick=withStem.reduce((a,hd)=>out(hd)>out(a)?hd:a).stem;
+        for(const hd of c) if(hd.stem!==pick) readStem(hd,sym,w,h,sp,st,Object.assign({},pick,{len:Math.abs(pick.yEnd-hd.y)})); } }
   }
   /* key signature: accidentals right after the clef, glyphs 2–3.4 sp tall */
   for(const sys of systems) for(const st of sys.staffs){
@@ -225,6 +305,7 @@ function readScore(img,opts){
       headsAll.push(...st.heads);
     }
     sys.bars=findBarLines(inkL,w,h,sys,sp);
+    sys.repeats=findRepeats(ink,w,h,sys,sp,sys.bars);
   }
   for(const sys of systems) for(const st of sys.staffs){ st.heads=st.heads.filter(hd=>!hd.fake); findTuplets(st,symComps,sp,sym,w); findDots(st,symComps,sp,sys.bars); findAccidentals(st,symComps,sp,sym,w); }
 
@@ -235,6 +316,8 @@ function readScore(img,opts){
       const bx0=sys.bars[bi], bx1=sys.bars[bi+1]; n++;
       if(sys.wideBars&&sys.wideBars.some(x=>Math.abs(x-bx1)<0.5*sp)&&bi<sys.bars.length-2) sectionCuts.push(n);   // the bar ends at a double bar
       const bar={n,sysIndex:systems.indexOf(sys),x0:bx0,x1:bx1,staffs:[],q:false};
+      { const R=sys.repeats; if(R){ const a=R.get(bi), b=R.get(bi+1);
+          if(a&&a.start) bar.repeatStart=true; if(b&&b.end) bar.repeatEnd=true; } }
       for(const st of sys.staffs){
         const heads=st.heads.filter(hd=>hd.x>bx0&&hd.x<bx1&&hd.dur).sort((a,b)=>a.x-b.x);
         const rests=findRests(st,symComps,sp,bx0,bx1,heads);
@@ -282,7 +365,7 @@ function readScore(img,opts){
             else { C.onset=Math.max(...C.heads.map(at)); for(const hd of C.heads){ const d=dirOf(hd)||(clock[-1]<=clock[1]?-1:1); clock[d]=C.onset+hd.dur; } }   // a voice entering into the other's column starts with it: its rests were not found or not written
             onset=Math.max(clock[-1],clock[1]);
           } else { C.onset=onset; onset+=C.dur; }
-          C.notes=C.heads.map(hd=>({midi:hd.midi,name:hd.name,step:hd.step,hollow:hd.hollow,q:!!hd.q,acc:hd.acc})).sort((a,b)=>b.step-a.step);
+          C.notes=C.heads.map(hd=>({midi:hd.midi,name:hd.name,step:hd.step,hollow:hd.hollow,q:!!hd.q,acc:hd.acc,dur:hd.dur,beams:hd.beams||0,stem:hd.stem?hd.stem.dir:0})).sort((a,b)=>b.step-a.step);
           C.q=C.heads.some(hd=>hd.q);
           C.x=Math.round(C.x);
         }
@@ -294,11 +377,36 @@ function readScore(img,opts){
   /* the meter is what most bars add up to; a bar that does not is uncertain */
   const plain=bars.flatMap(b=>b.staffs.filter(s=>!s.cols.some(c=>c.rest&&c.rest.kind==="whole")).map(s=>s.total)).filter(t=>t>0);
   const beats=plain.length?modeOf(plain.map(t=>Math.round(t*4)/4)):4;
-  for(const b of bars) for(const s of b.staffs){ if(s.twoVoice) continue; let t=0; for(const c of s.cols){ if(c.rest&&c.rest.kind==="whole") c.dur=beats; c.onset=t; t+=c.dur; } s.total=t; }
+  const clock=s=>{ let t=0; for(const c of s.cols){ if(c.rest&&c.rest.kind==="whole") c.dur=beats; c.onset=t; if(!c.held) t+=c.dur; } s.total=t; };
+  for(const b of bars) for(const s of b.staffs){ if(s.twoVoice) continue; clock(s);
+    /* A BAR THAT ADDS UP TO MORE THAN THE METER HOLDS TWO VOICES ON THE SAME STEMS (Brahms' Lullaby, 13 Sep 2026:
+       a half note held over a line of eighths, a dotted quarter over two quarter rests, a dotted half under four
+       eighths — the voices cross in pitch, so the stem rule of the triplet pages cannot part them). The surplus
+       is what the other voice was holding: first the rests that coincide with a note (they are that voice's
+       silence while this one plays), then the other rests, then the long hollow notes themselves, taken in
+       that order until the bar adds up exactly — and only then; a bar that will not add up stays flagged. */
+    const over=s.total-beats; if(over>0.01){
+      /* the long hollow notes first, then the rests that coincide with a note that still moves the clock, then
+         the other rests (Brahms' bass, 13 Sep 2026: the quarter rest under a held dotted half is the second
+         voice's own first beat, not surplus — dropped, the voice started a beat early; caught by the generated
+         truth's round trip) */
+      const isNote=c=>!c.rest&&c.heads&&c.heads.length; const longHollow=c=>isNote(c)&&c.dur>=2&&c.heads.every(hd=>hd.hollow);
+      const near=r=>s.cols.some(c=>isNote(c)&&!longHollow(c)&&Math.abs(c.x-r.x)<0.45*sp);
+      const cands=[...s.cols.filter(longHollow), ...s.cols.filter(c=>c.rest&&near(c)), ...s.cols.filter(c=>c.rest&&!near(c))];
+      let left=over; const take=new Set(); for(const c of cands){ if(c.dur<=left+0.01&&!take.has(c)){ take.add(c); left-=c.dur; if(left<0.01) break; } }
+      if(Math.abs(left)<0.01&&take.size){ for(const c of take) if(c.rest) c.gone=true; else c.held=true; s.cols=s.cols.filter(c=>!c.gone); clock(s); } } }
+  /* AN INCOMPLETE FIRST BAR IS A PICKUP (David, 13 Sep 2026: "the beginning is incorrect" — Lul-la, two eighths,
+     sat at the front of a full bar with two beats of silence after). When every staff of the page's first bar
+     stops short of the meter by the same amount, its notes belong at the END of the bar. */
+  { const b=bars[0]; if(b){ const ts=b.staffs.filter(s=>s.cols.length).map(s=>s.total); const t0=ts[0];
+      if(ts.length&&t0>0&&t0<beats-0.01&&ts.every(t=>Math.abs(t-t0)<0.01)){ const shift=beats-t0; b.pickup=shift;
+        for(const s of b.staffs){ for(const c of s.cols) c.onset+=shift; if(s.cols.length) s.total=beats; } } } }
   for(const b of bars){ for(const s of b.staffs){ s.q=s.cols.length>0&&Math.abs(s.total-beats)>0.01; if(s.total===0) s.empty=true; }
     b.q=b.staffs.some(s=>s.q||s.cols.some(c=>c.q)); }
   const notes=headsAll.map(hd=>({x:Math.round(hd.x),y:Math.round(hd.y),midi:hd.midi,name:hd.name,dur:hd.dur,hollow:hd.hollow,q:!!hd.q,clef:hd.clef}));
   log.push(`${notes.length} heads · ${bars.length} bars · meter ${beats} beats · ${bars.filter(b=>b.q).length} bars uncertain${sectionCuts.length?` · sections end after bar ${sectionCuts.join(", ")}`:""}`);
+  { const rs=bars.filter(b=>b.repeatStart).map(b=>b.n), re=bars.filter(b=>b.repeatEnd).map(b=>b.n);
+    if(rs.length||re.length) log.push(`repeats: ${rs.length?"open at bar "+rs.join(", "):"open at the start"} · ${re.length?"close after bar "+re.join(", "):"none closed"}`); }
   const tempo=readTempo(staffs[0],symComps,ink,w,sp); if(tempo) log.push(`tempo ♩ = ${tempo.bpm}`);
   return {tempo,sp,w,h,systems:systems.map(s=>({staffs:s.staffs.map(st=>({clef:st.clef,lines:st.lines,x0:st.x0,x1:st.x1,key:st.keyFifths})),bars:s.bars})),
           bars,sectionCuts,meter:{beats},key:{fifths},notes,log,
@@ -432,7 +540,11 @@ function findHeads(ink,sym,symLab,symComps,w,h,st,sp,log){
     let c=hc[i]; let box={x0:c.x0,x1:c.x1,y0:c.y0,y1:c.y1};
     for(let j=i+1;j<hc.length;j++){
       const d=hc[j]; if(used.has(j)) continue;
-      if(Math.abs(d.cx-c.cx)<0.6*sp&&Math.min(Math.abs(d.y0-c.y1),Math.abs(c.y0-d.y1))<0.45*sp&&d.h<0.5*sp&&c.h<0.5*sp){ used.add(j);   // halves are short; whole holes stacked a third apart are two heads
+      /* …and the two halves of ONE head are still one head tall: four fragments in a column are two hollow heads
+         a third apart, each cut by a staff line, and merging all four made a box too tall to be a head, so the
+         chord was thrown away (Brahms' Lullaby, 13 Sep 2026 — page 2 opened on a half-note chord and lost it) */
+      const wouldBe=Math.max(box.y1,d.y1)-Math.min(box.y0,d.y0)+1;
+      if(wouldBe<=1.05*sp&&Math.abs(d.cx-c.cx)<0.6*sp&&Math.min(Math.abs(d.y0-c.y1),Math.abs(c.y0-d.y1))<0.45*sp&&d.h<0.5*sp&&c.h<0.5*sp){ used.add(j);   // halves are short; whole holes stacked a third apart are two heads
         box.x0=Math.min(box.x0,d.x0); box.x1=Math.max(box.x1,d.x1); box.y0=Math.min(box.y0,d.y0); box.y1=Math.max(box.y1,d.y1); }
     }
     const members=new Set([c]); for(const j of used) if(hc[j]&&Math.abs(hc[j].cx-c.cx)<0.6*sp&&hc[j].cy>=box.y0-1&&hc[j].cy<=box.y1+1) members.add(hc[j]);
@@ -508,12 +620,27 @@ function findHeads(ink,sym,symLab,symComps,w,h,st,sp,log){
     heads.push({x:(box.x0+box.x1)/2,y:(box.y0+box.y1)/2,hx0:box.x0-e,hx1:box.x1+e,hy0:box.y0-e,hy1:box.y1+e,hollow:true});
   }
   /* pitch from the staff position: half a spacing per step */
+  /* A HEAD'S POSITION IS MEASURED FROM THE NEAREST STAFF LINE, at that staff's own spacing (a piano piece in F,
+     13 Sep 2026: its lines stood 15, 15.5, 15.5, 15 apart while the page's spacing came out 15.5, so every note
+     in the space under the staff read 0.4 of a step off from the top line and was flagged, though it rounded to
+     the right note). Between two lines the step is half their own gap; beyond the outer lines the outer gap
+     carries on. */
+  const clefAt=x=>{ let c=st.clefs?st.clefs[0]:{clef:st.clef,topIdx:st.topIdx};
+    if(st.clefs) for(const k of st.clefs) if(k.x<=x+0.3*sp) c=k; return c; };
+  const L=st.lines; const posOf=y=>{ let i=0; while(i<L.length-2&&y>L[i+1]) i++; const gap=L[i+1]-L[i]; return 2*i+(y-L[i])/(gap/2); };
   for(const hd of heads){
-    const stepsDown=Math.round((hd.y-st.top)/(sp/2));
-    const idx=st.topIdx-stepsDown;                              // diatonic index, C4 = 0
-    hd.step=idx; hd.clef=st.clef;
-    hd.offGrid=Math.abs((hd.y-st.top)/(sp/2)-stepsDown);        // 0 = dead centre, 0.5 = between two positions
+    const pos=posOf(hd.y); const stepsDown=Math.round(pos);
+    const cl=clefAt(hd.x);
+    const idx=cl.topIdx-stepsDown;                              // diatonic index, C4 = 0
+    hd.step=idx; hd.clef=cl.clef;
+    hd.offGrid=Math.abs(pos-stepsDown);                         // 0 = dead centre, 0.5 = between two positions
     if(hd.offGrid>0.3) hd.q=true;
+  }
+  /* nothing inside a clef sign is a note: its dots and its curls erode to head-sized cores */
+  if(st.clefs&&st.clefs.length>1){
+    const boxes=st.clefs.filter(k=>k.box).map(k=>k.box);
+    for(let i=heads.length-1;i>=0;i--){ const hd=heads[i];
+      if(boxes.some(b=>hd.x>b.x0-0.3*sp&&hd.x<b.x1+1.8*sp&&hd.y>b.y0-0.4*sp&&hd.y<b.y1+0.4*sp)) heads.splice(i,1); }
   }
   // duplicates (a filled head also caught as a hole never happens; two eroded blobs of one head can): keep one per position
   heads.sort((a,b)=>a.x-b.x);
@@ -579,10 +706,66 @@ function findBarLines(ink,w,h,sys,sp){
   return xs;
 }
 
+/* ─────────────────────────── repeat signs (14 Sep 2026) ───────────────────────────
+   A REPEAT SIGN IS A BAR LINE WITH TWO DOTS IN THE TWO MIDDLE SPACES of a staff; dots on its
+   LEFT close a repeat, dots on its RIGHT open one. Nothing else in a score puts two blobs a
+   spacing apart, centred on the same column, hard against a bar line — a staccato pair sits on
+   notes, and a colon of a word is not on the staff at all.
+
+   The dots are looked for on EVERY staff of the system and one staff is enough: a piano's lower
+   staff often carries them where the upper one is crowded, and a scan can lose one of four. */
+function findRepeats(ink,w,h,sys,sp,xs){
+  const out=new Map();
+  /* A DOT IS SMALL AND ROUND, and that is what tells it from a note head (the Canon and Carol of
+     the Bells, 14 Sep 2026: a third written just after a bar line puts a head in each of the two
+     middle spaces at one column, and seven bars of the Canon opened a repeat that is not there).
+     Both runs through the centre, across and down, stay inside two thirds of a spacing — a head
+     is a spacing and a quarter wide. */
+  const run=(cx,cy,dx,dy)=>{ let n=0, x=Math.round(cx), y=Math.round(cy);
+    if(x<0||y<0||x>=w||y>=h||!ink[y*w+x]) return 99;
+    for(const s of [1,-1]){ let a=x+(s>0?dx:-dx), b=y+(s>0?dy:-dy);
+      while(a>=0&&b>=0&&a<w&&b<h&&ink[b*w+a]&&n<4*sp){ n++; a+=s>0?dx:-dx; b+=s>0?dy:-dy; } }
+    return n+1;
+  };
+  const dot=(cx,cy)=>{                                   // ink filling a small box, as a dot does
+    const r=Math.max(1,Math.round(0.15*sp)); let n=0,m=0;
+    for(let y=Math.round(cy-r);y<=Math.round(cy+r);y++) for(let x=Math.round(cx-r);x<=Math.round(cx+r);x++){
+      if(y<0||y>=h||x<0||x>=w) return 0; m++; if(ink[y*w+x]) n++; }
+    if(run(cx,cy,1,0)>0.66*sp||run(cx,cy,0,1)>0.66*sp) return 0;      // wider than a dot: a head, a stem, a beam
+    return m?n/m:0;
+  };
+  const side=(X,dir)=>{                                  // the best column of two dots on one side
+    for(const st of sys.staffs){
+      const yA=st.top+1.5*sp, yB=st.top+2.5*sp;          // the two middle spaces
+      /* A DOT IS NOT A NOTE HEAD, and the reader already knows where every head is (more11 and
+         more18, 14 Sep 2026: a chord standing hard against a bar line put a head in each middle
+         space and opened a repeat that is not printed). Asked of the heads themselves, not of a
+         proxy for them. */
+      const onHead=(cx,cy)=>st.heads.some(hd=>cx>hd.hx0-0.35*sp&&cx<hd.hx1+0.35*sp&&cy>hd.hy0-0.35*sp&&cy<hd.hy1+0.35*sp);
+      let best=0;
+      for(let d=0.35*sp;d<=1.9*sp;d+=0.08*sp){
+        const cx=X+dir*d;
+        if(onHead(cx,yA)||onHead(cx,yB)) continue;
+        best=Math.max(best,Math.min(dot(cx,yA),dot(cx,yB)));
+      }
+      /* 0.6: a repeat dot fills its own box, a fragment of a stem or a beam does not fill both
+         boxes a spacing apart at ONE column — the minimum of the pair is what is tested */
+      if(best>=0.6) return true;
+    }
+    return false;
+  };
+  /* NOTHING CLOSES A REPEAT AT THE HEAD OF A SYSTEM: the first bar line of a system stands right
+     after the clef, the key and the metre, and those read as dots often enough (the Minuet's 3/4,
+     the triplet pages', a B flat in more1). Only an opening is looked for there. */
+  xs.forEach((X,i)=>{ const end=i>0&&side(X,-1), start=side(X,+1); if(end||start) out.set(i,{end,start}); });
+  return out;
+}
+
 /* ─────────────────────────── stems, beams, flags ─────────────────────────── */
-function readStem(hd,sym,w,h,sp,st){
+function readStem(hd,sym,w,h,sp,st,forced){
   const span=v=>Math.max(0,Math.min(h-1,Math.round(v)));
-  let best=null;
+  let best=forced||null;
+  if(!forced)
   // a stem is a thin vertical run touching the head's left or right edge
   for(const side of [1,-1]){
     for(let k=0;k<=Math.round(0.25*sp)+1;k++){
@@ -605,6 +788,16 @@ function readStem(hd,sym,w,h,sp,st){
   let beams=0;
   for(const off of [0.55,1.1]) for(const side of [1,-1]){
     const x=Math.round(best.x+side*off*sp); if(x<0||x>=w) continue;
+    /* ANOTHER HEAD ON THIS STEM IS NOT A BEAM (Brahms' Lullaby, 13 Sep 2026: a two-note chord whose heads lie
+       two and a half spacings apart put the upper head inside the lower head's beam window, so a quarter chord
+       counted as two eighths and the bar came out short). A beam lies at the stem's far end with paper around
+       it; a head is a head, and the staff's heads are all known by now. */
+    const others=st.heads?st.heads.filter(o=>o!==hd&&Math.abs(o.x-hd.x)<3*sp):[];
+    const onHead=(x,y)=>others.some(o=>x>=o.hx0-1&&x<=o.hx1+1&&y>=o.hy0-1&&y<=o.hy1+1);
+    /* nor is a STROKE: ink whose own vertical run is of accidental length, 1.7 sp and more — a sharp's upright
+       half a spacing from the stem, inside the scan's reach (the Matusa arrangement, 13 Sep 2026); a beam is as
+       tall as it is thick, a flag's hairline shorter than that */
+    const onStroke=(x,y)=>{ let a=y,b=y; while(a>0&&sym[(a-1)*w+x]) a--; while(b<h-1&&sym[(b+1)*w+x]) b++; return b-a+1>=1.7*sp; };
     let runs=0,run=0,onStem=0,att=0; const yA=best.yEnd+best.dir*1.0*sp, yB=best.yEnd-best.dir*Math.min(2.5*sp,best.len-1.4*sp);   // from a spacing past the stem's end (a sloping beam sits higher there) toward the head
     const step=-best.dir;                                                   // from the end toward the head, stopping short of the head
     const beamMin=Math.max(0.22*sp,1.3*st.th);   // a beam or a flag is clearly thicker than a staff line; a line kept beside a beam is not
@@ -616,13 +809,16 @@ function readStem(hd,sym,w,h,sp,st){
     const broad=y=>{ let a=x,b=x; while(a>0&&sym[y*w+a-1]) a--; while(b<w-1&&sym[y*w+b+1]) b++; return b-a+1>=0.4*sp; };
     const close=()=>{ if(run>=beamMin&&onStem>=run*0.5&&!(att<run*0.5&&run>=0.8*sp)){ runs++; (hd._beamRuns=hd._beamRuns||[]).push([side,run,onStem,att]); } run=0; onStem=0; att=0; };
     for(let y=span(yA);best.dir<0?y<=span(yB):y>=span(yB);y+=step){
-      if(sym[y*w+x]){ run++; if(sym[y*w+best.x]||sym[y*w+best.x-1]||sym[y*w+best.x+1]) onStem++; if(broad(y)) att++; } else close();
+      if(sym[y*w+x]&&!onHead(x,y)&&!onStroke(x,y)){ run++; if(sym[y*w+best.x]||sym[y*w+best.x-1]||sym[y*w+best.x+1]) onStem++; if(broad(y)) att++; } else close();
     }
     close();
     beams=Math.max(beams,runs);
   }
-  hd.beams=Math.min(beams,2);
-  hd.dur=hd.hollow?2:beams===0?1:beams===1?0.5:0.25;
+  /* EVERY BEAM HALVES THE NOTE, and the count was clamped at two — so a thirty-second read as a
+     sixteenth and Für Elise's fast passages came out at twice their length, twelve of them filling
+     a bar of three eighths twice over (14 Sep 2026). */
+  hd.beams=Math.min(beams,4);
+  hd.dur=hd.hollow?2:beams===0?1:0.5/Math.pow(2,hd.beams-1);
 }
 
 /* TUPLETS (8 Sep 2026 — a page of triplet arpeggios, David: "look at the timing in the third bar"): a small figure —
@@ -683,7 +879,7 @@ function findTuplets(st,symComps,sp,sym,w){
       if(hook(xl,L.y)&&hook(xr,Rr.y)){
         const x0=xl-0.3*sp, x1=xr+0.3*sp;
         (st.tupletSpans=st.tupletSpans||[]).push({x0,x1,dir});
-        for(const hd of st.heads) if(hd.x>=x0&&hd.x<=x1&&hd.stem&&hd.stem.dir===dir&&!hd.tuplet){ hd.dur*=2/3; hd.tuplet=3; }
+        for(const hd of st.heads) if(hd.x>=x0&&hd.x<=x1&&hd.stem&&hd.stem.dir===dir&&hd.beams>=1&&!hd.tuplet){ hd.dur*=2/3; hd.tuplet=3; }   // beamed heads only: a half note is never inside an eighth-note tuplet (Brahms' Lullaby, a fingering over a beam)
         continue; } }
     const cols=new Set(g.map(hd=>Math.round(hd.x/(0.3*sp)))).size;                                        // heads of one chord share a column
     if(cols%3===0) for(const hd of g){ hd.dur*=2/3; hd.tuplet=3; }
@@ -793,21 +989,78 @@ function hasTallStroke(c,sym,w,sp){                                   // for res
 function findRests(st,symComps,sp,bx0,bx1,heads){
   const out=[];
   const mid=st.lines[2];
-  for(const c of symComps){
+  /* A GLYPH A STAFF LINE CUT IN TWO IS STILL ONE GLYPH (Für Elise, 14 Sep 2026: an eighth rest
+     whose stroke crossed a line came apart into a blob above and a tail below; the blob had the
+     proportions of a half rest and put two beats into a bar of three eighths, and the rest itself
+     was never read). In this bar's band, pieces that stand in one column and are separated by no
+     more than a line's thickness are put back together before anything is named. What the line
+     ITSELF leaves behind is not a piece of anything and is dropped first: either a crumb, or the
+     band of contact where a glyph sat ON a line — solid, lying on the line, and at least three
+     times as wide as it is tall. (Amazing Grace's whole rest hangs from a line and keeps such a
+     band above it; joined to the rest it made a glyph too tall to be one, and bar 1 lost its rest
+     on both staves.) A rest that merely sits on a line has its centre half a spacing off it and
+     is no wider than twice its height, so it stays. */
+    const onLine=c=>st.lines.some(ly=>Math.abs(c.cy-ly)<=0.15*sp);
+    const remnant=c=>(c.h<=0.25*sp&&c.w<0.8*sp)||(c.n>=0.8*c.w*c.h&&c.w>=3*c.h&&onLine(c));
+    const piece=c=>c.cx>bx0-0.5*sp&&c.cx<bx1+0.5*sp&&c.cy>st.top-3.5*sp&&c.cy<st.bot+3.5*sp&&!remnant(c);
+    const parts=symComps.filter(piece).map(c=>({x0:c.x0,x1:c.x1,y0:c.y0,y1:c.y1,w:c.w,h:c.h,n:c.n,cx:c.cx,cy:c.cy,isAcc:c.isAcc,src:[c]}));
+    let joined=true;
+    while(joined){ joined=false;
+      outer:
+      for(let i=0;i<parts.length;i++) for(let j=i+1;j<parts.length;j++){
+        const a=parts[i],b=parts[j];
+        const lo=Math.max(a.x0,b.x0), hi=Math.min(a.x1,b.x1);
+        const over=hi-lo+1, narrow=Math.min(a.w,b.w);
+        const gap=Math.max(a.y0,b.y0)-Math.min(a.y1,b.y1);
+        if(over<0.4*narrow||gap>0.3*sp) continue;
+        /* …AND THE SEAM MUST LIE ON A LINE, or the rule joins things a line never touched
+           (Amazing Grace lost two durations to it on the first try). The cut was made by a staff
+           line, so the join is only allowed where one runs. */
+        const seam=(Math.min(a.y1,b.y1)+Math.max(a.y0,b.y0))/2;
+        if(!st.lines.some(ly=>Math.abs(seam-ly)<=0.35*sp)) continue;
+        const m={x0:Math.min(a.x0,b.x0),x1:Math.max(a.x1,b.x1),y0:Math.min(a.y0,b.y0),y1:Math.max(a.y1,b.y1),
+                 n:a.n+b.n,isAcc:a.isAcc||b.isAcc,src:a.src.concat(b.src)};
+        m.w=m.x1-m.x0+1; m.h=m.y1-m.y0+1;
+        m.cx=(a.cx*a.n+b.cx*b.n)/(a.n+b.n); m.cy=(a.cy*a.n+b.cy*b.n)/(a.n+b.n);
+        parts.splice(j,1); parts.splice(i,1,m); joined=true; break outer;
+      }
+    }
+  for(const c of parts){
     if(c.cx<bx0+0.3*sp||c.cx>bx1-0.3*sp) continue;
     /* touches a note: its box meets a head's box, or it stands on a head's stem. Not merely near one — a rest of
        the lower voice sits right under the upper voice's note (triplet arpeggios, page 2, 8 Sep 2026: the eighth
        rest under a dotted half and the one under a quarter were skipped, and the bar ran to nine beats) */
     if(heads.some(hd=>(c.x0<=hd.hx1+0.3*sp&&c.x1>=hd.hx0-0.3*sp&&c.y0<=hd.hy1+0.3*sp&&c.y1>=hd.hy0-0.3*sp)||(hd.stem&&Math.abs(c.cx-hd.stem.x)<0.4*sp&&c.y0<=Math.max(hd.y,hd.stem.yEnd)&&c.y1>=Math.min(hd.y,hd.stem.yEnd)))) continue;
-    if(c.w>0.8*sp&&c.w<2.0*sp&&c.h>0.3*sp&&c.h<0.9*sp&&Math.abs(c.cy-mid)<1.1*sp){
+    /* A WHOLE OR HALF REST IS A SOLID BLOCK — and that is what tells it from the piece of some
+       other glyph that happens to be block-shaped (Für Elise, 14 Sep 2026: a sixteenth rest cut in
+       two where it crosses a staff line left a top fragment of exactly these proportions, and six
+       bars gained a half rest of two beats in a bar of three eighths). Measured over the whole
+       corpus: every real whole and half rest fills 0.97 or more of its box; every fragment fills
+       0.63 or less. */
+    if(c.w>0.8*sp&&c.w<2.0*sp&&c.h>0.3*sp&&c.h<0.9*sp&&Math.abs(c.cy-mid)<1.1*sp&&c.n>=0.75*c.w*c.h){
       const dTop=Math.min(...st.lines.map(ly=>Math.abs(c.y0-ly))), dBot=Math.min(...st.lines.map(ly=>Math.abs(c.y1-ly)));
       const whole=dTop<dBot;                      // a whole rest hangs from a line, a half rest sits on one
       out.push({x:c.cx,dur:whole?4:2,kind:whole?"whole":"half"});
     }
-    else if(c.h>2.3*sp&&c.h<3.6*sp&&c.w>0.5*sp&&c.w<1.1*sp&&c.cy>st.top&&c.cy<st.bot&&!c.isAcc&&!hasTallStroke(c,st._sym,st._w,sp))
+    /* a voice's rest may straddle an outer line — the upper voice's quarter rest in Brahms' bass sits with its
+       middle half a pixel above the top line (13 Sep 2026) — so its middle may lie half a spacing outside */
+    else if(c.h>2.3*sp&&c.h<3.6*sp&&c.w>0.5*sp&&c.w<1.1*sp&&c.cy>st.top-0.5*sp&&c.cy<st.bot+0.5*sp&&!c.isAcc&&!hasTallStroke(c,st._sym,st._w,sp))
       out.push({x:c.cx,dur:1,kind:"quarter"});
-    else if(c.h>1.6*sp&&c.h<2.3*sp&&c.w>0.6*sp&&c.w<1.2*sp&&c.cy>st.top&&c.cy<st.bot&&c.n<0.5*c.w*c.h)
+    else if(c.h>1.6*sp&&c.h<2.3*sp&&c.w>0.6*sp&&c.w<1.2*sp&&c.cy>st.top-0.5*sp&&c.cy<st.bot+0.5*sp&&c.n<0.5*c.w*c.h)
       out.push({x:c.cx,dur:0.5,kind:"eighth"});
+    /* A FLAGGED REST ADDS A SPACING AND A BLOB FOR EVERY FLAG (Für Elise, the Lawrence Rosen
+       edition, 14 Sep 2026: three quarters of its bars would not add up, every one of them short by
+       a sixteenth, because a sixteenth rest was not known and was simply passed over). One flag is
+       the eighth rest above, at about 1.8 spacings; each further flag adds a spacing and hangs
+       another blob out to the LEFT of the stroke, which is why a flagged rest is wider than the
+       quarter rest it is as tall as — the quarter rest is a narrow ribbon that doubles back, 0.9 to
+       1.1 spacings across, where a sixteenth rest measures 1.3. Measured on Elise, Brahms, the
+       Minuet and Let It Be; the quarter rest's own clause above is untouched. */
+    else if(c.h>2.4*sp&&c.h<4.4*sp&&c.w>=1.15*sp&&c.w<2.0*sp&&c.cy>st.top-0.6*sp&&c.cy<st.bot+0.6*sp
+            &&!c.isAcc&&c.n<0.42*c.w*c.h&&!hasTallStroke(c,st._sym,st._w,sp)){
+      const flags=Math.max(2,Math.min(3,Math.round(c.h/sp-0.85)));
+      out.push({x:c.cx,dur:flags===2?0.25:0.125,kind:flags===2?"sixteenth":"thirtysecond"});
+    }
   }
   out.sort((a,b)=>a.x-b.x); return out.filter((r,i)=>!i||r.x-out[i-1].x>0.4*sp);   // one rest per place (a glyph and its line remnant are two symbols)
 }
@@ -822,8 +1075,26 @@ function assignPitches(res){
 }
 
 /* the public reading: read, then name */
+/* SMALL PRINT IS READ AT TWICE ITS SIZE (a violin-cello-piano trio at a 9 px spacing, 14 Sep 2026: eighth
+   rests read as hollow whole notes, beam pockets as hollow halves, flags lost; at 18 px the same page read four
+   beats in every bar of the cello, and the two Game of Thrones pages at 10 px gained a bar). Under 12 px the
+   page is resampled to double and read again; every coordinate in the result is then in the doubled image,
+   and res.scale says so. */
+function upscale2(img){ const {w,h,gray}=img; const W=w*2,H=h*2;
+  /* bicubic (Catmull-Rom), separable: a bilinear resample cost Game of Thrones 2 eight bars at 10 px; this one
+     keeps it at forty of forty and lifts the trio the same */
+  const K=t=>{ t=Math.abs(t); return t<1?1.5*t*t*t-2.5*t*t+1:t<2?-0.5*t*t*t+2.5*t*t-4*t+2:0; };
+  const tmp=new Float32Array(W*h);
+  for(let y=0;y<h;y++) for(let x=0;x<W;x++){ const sx=(x+0.5)/2-0.5, x0=Math.floor(sx), f=sx-x0; let v=0,ws=0;
+    for(let k=-1;k<=2;k++){ const xx=Math.min(w-1,Math.max(0,x0+k)); const wt=K(k-f); v+=gray[y*w+xx]*wt; ws+=wt; } tmp[y*W+x]=v/ws; }
+  const out=new Uint8Array(W*H);
+  for(let y=0;y<H;y++){ const sy=(y+0.5)/2-0.5, y0=Math.floor(sy), f=sy-y0; for(let x=0;x<W;x++){ let v=0,ws=0;
+    for(let k=-1;k<=2;k++){ const yy=Math.min(h-1,Math.max(0,y0+k)); const wt=K(k-f); v+=tmp[yy*W+x]*wt; ws+=wt; } out[y*W+x]=Math.max(0,Math.min(255,Math.round(v/ws))); } }
+  return {w:W,h:H,gray:out}; }
 function read(img,opts){
-  const res=readScore(img,opts);
+  opts=opts||{};
+  let res=readScore(img,opts);
+  if(res.sp&&res.sp<12&&!opts.noScale){ res=readScore(upscale2(img),opts); res.scale=2; }
   if(!res.bars.length) return res;
   const keyAcc=keyAccidentals(res.key.fifths);
   for(const b of res.bars) for(const s of b.staffs){
@@ -843,18 +1114,25 @@ function read(img,opts){
    tall. No equals sign, no tempo — a word like Andante is left alone. The digits are read by their shape. */
 function readTempo(st,symComps,ink,w,sp){
   if(!st) return null;
+  /* THE MARK IS AN EQUALS SIGN WITH A NOTE TO ITS LEFT AND DIGITS TO ITS RIGHT (13 Sep 2026, Wellerman's
+     "Vivace (♩ = c. 144)" and the Takeda Lullaby's "Gently (♩ = 72)": anchored on the note, both were lost — one
+     note stood 2.6 sp tall on a long stem, the other 1.2 sp wide, and a "c." for circa, or a closing bracket
+     read as a fourth digit, undid the rest). The sign is the one shape nothing else in the band has: two bars
+     of one width, one over the other. The note is anything note-sized left of it; a small word right of it
+     is stepped over; the digits run until a shape is not a digit. */
   const band=symComps.filter(c=>c.y1<st.top-1.0*sp&&c.y0>st.top-10*sp).sort((a,b)=>a.x0-b.x0);
-  const notes=band.filter(c=>c.w>=0.4*sp&&c.w<=0.9*sp&&c.h>=1.3*sp&&c.h<=2.0*sp);
-  for(const nt of notes){
-    const bars=band.filter(c=>c.x0>nt.x1&&c.x0<nt.x1+3*sp&&c.w>=0.9*sp&&c.w<=1.8*sp&&c.h<=0.35*sp&&c.y0>nt.y0-0.5*sp&&c.y1<nt.y1+0.5*sp);
-    const eq=bars.find(a=>bars.some(b=>b!==a&&Math.abs(b.x0-a.x0)<0.3*sp&&Math.abs(b.w-a.w)<0.3*sp&&b.y0>a.y1&&b.y0-a.y1<0.6*sp));
-    if(!eq) continue;
-    const digits=[]; let x=eq.x1;
-    for(const c of band){ if(c.x0<=x||c.x0>x+3*sp) continue; if(!(c.h>=1.2*sp&&c.h<=2.0*sp&&c.w>=0.3*sp&&c.w<=1.3*sp&&Math.abs(c.y1-nt.y1)<0.7*sp)) continue;
-      if(digits.length&&Math.abs(c.y1-digits[0].y1)>0.3*sp) continue; digits.push(c); x=c.x1; if(digits.length===3) break; }
-    if(digits.length<2) continue;
-    const str=digits.map(c=>classifyDigit(c,ink,w)).join(""); const bpm=+str;      // on the raw ink: the ledger pass thins a digit's bottom curve and opens its hole
-    if(!/^\d+$/.test(str)||bpm<30||bpm>300) continue;
+  const bars=band.filter(c=>c.w>=0.9*sp&&c.w<=1.8*sp&&c.h<=0.35*sp);
+  for(const a of bars){ const b=bars.find(o=>o!==a&&Math.abs(o.x0-a.x0)<0.3*sp&&Math.abs(o.w-a.w)<0.3*sp&&o.y0>a.y1&&o.y0-a.y1<0.6*sp); if(!b) continue;
+    const eq={x0:a.x0,x1:Math.max(a.x1,b.x1),y0:a.y0,y1:b.y1}, cy=(eq.y0+eq.y1)/2;
+    const nt=band.filter(c=>c.x1<eq.x0&&c.x1>eq.x0-4*sp&&c.w>=0.4*sp&&c.w<=1.3*sp&&c.h>=1.2*sp&&c.h<=2.8*sp&&c.y0<cy&&c.y1>cy-0.3*sp).sort((p,q)=>q.x1-p.x1)[0];
+    if(!nt) continue;
+    let str="", x=eq.x1, n=0;
+    for(const c of band){ if(c.x0<=x||c.x0>x+3*sp) continue;
+      if(!n&&c.h<1.2*sp&&c.h>=0.4*sp&&c.y1<eq.y1+1.2*sp){ x=c.x1; continue; }                     // "c." — a small word before the digits
+      if(!(c.h>=1.2*sp&&c.h<=2.0*sp&&c.w>=0.3*sp&&c.w<=1.3*sp&&Math.abs(c.y1-(eq.y1+0.6*sp))<0.9*sp)) continue;
+      const d=classifyDigit(c,ink,w); if(!/^\d$/.test(d)) break; str+=d; x=c.x1; if(++n===3) break; }
+    if(str.length===3&&+str>300&&+str.slice(0,2)>=30) str=str.slice(0,2);                 // a bracket's fragment after a valid pair is not a third digit (Takeda, ")")
+    const bpm=+str; if(str.length<2||bpm<30||bpm>300) continue;
     return {bpm,x:nt.x0,y:nt.y0,digits:str};
   }
   return null;

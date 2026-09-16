@@ -53,10 +53,12 @@ function reach(pan){
 function voices(score){
   const melody=[],harmony=[],bass=[]; const pcs=new Set();
   score.bars.forEach((b,bi)=>{
+    /* the MELODY IS THE TOP STAFF THAT PLAYS in the bar, whatever its clef (Wellerman, 9 Sep: both staffs bass
+       clefs, so everything went to the bass and the tune came out as roots on the ding; a trio, 14 Sep: the
+       violin rests four bars while the piano has the tune); the staffs below it are the bass */
+    const melIdx=Math.max(0,b.staffs.findIndex(s=>s.cols.some(c=>!c.rest&&c.notes&&c.notes.length)));
     b.staffs.forEach((s,si)=>{
-      /* the MELODY IS THE TOP STAFF, whatever its clef (Wellerman, 9 Sep: both staffs bass clefs, so everything
-         went to the bass and the tune came out as roots on the ding); the staffs below it are the bass */
-      const isTreble=si===0;
+      const isTreble=si===melIdx;
       for(const c of s.cols){
         if(c.rest||!c.notes.length) continue;
         const ns=c.notes.slice().sort((a,b)=>b.midi-a.midi);

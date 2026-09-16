@@ -1328,7 +1328,7 @@ function paintQueue(){
     const st=it.status==="new"?"waiting":it.status==="found"?"frame found":it.status==="read"?(q?q+" to check":"read, certain"):it.status==="ok"?"accepted":it.status==="error"?"could not read":"";
     const g0=it.read?gOf(it,0):-1, sec0=g0>=0?(SPLITS[g0]!==undefined?SPLITS[g0]:"continues"):it.secName;
     d.innerHTML=`<div class="nm" title="${it.name}">${it.name}</div><div class="st ${it.status==="ok"?"ok":q?"vio":""}">${sec0} · ${st}</div>`; li.appendChild(d);
-    const x=document.createElement("button"); x.className="x"; x.textContent="✕"; x.title="Remove this screenshot from the list"; x.addEventListener("click",e=>{ e.stopPropagation(); ITEMS=ITEMS.filter(i=>i!==it); if(CUR===it) CUR=ITEMS[0]||null; paintQueue(); navState(); if(!CUR) setStep("pick"); });
+    const x=document.createElement("button"); x.className="x"; x.textContent="✕"; x.title="Remove this screenshot from the list"; x.addEventListener("click",e=>{ e.stopPropagation(); ITEMS=ITEMS.filter(i=>i!==it); applyTempo(); if(CUR===it) CUR=ITEMS[0]||null; paintQueue(); navState(); if(!CUR) setStep("pick"); });
     li.appendChild(x);
     li.addEventListener("click",async()=>{ if(it.status==="new") await prepare(it); CUR=it; paintQueue(); navState(); setStep(it.read?"check":"found"); });
     ul.appendChild(li); }
@@ -1559,7 +1559,7 @@ let dragPage=null;
    are merged again in the new order, so the grid, the arrangement and the tables are made from the top. */
 function movePage(a,b){
   const arr=ITEMS.slice(); const i=arr.indexOf(a), j=arr.indexOf(b); if(i<0||j<0||i===j) return;
-  arr.splice(i,1); arr.splice(j,0,a); ITEMS=arr;
+  arr.splice(i,1); arr.splice(j,0,a); ITEMS=arr; applyTempo();
   if(scoreItems().length&&PIECE.panId) arrangeAll(); else ensureSplits();
   paintQueue(); navState(); paintCheck();
 }
@@ -1687,6 +1687,10 @@ function scoreAnalyze(it){
   if(typeof ScoreReader==="undefined") return false;
   const res=ScoreReader.read({w:it.w,h:it.h,gray:grayOf(it)});
   if(!res.systems||!res.systems.length||!res.bars.length) return false;
+  /* SMALL PRINT WAS READ AT TWICE ITS SIZE (14 Sep 2026): every coordinate the reader returns is then in the
+     doubled image, so the page's own size doubles with it — the overlays map by the ratio of the drawn width to
+     it.w, and the image element keeps its natural size on screen */
+  if(res.scale&&res.scale>1&&!it.scaled){ it.w*=res.scale; it.h*=res.scale; it.scaled=res.scale; }
   it.score=res; it.read=null; PIECE.rating=null; it.frame={x0:0,y0:0,x1:it.w-1,y1:it.h-1};   // a page joins the piece: every pan is rated again
   it.an={style:"score",beats:res.meter.beats,sub:2,bpr:2,N:res.meter.beats*4,fifths:res.key.fifths,bars:[],rows:[],labels:[],labelText:[],fit:0,tx0:0,tx1:it.w,
     inner:{x0:0,y0:0,x1:it.w,y1:it.h},frame:it.frame,sp:res.sp};
@@ -1722,8 +1726,21 @@ function paintFoundScore(it){
   chip(nq?`${nq} bar${nq===1?"":"s"} to check`:"every bar adds up", nq?"vio":"", nq?"Bars whose notes do not add up to the meter, or with a head between two positions. Violet on the score; check them after arranging.":"Every bar's notes add up to the meter.");
   chip(`${res.notes.length} notes`,"","Note heads found, filled and hollow.");
   chip(res.tempo?`♩ = ${res.tempo.bpm}`:"no tempo mark", res.tempo?"vio":"", res.tempo?"The tempo mark above the first staff, read digit by digit. It becomes the piece's tempo; change it on Assemble if it is wrong.":"No ♩ = … mark found above the first staff (a word like Andante is not read). The piece takes the tempo set on Assemble.");
-  /* the mark becomes the piece's tempo, unless the tempo was already set by hand or by an earlier screenshot (David, 9 Sep) */
-  if(res.tempo&&!$("fTempo").dataset.set){ $("fTempo").value=res.tempo.bpm; $("fTempo").dataset.set="1"; }
+  applyTempo();
+}
+/* THE PIECE'S TEMPO IS THE FIRST MARK IN IT (David, 9 Sep: the first screenshot's mark wins; 13 Sep: Brahms'
+   Lullaby says ♩ = 100 and the field still read 168 — the mark of a Game of Thrones page imported into the same
+   page an hour earlier, because the flag that said "already set" was never cleared). Read afresh from the pages
+   in their order, every time the queue changes, so removing a page or moving one is followed too. A tempo typed
+   by hand is never overwritten. */
+let TEMPO_TYPED=false;
+function applyTempo(){
+  if(TEMPO_TYPED) return;
+  for(const it of ITEMS){
+    const t=it.score&&it.score.tempo; if(t){ $("fTempo").value=t.bpm; return; }
+    const m=it.an&&it.an.tempos&&it.an.tempos[0]; if(m){ $("fTempo").value=m.bpm; return; }
+  }
+  $("fTempo").value=72;
 }
 /* the transposition, said as a musician would */
 const INTERVALS=["as written","a semitone","a tone","a minor third","a third","a fourth","a tritone","a fifth","a minor sixth","a sixth","a minor seventh","a seventh","an octave"];
@@ -1885,7 +1902,7 @@ function paintAssemble(){
   fillPanSelect();
   const marks=items.flatMap(it=>(it.an.tempos||[]).map(t=>({it,t})));
   let tl=$("tempoList"); if(!tl){ tl=document.createElement("p"); tl.id="tempoList"; tl.className="lede"; $("tbl").after(tl); }
-  if(marks.length){ if(!$("fTempo").dataset.set){ $("fTempo").value=marks[0].t.bpm; $("fTempo").dataset.set="1"; }
+  if(marks.length){ applyTempo();
     tl.textContent="Tempo marks read: "+marks.map(m=>`${m.t.bpm} (${m.it.secName}, bar ${m.t.bar+1}${m.t.pos?", position "+(m.t.pos+1):""})`).join(" · ")+". The app holds one tempo per piece; the first is set above."; }
   else tl.textContent="";
   if(!$("fTitle").value&&items.length){ const base=items[0].name.replace(/\.[a-z0-9]+$/i,"").replace(/[-–_ ]\s*[A-Za-z]{1,8}\s?\d{0,2}\s*$/,"").trim(); $("fTitle").value=base||"Untitled"; }
@@ -1935,7 +1952,7 @@ $("btnArrClearC").addEventListener("click",()=>{ ARR=[]; paintArr(); });
 $("btnArrAllC").addEventListener("click",()=>{ const p=buildPiece(); ARR=p?Object.keys(p.sections):[]; paintArr(); });
 $("btnArrAll").addEventListener("click",()=>{ const p=buildPiece(); ARR=p?Object.keys(p.sections):[]; paintArr(); });
 ["fTitle","fPan","fTempo"].forEach(id=>$(id).addEventListener("input",paintOut));
-$("fTempo").addEventListener("input",()=>{ $("fTempo").dataset.set="1"; });   // a tempo typed by hand is not overwritten by a later screenshot's mark
+$("fTempo").addEventListener("input",()=>{ TEMPO_TYPED=true; });   // a tempo typed by hand is not overwritten by a screenshot's mark
 $("btnCode").addEventListener("click",()=>{ navigator.clipboard.writeText($("outCode").value).then(()=>toast("Code copied")); });
 $("btnJson").addEventListener("click",()=>{ navigator.clipboard.writeText(JSON.stringify(window._piece,null,1)).then(()=>toast("JSON copied")); });
 $("btnFile").addEventListener("click",()=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([$("outCode").value+"\n"],{type:"text/plain"})); a.download=($("fTitle").value||"piece").replace(/[^\w -]+/g,"")+".hps"; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); });
