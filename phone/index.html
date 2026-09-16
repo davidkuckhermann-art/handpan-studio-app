@@ -9745,20 +9745,46 @@ function clickAccent(m,rel){ const rb=((rel%m.bp)+m.bp)%m.bp; return rb===0||(!!
    slot runs to the next stroke or the count's end, and a count whose first
    stroke comes late begins with an empty GAP slot. Table, Tab, Flow, the
    editor's positions, the phone deck and the marker all read tupSlots. */
+/* FINER THAN A COUNT (David, 17 Sep: "I want to be able to set 1/8 notes or
+   even 1/16 notes to 32nds, or 1/8 notes to an eighth-note triplet. It
+   doesn't always have to be the whole beat"). A range's `from` and `len` are
+   counted in units of `per` positions per count — the table's drawn grid
+   when it was set (four in a sixteenth table), so a loop of one sixteenth
+   is {from:1, len:1, per:4}. A range from before this carries no `per` and
+   means whole counts (per 1). The loop that sets one snaps by SLOT in edit
+   mode only (cellAtPoint), and its ends must be on the table's grid. */
 function tupsOf(sec){ return (sec&&Array.isArray(sec.tup))?sec.tup:[]; }
 function tupBar(sec,bar){ return tupsOf(sec).filter(r=>r.bar===bar); }     // the ranges of one bar
-function tupAt(tp,b){ return (tp&&tp.find(r=>b>=r.from&&b<r.from+r.len))||null; }   // the range covering count b
-function tupPulses(r,m){ const step=r.len*m.sub/r.n, out=[]; for(let k=0;k<r.n;k++) out.push(r.from*m.sub+k*step); return out; }
-function tupSlots(r,m,b){          // count b's slots under range r: [{t,span,first,cell,gap?}]
-  const c0=b*m.sub, c1=c0+m.sub, ps=tupPulses(r,m).filter(q=>q>=c0&&q<c1), out=[];
-  let cell=0;
-  if(!ps.length||ps[0]>c0) out.push({t:c0,span:(ps.length?ps[0]:c1)-c0,first:true,cell:cell++,gap:true});
-  ps.forEach((q,i)=>{ const nx=i+1<ps.length?ps[i+1]:c1; out.push({t:q,span:nx-q,first:true,cell:cell++}); });
+function tupSpan(r,m){ const step=m.sub/(r.per||1); return {a:r.from*step,e:(r.from+r.len)*step}; }   // bar-relative pulses
+function tupTouching(tp,m,b){ if(!tp||!tp.length) return null;              // the ranges reaching into count b
+  const c0=b*m.sub, c1=c0+m.sub, out=tp.filter(r=>{ const {a,e}=tupSpan(r,m); return a<c1&&e>c0; }); return out.length?out:null; }
+function tupPulses(r,m){ const {a,e}=tupSpan(r,m), step=(e-a)/r.n, out=[]; for(let k=0;k<r.n;k++) out.push(a+k*step); return out; }
+/* ONE SLOT LIST FOR A COUNT A RANGE REACHES INTO: the count's drawn units
+   (sub/base pulses each) outside every range keep their own slots — split by
+   their content as in reading — and the ranges' strokes take their place
+   inside; every slot runs to the next position or the count's end, and a
+   count whose first position comes late begins with an empty GAP slot.
+   A count no range reaches never comes here (beatSlots), so the published
+   drawing of every existing piece is untouched. */
+function tupCountSlots(byT,b,m,tp){
+  const c0=b*m.sub, c1=c0+m.sub, rs=tupTouching(tp,m,b)||[];
+  const spans=rs.map(r=>tupSpan(r,m)), inRange=q=>spans.some(x=>q>=x.a&&q<x.e);
+  const unit=m.sub/m.base, U=(unit>=1&&!(unit%1))?unit:m.sub, nU=m.sub/U, pos=[];
+  for(let u=0;u<nU;u++){ const u0=c0+u*U; if(inRange(u0)) continue;
+    const occ=[]; for(let k=0;k<U;k++) if(byT.has(u0+k)) occ.push(k);
+    let n=U; for(let d=1;d<=U;d++){ if(U%d) continue; const st=U/d; if(occ.every(k=>k%st===0)){ n=d; break; } }
+    const st=U/n; for(let j=0;j<n;j++) pos.push({t:u0+j*st,first:j===0}); }
+  for(const r of rs) for(const q of tupPulses(r,m)) if(q>=c0&&q<c1) pos.push({t:q,first:true});
+  pos.sort((x,y)=>x.t-y.t);
+  const out=[]; let cell=0;
+  if(!pos.length||pos[0].t>c0) out.push({t:c0,span:(pos.length?pos[0].t:c1)-c0,first:true,cell:cell++,gap:true});
+  pos.forEach((q,i)=>{ const nx=i+1<pos.length?pos[i+1].t:c1; out.push({t:q.t,span:nx-q.t,first:q.first,cell:q.first?cell++:cell-1}); });
   return out;
 }
-/* the grid that holds every range's strokes as whole pulses: sub, raised by
-   what each range still needs (len·S must divide by n) */
-function tupGrid(sec,sub){ const g=(a,b)=>b?g(b,a%b):a; let S=sub; for(const r of tupsOf(sec)){ const d=g(r.n,r.len*S); S*=r.n/d; } return S; }
+/* the grid that holds every range's strokes as whole pulses: sub, raised so
+   that per divides it and the range's length divides into n equal pulses */
+function tupGrid(sec,sub){ const g=(a,b)=>b?g(b,a%b):a; let S=sub;
+  for(const r of tupsOf(sec)){ const per=r.per||1; S*=per/g(S,per); const L=r.len*S/per; S*=r.n/g(r.n,L); } return S; }
 function pieceOk(p){ return p&&typeof p==="object"&&String(p.format||"").startsWith("hpd")
   &&p.sections&&Array.isArray(p.arrangement)&&p.arrangement.every(n=>p.sections[n]); }
 /* CHAPTERS — ONE VIDEO, SEVERAL PIECES (David, 5 Sep 2026, the Building
@@ -10879,9 +10905,10 @@ function paintPulse(pi,seek){
       // 16th / 8th: one even rectangle over the covered slots
       clearSlotMarks();
       const px=markerPulses(markMode,m);
-      const tr=tupAt(tupBar(piece.sections[cur.name],barI),Math.floor(relBar/m.sub));
-      if(tr){   // inside a range the marker covers one stroke (16 Sep)
-        const sl=tupSlots(tr,m,Math.floor(relBar/m.sub)).find(o=>relBar>=o.t&&relBar<o.t+o.span);
+      const tpb=tupBar(piece.sections[cur.name],barI), bc=Math.floor(relBar/m.sub);
+      if(tupTouching(tpb,m,bc)){   // inside a range the marker covers one stroke (16 Sep)
+        const byT=new Map(); for(const ev of (piece.sections[cur.name].bars[barI]||[])){ if(!byT.has(ev.t)) byT.set(ev.t,[]); byT.get(ev.t).push(ev); }
+        const sl=beatSlots(byT,bc,m,tpb).find(o=>relBar>=o.t&&relBar<o.t+o.span);
         if(sl) drawMarkBox(m,barI,barI*m.bp+sl.t,barI*m.bp+sl.t+sl.span,FSC);
       } else {
       const s=barI*m.bp+Math.floor(relBar/px)*px;
@@ -15820,6 +15847,15 @@ function cellAtPoint(x,y){
     const from=+cell.dataset.abs;
     return {from,to:from+cellLenAt(from),cell};   // the cell's own length — a group, in a grouped bar
   }
+  /* IN EDIT MODE THE LOOP SNAPS BY SLOT (David, 17 Sep: "we have to make them
+     snap by stroke, at least in edit mode, because otherwise we cannot set
+     these finer subdivisions" — and only there: "I would use this finer loop
+     setting only for edit mode"). The slot under the finger, its own span
+     (data-span, written by the table); reading and playback loop by cell. */
+  if(editing&&view!=="flow"){
+    const so=el.closest&&el.closest("[data-rel]");
+    if(so&&so.dataset.span){ const from=viewFromPulse()+(+so.dataset.rel); return {from,to:from+(+so.dataset.span),cell}; }
+  }
   const sl=cell.querySelector("[data-rel]");
   if(!sl) return null;
   const from=viewFromPulse()+(+sl.dataset.rel);
@@ -15843,9 +15879,23 @@ function paintLoopFrame(){
      — and with 4px of air on top its edge ran up into the count numbers
      (David, 26 Aug). Two pixels, taken off the cells, symmetrical. */
   const PAD=2;
+  /* the frame walks CELLS — or, in edit mode, the SLOTS, since the loop can
+     be finer than a cell there (17 Sep); a slot's box is read against the
+     score's, because its offsetParent is the cell */
+  const bySlot=editing&&view!=="flow", scr=bySlot?sc.getBoundingClientRect():null;
   sc.querySelectorAll(".nrow").forEach(row=>{
     let l=Infinity,r=-Infinity,t=Infinity,b=-Infinity;
-    row.querySelectorAll(".beat").forEach(cell=>{
+    if(bySlot){
+      row.querySelectorAll(".beat > [data-rel]").forEach(sl=>{
+        const p=viewFromPulse()+(+sl.dataset.rel), cell=sl.parentElement;
+        if(p>=loopSec.from&&p<loopSec.to){
+          const q=sl.getBoundingClientRect(), c=cell.getBoundingClientRect();
+          const x0=q.left-scr.left+sc.scrollLeft, x1=q.right-scr.left+sc.scrollLeft;
+          l=Math.min(l,x0); r=Math.max(r,x1);
+          t=Math.min(t,c.top-scr.top+sc.scrollTop); b=Math.max(b,c.bottom-scr.top+sc.scrollTop);
+        }
+      });
+    } else row.querySelectorAll(".beat").forEach(cell=>{
       const sl=cell.querySelector("[data-rel]"); if(!sl) return;
       const p=viewFromPulse()+(+sl.dataset.rel);
       if(p>=loopSec.from&&p<loopSec.to){
@@ -15905,7 +15955,7 @@ function reanchorLoop(){
    NOT WHILE EDITING, by David's word — a 32nd cannot be placed in a cell that is
    not showing it, so the editor keeps the whole stored grid. */
 function beatSlots(byT,b,m,tp){
-  const r=tupAt(tp,b); if(r) return tupSlots(r,m,b);   // a range's count: its strokes (16 Sep)
+  if(tupTouching(tp,m,b)) return tupCountSlots(byT,b,m,tp);   // a range reaches in: its strokes (16/17 Sep)
   const unit=m.sub/m.base, out=[];
   if(editing&&unit>1&&!(unit%1)){
     /* THE EDITOR SEES THE COUNT'S OFFERED POSITIONS, NOT EVERY STORED PULSE
@@ -16235,6 +16285,7 @@ function renderTableView(sc,lanes){
              refit has to know which ones were there to begin with. */
           if(slots[sN].first&&slots[sN].cell>0){ sl.classList.add("smark"); sl.dataset.sm="1"; }
           if(slots[sN].gap) sl.classList.add("gap");   // before a range's first stroke: no position here
+          sl.dataset.span=slots[sN].span;             // the loop snaps by slot in edit mode (17 Sep)
           const evs=sortStack((byT.get(t)||[]).slice(0,4),!!lanes);
           const symEl=ev=>{ const g=glyphFor(ev,true);
             const el=document.createElement("span");
@@ -17969,7 +18020,7 @@ function renderFlowSection(sc,nm,ai,absStart){
       for(let kk=0;kk<cl.counts;kk++){ const bc=cl.c0+kk;
       /* a count a range covers draws the range's strokes inside it (16 Sep) —
          the same slot list the Table draws, packed here as Flow packs */
-      const tr=tupAt(tupBar(sec,bi),bc), pl=tr?tupSlots(tr,m,bc):null;
+      const tpb=tupBar(sec,bi), pl=tupTouching(tpb,m,bc)?beatSlots(byT,bc,m,tpb):null;
       const res=pl?pl.length:beatRes(byT,bc,m.sub,m.base), stride=m.sub/res;
       if(kk===0) cell.dataset.res=res;
       for(let k=0;k<res;k++){
@@ -20486,11 +20537,12 @@ function edPasteAt(rel0){
      the grid the paste will really write into. */
   let rgSkipped=0;
   if(edClip.tup&&edClip.tup.length&&!grooveEdit){
-    const mm=SM(piece,viewSec), k0=mm.sub/fromSub; let added=0;
+    const mm=SM(piece,viewSec), k0=mm.sub/fromSub, st0=mm.sub/mm.base; let added=0;
     for(const r of edClip.tup){ const a=rel0+r.t0*k0, len=r.len*k0, bar=Math.floor(a/mm.bp);
-      const from=(a-bar*mm.bp)/mm.sub, cnt=len/mm.sub;
-      if(!Number.isInteger(from)||!Number.isInteger(cnt)||from+cnt>mm.beats||bar>=sec.bars.length){ rgSkipped++; continue; }
-      sec.tup=tupsOf(sec).filter(x=>!(x.bar===bar&&x.from<from+cnt&&from<x.from+x.len)); sec.tup.push({bar,from,len:cnt,n:r.n}); added++; }
+      const from=(a-bar*mm.bp)/st0, cnt=len/st0;   // in the target's grid units
+      if(!(st0>=1)||!Number.isInteger(from)||!Number.isInteger(cnt)||(from+cnt)/mm.base>mm.beats||bar>=sec.bars.length){ rgSkipped++; continue; }
+      const nw={bar,from,len:cnt,n:r.n,per:mm.base}, ns=tupSpan(nw,mm);
+      sec.tup=tupsOf(sec).filter(x=>{ if(x.bar!==bar) return true; const y=tupSpan(x,mm); return !(y.a<ns.e&&ns.a<y.e); }); sec.tup.push(nw); added++; }
     if(added){ tupRaise(viewSec); const m2=SM(piece,viewSec); const k2=m2.sub/m.sub;   // the grid rose: re-read the paste against it
       if(k2!==1){ rel0*=k2; evs=edClip.ev.map(e=>Object.assign({},e,{t:Math.round(e.t*m2.sub/fromSub)})); span=Math.max(1,Math.round(edClip.span*m2.sub/fromSub)); m.sub=m2.sub; m.bp=m2.bp; } }
   }
@@ -20581,27 +20633,35 @@ function tupRaise(nm){
 /* a range set on a bar: replaces what it overlaps, raises the grid, and drops
    the notes that no longer sit on an offered position — toasted and undoable
    (David, 16 Sep). n = 0 puts the counts back on the table's grid. */
-function edSetTup(bar,from,len,n){
+function tupLenWords(len,per){   // "2 counts", "half a count", "3/4 of a count"
+  const c=len/(per||1); if(Number.isInteger(c)) return c+(c===1?" count":" counts");
+  if(c===0.5) return "half a count"; if(c===0.25) return "a quarter count";
+  const g=(a,b)=>b?g(b,a%b):a, d=g(len,per); return (len/d)+"/"+(per/d)+" of a count";
+}
+function edSetTup(bar,from,len,n,per){
   const sec=piece.sections[viewSec]; if(!sec) return;
+  per=per||1;
   snapshot();
-  const old=tupsOf(sec), gone=old.filter(r=>r.bar===bar&&r.from<from+len&&from<r.from+r.len);
+  const m0=SM(piece,viewSec), nw={bar,from,len,n,per}, ns=tupSpan(nw,m0);
+  const old=tupsOf(sec), gone=old.filter(r=>{ if(r.bar!==bar) return false; const x=tupSpan(r,m0); return x.a<ns.e&&ns.a<x.e; });
   sec.tup=old.filter(r=>!gone.includes(r));
-  if(n>1) sec.tup.push({bar,from,len,n});
+  if(n>1) sec.tup.push(nw);
   if(!sec.tup.length) delete sec.tup;
   tupRaise(viewSec);
   const m=SM(piece,viewSec), tp=tupBar(sec,bar);
-  // the counts touched: the new range's and the replaced ones'
-  const touched=new Set(); for(let b=from;b<from+len;b++) touched.add(b);
-  for(const r of gone) for(let b=r.from;b<r.from+r.len;b++) touched.add(b);
+  /* the stretches touched — the new range's and the replaced ones', in the
+     raised grid's pulses — keep only notes on an offered position */
+  const spans=[tupSpan(nw,m)].concat(gone.map(r=>tupSpan(r,m)));
+  const inTouched=q=>spans.some(x=>q>=x.a&&q<x.e);
+  const bb=sec.bars[bar]||[], byT=new Map(); for(const ev of bb){ if(!byT.has(ev.t)) byT.set(ev.t,[]); byT.get(ev.t).push(ev); }
   const ok=new Set();
-  for(const b of touched){ const r=tupAt(tp,b);
-    if(r) tupSlots(r,m,b).forEach(o=>{ if(!o.gap) ok.add(o.t); });
-    else { const st=m.sub/m.base; for(let k=0;k<m.base;k++) ok.add(b*m.sub+k*st); } }
-  let dropped=0; const bb=sec.bars[bar]||[];
-  for(let i=bb.length-1;i>=0;i--){ const b=Math.floor(bb[i].t/m.sub); if(touched.has(b)&&!ok.has(bb[i].t)){ bb.splice(i,1); dropped++; } }
-  if(!ok.has(cursor-bar*m.bp)&&Math.floor(cursor/m.bp)===bar) cursor=edOfferedNear(cursor);
+  for(let b=0;b<m.beats;b++){ if(!spans.some(x=>x.a<(b+1)*m.sub&&x.e>b*m.sub)) continue;
+    for(const o of beatSlots(byT,b,m,tp)) if(!o.gap) ok.add(o.t); }
+  let dropped=0;
+  for(let i=bb.length-1;i>=0;i--){ if(inTouched(bb[i].t)&&!ok.has(bb[i].t)){ bb.splice(i,1); dropped++; } }
+  if(Math.floor(cursor/m.bp)===bar&&inTouched(cursor-bar*m.bp)&&!ok.has(cursor-bar*m.bp)) cursor=edOfferedNear(cursor);
   refresh(); paintLoopFrame();
-  const what=n>1?(n+" strokes over "+len+(len===1?" count":" counts")):"Back on the grid";
+  const what=n>1?(n+" strokes over "+tupLenWords(len,per)):"Back on the grid";
   toast(what+(dropped?" · "+dropped+(dropped===1?" note":" notes")+" fell between the positions — undo brings "+(dropped===1?"it":"them")+" back":""));
 }
 /* the bars a range belongs to move with the bars (delete, insert, drop) */
@@ -20658,8 +20718,8 @@ function edCopyLoop(){
      routinely differ here. Recording the grid is what lets paste convert. */
   /* …AND THE RANGES INSIDE THE LOOP (16 Sep), as pulse offsets from its start;
      paste re-divides them by the target's counts and raises its grid */
-  const tup=tupsOf(sec).filter(r=>{ const a=r.bar*m.bp+r.from*m.sub, b=a+r.len*m.sub; return a>=r0&&b<=r1; })
-    .map(r=>({t0:r.bar*m.bp+r.from*m.sub-r0,len:r.len*m.sub,n:r.n}));
+  const tup=tupsOf(sec).map(r=>{ const {a,e}=tupSpan(r,m); return {a:r.bar*m.bp+a,e:r.bar*m.bp+e,n:r.n}; })
+    .filter(x=>x.a>=r0&&x.e<=r1).map(x=>({t0:x.a-r0,len:x.e-x.a,n:x.n}));
   edClip={span:r1-r0, ev, sub:m.sub, beats:m.beats, tup};
   const bars=(r1-r0)/m.bp;
   toast("Copied "+(Number.isInteger(bars)&&bars>=1
@@ -20763,24 +20823,26 @@ function edPopAt(x,y){
   if(editing){
     const mBar=SM(piece,viewSec), base=viewFromPulse(), secT=piece.sections[viewSec];
     let rg=null, why="";
+    const step=mBar.sub/mBar.base, per=mBar.base;   // the table's drawn grid: a range is counted in it
     if(loopSec&&inLoop){ const r0=loopSec.from-base, r1=loopSec.to-base, b0=Math.floor(r0/mBar.bp);
       if(Math.floor((r1-1)/mBar.bp)!==b0) why="Loop inside one bar for this";
-      else if((r0%mBar.sub)||(r1%mBar.sub)) why="Loop whole counts for this";
-      else rg={bar:b0,from:(r0-b0*mBar.bp)/mBar.sub,len:(r1-r0)/mBar.sub}; }
+      else if(!(step>=1)||(r0%step)||(r1%step)) why="Loop on the table's grid for this";
+      else rg={bar:b0,from:(r0-b0*mBar.bp)/step,len:(r1-r0)/step,per}; }
     else { const bi=edBarAtCell(c); if(bi<0) why="Press inside a bar";
-      else { const cl=cellAt(mBar,((c.from-base)%mBar.bp+mBar.bp)%mBar.bp); rg={bar:bi,from:cl.c0,len:cl.counts}; } }
+      else { const cl=cellAt(mBar,((c.from-base)%mBar.bp+mBar.bp)%mBar.bp); rg={bar:bi,from:cl.c0*per,len:cl.counts*per,per}; } }
     if(grooveEdit){ rg=null; why="A groove keeps one grid"; }
-    const have=rg?tupAt(tupBar(secT,rg.bar),rg.from):null;
+    const same=(r,q)=>r.from/(r.per||1)===q.from/q.per&&r.len/(r.per||1)===q.len/q.per;
+    const have=rg?(tupBar(secT,rg.bar).find(r=>same(r,rg))||null):null;
     const row=document.createElement("div"); row.className="tuprow";
     const lab=document.createElement("span"); lab.className="lab";
-    lab.textContent=rg?(loopSec&&inLoop?"Strokes in the loop:":"Strokes in this "+(rg.len>1?"cell:":"count:")):"Strokes:";
+    lab.textContent=rg?(loopSec&&inLoop?"Strokes in the loop:":"Strokes in this "+(rg.len>rg.per?"cell:":"count:")):"Strokes:";
     lab.title="How many strokes fit equally into the range — a loop, or the pressed cell";
     row.appendChild(lab);
     const opts=[[2,"2"],[3,"3"],[4,"4"],[5,"5"],[6,"6"],[7,"7"],[8,"8"],[0,"Grid"]];
-    for(const [n,txt] of opts){ const b=document.createElement("button"); b.className="ctl"+((have?have.n===n&&have.from===rg.from&&have.len===rg.len:(n===0&&rg))?" on":""); b.textContent=txt;
+    for(const [n,txt] of opts){ const b=document.createElement("button"); b.className="ctl"+((have?have.n===n:(n===0&&rg))?" on":""); b.textContent=txt;
       if(!rg){ b.disabled=true; b.title=why; }
-      else { b.title=n?n+" strokes, equally spaced, over "+rg.len+(rg.len===1?" count":" counts"):"Back on the table's grid";
-        b.addEventListener("click",ev=>{ ev.stopPropagation(); edPopClose(); edSetTup(rg.bar,rg.from,rg.len,n); }); }
+      else { b.title=n?n+" strokes, equally spaced, over "+tupLenWords(rg.len,rg.per):"Back on the table's grid";
+        b.addEventListener("click",ev=>{ ev.stopPropagation(); edPopClose(); edSetTup(rg.bar,rg.from,rg.len,n,rg.per); }); }
       row.appendChild(b); }
     /* TWO ROWS, ONE UNDER THE OTHER. A wrapped flex row sizes its box to every
        item laid end to end, so the second line stretched the menu to the
@@ -20989,7 +21051,7 @@ function renderPieceDlg(){
     l2.appendChild(mkSel(TSOPTS.map(o=>[o,o]),m.beats+"/"+den,v=>{
       const p=v.split("/"); snapshot();
       sec.meter=[+p[0],+p[1]]; delete sec.groups; psTrim(nm);
-      if(sec.tup){ sec.tup=sec.tup.filter(r=>r.from+r.len<=+p[0]); if(!sec.tup.length) delete sec.tup; }   // a range past the new bar goes with it
+      if(sec.tup){ sec.tup=sec.tup.filter(r=>(r.from+r.len)/(r.per||1)<=+p[0]); if(!sec.tup.length) delete sec.tup; }   // a range past the new bar goes with it
       refresh(); renderPieceDlg(); }));   // a grouping belongs to its meter
     /* THE GROUPS, beside the meter (David, 16 Sep): the groupings this meter has,
        or none — none draws the bar in single counts, as it always was */
