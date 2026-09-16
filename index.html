@@ -32966,6 +32966,7 @@ function mouseLoopNav(){
   /* Far enough that no hand does it by accident, short enough that a beat
      cell (four slots, ~390px on the desktop) can still be looped on purpose. */
   const DRAG=40;
+  let lastDown=0,lastDX=0,lastDY=0;   // the mouse's own double-press (17 Sep)
   let id=null,sx=0,sy=0,anchor=null,moved=false,dragEnded=0,blocked=false,refused=false,
       loopWas=null,leftCell=false;
   wrap.addEventListener("pointerdown",e=>{
@@ -32989,6 +32990,24 @@ function mouseLoopNav(){
       if(!editing){ e.stopPropagation(); e.preventDefault(); }
       return; }
     const c=cellAtPoint(e.clientX,e.clientY); if(!c) return;
+    /* THE EDITOR COUNTS ITS OWN DOUBLE-CLICK (David, 17 Sep: "in edit mode,
+       double-clicking doesn't seem to work" — and "I still can't select a
+       single sixteenth"). The slot's press re-renders the table, so the
+       browser never pairs the two presses into a click or a dblclick: measured,
+       a real double-click delivers pointerdown·up·down·up and nothing else.
+       So while editing the second press within 340 ms and 28 px does what the
+       phone's double tap does — inside a loop it clears it, elsewhere it loops
+       this slot — and the gesture ends there. Reading mode keeps the browser's
+       dblclick below, which works because nothing re-renders under it. */
+    { const now=performance.now();
+      const dbl=editing&&now-lastDown<340&&Math.abs(e.clientX-lastDX)<28&&Math.abs(e.clientY-lastDY)<28;
+      lastDown=now; lastDX=e.clientX; lastDY=e.clientY;
+      if(dbl&&now-dragEnded>=600){
+        lastDown=0; id=null;
+        if(loopSec&&c.from>=loopSec.from&&c.to<=loopSec.to){ loopSec=null; paintLoopFrame(); reanchorLoop(); toast("Loop off"); }
+        else { loopSec={from:c.from,to:c.to}; paintLoopFrame(); reanchorLoop(); toast(loopBarsLabel()); }
+        return;
+      } }
     id=e.pointerId; sx=e.clientX; sy=e.clientY; anchor=c; moved=false; loopWas=loopSec; leftCell=false;
     /* While EDITING the click belongs to the slot — it places the cursor at
        slot precision, which a mouse can hit — so the drag is only taken over
@@ -33359,6 +33378,7 @@ function onceAway(e){
 function loopBarsLabel(){
   if(!loopSec) return "Loop off";
   const m=SM(piece,viewSec), beats=(loopSec.to-loopSec.from)/m.sub;
+  if(!Number.isInteger(beats)) return "Looping "+tupLenWords(loopSec.to-loopSec.from,m.sub);   // a slot's loop: "a quarter count", not "0.25 beat" (17 Sep)
   return beats>=m.beats&&beats%m.beats===0
     ? ("Looping "+(beats/m.beats)+(beats/m.beats>1?" bars":" bar"))
     : ("Looping "+beats+(beats>1?" beats":" beat"));
