@@ -1437,6 +1437,8 @@ body.fs #scoreheadL #panSel{max-width:230px; flex:0 1 auto}
      1px border on each flank, and without the same two pixels the count's
      inner width differs from the music's and the numbers drift again */
 .count span{text-align:center; font-size:17px; font-weight:700; color:var(--sc-count); font-variant-numeric:tabular-nums; position:relative}
+/* a grouped bar's count line (16 Sep): the counts inside a group are clearly secondary — smaller, lighter */
+.count span.cs{font-size:12px; font-weight:600; opacity:.7; align-self:end}
 .bar{display:grid; gap:0}
 /* THE SLOT IS THE UNIT (David, 29 Aug — mockups-notation-space.html, A).
    A slot is a share of the cell, but ink was sized to itself: a two-digit
@@ -1563,7 +1565,14 @@ body.mkline .beat.nowbeat::after{border:none; top:auto; height:2px;
    with nothing beneath it, looked perfect. That is the "sometimes". The cell
    holding a marker is lifted for exactly as long as it holds one. */
 .beat.mkcell{z-index:2}
-.bar.nowbar{background:var(--sc-band-t); box-shadow:inset 0 0 0 1px rgba(var(--dixie-rgb),.7)}
+/* THE BAR'S WASH SITS UNDER THE SLOT LINES, as the cell's does (David, 16 Sep: with the
+   marker on Bar, "the play at marker swallows the little separator lines"). The lines are
+   ::before at z-index −2 inside the slot; a plain background on the bar painted over them.
+   So the bar becomes its own layer and the wash a ::before at −3, exactly the nowbeat
+   pattern above — and the lines gain the same contrast under it. */
+.bar.nowbar{position:relative; z-index:1; box-shadow:inset 0 0 0 1px rgba(var(--dixie-rgb),.7)}
+.bar.nowbar::before{content:""; position:absolute; inset:0; z-index:-3; background:var(--sc-band-t); pointer-events:none}
+body.slotlines .bar.nowbar .beat>.slot.smark::before{background:var(--sc-thru2)}
 .count span.cnow{color:var(--dixie)}
 .count span.cnow::after{content:""; position:absolute; left:1px; right:1px; bottom:-3px;
   height:2.5px; background:var(--dixie); border-radius:2px}
@@ -3800,6 +3809,7 @@ body.slotlines .fpos.smark .flanes::before{content:""; position:absolute;
 .fct{font-size:.42em; line-height:1.4; height:calc(var(--fCt) / .42);
   font-weight:700; color:var(--sc-count)}
 .fct.b{color:var(--sc-count2); font-weight:800}
+.fct.b.cs{color:var(--sc-count); font-weight:600}   /* a count inside a group: secondary (16 Sep) */
 .fct.cnow{color:var(--dixie); position:relative}
 .fct.cnow::after{content:""; position:absolute; left:1px; right:1px; bottom:.25em;
   border-bottom:2px solid var(--dixie)}
@@ -3933,6 +3943,18 @@ dialog .dsec.later{margin-top:16px}
   box-shadow:0 10px 30px -10px rgba(var(--sh),.5)}
 #editPop .ctl{font-size:14px; padding:9px 15px; font-weight:700}
 #editPop .ctl:disabled{opacity:.42; cursor:default}
+/* STROKES IN THE LOOP (16 Sep): a second line of the press menu — the label,
+   2–8 and Grid; the menu wraps to hold it */
+#editPop.two{flex-direction:column; align-items:stretch}
+#editPop .poprow{display:flex; gap:6px}
+#editPop .tuprow{display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding-top:6px; border-top:1px solid var(--rule2)}
+#editPop .tuprow .lab{font-size:12px; font-weight:700; margin-right:4px; white-space:nowrap}
+#editPop .tuprow .ctl{padding:7px 10px; min-width:34px}
+#editPop .tuprow .ctl.on{background:var(--ink); color:var(--paper)}
+/* a range's GAP slot: the stretch before its first stroke in a count — no
+   position, nothing to press */
+.slot.gap, .edslot.gap{cursor:default}
+.slot.gap .cursor{display:none}
 /* a settings control that is not available yet reads as unavailable, in the
    menu's own weight — not hidden, so the row still says the feature exists */
 #setDlg .ctl:disabled{opacity:.42; cursor:not-allowed}
@@ -6133,11 +6155,12 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
       <select class="ctl" id="edTS" aria-label="Time signature">
         <option value="2/4">2/4</option><option value="3/4">3/4</option>
         <option value="4/4">4/4</option><option value="5/4">5/4</option>
-        <option value="6/8">6/8</option><option value="7/8">7/8</option>
-        <option value="9/8">9/8</option><option value="12/8">12/8</option></select>
+        <option value="5/8">5/8</option><option value="6/8">6/8</option><option value="7/8">7/8</option>
+        <option value="9/8">9/8</option><option value="10/8">10/8</option><option value="12/8">12/8</option></select>
       <select class="ctl" id="edSub" aria-label="Subdivision">
         <option value="1">No subdivision</option><option value="2">2 per count</option>
         <option value="3">3 per count</option><option value="4">4 per count</option></select>
+      <select class="ctl" id="edGroups" aria-label="Groups" hidden></select>   <!-- the meter's groupings (16 Sep), filled by the deck -->
       <!-- WHICH CHORD THE GROOVE IS WRITTEN ON, on the bench itself (David,
            30 Aug: "we need a button in the groove editor next to the 'per
            count' selector. Here you choose the chord to work on"). It used to
@@ -6645,8 +6668,8 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <select class="ctl" id="gnMeter" aria-label="Time signature">
       <option value="2/4">2/4</option><option value="3/4">3/4</option>
       <option value="4/4" selected>4/4</option><option value="5/4">5/4</option>
-      <option value="6/8">6/8</option><option value="7/8">7/8</option>
-      <option value="9/8">9/8</option><option value="12/8">12/8</option></select>
+      <option value="5/8">5/8</option><option value="6/8">6/8</option><option value="7/8">7/8</option>
+      <option value="9/8">9/8</option><option value="10/8">10/8</option><option value="12/8">12/8</option></select>
     <span class="lab">Subdivision</span>
     <select class="ctl" id="gnSub" aria-label="Subdivision">
       <option value="1">None</option><option value="2">2 per count</option>
@@ -7251,6 +7274,11 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <div class="jshead"><span class="jsname">Chord voicings</span><span id="jsVoicingHost"></span></div>
     <p class="jsdesc" id="jsVoicingDesc"></p>
   </div>
+  <!-- MOTION, its own section (David, 16 Sep) — separate from Narrow and Wide. -->
+  <div class="jsopt">
+    <div class="jshead"><span class="jsname">Motion</span><span id="jsMotionHost"></span></div>
+    <p class="jsdesc" id="jsMotionOnDesc"></p>
+  </div>
   <!-- MOTION'S OWN TWO (David, 29 Aug). How long the form is decides how far
        the line can travel before it has to come home — "let me choose, so I
        can compare" — and the reroll asks for another line over the same
@@ -7271,12 +7299,12 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   </div>
   <!-- TRANSITIONS, its own section (David, 1 Sep) — not a fourth voicing but a
        separate question, which is why he asked for it to come out of Motion.
-       Choosing a voicing resets it: on for Motion, off for Narrow and Wide. -->
+       Turning Motion on turns it on, turning Motion off turns it off (16 Sep). -->
   <div class="jsopt">
     <div class="jshead"><span class="jsname">Transitions</span><span id="jsTransHost"></span></div>
     <p class="jsdesc">A row can end with a run of single notes that leads into the next
-      chord — the groove stands aside while it plays. On by default with Motion,
-      off with Narrow and Wide; either way this switch decides.</p>
+      chord — the groove stands aside while it plays. Turning Motion on switches
+      it on and turning Motion off switches it off; either way this switch decides.</p>
   </div>
   <div class="jsopt">
     <div class="jshead"><span class="jsname">Chord suggestions</span><span id="jsColourHost"></span></div>
@@ -7353,8 +7381,8 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
     <select class="ctl" id="ndMeter" aria-label="Time signature">
       <option value="2/4">2/4</option><option value="3/4">3/4</option>
       <option value="4/4" selected>4/4</option><option value="5/4">5/4</option>
-      <option value="6/8">6/8</option><option value="7/8">7/8</option>
-      <option value="9/8">9/8</option><option value="12/8">12/8</option></select>
+      <option value="5/8">5/8</option><option value="6/8">6/8</option><option value="7/8">7/8</option>
+      <option value="9/8">9/8</option><option value="10/8">10/8</option><option value="12/8">12/8</option></select>
     <span class="lab">Subdivision</span>
     <select class="ctl" id="ndSub" aria-label="Subdivision">
       <option value="1">None</option><option value="2">2 per count</option>
@@ -7464,7 +7492,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
 <div id="dlgShade" class="hidden"></div>
 <div id="toast" role="status"></div>
 <script src="bank.js?v=2"></script>
-<script src="sync-map.js?v=1"></script>   <!-- THE TEMPO-MAP ENGINE (SUITE.md phase 1, 14 Sep 2026): moved out of this file; the Lab loads the same one. Bump ?v= when it changes — a ?v= on the page does not bust a script. -->
+<script src="sync-map.js?v=2"></script>   <!-- THE TEMPO-MAP ENGINE (SUITE.md phase 1, 14 Sep 2026): moved out of this file; the Lab loads the same one. Bump ?v= when it changes — a ?v= on the page does not bust a script. -->
 <script>
 "use strict";
 /* Access gate for the public Pages host: the Kajabi iframe carries ?k=…, a
@@ -9062,7 +9090,7 @@ const DEMOS=[
 {"format":"hpd-2","id":"flavourful-freestyle-2","title":"Flavourful Freestyle 2","course":"Handpan Cookbook","lesson":"4.3","author":"David Kuckhermann","writtenFor":"d-kurd-9","tempo":103,"meter":[4,4],"sub":4,"barsPerRow":1,"sections":{"Intro1":{"bars":[[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":0},{"v":"field","f":6,"hand":"L","t":0},{"v":"ghost","hand":"R","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"field","f":4,"hand":"R","t":3},{"v":"field","f":6,"hand":"L","t":3},{"v":"ghost","hand":"L","t":5},{"v":"ghost","hand":"R","t":6},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":8},{"v":"field","f":6,"hand":"L","t":8},{"v":"ghost","hand":"R","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"field","f":3,"hand":"R","t":11},{"v":"field","f":6,"hand":"L","t":11},{"v":"ghost","hand":"R","t":14}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":0},{"v":"field","f":7,"hand":"L","t":0},{"v":"ghost","hand":"R","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"field","f":5,"hand":"R","t":3},{"v":"field","f":7,"hand":"L","t":3},{"v":"ghost","hand":"R","t":6},{"v":"field","f":0,"hand":"R","t":8},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":6,"hand":"L","t":8},{"v":"ghost","hand":"R","t":10},{"v":"field","f":0,"hand":"R","t":11},{"v":"field","f":1,"hand":"R","t":11},{"v":"field","f":6,"hand":"L","t":11},{"v":"ghost","hand":"L","t":13},{"v":"ghost","hand":"R","t":14}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":0},{"v":"field","f":6,"hand":"L","t":0},{"v":"ghost","hand":"R","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"field","f":4,"hand":"R","t":3},{"v":"field","f":6,"hand":"L","t":3},{"v":"ghost","hand":"R","t":4},{"v":"field","f":8,"hand":"L","t":6},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":8},{"v":"field","f":6,"hand":"L","t":8},{"v":"ghost","hand":"R","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"field","f":3,"hand":"R","t":11},{"v":"field","f":6,"hand":"L","t":11},{"v":"ghost","hand":"R","t":14}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":0},{"v":"field","f":7,"hand":"L","t":0},{"v":"ghost","hand":"R","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"field","f":5,"hand":"R","t":3},{"v":"field","f":7,"hand":"L","t":3},{"v":"ghost","hand":"R","t":4},{"v":"field","f":9,"hand":"L","t":6},{"v":"field","f":0,"hand":"R","t":8},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":6,"hand":"L","t":8},{"v":"ghost","hand":"R","t":10},{"v":"ghost","hand":"L","t":11},{"v":"field","f":9,"hand":"R","t":12},{"v":"field","f":8,"hand":"L","t":13},{"v":"field","f":7,"hand":"R","t":14}]],"tempo":94},"Intro2":{"bars":[[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":0},{"v":"field","f":6,"hand":"L","t":0},{"v":"ghost","hand":"R","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"field","f":4,"hand":"R","t":3},{"v":"field","f":6,"hand":"L","t":3},{"v":"ghost","hand":"R","t":4},{"v":"field","f":8,"hand":"L","t":6},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":8},{"v":"field","f":6,"hand":"L","t":8},{"v":"ghost","hand":"R","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"field","f":3,"hand":"R","t":11},{"v":"field","f":6,"hand":"L","t":11},{"v":"ghost","hand":"R","t":14}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":0},{"v":"field","f":7,"hand":"L","t":0},{"v":"ghost","hand":"R","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"field","f":5,"hand":"R","t":3},{"v":"field","f":7,"hand":"L","t":3},{"v":"ghost","hand":"R","t":4},{"v":"field","f":9,"hand":"L","t":6},{"v":"field","f":0,"hand":"R","t":8},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":6,"hand":"L","t":8},{"v":"ghost","hand":"R","t":10},{"v":"field","f":0,"hand":"R","t":11},{"v":"field","f":1,"hand":"R","t":11},{"v":"field","f":6,"hand":"L","t":11},{"v":"ghost","hand":"L","t":13},{"v":"ghost","hand":"R","t":14}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":0},{"v":"field","f":6,"hand":"L","t":0},{"v":"ghost","hand":"R","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"field","f":4,"hand":"R","t":3},{"v":"field","f":6,"hand":"L","t":3},{"v":"ghost","hand":"R","t":4},{"v":"field","f":8,"hand":"L","t":6},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":8},{"v":"field","f":6,"hand":"L","t":8},{"v":"ghost","hand":"R","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"field","f":3,"hand":"R","t":11},{"v":"field","f":6,"hand":"L","t":11},{"v":"ghost","hand":"R","t":12},{"v":"field","f":8,"hand":"L","t":14}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":0},{"v":"field","f":7,"hand":"L","t":0},{"v":"ghost","hand":"R","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"field","f":5,"hand":"R","t":3},{"v":"field","f":7,"hand":"L","t":3},{"v":"ghost","hand":"R","t":4},{"v":"field","f":9,"hand":"L","t":6},{"v":"field","f":0,"hand":"R","t":8},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":6,"hand":"L","t":8},{"v":"ghost","hand":"R","t":10},{"v":"perc","s":"tak","hand":"L","g":"K","t":11},{"v":"perc","s":"tak","hand":"R","t":12},{"v":"ghost","hand":"L","t":13},{"v":"perc","s":"tak","hand":"R","t":14},{"v":"ghost","hand":"L","t":15}]],"tempo":96},"A1":{"bars":[[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"field","f":6,"hand":"L","t":7},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":9},{"v":"field","f":6,"hand":"L","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"perc","s":"slap","hand":"L","t":12},{"v":"field","f":1,"hand":"R","t":13},{"v":"field","f":3,"hand":"R","t":14},{"v":"field","f":6,"hand":"L","t":15}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":5,"hand":"R","t":6},{"v":"field","f":7,"hand":"L","t":7},{"v":"field","f":0,"hand":"R","t":8},{"v":"field","f":1,"hand":"R","t":9},{"v":"field","f":6,"hand":"L","t":10},{"v":"field","f":0,"hand":"R","t":11},{"v":"perc","s":"slap","hand":"L","t":12},{"v":"field","f":0,"hand":"R","t":13},{"v":"field","f":1,"hand":"R","t":14},{"v":"field","f":6,"hand":"L","t":15}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"field","f":6,"hand":"L","t":7},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":9},{"v":"field","f":6,"hand":"L","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"perc","s":"slap","hand":"L","t":12},{"v":"field","f":1,"hand":"R","t":13},{"v":"field","f":3,"hand":"R","t":14},{"v":"field","f":6,"hand":"L","t":15}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":5,"hand":"R","t":6},{"v":"field","f":7,"hand":"L","t":7},{"v":"field","f":0,"hand":"R","t":8},{"v":"field","f":1,"hand":"R","t":9},{"v":"field","f":6,"hand":"L","t":10},{"v":"field","f":0,"hand":"R","t":11},{"v":"perc","s":"slap","hand":"L","t":12},{"v":"field","f":0,"hand":"R","t":13},{"v":"field","f":1,"hand":"R","t":14},{"v":"field","f":6,"hand":"L","t":15}]],"tempo":104},"A2":{"bars":[[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"field","f":8,"hand":"L","t":7},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":9},{"v":"field","f":6,"hand":"L","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"perc","s":"slap","hand":"L","t":12},{"v":"field","f":1,"hand":"R","t":13},{"v":"field","f":3,"hand":"R","t":14},{"v":"field","f":8,"hand":"L","t":15}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":5,"hand":"R","t":6},{"v":"field","f":9,"hand":"L","t":7},{"v":"field","f":0,"hand":"R","t":8},{"v":"field","f":1,"hand":"R","t":9},{"v":"field","f":6,"hand":"L","t":10},{"v":"field","f":0,"hand":"R","t":11},{"v":"perc","s":"slap","hand":"L","t":12},{"v":"field","f":0,"hand":"R","t":13},{"v":"field","f":1,"hand":"R","t":14},{"v":"field","f":8,"hand":"L","t":15}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"field","f":8,"hand":"L","t":7},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":9},{"v":"field","f":6,"hand":"L","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"perc","s":"slap","hand":"L","t":12},{"v":"field","f":1,"hand":"R","t":13},{"v":"field","f":3,"hand":"R","t":14},{"v":"field","f":8,"hand":"L","t":15}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":5,"hand":"R","t":6},{"v":"field","f":9,"hand":"L","t":7},{"v":"field","f":9,"hand":"R","t":8},{"v":"field","f":8,"hand":"L","t":9},{"v":"field","f":7,"hand":"R","t":10},{"v":"field","f":6,"hand":"L","t":11},{"v":"field","f":7,"hand":"R","t":12},{"v":"field","f":6,"hand":"L","t":13},{"v":"field","f":5,"hand":"R","t":14},{"v":"field","f":4,"hand":"L","t":15}]],"tempo":106},"B1":{"bars":[[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"field","f":7,"hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"field","f":8,"hand":"L","t":7},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":9},{"v":"field","f":9,"hand":"L","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"field","f":8,"hand":"L","t":12},{"v":"field","f":1,"hand":"R","t":13},{"v":"field","f":3,"hand":"R","t":14},{"v":"field","f":7,"hand":"L","t":15}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"field","f":7,"hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":5,"hand":"R","t":6},{"v":"field","f":8,"hand":"L","t":7},{"v":"field","f":0,"hand":"R","t":8},{"v":"field","f":1,"hand":"R","t":9},{"v":"field","f":9,"hand":"L","t":10},{"v":"field","f":0,"hand":"R","t":11},{"v":"field","f":8,"hand":"L","t":12},{"v":"field","f":0,"hand":"R","t":13},{"v":"field","f":1,"hand":"R","t":14},{"v":"field","f":7,"hand":"L","t":15}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"field","f":7,"hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"field","f":8,"hand":"L","t":7},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":9},{"v":"field","f":9,"hand":"L","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"field","f":8,"hand":"L","t":12},{"v":"field","f":1,"hand":"R","t":13},{"v":"field","f":3,"hand":"R","t":14},{"v":"field","f":7,"hand":"L","t":15}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":9,"hand":"L","t":2},{"v":"field","f":8,"hand":"L","t":4},{"v":"field","f":7,"hand":"R","t":6},{"v":"field","f":0,"hand":"R","t":8},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":6,"hand":"L","t":8},{"v":"ghost","hand":"R","t":10},{"v":"perc","s":"tak","hand":"L","g":"K","t":11},{"v":"perc","s":"tak","hand":"R","t":12},{"v":"ghost","hand":"L","t":13},{"v":"perc","s":"tak","hand":"R","t":14}]],"tempo":106},"C1":{"bars":[[{"v":"field","f":4,"hand":"L","t":0},{"v":"field","f":5,"hand":"R","t":0},{"v":"ghost","hand":"R","t":2},{"v":"field","f":4,"hand":"L","t":3},{"v":"field","f":5,"hand":"R","t":3},{"v":"ghost","hand":"R","t":4},{"v":"field","f":4,"hand":"L","t":6},{"v":"field","f":5,"hand":"R","t":6},{"v":"ghost","hand":"R","t":8},{"v":"field","f":4,"hand":"L","t":9},{"v":"field","f":5,"hand":"R","t":9},{"v":"ghost","hand":"R","t":10},{"v":"field","f":4,"hand":"L","t":12},{"v":"field","f":5,"hand":"R","t":12},{"v":"ghost","hand":"R","t":14},{"v":"field","f":4,"hand":"L","t":15},{"v":"field","f":5,"hand":"R","t":15}],[{"v":"ghost","hand":"R","t":0},{"v":"field","f":4,"hand":"L","t":2},{"v":"field","f":5,"hand":"R","t":2},{"v":"ghost","hand":"R","t":4},{"v":"field","f":4,"hand":"L","t":5},{"v":"field","f":5,"hand":"R","t":5},{"v":"ghost","hand":"R","t":6},{"v":"field","f":4,"hand":"L","t":8},{"v":"field","f":5,"hand":"R","t":8},{"v":"field","f":2,"hand":"L","t":10},{"v":"field","f":3,"hand":"R","t":10},{"v":"field","f":4,"hand":"L","t":12},{"v":"field","f":5,"hand":"R","t":12},{"v":"field","f":6,"hand":"L","t":14},{"v":"field","f":7,"hand":"R","t":14}],[{"v":"field","f":4,"hand":"L","t":0},{"v":"field","f":5,"hand":"R","t":0},{"v":"ghost","hand":"R","t":2},{"v":"field","f":4,"hand":"L","t":3},{"v":"field","f":5,"hand":"R","t":3},{"v":"ghost","hand":"R","t":4},{"v":"field","f":4,"hand":"L","t":6},{"v":"field","f":5,"hand":"R","t":6},{"v":"ghost","hand":"R","t":8},{"v":"field","f":2,"hand":"L","t":9},{"v":"field","f":3,"hand":"R","t":9},{"v":"ghost","hand":"R","t":10},{"v":"field","f":4,"hand":"L","t":12},{"v":"field","f":5,"hand":"R","t":12},{"v":"ghost","hand":"R","t":14},{"v":"field","f":6,"hand":"L","t":15},{"v":"field","f":7,"hand":"R","t":15}],[{"v":"ghost","hand":"R","t":0},{"v":"field","f":4,"hand":"L","t":2},{"v":"field","f":5,"hand":"R","t":2},{"v":"ghost","hand":"R","t":4},{"v":"field","f":2,"hand":"L","t":5},{"v":"field","f":3,"hand":"R","t":5},{"v":"ghost","hand":"R","t":6},{"v":"field","f":4,"hand":"L","t":8},{"v":"field","f":5,"hand":"R","t":8},{"v":"field","f":4,"hand":"L","t":10},{"v":"field","f":5,"hand":"R","t":10},{"v":"field","f":5,"hand":"R","t":12},{"v":"field","f":7,"hand":"R","t":12},{"v":"field","f":9,"hand":"L","t":12},{"v":"field","f":5,"hand":"R","t":14},{"v":"field","f":7,"hand":"R","t":14},{"v":"field","f":9,"hand":"L","t":14}]],"tempo":103},"D1":{"sub":8,"base":4,"bars":[[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":0},{"v":"field","f":6,"hand":"L","t":0},{"v":"ghost","hand":"L","t":4},{"v":"field","f":2,"hand":"R","art":"mute","t":6},{"v":"perc","s":"slap","hand":"L","t":8},{"v":"field","f":2,"hand":"R","t":10},{"v":"field","f":4,"hand":"R","t":12},{"v":"field","f":6,"hand":"L","t":14},{"v":"field","f":1,"hand":"R","t":16},{"v":"field","f":3,"hand":"R","t":18},{"v":"field","f":6,"hand":"L","t":20},{"v":"field","f":1,"hand":"R","t":22},{"v":"perc","s":"slap","hand":"L","t":24},{"v":"field","f":1,"hand":"R","t":26},{"v":"field","f":3,"hand":"R","t":28},{"v":"field","f":9,"hand":"L","t":30}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":0},{"v":"ghost","hand":"L","t":4},{"v":"field","f":3,"hand":"R","art":"mute","t":6},{"v":"perc","s":"slap","hand":"L","t":8},{"v":"field","f":3,"hand":"R","t":10},{"v":"field","f":5,"hand":"R","t":12},{"v":"field","f":7,"hand":"L","t":14},{"v":"field","f":0,"hand":"R","t":16},{"v":"field","f":1,"hand":"R","t":18},{"v":"field","f":6,"hand":"L","t":20},{"v":"field","f":0,"hand":"R","t":22},{"v":"perc","s":"slap","hand":"L","t":24},{"v":"field","f":0,"hand":"R","t":26},{"v":"field","f":1,"hand":"R","t":28},{"v":"field","f":8,"hand":"L","t":30}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":0},{"v":"ghost","hand":"L","t":4},{"v":"field","f":2,"hand":"R","art":"mute","t":6},{"v":"perc","s":"slap","hand":"L","t":8},{"v":"field","f":2,"hand":"R","t":10},{"v":"field","f":4,"hand":"R","t":12},{"v":"field","f":6,"hand":"L","t":14},{"v":"field","f":1,"hand":"R","t":16},{"v":"field","f":3,"hand":"R","t":18},{"v":"field","f":6,"hand":"L","t":20},{"v":"field","f":1,"hand":"R","t":22},{"v":"perc","s":"slap","hand":"L","t":24},{"v":"field","f":1,"hand":"R","t":26},{"v":"field","f":3,"hand":"R","t":28},{"v":"field","f":9,"hand":"L","t":30}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":0},{"v":"ghost","hand":"L","t":4},{"v":"field","f":3,"hand":"R","art":"mute","t":6},{"v":"perc","s":"slap","hand":"L","t":8},{"v":"field","f":3,"hand":"R","t":10},{"v":"field","f":5,"hand":"R","t":12},{"v":"field","f":7,"hand":"L","t":14},{"t":16,"v":"field","f":1,"hand":"R"},{"t":17,"v":"field","f":2,"hand":"L"},{"t":18,"v":"field","f":3,"hand":"R"},{"t":19,"v":"field","f":4,"hand":"L"},{"t":20,"v":"field","f":5,"hand":"R"},{"t":21,"v":"field","f":2,"hand":"L"},{"t":22,"v":"field","f":3,"hand":"R"},{"t":23,"v":"field","f":4,"hand":"L"},{"v":"field","f":5,"hand":"R","t":24},{"v":"field","f":6,"hand":"L","t":26},{"v":"field","f":7,"hand":"R","t":28},{"v":"field","f":8,"hand":"L","t":30}]],"tempo":110},"D2":{"bars":[[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":0},{"v":"ghost","hand":"L","t":2},{"v":"field","f":2,"hand":"R","art":"mute","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"field","f":6,"hand":"L","t":7},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":9},{"v":"field","f":6,"hand":"L","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"perc","s":"slap","hand":"L","t":12},{"v":"field","f":1,"hand":"R","t":13},{"v":"field","f":3,"hand":"R","t":14},{"v":"field","f":9,"hand":"L","t":15}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":0},{"v":"ghost","hand":"L","t":2},{"v":"field","f":3,"hand":"R","art":"mute","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":5,"hand":"R","t":6},{"v":"field","f":7,"hand":"L","t":7},{"v":"field","f":0,"hand":"R","t":8},{"v":"field","f":1,"hand":"R","t":9},{"v":"field","f":6,"hand":"L","t":10},{"v":"field","f":0,"hand":"R","art":"mute","t":11},{"v":"perc","s":"slap","hand":"L","t":12},{"v":"field","f":0,"hand":"R","t":13},{"v":"field","f":1,"hand":"R","t":14},{"v":"field","f":8,"hand":"L","t":15}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":0},{"v":"ghost","hand":"L","t":2},{"v":"field","f":2,"hand":"R","art":"mute","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"field","f":6,"hand":"L","t":7},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":9},{"v":"field","f":6,"hand":"L","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"perc","s":"slap","hand":"L","t":12},{"v":"field","f":1,"hand":"R","t":13},{"v":"field","f":3,"hand":"R","t":14},{"v":"field","f":9,"hand":"L","t":15}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":0},{"v":"ghost","hand":"L","t":2},{"v":"field","f":3,"hand":"R","art":"mute","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":5,"hand":"R","t":6},{"v":"field","f":7,"hand":"L","t":7},{"v":"field","f":9,"hand":"R","t":8},{"v":"field","f":8,"hand":"L","t":9},{"v":"field","f":7,"hand":"R","t":10},{"v":"field","f":6,"hand":"L","t":11},{"v":"field","f":7,"hand":"R","t":12},{"v":"field","f":6,"hand":"L","t":13},{"v":"field","f":5,"hand":"R","t":14},{"v":"field","f":4,"hand":"L","t":15}]],"tempo":108},"B2":{"bars":[[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"field","f":7,"hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"field","f":8,"hand":"L","t":7},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":9},{"v":"field","f":9,"hand":"L","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"field","f":8,"hand":"L","t":12},{"v":"field","f":1,"hand":"R","t":13},{"v":"field","f":3,"hand":"R","t":14},{"v":"field","f":7,"hand":"L","t":15}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"field","f":7,"hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":5,"hand":"R","t":6},{"v":"field","f":8,"hand":"L","t":7},{"v":"field","f":0,"hand":"R","t":8},{"v":"field","f":1,"hand":"R","t":9},{"v":"field","f":9,"hand":"L","t":10},{"v":"field","f":0,"hand":"R","t":11},{"v":"field","f":8,"hand":"L","t":12},{"v":"field","f":0,"hand":"R","t":13},{"v":"field","f":1,"hand":"R","t":14},{"v":"field","f":7,"hand":"L","t":15}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"field","f":7,"hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"field","f":8,"hand":"L","t":7},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":9},{"v":"field","f":9,"hand":"L","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"field","f":8,"hand":"L","t":12},{"v":"field","f":1,"hand":"R","t":13},{"v":"field","f":3,"hand":"R","t":14},{"v":"field","f":7,"hand":"L","t":15}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":9,"hand":"L","t":2},{"v":"field","f":8,"hand":"L","t":4},{"v":"field","f":7,"hand":"R","t":6},{"v":"field","f":0,"hand":"R","t":8},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":6,"hand":"L","t":8},{"v":"ghost","hand":"R","t":10},{"v":"perc","s":"tak","hand":"L","g":"K","t":11},{"v":"perc","s":"tak","hand":"R","t":12},{"v":"ghost","hand":"L","t":13},{"v":"perc","s":"tak","hand":"R","t":14}]],"tempo":110},"E1":{"bars":[[{"v":"field","f":4,"hand":"R","t":0},{"v":"field","f":6,"hand":"R","t":1},{"v":"field","f":8,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"field","f":6,"hand":"R","t":4},{"v":"field","f":8,"hand":"L","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"field","f":6,"hand":"R","t":7},{"v":"field","f":8,"hand":"L","t":8},{"v":"field","f":4,"hand":"R","t":9},{"v":"field","f":6,"hand":"R","t":10},{"v":"field","f":8,"hand":"L","t":11},{"v":"field","f":4,"hand":"R","t":12},{"v":"field","f":6,"hand":"R","t":13},{"v":"field","f":8,"hand":"L","t":14},{"v":"ghost","hand":"L","t":15}],[{"v":"field","f":4,"hand":"R","t":0},{"v":"field","f":6,"hand":"R","t":1},{"v":"field","f":8,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"field","f":6,"hand":"R","t":4},{"v":"field","f":8,"hand":"L","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"field","f":6,"hand":"R","t":7},{"v":"field","f":8,"hand":"L","t":8},{"v":"field","f":4,"hand":"R","t":9},{"v":"field","f":6,"hand":"R","t":10},{"v":"field","f":8,"hand":"L","t":11},{"v":"field","f":4,"hand":"R","t":12},{"v":"field","f":6,"hand":"R","t":13},{"v":"field","f":8,"hand":"L","t":14},{"v":"ghost","hand":"L","t":15}],[{"v":"field","f":4,"hand":"R","t":0},{"v":"field","f":6,"hand":"R","t":1},{"v":"field","f":8,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"field","f":6,"hand":"R","t":4},{"v":"field","f":8,"hand":"L","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"field","f":6,"hand":"R","t":7},{"v":"field","f":8,"hand":"L","t":8},{"v":"field","f":4,"hand":"R","t":9},{"v":"field","f":6,"hand":"R","t":10},{"v":"field","f":8,"hand":"L","t":11},{"v":"field","f":4,"hand":"R","t":12},{"v":"field","f":6,"hand":"R","t":13},{"v":"field","f":8,"hand":"L","t":14},{"v":"ghost","hand":"L","t":15}],[{"v":"field","f":4,"hand":"R","t":0},{"v":"field","f":6,"hand":"R","t":1},{"v":"field","f":8,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"field","f":6,"hand":"R","t":4},{"v":"field","f":8,"hand":"L","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"ghost","hand":"L","t":7},{"v":"field","f":9,"hand":"R","t":8},{"v":"field","f":8,"hand":"L","t":9},{"v":"field","f":7,"hand":"R","t":10},{"v":"field","f":6,"hand":"L","t":11},{"v":"field","f":7,"hand":"R","t":12},{"v":"field","f":6,"hand":"L","t":13},{"v":"field","f":5,"hand":"R","t":14},{"v":"field","f":4,"hand":"L","t":15}]],"tempo":108},"B3":{"bars":[[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"field","f":7,"hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"field","f":8,"hand":"L","t":7},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":9},{"v":"field","f":9,"hand":"L","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"field","f":8,"hand":"L","t":12},{"v":"field","f":1,"hand":"R","t":13},{"v":"field","f":3,"hand":"R","t":14},{"v":"field","f":7,"hand":"L","t":15}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"field","f":7,"hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":5,"hand":"R","t":6},{"v":"field","f":8,"hand":"L","t":7},{"v":"field","f":0,"hand":"R","t":8},{"v":"field","f":1,"hand":"R","t":9},{"v":"field","f":9,"hand":"L","t":10},{"v":"field","f":0,"hand":"R","t":11},{"v":"field","f":8,"hand":"L","t":12},{"v":"field","f":0,"hand":"R","t":13},{"v":"field","f":1,"hand":"R","t":14},{"v":"field","f":7,"hand":"L","t":15}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"field","f":7,"hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"field","f":8,"hand":"L","t":7},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":9},{"v":"field","f":9,"hand":"L","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"field","f":8,"hand":"L","t":12},{"v":"field","f":1,"hand":"R","t":13},{"v":"field","f":3,"hand":"R","t":14},{"v":"field","f":7,"hand":"L","t":15}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":9,"hand":"L","t":2},{"v":"field","f":8,"hand":"L","t":4},{"v":"field","f":7,"hand":"R","t":6},{"v":"field","f":0,"hand":"R","t":8},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":6,"hand":"L","t":8},{"v":"ghost","hand":"R","t":10},{"v":"perc","s":"tak","hand":"L","g":"K","t":11},{"v":"perc","s":"tak","hand":"R","t":12},{"v":"ghost","hand":"L","t":13},{"v":"perc","s":"tak","hand":"R","t":14}]],"tempo":110},"B4":{"bars":[[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"field","f":7,"hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"field","f":8,"hand":"L","t":7},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":9},{"v":"field","f":9,"hand":"L","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"field","f":8,"hand":"L","t":12},{"v":"field","f":1,"hand":"R","t":13},{"v":"field","f":3,"hand":"R","t":14},{"v":"field","f":7,"hand":"L","t":15}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"field","f":7,"hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":5,"hand":"R","t":6},{"v":"field","f":8,"hand":"L","t":7},{"v":"field","f":0,"hand":"R","t":8},{"v":"field","f":1,"hand":"R","t":9},{"v":"field","f":9,"hand":"L","t":10},{"v":"field","f":0,"hand":"R","t":11},{"v":"field","f":8,"hand":"L","t":12},{"v":"field","f":0,"hand":"R","t":13},{"v":"field","f":1,"hand":"R","t":14},{"v":"field","f":7,"hand":"L","t":15}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"field","f":7,"hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"field","f":8,"hand":"L","t":7},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":9},{"v":"field","f":9,"hand":"L","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"field","f":8,"hand":"L","t":12},{"v":"field","f":1,"hand":"R","t":13},{"v":"field","f":3,"hand":"R","t":14},{"v":"field","f":7,"hand":"L","t":15}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":9,"hand":"L","t":2},{"v":"field","f":8,"hand":"L","t":4},{"v":"field","f":7,"hand":"R","t":6},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":8},{"v":"field","f":6,"hand":"L","t":8}]],"tempo":104},"Outro":{"bars":[[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":0},{"v":"field","f":6,"hand":"L","t":0},{"v":"ghost","hand":"R","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"field","f":4,"hand":"R","t":3},{"v":"field","f":6,"hand":"L","t":3},{"v":"ghost","hand":"R","t":6},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":8},{"v":"field","f":6,"hand":"L","t":8},{"v":"ghost","hand":"R","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"field","f":3,"hand":"R","t":11},{"v":"field","f":6,"hand":"L","t":11},{"v":"ghost","hand":"R","t":14}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":0},{"v":"field","f":7,"hand":"L","t":0},{"v":"ghost","hand":"R","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"field","f":5,"hand":"R","t":3},{"v":"field","f":7,"hand":"L","t":3},{"v":"ghost","hand":"R","t":4},{"v":"field","f":9,"hand":"L","t":6},{"v":"field","f":0,"hand":"R","t":8},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":6,"hand":"L","t":8},{"v":"ghost","hand":"R","t":10},{"v":"field","f":0,"hand":"R","t":11},{"v":"field","f":1,"hand":"R","t":11},{"v":"field","f":6,"hand":"L","t":11},{"v":"ghost","hand":"R","t":14}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":0},{"v":"field","f":6,"hand":"L","t":0},{"v":"field","f":7,"hand":"R","t":4},{"v":"field","f":8,"hand":"L","t":5},{"v":"field","f":9,"hand":"R","t":6},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":8},{"v":"field","f":6,"hand":"L","t":8},{"v":"ghost","hand":"R","t":10},{"v":"field","f":1,"hand":"R","t":11},{"v":"field","f":3,"hand":"R","t":11},{"v":"field","f":6,"hand":"L","t":11},{"v":"field","f":9,"hand":"R","t":14}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":0},{"v":"field","f":7,"hand":"L","t":0},{"v":"field","f":3,"hand":"R","t":3},{"v":"field","f":5,"hand":"R","t":3},{"v":"field","f":7,"hand":"L","t":3}]],"tempo":82}},"arrangement":["Intro1","Intro2","A1","A2","B1","C1","D1","D2","B2","E1","B3","B4","Outro"],"syncMap":[{"t":0.779,"p":0},{"t":1.414,"p":4,"g":1},{"t":2.037,"p":8},{"t":2.685,"p":12,"g":1},{"t":3.328,"p":16},{"t":3.955,"p":20,"g":1},{"t":4.587,"p":24},{"t":5.226,"p":28,"g":1},{"t":5.856,"p":32},{"t":6.497,"p":36,"g":1},{"t":7.157,"p":40},{"t":7.767,"p":44,"g":1},{"t":8.448,"p":48},{"t":9.038,"p":52,"g":1},{"t":9.685,"p":56},{"t":10.293,"p":60},{"t":10.944,"p":64},{"t":11.576,"p":68,"g":1},{"t":12.203,"p":72},{"t":12.839,"p":76,"g":1},{"t":13.483,"p":80},{"t":14.102,"p":84,"g":1},{"t":14.741,"p":88},{"t":15.365,"p":92,"g":1},{"t":16.032,"p":96},{"t":16.629,"p":100,"g":1},{"t":17.301,"p":104},{"t":17.892,"p":108,"g":1},{"t":18.549,"p":112},{"t":19.155,"p":116,"g":1},{"t":19.776,"p":120},{"t":20.395,"p":124},{"t":20.983,"p":128},{"t":21.517,"p":132},{"t":22.176,"p":136},{"t":22.773,"p":140},{"t":23.335,"p":144},{"t":23.936,"p":148},{"t":24.499,"p":152},{"t":25.076,"p":156},{"t":25.663,"p":160},{"t":26.229,"p":164},{"t":26.816,"p":168},{"t":27.375,"p":172},{"t":27.962,"p":176},{"t":28.518,"p":180},{"t":29.095,"p":184},{"t":29.661,"p":188},{"t":30.283,"p":192},{"t":30.853,"p":196,"g":1},{"t":31.445,"p":200},{"t":31.989,"p":204},{"t":32.576,"p":208},{"t":33.141,"p":212},{"t":33.707,"p":216},{"t":34.272,"p":220},{"t":34.848,"p":224},{"t":35.413,"p":228},{"t":36,"p":232},{"t":36.544,"p":236},{"t":37.109,"p":240},{"t":37.675,"p":244},{"t":38.24,"p":248},{"t":38.805,"p":252},{"t":39.36,"p":256},{"t":39.936,"p":260},{"t":40.501,"p":264},{"t":41.067,"p":268},{"t":41.611,"p":272},{"t":42.144,"p":276},{"t":42.72,"p":280},{"t":43.296,"p":284},{"t":43.851,"p":288},{"t":44.395,"p":292},{"t":44.96,"p":296},{"t":45.515,"p":300},{"t":46.08,"p":304},{"t":46.645,"p":308},{"t":47.211,"p":312},{"t":47.797,"p":316},{"t":48.373,"p":320},{"t":48.869,"p":324},{"t":57.621,"p":384},{"t":58.169,"p":392,"g":1},{"t":58.718,"p":400,"g":1},{"t":59.285,"p":408},{"t":59.814,"p":416,"g":1},{"t":60.362,"p":424,"g":1},{"t":60.91,"p":432,"g":1},{"t":61.458,"p":440,"g":1},{"t":62.006,"p":448,"g":1},{"t":62.554,"p":456,"g":1},{"t":63.103,"p":464,"g":1},{"t":63.651,"p":472,"g":1},{"t":64.199,"p":480,"g":1},{"t":64.747,"p":488,"g":1},{"t":65.295,"p":496,"g":1},{"t":65.843,"p":504,"g":1},{"t":66.391,"p":512},{"t":66.987,"p":516},{"t":67.552,"p":520},{"t":68.096,"p":524},{"t":68.661,"p":528},{"t":69.216,"p":532},{"t":69.781,"p":536},{"t":70.325,"p":540},{"t":70.88,"p":544},{"t":71.435,"p":548},{"t":72.011,"p":552},{"t":72.544,"p":556},{"t":73.12,"p":560},{"t":73.675,"p":564},{"t":74.219,"p":568},{"t":74.773,"p":572},{"t":75.317,"p":576},{"t":75.861,"p":580},{"t":76.416,"p":584},{"t":76.96,"p":588},{"t":77.515,"p":592},{"t":78.059,"p":596},{"t":78.603,"p":600},{"t":79.157,"p":604},{"t":79.733,"p":608},{"t":80.267,"p":612},{"t":80.811,"p":616},{"t":81.344,"p":620},{"t":81.888,"p":624},{"t":82.432,"p":628},{"t":82.965,"p":632},{"t":83.52,"p":636},{"t":84.075,"p":640},{"t":84.629,"p":644},{"t":85.163,"p":648},{"t":85.707,"p":652},{"t":86.251,"p":656},{"t":86.816,"p":660},{"t":87.36,"p":664},{"t":87.904,"p":668},{"t":88.491,"p":672},{"t":89.035,"p":676},{"t":89.579,"p":680},{"t":90.123,"p":684},{"t":90.688,"p":688},{"t":91.221,"p":692},{"t":91.787,"p":696},{"t":92.352,"p":700},{"t":92.896,"p":704},{"t":93.429,"p":708},{"t":93.984,"p":712},{"t":94.528,"p":716},{"t":95.083,"p":720},{"t":95.605,"p":724},{"t":96.117,"p":728},{"t":96.704,"p":732},{"t":97.248,"p":736},{"t":97.781,"p":740},{"t":98.336,"p":744},{"t":98.869,"p":748},{"t":99.403,"p":752},{"t":99.968,"p":756},{"t":100.512,"p":760},{"t":101.056,"p":764},{"t":101.591,"p":768},{"t":102.129,"p":772,"g":1},{"t":102.677,"p":776},{"t":103.221,"p":780},{"t":103.765,"p":784},{"t":104.288,"p":788},{"t":104.818,"p":792,"g":1},{"t":105.376,"p":796},{"t":105.909,"p":800},{"t":106.432,"p":804},{"t":106.976,"p":808},{"t":107.509,"p":812},{"t":108.043,"p":816},{"t":108.597,"p":820},{"t":109.152,"p":824},{"t":110.008,"p":828},{"t":110.795,"p":832},{"t":111.524,"p":836,"g":1},{"t":112.256,"p":840},{"t":112.983,"p":844,"g":1},{"t":113.739,"p":848},{"t":114.441,"p":852,"g":1},{"t":115.147,"p":856},{"t":115.9,"p":860,"g":1},{"t":116.64,"p":864},{"t":117.419,"p":868},{"t":118.178,"p":872},{"t":118.911,"p":876},{"t":119.705,"p":880},{"t":120.506,"p":884},{"t":121.146,"p":888},{"t":121.749,"p":892},{"t":122.464,"p":896}]},
 {"format":"hpd-2","id":"bembe-6-8","title":"Bembé 6/8","course":"Handpan Cookbook","lesson":"5.1","author":"David Kuckhermann","writtenFor":"d-kurd-9","tempo":85,"meter":[6,8],"sub":1,"unit":8,"barsPerRow":2,"sections":{"A":{"bars":[[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"field","f":5,"hand":"R","t":4},{"v":"field","f":6,"hand":"L","t":4},{"v":"field","f":6,"hand":"L","t":5}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"field","f":5,"hand":"R","t":4},{"v":"field","f":7,"hand":"L","t":4},{"v":"field","f":7,"hand":"L","t":5}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":8,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"field","f":4,"hand":"R","t":4},{"v":"field","f":8,"hand":"L","t":4},{"v":"field","f":8,"hand":"L","t":5}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":8,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"field","f":4,"hand":"R","t":4},{"v":"field","f":9,"hand":"L","t":4},{"v":"field","f":8,"hand":"L","t":5}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":3,"hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"field","f":3,"hand":"R","t":4},{"v":"field","f":7,"hand":"L","t":4},{"v":"field","f":7,"hand":"L","t":5}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":3,"hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"field","f":3,"hand":"R","t":4},{"v":"field","f":9,"hand":"L","t":4},{"v":"field","f":7,"hand":"L","t":5}],[{"v":"field","f":0,"hand":"R","t":0},{"v":"field","f":2,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":0,"hand":"R","t":3},{"v":"field","f":2,"hand":"R","t":4},{"v":"field","f":6,"hand":"L","t":4},{"v":"field","f":6,"hand":"L","t":5}],[{"v":"field","f":0,"hand":"R","t":0},{"v":"field","f":2,"hand":"R","t":1},{"v":"field","f":8,"hand":"L","t":2},{"v":"field","f":0,"hand":"R","t":3},{"v":"field","f":2,"hand":"R","t":4},{"v":"field","f":4,"hand":"L","t":4},{"v":"field","f":4,"hand":"L","t":5}]]}},"arrangement":["A","A","A","A"]},
 {"format":"hpd-2","id":"abakua-6-8","title":"Abakuá 6/8","course":"Handpan Cookbook","lesson":"5.2","author":"David Kuckhermann","writtenFor":"d-kurd-9","tempo":85,"meter":[6,8],"sub":1,"unit":8,"barsPerRow":2,"sections":{"A":{"bars":[[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"field","f":5,"hand":"R","t":4}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":4,"hand":"L","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"field","f":5,"hand":"R","t":4},{"v":"field","f":7,"hand":"L","t":4}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":8,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"field","f":4,"hand":"R","t":4}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":8,"hand":"L","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":9,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"field","f":4,"hand":"R","t":4},{"v":"field","f":8,"hand":"L","t":4}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":3,"hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"field","f":3,"hand":"R","t":4}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":7,"hand":"L","t":0},{"v":"field","f":3,"hand":"R","t":1},{"v":"field","f":8,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"field","f":3,"hand":"R","t":4},{"v":"field","f":9,"hand":"L","t":4},{"v":"field","f":7,"hand":"L","t":5}],[{"v":"field","f":0,"hand":"R","t":0},{"v":"field","f":2,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":0,"hand":"R","t":3},{"v":"field","f":2,"hand":"R","t":4}],[{"v":"field","f":0,"hand":"R","t":0},{"v":"field","f":8,"hand":"L","t":0},{"v":"field","f":2,"hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":0,"hand":"R","t":3},{"v":"field","f":2,"hand":"R","t":4},{"v":"field","f":6,"hand":"L","t":4},{"v":"field","f":4,"hand":"L","t":5}]]}},"arrangement":["A","A","A","A"]},
-{"format":"hpd-2","id":"arpeggios-in-7","title":"Arpeggios in 7","course":"Handpan Cookbook","lesson":"5.3","author":"David Kuckhermann","writtenFor":"d-kurd-9","tempo":85,"meter":[7,8],"sub":1,"unit":8,"barsPerRow":2,"sections":{"A":{"bars":[[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":5,"hand":"R","t":5},{"v":"field","f":6,"hand":"L","t":6}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":5,"hand":"R","t":5},{"v":"field","f":7,"hand":"L","t":6}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":8,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":8,"hand":"L","t":6}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":9,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":8,"hand":"L","t":6}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":3,"hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":7,"hand":"L","t":6}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":3,"hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":9,"hand":"L","t":6}],[{"v":"field","f":0,"hand":"R","t":0},{"v":"field","f":2,"hand":"R","t":1},{"v":"field","f":8,"hand":"L","t":2},{"v":"field","f":0,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":7,"hand":"L","t":6}],[{"v":"field","f":0,"hand":"R","t":0},{"v":"field","f":2,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":0,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":4,"hand":"L","t":6}]]}},"arrangement":["A","A","A","A"]},
+{"format":"hpd-2","id":"arpeggios-in-7","title":"Arpeggios in 7","course":"Handpan Cookbook","lesson":"5.3","author":"David Kuckhermann","writtenFor":"d-kurd-9","tempo":85,"meter":[7,8],"sub":1,"unit":8,"barsPerRow":2,"sections":{"A":{"groups":[3,2,2],"bars":[[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":5,"hand":"R","t":5},{"v":"field","f":6,"hand":"L","t":6}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":5,"hand":"R","t":5},{"v":"field","f":7,"hand":"L","t":6}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":8,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":8,"hand":"L","t":6}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":9,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":8,"hand":"L","t":6}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":3,"hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":7,"hand":"L","t":6}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":3,"hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":9,"hand":"L","t":6}],[{"v":"field","f":0,"hand":"R","t":0},{"v":"field","f":2,"hand":"R","t":1},{"v":"field","f":8,"hand":"L","t":2},{"v":"field","f":0,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":7,"hand":"L","t":6}],[{"v":"field","f":0,"hand":"R","t":0},{"v":"field","f":2,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":0,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":4,"hand":"L","t":6}]]}},"arrangement":["A","A","A","A"]},
 {"format":"hpd-2","id":"two-step-tune","title":"Two-step tune","course":"Handpan Cookbook","lesson":"5.6","author":"David Kuckhermann","writtenFor":"d-kurd-9","tempo":100,"meter":[2,4],"sub":4,"barsPerRow":2,"sections":{"A1":{"bars":[[{"v":"field","f":4,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":8,"hand":"L","t":2},{"v":"field","f":6,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":6,"hand":"R","t":5},{"v":"field","f":8,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":6,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":5,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":5,"hand":"R","t":5},{"v":"field","f":7,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":5,"hand":"L","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":5,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":4,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":8,"hand":"L","t":2},{"v":"field","f":6,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":6,"hand":"R","t":5},{"v":"field","f":8,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":6,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":5,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":5,"hand":"R","t":5},{"v":"field","f":7,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":3,"hand":"R","t":2},{"v":"field","f":5,"hand":"R","t":4},{"v":"field","f":7,"hand":"R","t":6}]]},"A2":{"bars":[[{"v":"field","f":4,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":8,"hand":"L","t":2},{"v":"field","f":6,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":6,"hand":"R","t":5},{"v":"field","f":8,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":6,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":5,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":5,"hand":"R","t":5},{"v":"field","f":7,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":5,"hand":"L","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":5,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":6,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":6,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":6,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":2},{"v":"field","f":7,"hand":"R","t":4},{"v":"field","f":9,"hand":"L","t":6}]]},"B1":{"bars":[[{"v":"field","f":0,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":1,"hand":"R","t":5},{"v":"field","f":6,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":6,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":5,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":5,"hand":"R","t":5},{"v":"field","f":7,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":5,"hand":"L","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":5,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":0,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":1,"hand":"R","t":5},{"v":"field","f":6,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":6,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":5,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":5,"hand":"R","t":5},{"v":"field","f":7,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":3,"hand":"R","t":2},{"v":"field","f":5,"hand":"R","t":4},{"v":"field","f":7,"hand":"R","t":6}]]},"B2":{"bars":[[{"v":"field","f":0,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":1,"hand":"R","t":5},{"v":"field","f":6,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":6,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":5,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":5,"hand":"R","t":5},{"v":"field","f":7,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":5,"hand":"L","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":5,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":6,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":6,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":6,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":2},{"v":"field","f":7,"hand":"R","t":4},{"v":"field","f":9,"hand":"R","t":6}]]},"C1":{"bars":[[{"v":"field","f":0,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":1,"hand":"R","t":5},{"v":"field","f":8,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":8,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":5,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":5,"hand":"R","t":5},{"v":"field","f":9,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":5,"hand":"L","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":7,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":0,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":1,"hand":"R","t":5},{"v":"field","f":8,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":8,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":5,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":5,"hand":"R","t":5},{"v":"field","f":9,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":5,"hand":"L","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":7,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}]]},"C2":{"bars":[[{"v":"field","f":0,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":1,"hand":"R","t":5},{"v":"field","f":8,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":8,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":5,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":5,"hand":"R","t":5},{"v":"field","f":9,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":5,"hand":"L","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":7,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":8,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":8,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"ghost","hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":4,"hand":"R","t":3},{"v":"ghost","hand":"L","t":4},{"v":"field","f":4,"hand":"R","t":5},{"v":"field","f":8,"hand":"L","t":6},{"v":"ghost","hand":"L","t":7}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":2},{"v":"field","f":7,"hand":"R","t":4},{"v":"field","f":9,"hand":"L","t":6}]]}},"arrangement":["A1","A2","B1","B2","C1","C2"]},
 {"format":"hpd-2","id":"bembe-tune","title":"Bembé tune","course":"Handpan Cookbook","lesson":"5.8","author":"David Kuckhermann","writtenFor":"d-kurd-9","tempo":85,"meter":[6,8],"sub":1,"unit":8,"barsPerRow":2,"sections":{"Intro":{"bars":[[{"v":"field","f":9,"hand":"R","t":0},{"v":"field","f":8,"hand":"R","t":1},{"v":"field","f":4,"hand":"L","t":2},{"v":"field","f":9,"hand":"R","t":3},{"v":"field","f":8,"hand":"R","t":4},{"v":"field","f":4,"hand":"L","t":4},{"v":"field","f":4,"hand":"L","t":5}],[{"v":"field","f":9,"hand":"R","t":0},{"v":"field","f":8,"hand":"R","t":1},{"v":"field","f":4,"hand":"L","t":2},{"v":"field","f":9,"hand":"R","t":3},{"v":"field","f":8,"hand":"R","t":4},{"v":"field","f":4,"hand":"L","t":4},{"v":"field","f":4,"hand":"L","t":5}],[{"v":"field","f":9,"hand":"R","t":0},{"v":"field","f":8,"hand":"R","t":1},{"v":"field","f":4,"hand":"L","t":2},{"v":"field","f":9,"hand":"R","t":3},{"v":"field","f":8,"hand":"R","t":4},{"v":"field","f":4,"hand":"L","t":4},{"v":"field","f":4,"hand":"L","t":5}],[{"v":"field","f":9,"hand":"R","t":0},{"v":"field","f":8,"hand":"R","t":1},{"v":"field","f":4,"hand":"L","t":2},{"v":"field","f":9,"hand":"R","t":3},{"v":"field","f":8,"hand":"R","t":4},{"v":"field","f":4,"hand":"L","t":4},{"v":"field","f":4,"hand":"L","t":5}],[{"v":"field","f":9,"hand":"R","t":0},{"v":"field","f":8,"hand":"R","t":1},{"v":"field","f":4,"hand":"L","t":2},{"v":"field","f":9,"hand":"R","t":3},{"v":"field","f":8,"hand":"R","t":4},{"v":"field","f":4,"hand":"L","t":4},{"v":"field","f":4,"hand":"L","t":5}],[{"v":"field","f":9,"hand":"R","t":0},{"v":"field","f":8,"hand":"R","t":1},{"v":"field","f":4,"hand":"L","t":2},{"v":"field","f":9,"hand":"R","t":3},{"v":"field","f":8,"hand":"R","t":4},{"v":"field","f":4,"hand":"L","t":4},{"v":"field","f":4,"hand":"L","t":5}],[{"v":"field","f":9,"hand":"R","t":0},{"v":"field","f":8,"hand":"R","t":1},{"v":"field","f":4,"hand":"L","t":2},{"v":"field","f":9,"hand":"R","t":3},{"v":"field","f":8,"hand":"R","t":4},{"v":"field","f":4,"hand":"L","t":4},{"v":"field","f":4,"hand":"L","t":5}],[{"v":"field","f":9,"hand":"R","t":0},{"v":"field","f":8,"hand":"R","t":1},{"v":"field","f":4,"hand":"L","t":2},{"v":"field","f":9,"hand":"R","t":3},{"v":"field","f":8,"hand":"R","t":4},{"v":"field","f":4,"hand":"L","t":4},{"v":"field","f":4,"hand":"L","t":5}]]},"A":{"bars":[[{"v":"field","f":8,"hand":"R","t":0},{"v":"field","f":6,"hand":"R","t":1},{"v":"field","f":4,"hand":"L","t":2},{"v":"field","f":8,"hand":"R","t":3},{"v":"field","f":6,"hand":"R","t":4},{"v":"field","f":4,"hand":"L","t":4},{"v":"field","f":4,"hand":"L","t":5}],[{"v":"field","f":8,"hand":"R","t":0},{"v":"field","f":6,"hand":"R","t":1},{"v":"field","f":4,"hand":"L","t":2},{"v":"field","f":8,"hand":"R","t":3},{"v":"field","f":6,"hand":"R","t":4},{"v":"field","f":3,"hand":"L","t":4},{"v":"field","f":3,"hand":"L","t":5}],[{"v":"field","f":6,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":2,"hand":"L","t":2},{"v":"field","f":6,"hand":"R","t":3},{"v":"field","f":4,"hand":"R","t":4},{"v":"field","f":2,"hand":"L","t":4},{"v":"field","f":2,"hand":"L","t":5}],[{"v":"field","f":6,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":2,"hand":"L","t":2},{"v":"field","f":6,"hand":"R","t":3},{"v":"field","f":4,"hand":"R","t":4},{"v":"field","f":1,"hand":"L","t":4},{"v":"field","f":1,"hand":"L","t":5}],[{"v":"field","f":7,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":3,"hand":"L","t":2},{"v":"field","f":7,"hand":"R","t":3},{"v":"field","f":5,"hand":"R","t":4},{"v":"field","f":3,"hand":"L","t":4},{"v":"field","f":3,"hand":"L","t":5}],[{"v":"field","f":7,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":3,"hand":"L","t":2},{"v":"field","f":7,"hand":"R","t":3},{"v":"field","f":5,"hand":"R","t":4},{"v":"field","f":3,"hand":"L","t":4},{"v":"field","f":3,"hand":"L","t":5}],[{"v":"field","f":7,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":3,"hand":"L","t":2},{"v":"field","f":7,"hand":"R","t":3},{"v":"field","f":5,"hand":"R","t":4},{"v":"field","f":3,"hand":"L","t":4},{"v":"field","f":3,"hand":"L","t":5}],[{"v":"field","f":9,"hand":"R","t":0},{"v":"field","f":7,"hand":"R","t":1},{"v":"field","f":5,"hand":"L","t":2},{"v":"field","f":9,"hand":"R","t":3},{"v":"field","f":7,"hand":"R","t":4},{"v":"field","f":5,"hand":"L","t":4},{"v":"field","f":5,"hand":"L","t":5}]]},"Outro":{"bars":[[{"v":"field","f":9,"hand":"R","t":0},{"v":"field","f":8,"hand":"R","t":1},{"v":"field","f":0,"hand":"L","t":2},{"v":"field","f":9,"hand":"R","t":3},{"v":"field","f":8,"hand":"R","t":4},{"v":"field","f":0,"hand":"L","t":4},{"v":"field","f":0,"hand":"L","t":5}],[{"v":"field","f":9,"hand":"R","t":0},{"v":"field","f":8,"hand":"R","t":1},{"v":"field","f":0,"hand":"L","t":2},{"v":"field","f":9,"hand":"R","t":3},{"v":"field","f":8,"hand":"R","t":4},{"v":"field","f":0,"hand":"L","t":4},{"v":"field","f":0,"hand":"L","t":5}],[{"v":"field","f":8,"hand":"R","t":0},{"v":"field","f":6,"hand":"R","t":1},{"v":"field","f":0,"hand":"L","t":2},{"v":"field","f":8,"hand":"R","t":3},{"v":"field","f":6,"hand":"R","t":4},{"v":"field","f":0,"hand":"L","t":4},{"v":"field","f":0,"hand":"L","t":5}],[{"v":"field","f":8,"hand":"R","t":0},{"v":"field","f":6,"hand":"R","t":1},{"v":"field","f":0,"hand":"L","t":2},{"v":"field","f":8,"hand":"R","t":3},{"v":"field","f":6,"hand":"R","t":4},{"v":"field","f":0,"hand":"L","t":4},{"v":"field","f":0,"hand":"L","t":5}],[{"v":"field","f":9,"hand":"R","t":0},{"v":"field","f":8,"hand":"R","t":1},{"v":"field","f":0,"hand":"L","t":2},{"v":"field","f":9,"hand":"R","t":3},{"v":"field","f":8,"hand":"R","t":4},{"v":"field","f":0,"hand":"L","t":4},{"v":"field","f":0,"hand":"L","t":5}],[{"v":"field","f":9,"hand":"R","t":0},{"v":"field","f":8,"hand":"R","t":1},{"v":"field","f":0,"hand":"L","t":2},{"v":"field","f":9,"hand":"R","t":3},{"v":"field","f":8,"hand":"R","t":4},{"v":"field","f":0,"hand":"L","t":4},{"v":"field","f":0,"hand":"L","t":5}],[{"v":"field","f":8,"hand":"R","t":0},{"v":"field","f":6,"hand":"R","t":1},{"v":"field","f":0,"hand":"L","t":2},{"v":"field","f":8,"hand":"R","t":3},{"v":"field","f":6,"hand":"R","t":4},{"v":"field","f":0,"hand":"L","t":4},{"v":"field","f":0,"hand":"L","t":5}],[{"v":"field","f":8,"hand":"R","t":0},{"v":"field","f":6,"hand":"R","t":1},{"v":"field","f":0,"hand":"L","t":2},{"v":"field","f":8,"hand":"R","t":3},{"v":"field","f":6,"hand":"R","t":4},{"v":"field","f":0,"hand":"L","t":4}]]}},"arrangement":["Intro","A","A","A","A","Outro"]},
 {"format":"hpd-2","id":"alien-next-door","title":"Alien Next Door","course":"Handpan Cookbook","lesson":"5.11","author":"David Kuckhermann","writtenFor":"d-kurd-9","tempo":100,"meter":[4,4],"sub":4,"barsPerRow":1,"sections":{"Pickup":{"bars":[[{"v":"field","f":3,"hand":"R","t":12},{"v":"field","f":4,"hand":"L","t":13},{"v":"field","f":5,"hand":"R","t":14},{"v":"field","f":6,"hand":"L","t":15}]]},"A1":{"bars":[[{"v":"field","f":0,"hand":"R","t":0},{"v":"field","f":8,"hand":"L","t":1},{"v":"field","f":9,"hand":"L","t":3},{"v":"perc","s":"tak","hand":"R","t":4},{"v":"field","f":8,"hand":"L","t":5},{"v":"field","f":9,"hand":"L","t":7},{"v":"field","f":2,"hand":"R","t":8},{"v":"ghost","hand":"L","t":9},{"v":"ghost","hand":"R","t":10},{"v":"perc","s":"tak","hand":"L","g":"K","t":11},{"v":"ghost","hand":"R","t":12},{"v":"ghost","hand":"L","t":13},{"v":"perc","s":"tak","hand":"R","t":14}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":7,"hand":"L","t":0},{"v":"ghost","hand":"R","t":2},{"v":"field","f":8,"hand":"L","t":3},{"v":"ghost","hand":"R","t":4},{"v":"field","f":5,"hand":"L","t":6},{"v":"field","f":1,"hand":"R","t":8},{"v":"ghost","hand":"R","t":10},{"v":"ghost","hand":"L","t":11},{"v":"field","f":3,"hand":"R","t":12},{"v":"field","f":4,"hand":"L","t":13},{"v":"field","f":5,"hand":"R","t":14},{"v":"field","f":6,"hand":"L","t":15}],[{"v":"field","f":0,"hand":"R","t":0},{"v":"field","f":8,"hand":"L","t":1},{"v":"field","f":9,"hand":"L","t":3},{"v":"perc","s":"tak","hand":"R","t":4},{"v":"field","f":8,"hand":"L","t":5},{"v":"field","f":6,"hand":"L","t":7},{"v":"field","f":2,"hand":"R","t":8},{"v":"ghost","hand":"L","t":9},{"v":"ghost","hand":"R","t":10},{"v":"perc","s":"tak","hand":"L","g":"K","t":11},{"v":"ghost","hand":"R","t":12},{"v":"ghost","hand":"L","t":13},{"v":"perc","s":"tak","hand":"R","t":14}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":8,"hand":"L","t":0},{"v":"ghost","hand":"R","t":2},{"v":"field","f":7,"hand":"L","t":3},{"v":"ghost","hand":"R","t":4},{"v":"field","f":6,"hand":"L","t":6},{"v":"field","f":1,"hand":"R","t":8},{"v":"ghost","hand":"R","t":10},{"v":"ghost","hand":"L","t":11},{"v":"field","f":3,"hand":"R","t":12},{"v":"field","f":4,"hand":"L","t":13},{"v":"field","f":5,"hand":"R","t":14},{"v":"field","f":6,"hand":"L","t":15}]]},"A2":{"bars":[[{"v":"field","f":0,"hand":"R","t":0},{"v":"field","f":8,"hand":"L","t":1},{"v":"field","f":9,"hand":"L","t":3},{"v":"perc","s":"tak","hand":"R","t":4},{"v":"field","f":8,"hand":"L","t":5},{"v":"field","f":9,"hand":"L","t":7},{"v":"field","f":2,"hand":"R","t":8},{"v":"ghost","hand":"L","t":9},{"v":"ghost","hand":"R","t":10},{"v":"perc","s":"tak","hand":"L","g":"K","t":11},{"v":"ghost","hand":"R","t":12},{"v":"ghost","hand":"L","t":13},{"v":"perc","s":"tak","hand":"R","t":14}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":7,"hand":"L","t":0},{"v":"ghost","hand":"R","t":2},{"v":"field","f":8,"hand":"L","t":3},{"v":"ghost","hand":"R","t":4},{"v":"field","f":5,"hand":"L","t":6},{"v":"field","f":1,"hand":"R","t":8},{"v":"ghost","hand":"R","t":10},{"v":"ghost","hand":"L","t":11},{"v":"field","f":3,"hand":"R","t":12},{"v":"field","f":4,"hand":"L","t":13},{"v":"field","f":5,"hand":"R","t":14},{"v":"field","f":6,"hand":"L","t":15}],[{"v":"field","f":0,"hand":"R","t":0},{"v":"field","f":8,"hand":"L","t":1},{"v":"field","f":9,"hand":"L","t":3},{"v":"perc","s":"tak","hand":"R","t":4},{"v":"field","f":8,"hand":"L","t":5},{"v":"field","f":6,"hand":"L","t":7},{"v":"field","f":2,"hand":"R","t":8},{"v":"ghost","hand":"L","t":9},{"v":"ghost","hand":"R","t":10},{"v":"perc","s":"tak","hand":"L","g":"K","t":11},{"v":"ghost","hand":"R","t":12},{"v":"ghost","hand":"L","t":13},{"v":"perc","s":"tak","hand":"R","t":14}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":8,"hand":"L","t":0},{"v":"field","f":8,"hand":"L","t":2},{"v":"field","f":7,"hand":"R","t":4},{"v":"field","f":7,"hand":"R","t":6},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":6,"hand":"L","t":8},{"v":"ghost","hand":"L","t":13},{"v":"perc","s":"tak","hand":"R","t":14},{"v":"perc","s":"tak","hand":"L","g":"K","t":15}]]},"A3":{"bars":[[{"v":"field","f":0,"hand":"R","t":0},{"v":"field","f":8,"hand":"L","t":1},{"v":"ghost","hand":"R","t":2},{"v":"field","f":9,"hand":"L","t":3},{"v":"perc","s":"tak","hand":"R","t":4},{"v":"field","f":8,"hand":"L","t":5},{"v":"ghost","hand":"R","t":6},{"v":"field","f":9,"hand":"L","t":7},{"v":"field","f":2,"hand":"R","t":8},{"v":"ghost","hand":"L","t":9},{"v":"ghost","hand":"R","t":10},{"v":"perc","s":"tak","hand":"L","g":"K","t":11},{"v":"ghost","hand":"R","t":12},{"v":"ghost","hand":"L","t":13},{"v":"perc","s":"tak","hand":"R","t":14}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":7,"hand":"L","t":0},{"v":"ghost","hand":"R","t":2},{"v":"field","f":8,"hand":"L","t":3},{"v":"ghost","hand":"R","t":4},{"v":"field","f":5,"hand":"L","t":6},{"v":"field","f":1,"hand":"R","t":8},{"v":"ghost","hand":"R","t":10},{"v":"ghost","hand":"L","t":11},{"v":"field","f":3,"hand":"R","t":12},{"v":"field","f":4,"hand":"L","t":13},{"v":"field","f":5,"hand":"R","t":14},{"v":"field","f":6,"hand":"L","t":15}],[{"v":"field","f":0,"hand":"R","t":0},{"v":"field","f":8,"hand":"L","t":1},{"v":"ghost","hand":"R","t":2},{"v":"field","f":9,"hand":"L","t":3},{"v":"perc","s":"tak","hand":"R","t":4},{"v":"field","f":8,"hand":"L","t":5},{"v":"ghost","hand":"R","t":6},{"v":"field","f":6,"hand":"L","t":7},{"v":"field","f":2,"hand":"R","t":8},{"v":"ghost","hand":"L","t":9},{"v":"ghost","hand":"R","t":10},{"v":"perc","s":"tak","hand":"L","g":"K","t":11},{"v":"ghost","hand":"R","t":12},{"v":"ghost","hand":"L","t":13},{"v":"perc","s":"tak","hand":"R","t":14}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":8,"hand":"L","t":0},{"v":"field","f":8,"hand":"L","t":2},{"v":"field","f":7,"hand":"R","t":4},{"v":"field","f":7,"hand":"R","t":6},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":6,"hand":"L","t":8}]]},"B1":{"bars":[[{"v":"field","f":0,"hand":"R","t":0},{"v":"field","f":1,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":0,"hand":"R","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":0,"hand":"R","t":5},{"v":"field","f":1,"hand":"R","t":6},{"v":"field","f":6,"hand":"L","t":7},{"v":"field","f":0,"hand":"R","t":8},{"v":"field","f":1,"hand":"R","t":9},{"v":"field","f":6,"hand":"L","t":10},{"v":"field","f":0,"hand":"R","t":11},{"v":"perc","s":"slap","hand":"L","t":12},{"v":"field","f":0,"hand":"R","t":13},{"v":"field","f":1,"hand":"R","t":14},{"v":"field","f":8,"hand":"L","t":15}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"field","f":6,"hand":"L","t":7},{"v":"field","f":2,"hand":"R","t":8},{"v":"field","f":4,"hand":"R","t":9},{"v":"field","f":6,"hand":"L","t":10},{"v":"field","f":2,"hand":"R","t":11},{"v":"perc","s":"slap","hand":"L","t":12},{"v":"ghost","hand":"L","t":13},{"v":"field","f":7,"hand":"R","t":14},{"v":"field","f":8,"hand":"L","t":15}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":5,"hand":"R","t":6},{"v":"field","f":7,"hand":"L","t":7},{"v":"field","f":3,"hand":"R","t":8},{"v":"field","f":5,"hand":"R","t":9},{"v":"field","f":7,"hand":"L","t":10},{"v":"field","f":3,"hand":"R","t":11},{"v":"perc","s":"slap","hand":"L","t":12},{"v":"field","f":3,"hand":"R","t":13},{"v":"field","f":5,"hand":"R","t":14},{"v":"field","f":9,"hand":"L","t":15}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":3,"hand":"R","t":1},{"v":"field","f":5,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":1,"hand":"R","t":5},{"v":"field","f":3,"hand":"R","t":6},{"v":"field","f":5,"hand":"L","t":7},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":3,"hand":"R","t":9},{"v":"field","f":5,"hand":"L","t":10},{"v":"ghost","hand":"L","t":11},{"v":"field","f":3,"hand":"R","t":12},{"v":"field","f":4,"hand":"L","t":13},{"v":"field","f":5,"hand":"R","t":14},{"v":"field","f":6,"hand":"L","t":15}]]},"B2":{"bars":[[{"v":"field","f":0,"hand":"R","t":0},{"v":"field","f":1,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":0,"hand":"R","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":0,"hand":"R","t":5},{"v":"field","f":1,"hand":"R","t":6},{"v":"field","f":6,"hand":"L","t":7},{"v":"field","f":0,"hand":"R","t":8},{"v":"field","f":1,"hand":"R","t":9},{"v":"field","f":6,"hand":"L","t":10},{"v":"field","f":0,"hand":"R","t":11},{"v":"perc","s":"slap","hand":"L","t":12},{"v":"field","f":0,"hand":"R","t":13},{"v":"field","f":1,"hand":"R","t":14},{"v":"field","f":8,"hand":"L","t":15}],[{"v":"field","f":2,"hand":"R","t":0},{"v":"field","f":4,"hand":"R","t":1},{"v":"field","f":6,"hand":"L","t":2},{"v":"field","f":2,"hand":"R","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":2,"hand":"R","t":5},{"v":"field","f":4,"hand":"R","t":6},{"v":"field","f":6,"hand":"L","t":7},{"v":"field","f":2,"hand":"R","t":8},{"v":"field","f":4,"hand":"R","t":9},{"v":"field","f":6,"hand":"L","t":10},{"v":"field","f":2,"hand":"R","t":11},{"v":"perc","s":"slap","hand":"L","t":12},{"v":"ghost","hand":"L","t":13},{"v":"field","f":7,"hand":"R","t":14},{"v":"field","f":8,"hand":"L","t":15}],[{"v":"field","f":3,"hand":"R","t":0},{"v":"field","f":5,"hand":"R","t":1},{"v":"field","f":7,"hand":"L","t":2},{"v":"field","f":3,"hand":"R","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":3,"hand":"R","t":5},{"v":"field","f":5,"hand":"R","t":6},{"v":"field","f":7,"hand":"L","t":7},{"v":"field","f":3,"hand":"R","t":8},{"v":"field","f":5,"hand":"R","t":9},{"v":"field","f":7,"hand":"L","t":10},{"v":"field","f":3,"hand":"R","t":11},{"v":"perc","s":"slap","hand":"L","t":12},{"v":"field","f":3,"hand":"R","t":13},{"v":"field","f":5,"hand":"R","t":14},{"v":"field","f":7,"hand":"L","t":15}],[{"v":"field","f":1,"hand":"R","t":0},{"v":"field","f":3,"hand":"R","t":1},{"v":"field","f":5,"hand":"L","t":2},{"v":"field","f":1,"hand":"R","t":3},{"v":"perc","s":"slap","hand":"L","t":4},{"v":"field","f":1,"hand":"R","t":5},{"v":"field","f":3,"hand":"R","t":6},{"v":"field","f":5,"hand":"L","t":7},{"v":"field","f":1,"hand":"R","t":8},{"v":"field","f":1,"hand":"R","t":10},{"v":"field","f":5,"hand":"L","t":10},{"v":"field","f":1,"hand":"R","t":12},{"v":"field","f":5,"hand":"L","t":12},{"v":"field","f":1,"hand":"R","t":14},{"v":"field","f":5,"hand":"L","t":14}]]},"C1":{"bars":[[{"v":"field","f":2,"hand":"L","t":0},{"v":"field","f":6,"hand":"R","t":0},{"v":"field","f":6,"hand":"R","t":2},{"v":"perc","s":"slap","hand":"R","t":4},{"v":"ghost","hand":"R","t":5},{"v":"field","f":2,"hand":"L","t":6},{"v":"field","f":6,"hand":"R","t":7},{"v":"ghost","hand":"L","t":8},{"v":"field","f":6,"hand":"R","t":9},{"v":"ghost","hand":"R","t":10},{"v":"field","f":2,"hand":"L","t":11},{"v":"perc","s":"slap","hand":"R","t":12},{"v":"field","f":4,"hand":"L","t":13},{"v":"field","f":5,"hand":"R","t":14}],[{"v":"field","f":2,"hand":"L","t":0},{"v":"field","f":6,"hand":"R","t":0},{"v":"field","f":6,"hand":"R","t":2},{"v":"perc","s":"slap","hand":"R","t":4},{"v":"ghost","hand":"R","t":5},{"v":"field","f":2,"hand":"L","t":6},{"v":"field","f":6,"hand":"R","t":7},{"v":"ghost","hand":"L","t":8},{"v":"field","f":6,"hand":"R","t":9},{"v":"ghost","hand":"R","t":10},{"v":"field","f":2,"hand":"L","t":11},{"v":"perc","s":"slap","hand":"R","t":12},{"v":"field","f":6,"hand":"L","t":13},{"v":"field","f":7,"hand":"R","t":14}],[{"v":"field","f":4,"hand":"L","t":0},{"v":"field","f":8,"hand":"R","t":0},{"v":"field","f":8,"hand":"R","t":2},{"v":"perc","s":"slap","hand":"R","t":4},{"v":"ghost","hand":"R","t":5},{"v":"field","f":4,"hand":"L","t":6},{"v":"field","f":8,"hand":"R","t":7},{"v":"ghost","hand":"L","t":8},{"v":"field","f":8,"hand":"R","t":9},{"v":"ghost","hand":"R","t":10},{"v":"field","f":4,"hand":"L","t":11},{"v":"perc","s":"slap","hand":"R","t":12},{"v":"field","f":6,"hand":"L","t":13},{"v":"field","f":7,"hand":"R","t":14}],[{"v":"field","f":4,"hand":"L","t":0},{"v":"field","f":8,"hand":"R","t":0},{"v":"field","f":8,"hand":"R","t":2},{"v":"perc","s":"slap","hand":"R","t":4},{"v":"ghost","hand":"R","t":5},{"v":"field","f":4,"hand":"L","t":6},{"v":"field","f":8,"hand":"R","t":7},{"v":"ghost","hand":"L","t":8},{"v":"field","f":8,"hand":"R","t":9},{"v":"ghost","hand":"R","t":10},{"v":"field","f":4,"hand":"L","t":11},{"v":"field","f":9,"hand":"R","t":12},{"v":"field","f":8,"hand":"L","t":13},{"v":"field","f":7,"hand":"R","t":14}]]},"C2":{"bars":[[{"v":"field","f":2,"hand":"L","t":0},{"v":"field","f":6,"hand":"R","t":0},{"v":"field","f":6,"hand":"R","t":2},{"v":"perc","s":"slap","hand":"R","t":4},{"v":"ghost","hand":"R","t":5},{"v":"field","f":2,"hand":"L","t":6},{"v":"field","f":6,"hand":"R","t":7},{"v":"ghost","hand":"L","t":8},{"v":"field","f":6,"hand":"R","t":9},{"v":"ghost","hand":"R","t":10},{"v":"field","f":2,"hand":"L","t":11},{"v":"perc","s":"slap","hand":"R","t":12},{"v":"field","f":4,"hand":"L","t":13},{"v":"field","f":5,"hand":"R","t":14}],[{"v":"field","f":2,"hand":"L","t":0},{"v":"field","f":6,"hand":"R","t":0},{"v":"field","f":6,"hand":"R","t":2},{"v":"perc","s":"slap","hand":"R","t":4},{"v":"ghost","hand":"R","t":5},{"v":"field","f":2,"hand":"L","t":6},{"v":"field","f":6,"hand":"R","t":7},{"v":"ghost","hand":"L","t":8},{"v":"field","f":6,"hand":"R","t":9},{"v":"ghost","hand":"R","t":10},{"v":"field","f":2,"hand":"L","t":11},{"v":"perc","s":"slap","hand":"R","t":12},{"v":"field","f":6,"hand":"L","t":13},{"v":"field","f":7,"hand":"R","t":14}],[{"v":"field","f":4,"hand":"L","t":0},{"v":"field","f":9,"hand":"R","t":0},{"v":"field","f":8,"hand":"R","t":2},{"v":"perc","s":"slap","hand":"R","t":4},{"v":"ghost","hand":"R","t":5},{"v":"field","f":4,"hand":"L","t":6},{"v":"field","f":9,"hand":"R","t":7},{"v":"ghost","hand":"L","t":8},{"v":"field","f":8,"hand":"R","t":9},{"v":"ghost","hand":"R","t":10},{"v":"field","f":4,"hand":"L","t":11},{"v":"perc","s":"slap","hand":"R","t":12},{"v":"field","f":6,"hand":"L","t":13},{"v":"field","f":7,"hand":"R","t":14}],[{"v":"field","f":4,"hand":"L","t":0},{"v":"field","f":9,"hand":"R","t":0},{"v":"field","f":8,"hand":"R","t":2},{"v":"perc","s":"slap","hand":"R","t":4},{"v":"ghost","hand":"R","t":5},{"v":"field","f":4,"hand":"L","t":6},{"v":"field","f":9,"hand":"R","t":7},{"v":"ghost","hand":"L","t":8},{"v":"field","f":8,"hand":"R","t":9},{"v":"ghost","hand":"R","t":10},{"v":"field","f":6,"hand":"L","t":11},{"v":"field","f":3,"hand":"R","t":12},{"v":"field","f":4,"hand":"L","t":13},{"v":"field","f":5,"hand":"R","t":14},{"v":"field","f":6,"hand":"L","t":15}]]}},"arrangement":["Pickup","A1","A2","B1","B2","C1","C2","A1","A2","B1","B2","C1","C2","A1","A3"]}
@@ -9648,7 +9676,8 @@ function SM(p,nm){ // section metrics: per-section meter/sub/barsPerRow over pie
      makes the whole change inert for every piece that has one: with no base
      declared, every beat draws at sub exactly as it always did. */
   const base=Math.min(s.base||p.base||sub,sub);
-  return {beats,sub,bp:beats*sub,bpr:s.barsPerRow||p.barsPerRow||1,base,den:(s.meter||p.meter)[1]||4};
+  return {beats,sub,bp:beats*sub,bpr:s.barsPerRow||p.barsPerRow||1,base,den:(s.meter||p.meter)[1]||4,
+    groups:s.groups||p.groups||null};   // the bar's grouping in counts (7/8 as [3,2,2]) — see groupsOf
 }
 /* THE SLOT LINES MARK THE GROOVE'S OWN GRID, not every drawn position (David,
    30 Aug: "when a piece has 8 notes per count in some sections, the slot lines
@@ -9661,6 +9690,69 @@ function SM(p,nm){ // section metrics: per-section meter/sub/barsPerRow over pie
    line, exactly as before. And with no base declared base === sub, which makes
    the step 1 and every existing piece byte-identical. */
 const slotStep=(res,base)=>(base&&res%base===0)?res/base:1;
+/* ═══════ GROUPS — THE BAR'S CELLS (16 Sep 2026, David: 7/8 "3-2-2 or 3-4",
+   9/8, 10/8, 5/8 with their groupings; the "grouping fix" reserved on 14 Sep)
+   ONE RULE: a section's bar is cut into GROUPS, sized in the meter's own
+   counts — 7/8 3-2-2 is cells of 3, 2 and 2 eighths, and with "2 per count"
+   the same cells hold 6, 4 and 4 sixteenths. A section without a grouping is
+   cut into groups of ONE count, which is exactly how every piece was drawn
+   before this existed — so `cellsOf` answers the same cells `for(b<m.beats)`
+   used to walk, and an ungrouped piece is byte-identical (the bench:
+   grouping-bench-head.json). Everything that draws a cell, lights the marker,
+   numbers the count line, clicks, or asks which cell a press landed in reads
+   cellsOf/cellAt instead of beats × sub.
+   A grouping is kept only while it adds up to the meter; otherwise it is
+   ignored (groupsOf → null), never "repaired". The marker's old felt-beat rule
+   for an UNGROUPED 6/8, 9/8 or 12/8 (beatCells: three counts) stays as it was
+   — David, 16 Sep: "keep them as single cells until a bigger grouping". */
+/* 7/8 has no 3-4 or 4-3 (David, 16 Sep: "the 3/4 selection can go, and the 4/3 selection can go. It
+   will simply be 3/2 or 2/3") — those are 3-2-2 and 2-2-3 seen by HALVES, which is what the marker's
+   Half setting shows in a grouped bar (paintPulse) */
+const GROUPINGS={"5/8":["3-2","2-3"],"6/8":["3-3"],"7/8":["3-2-2","2-2-3","2-3-2"],
+  "9/8":["3-3-3","2-2-2-3","2-2-3-2","2-3-2-2","3-2-2-2"],"10/8":["3-3-2-2","2-2-3-3","3-2-2-3","2-3-3-2"],"12/8":["3-3-3-3"]};
+function groupsOf(m){ const g=m.groups;
+  return (Array.isArray(g)&&g.length>1&&g.every(n=>Number.isInteger(n)&&n>0)&&g.reduce((a,b)=>a+b,0)===m.beats)?g:null; }
+function cellsOf(m){ // [{i, start (pulses into the bar), len (pulses), counts, c0 (first count index)}]
+  const g=groupsOf(m)||Array.from({length:m.beats},()=>1); let q=0,c=0;
+  return g.map((n,i)=>{ const cell={i,start:q,len:n*m.sub,counts:n,c0:c}; q+=n*m.sub; c+=n; return cell; });
+}
+function cellAt(m,relBar){ const cells=cellsOf(m); return cells.find(x=>relBar>=x.start&&relBar<x.start+x.len)||cells[cells.length-1]; }
+function cellLenAt(p){ // the length of the cell an ABSOLUTE pulse falls in (cellAtPoint's `to`)
+  const s=(typeof C!=="undefined"&&C)?secOfPulse(p):null; if(!s) return SM(piece,viewSec).sub;
+  const m=SM(piece,s.name); return cellAt(m,((p-s.pulse)%m.bp+m.bp)%m.bp).len; }
+/* the click's accent: the bar line — and, in a grouped bar, every group's start (David, 16 Sep) */
+function clickAccent(m,rel){ const rb=((rel%m.bp)+m.bp)%m.bp; return rb===0||(!!groupsOf(m)&&cellAt(m,rb).start===rb); }
+/* ═══════ STROKES IN A RANGE — tuplets (David, 16 Sep 2026) ═══════════════
+   "You can set a range by setting a loop and then choose how many notes should
+   fit equally into this range … for a quintuplet over 2 beats, you select this
+   range with a loop selector, then right-click … and choose how many strokes
+   should fit in here with equal distance." ONE RULE: a section carries RANGES
+   `tup: [{bar, from, len, n}]` — `from` and `len` in the meter's counts (the
+   loop snaps to whole cells), `n` strokes spaced equally across it. The stored
+   grid is raised to hold them (tupGrid: a 5-over-2 in a sixteenth table stores
+   at 20 per count — invisible; `base` stays the groove's grid, so the ruler,
+   the slot lines and every count that asked for nothing draw exactly as they
+   did). THE TABLE KEEPS ITS SHAPE (his words: "the numbers are squeezed in
+   there by using smaller numbers, similar to the 32nd runs, which also don't
+   change the table"): the count cells stay, and a count a range covers draws
+   the range's strokes that fall inside it, at their true place — a stroke's
+   slot runs to the next stroke or the count's end, and a count whose first
+   stroke comes late begins with an empty GAP slot. Table, Tab, Flow, the
+   editor's positions, the phone deck and the marker all read tupSlots. */
+function tupsOf(sec){ return (sec&&Array.isArray(sec.tup))?sec.tup:[]; }
+function tupBar(sec,bar){ return tupsOf(sec).filter(r=>r.bar===bar); }     // the ranges of one bar
+function tupAt(tp,b){ return (tp&&tp.find(r=>b>=r.from&&b<r.from+r.len))||null; }   // the range covering count b
+function tupPulses(r,m){ const step=r.len*m.sub/r.n, out=[]; for(let k=0;k<r.n;k++) out.push(r.from*m.sub+k*step); return out; }
+function tupSlots(r,m,b){          // count b's slots under range r: [{t,span,first,cell,gap?}]
+  const c0=b*m.sub, c1=c0+m.sub, ps=tupPulses(r,m).filter(q=>q>=c0&&q<c1), out=[];
+  let cell=0;
+  if(!ps.length||ps[0]>c0) out.push({t:c0,span:(ps.length?ps[0]:c1)-c0,first:true,cell:cell++,gap:true});
+  ps.forEach((q,i)=>{ const nx=i+1<ps.length?ps[i+1]:c1; out.push({t:q,span:nx-q,first:true,cell:cell++}); });
+  return out;
+}
+/* the grid that holds every range's strokes as whole pulses: sub, raised by
+   what each range still needs (len·S must divide by n) */
+function tupGrid(sec,sub){ const g=(a,b)=>b?g(b,a%b):a; let S=sub; for(const r of tupsOf(sec)){ const d=g(r.n,r.len*S); S*=r.n/d; } return S; }
 function pieceOk(p){ return p&&typeof p==="object"&&String(p.format||"").startsWith("hpd")
   &&p.sections&&Array.isArray(p.arrangement)&&p.arrangement.every(n=>p.sections[n]); }
 /* CHAPTERS — ONE VIDEO, SEVERAL PIECES (David, 5 Sep 2026, the Building
@@ -10468,7 +10560,7 @@ function sched(){
         ||!!(cpOn&&(cpcfg.sound==="click"                 // chord practice's "click only"…
             ||(cpcfg.pattern==="cp-free"&&cpcfg.sound!=="silent")));   // …and Free keeps time by the click (David, 2 Sep)
       if(!mutedByPreview&&clickNow&&rel%m.sub===0)
-        fire(clickBuf(rel%m.bp===0),nextTime,1);
+        fire(clickBuf(clickAccent(m,rel)),nextTime,1);   // the bar line, and each group's start (16 Sep)
       /* THE BASS STRIKES ON THE BAR LINE (David, 9 Sep: "have it hit with the
          first beat of the bar"). The bar line is the same test the click's
          accent uses, so the bass and the accented click land together by
@@ -10640,8 +10732,8 @@ function mkSpanBox(be,segS,segE){
 }
 function drawMarkBox(m,barI,s,e,scope){
   const barBase=barI*m.bp;
-  for(let bt=Math.floor((s-barBase)/m.sub);bt<=Math.floor((e-1-barBase)/m.sub);bt++){
-    const cellS=barBase+bt*m.sub, cellE=barBase+(bt+1)*m.sub;
+  for(const cl of cellsOf(m)){   // the bar's cells — a grouped bar's are uneven (16 Sep)
+    const cellS=barBase+cl.start, cellE=cellS+cl.len; if(cellE<=s||cellS>=e) continue;
     const segS=Math.max(s,cellS), segE=Math.min(e,cellE);
     const sl=document.querySelector('#score '+(scope||'')+'[data-rel="'+segS+'"]');
     /* the pulse may not be drawn — a 32nd inside a sixteenth slot — so fall
@@ -10754,10 +10846,21 @@ function paintPulse(pi,seek){
     } else if(markMode==="subdiv"||markMode==="half"){
       // fill whole beat boxes, however many pulses each holds
       clearSlotMarks();
-      const b0=Math.floor(relBar/m.sub), nb=markMode==="half"?2:beatCells(m);
-      const start=b0-(b0%nb);
-      for(let k=0;k<nb;k++){
-        const sl=document.querySelector('#score '+FSC+'[data-rel="'+(barI*m.bp+(start+k)*m.sub)+'"]');
+      const cells=cellsOf(m), ci=cellAt(m,relBar).i;
+      let lo,hi;   // the lit cells, [lo,hi)
+      if(markMode==="half"&&groupsOf(m)){
+        /* HALF IN A GROUPED BAR IS THE BAR IN TWO HALVES, cut at the group boundary
+           nearest the middle (David, 16 Sep: 3-2-2 "will follow 3/4 instead of 3/2";
+           so 2-2-3 → 4|3, 3-2-2-3 → 5|5; a tie goes to the earlier cut, 2-3-2 → 2|5) */
+        const mid=m.bp/2; let cut=1, bd=Infinity;
+        for(let k=1;k<cells.length;k++){ const d=Math.abs(cells[k].start-mid); if(d<bd){ bd=d; cut=k; } }
+        if(ci<cut){ lo=0; hi=cut; } else { lo=cut; hi=cells.length; }
+      } else {
+        const nb=markMode==="half"?2:(groupsOf(m)?1:beatCells(m));   // a grouped bar: the cell IS the felt beat
+        lo=ci-(ci%nb); hi=lo+nb;
+      }
+      for(let k=lo;k<hi;k++){ const cl=cells[k]; if(!cl) continue;
+        const sl=document.querySelector('#score '+FSC+'[data-rel="'+(barI*m.bp+cl.start)+'"]');
         const be=sl&&sl.closest(".beat,.fcell"); if(be) be.classList.add("nowbeat");
       }
     } else if(markMode==="bar"){
@@ -10770,19 +10873,27 @@ function paintPulse(pi,seek){
       // 16th / 8th: one even rectangle over the covered slots
       clearSlotMarks();
       const px=markerPulses(markMode,m);
+      const tr=tupAt(tupBar(piece.sections[cur.name],barI),Math.floor(relBar/m.sub));
+      if(tr){   // inside a range the marker covers one stroke (16 Sep)
+        const sl=tupSlots(tr,m,Math.floor(relBar/m.sub)).find(o=>relBar>=o.t&&relBar<o.t+o.span);
+        if(sl) drawMarkBox(m,barI,barI*m.bp+sl.t,barI*m.bp+sl.t+sl.span,FSC);
+      } else {
       const s=barI*m.bp+Math.floor(relBar/px)*px;
       drawMarkBox(m,barI,s,s+px,FSC);
+      }
     }
     if(countMark!=="off"){
-      const px=Math.min(markerPulses(countMark,m),m.bp);
-      const s=(barI%m.bpr)*m.bp+Math.floor(relBar/px)*px;
-      for(let r=s;r<s+px;r++){
+      let ws,we;   // the lit span, into the bar
+      if(countMark==="subdiv"&&groupsOf(m)){ const cl=cellAt(m,relBar); ws=cl.start; we=ws+cl.len; }   // a group's numbers, together
+      else { const px=Math.min(markerPulses(countMark,m),m.bp); ws=Math.floor(relBar/px)*px; we=ws+px; }
+      const s=(barI%m.bpr)*m.bp+ws;
+      for(let r=s;r<s+(we-ws);r++){
         const c=document.querySelector('.count [data-ct="'+r+'"]');
         if(c) c.classList.add("cnow");
       }
       // the Flow skin's tokens ride inside the cells and are bar-absolute
-      const sf=barI*m.bp+Math.floor(relBar/px)*px;
-      for(let r=sf;r<sf+px;r++){
+      const sf=barI*m.bp+ws;
+      for(let r=sf;r<sf+(we-ws);r++){
         const c=document.querySelector('#score '+FSC+'[data-ctf="'+r+'"]');
         if(c) c.classList.add("cnow");
       }
@@ -11052,10 +11163,14 @@ async function start(){
         if(!HPSWGG.ready(sd0)) await HPSWGG.prepare(sd0); }
     }catch(e){}
   }
-  const beat=60/effBpm(); let t0=ctx.currentTime+0.12;
-  const cBeats=SM(piece,piece.arrangement[0]).beats;
-  if(countIn){ for(let i=0;i<cBeats;i++) fire(clickBuf(i===0),t0+i*beat,1);
-    t0+=cBeats*beat; }
+  let t0=ctx.currentTime+0.12;
+  /* THE COUNT-IN IS ONE BAR OF THE FIRST TABLE AT ITS OWN SPEED (David, 16 Sep):
+     a click on each cell start — the counts, or a grouped bar's groups — the bar
+     line accented. It used to click quarter notes whatever the meter, so an
+     eighth-note piece counted in at half its speed. */
+  const m0=SM(piece,piece.arrangement[0]), pd=60/effBpm()/m0.sub*(4/(piece.unit||4));
+  if(countIn){ for(const cl of cellsOf(m0)) fire(clickBuf(cl.start===0),t0+cl.start*pd,1);
+    t0+=m0.bp*pd; }
   const e=arrEntries()[Math.min(selAi,piece.arrangement.length-1)];
   /* WHERE PLAY BEGINS, in one place and in this order (David, 31 Aug).
      1 · A LOOP ALWAYS STARTS AT ITS OWN BEGINNING — "when a loop is selected,
@@ -12235,8 +12350,8 @@ function transpose(){
 let THAND=new WeakMap();
 function transHands(){
   THAND=new WeakMap(); if(!piece||!myPan||!MAP) return;
-  const copy={sections:{},meter:piece.meter,sub:piece.sub,barsPerRow:piece.barsPerRow}, links=[];
-  for(const nm in piece.sections){ const sec=piece.sections[nm]; const cs={bars:[]}; if(sec.meter) cs.meter=sec.meter; if(sec.sub) cs.sub=sec.sub;
+  const copy={sections:{},meter:piece.meter,sub:piece.sub,barsPerRow:piece.barsPerRow,groups:piece.groups}, links=[];
+  for(const nm in piece.sections){ const sec=piece.sections[nm]; const cs={bars:[]}; if(sec.meter) cs.meter=sec.meter; if(sec.sub) cs.sub=sec.sub; if(sec.groups) cs.groups=sec.groups;
     for(const bar of sec.bars||[]){ const cb=[]; for(const ev of bar){ if(ev.v!=="field"){ cb.push(Object.assign({},ev)); continue; }
         let f=ev.f; const fo=foreignOf(ev); if(fo){ if(fo.pos===null) continue; f=fo.pos; } else { const back=standInPos(ev); if(back!=null) f=back; else { f=MAP[f]; if(f===null||f===undefined) continue; } }
         const c=Object.assign({},ev,{f}); delete c.ha; cb.push(c); links.push([c,ev]); }
@@ -13378,7 +13493,7 @@ function seekToPulse(p,nav){ // click in the notation: the playhead goes there. 
   if(!editing){
     const sSec=secOfPulse(p);
     if(sSec){ const sm=SM(piece,sSec.name), rel=p-sSec.pulse;
-      if(sm&&sm.sub>0) p=sSec.pulse+Math.floor(rel/sm.sub)*sm.sub; }
+      if(sm&&sm.sub>0){ const rb=rel%sm.bp; p=sSec.pulse+(rel-rb)+cellAt(sm,rb).start; } }   // the start of the CELL — a group's, in a grouped bar
   }
   viewPin=null;          // acting on the table releases the hand-picked view
   if(follow&&piece.syncMap&&piece.syncMap.length>=2){
@@ -13633,7 +13748,7 @@ document.addEventListener("DOMContentLoaded",()=>{
     const evs=[];
     for(let p=from;p<to;p++){
       const dt=invMap(p)-t0;
-      if((p-sec.pulse)%m.sub===0) evs.push({dt,click:(p-sec.pulse)%m.bp===0?2:1});
+      if((p-sec.pulse)%m.sub===0) evs.push({dt,click:clickAccent(m,p-sec.pulse)?2:1});
       for(const ev of (C&&C.byPulse.get(p)||compile(piece).byPulse.get(p)||[])) evs.push({dt,ev});
     }
     const loopDur=t1-t0;
@@ -14158,7 +14273,7 @@ function followTick(t,p){                  // audio only — the marker is on rA
         for(const ev of (C.byPulse.get(pi)||[])) fireEvent(ev,Math.max(at,ctx.currentTime));
       if(metOn){ // the metronome follows the map's own timing, even with the notes muted
         const sec=secOfPulse(pi), rel=pi-sec.pulse, mm=SM(piece,sec.name);
-        if(rel%mm.sub===0) fire(clickBuf(rel%mm.bp===0),Math.max(at,ctx.currentTime),1);
+        if(rel%mm.sub===0) fire(clickBuf(clickAccent(mm,rel)),Math.max(at,ctx.currentTime),1);
       }
     }
     vCursor++;
@@ -15697,12 +15812,12 @@ function cellAtPoint(x,y){
      table is what sent every cross-table click to the wrong place */
   if(cell.dataset.abs!=null){
     const from=+cell.dataset.abs;
-    return {from,to:from+SM(piece,viewSec).sub,cell};
+    return {from,to:from+cellLenAt(from),cell};   // the cell's own length — a group, in a grouped bar
   }
   const sl=cell.querySelector("[data-rel]");
   if(!sl) return null;
   const from=viewFromPulse()+(+sl.dataset.rel);
-  return {from,to:from+SM(piece,viewSec).sub,cell};
+  return {from,to:from+cellLenAt(from),cell};
 }
 /* ONE frame around the whole loop, not a box per row (David, 26 Aug). A loop
    that starts and ends mid-row is shaped like selected text, so the outline is
@@ -15783,8 +15898,21 @@ function reanchorLoop(){
    `2fr 2fr 1fr 1fr 1fr 1fr`: six slots, the T in a full sixteenth.
    NOT WHILE EDITING, by David's word — a 32nd cannot be placed in a cell that is
    not showing it, so the editor keeps the whole stored grid. */
-function beatSlots(byT,b,m){
+function beatSlots(byT,b,m,tp){
+  const r=tupAt(tp,b); if(r) return tupSlots(r,m,b);   // a range's count: its strokes (16 Sep)
   const unit=m.sub/m.base, out=[];
+  if(editing&&unit>1&&!(unit%1)){
+    /* THE EDITOR SEES THE COUNT'S OFFERED POSITIONS, NOT EVERY STORED PULSE
+       (16 Sep). A range raises the whole table's grid — a triplet takes a
+       sixteenth table to 12 — and "every pulse" would have shown twelve
+       slots in every count. So a count offers the finest division its own
+       notes use, at least the base (Flow's rule, beatRes): a plain count
+       four slots, a count with 32nds eight. A plain table (sub === base)
+       takes the old branch below, slot for slot. */
+    const res=beatRes(byT,b,m.sub,m.base), st=m.sub/res, u2=slotStep(res,m.base);
+    for(let k=0;k<res;k++) out.push({t:b*m.sub+k*st,span:st,first:k%u2===0,cell:Math.floor(k/u2)});
+    return out;
+  }
   if(editing||!(unit>=1)||unit%1){              // the editor sees every pulse
     const u=Math.max(1,Math.round(unit)||1);
     for(let k=0;k<m.sub;k++)
@@ -15805,6 +15933,15 @@ function beatSlots(byT,b,m){
   }
   return out;
 }
+/* a CELL's slots: its counts' slots in a row (cellsOf). Inside a grouped cell a
+   count boundary takes a slot line like any sub-grid line — the cell index is
+   offset per count so `first && cell>0` holds there. One count: beatSlots as is. */
+function cellSlots(byT,cl,m,tp){
+  if(cl.counts===1) return beatSlots(byT,cl.c0,m,tp);
+  const out=[]; for(let k=0;k<cl.counts;k++){ const off=k*Math.max(1,m.base);
+    for(const o of beatSlots(byT,cl.c0+k,m,tp)) out.push(Object.assign({},o,{cell:o.cell+off})); }
+  return out;
+}
 // One count line, shared by the Table and Tab skins; [data-ct] carries the
 // header-numbers marker (countMark) across the row's barsPerRow bars.
 function buildCountRow(m,cls,bres){
@@ -15814,13 +15951,19 @@ function buildCountRow(m,cls,bres){
     const cb=document.createElement("div");
     /* one column per SUBDIVISION, each holding its own positions — the bar's
        own structure, so the numbers cannot drift off the notes (see .count) */
-    cb.style.display="grid"; cb.style.gridTemplateColumns="repeat("+m.beats+",minmax(0,1fr))";
-    for(let b=0;b<m.beats;b++){
+    /* one column per CELL (cellsOf — a group, or a count), each holding its counts'
+       positions; in a grouped cell the first count's number is the big one and the
+       others are clearly secondary (.cs — David, 16 Sep) */
+    const bcells=cellsOf(m), grouped=!!groupsOf(m);
+    cb.style.display="grid"; cb.style.gridTemplateColumns=grouped?bcells.map(c=>"minmax(0,"+c.counts+"fr)").join(" "):"repeat("+m.beats+",minmax(0,1fr))";
+    for(const cl of bcells){
       const cell=document.createElement("div"); cell.className="cbeat";
+      const cols=[];
+      for(let kk=0;kk<cl.counts;kk++){ const b=cl.c0+kk;
       /* THE RULER: the section's base, evenly spaced, the same in every bar —
          what the bars do inside a beat is their own business. */
       const cres=(bres&&bres[b])||m.base, cstride=m.sub/cres;
-      cell.style.gridTemplateColumns="repeat("+cres+",minmax(0,1fr))";
+      cols.push("repeat("+cres+",minmax(0,1fr))");
       /* FOUR TICKS TO THE BEAT, NOT EIGHT (David, 30 Aug: "for the counting
          line we want to stick to 4 ticks/beat, not 8. Even if the composition
          has 8 at times"). The COLUMNS stay one per subdivision — that is what
@@ -15838,9 +15981,12 @@ function buildCountRow(m,cls,bres){
           const q=k/cstep;
           sp.dataset.ct=r*m.bp+t;      // only a labelled tick can light
           sp.textContent=q===0?String(b+1):(cden%2===0&&q===cden/2?"+":"·");
+          if(grouped&&q===0&&kk>0) sp.classList.add("cs");   // a count inside a group
         }
         cell.appendChild(sp);
       }
+      }
+      cell.style.gridTemplateColumns=cols.join(" ");
       cb.appendChild(cell);
     }
     cnt.appendChild(cb);
@@ -16064,10 +16210,12 @@ function renderTableView(sc,lanes){
          exists precisely so a two-digit number fits the share it is given
          rather than demanding a bigger one. */
       const bel=document.createElement("div"); bel.className="bar";
-      bel.style.gridTemplateColumns="repeat("+m.beats+",minmax(0,1fr))";
-      for(let b=0;b<m.beats;b++){
+      /* the bar's CELLS — its groups, or one per count (cellsOf); a grouped cell is as wide as its counts */
+      const bcells=cellsOf(m);
+      bel.style.gridTemplateColumns=groupsOf(m)?bcells.map(c=>"minmax(0,"+c.counts+"fr)").join(" "):"repeat("+m.beats+",minmax(0,1fr))";
+      for(const cl of bcells){
         const be=document.createElement("div"); be.className=lanes?"beat tbeat":"beat";
-        const slots=beatSlots(byT,b,m);
+        const slots=cellSlots(byT,cl,m,tupBar(sec,bi));
         /* the widths ARE the resolution: an undivided sixteenth is one wide
            column, a divided one two narrow ones, and every column is a whole
            number of stored pulses, so the grid cannot drift off the music */
@@ -16080,6 +16228,7 @@ function renderTableView(sc,lanes){
              well as set, because dropCrossedLines takes some of them away and a
              refit has to know which ones were there to begin with. */
           if(slots[sN].first&&slots[sN].cell>0){ sl.classList.add("smark"); sl.dataset.sm="1"; }
+          if(slots[sN].gap) sl.classList.add("gap");   // before a range's first stroke: no position here
           const evs=sortStack((byT.get(t)||[]).slice(0,4),!!lanes);
           const symEl=ev=>{ const g=glyphFor(ev,true);
             const el=document.createElement("span");
@@ -16136,7 +16285,8 @@ function renderTableView(sc,lanes){
           /* the tab's lanes pick the hand (see laneHand) — the phone never
              gets here, its capture handler stops the pointerdown and reads
              the lane itself */
-          if(editing&&lanes) sl.addEventListener("pointerdown",e=>{
+          if(editing&&slots[sN].gap){ /* nothing to edit in a gap */ }
+          else if(editing&&lanes) sl.addEventListener("pointerdown",e=>{
             pickLane(sl,e.clientX,e.clientY,rel);
             cursor=rel; render(); updateHandInd(); });
           else if(editing) sl.addEventListener("pointerdown",()=>{ cursor=rel; render(); });
@@ -17772,9 +17922,10 @@ function renderFlowSection(sc,nm,ai,absStart){
     const bi=D.bi, bar=sec.bars[bi], reps=D.n;
     const byT=new Map();
     for(const ev of bar){ if(!byT.has(ev.t)) byT.set(ev.t,[]); byT.get(ev.t).push(ev); }
-    for(let b=0;b<m.beats;b++){
+    const bcells=cellsOf(m);   // the bar's cells: its groups, or one per count (16 Sep)
+    for(const cl of bcells){ const b=cl.i, lastCell=cl.i===bcells.length-1;
       const cell=document.createElement("span");
-      cell.className="fcell"+(b===m.beats-1?" bend":"");
+      cell.className="fcell"+(lastCell?" bend":"");
       cell.dataset.bar=bi;
       /* the sign sits ON THE BAR LINE (David, 2 Sep: "the repeat sign lines
          don't sit on the separator neatly"): a line of its own laid over the
@@ -17783,7 +17934,7 @@ function renderFlowSection(sc,nm,ai,absStart){
       if(reps>1){
         const mk=cls=>{ const e=document.createElement("span"); e.className=cls; cell.appendChild(e); };
         if(b===0&&D.pos===0){ cell.classList.add("cprep-start"); mk("crepl"); mk("crepd l"); }
-        if(b===m.beats-1&&D.pos===D.span-1){ cell.classList.add("cprep-end"); mk("crepd r");
+        if(lastCell&&D.pos===D.span-1){ cell.classList.add("cprep-end"); mk("crepd r");
           if(reps>2){ const rn=document.createElement("span"); rn.className="repn"; rn.textContent="×"+reps; cell.appendChild(rn); } }
       }
       let stripEl=null;
@@ -17807,10 +17958,16 @@ function renderFlowSection(sc,nm,ai,absStart){
       /* the beat's own resolution, and the stride through the stored grid it
          implies. With no base declared res === m.sub and stride === 1, which
          is this loop exactly as it was. */
-      const res=beatRes(byT,b,m.sub,m.base), stride=m.sub/res;
-      cell.dataset.res=res;
+      /* a grouped cell holds several counts: each keeps its own resolution and its
+         own number — the first count's big, the others clearly secondary (16 Sep) */
+      for(let kk=0;kk<cl.counts;kk++){ const bc=cl.c0+kk;
+      /* a count a range covers draws the range's strokes inside it (16 Sep) —
+         the same slot list the Table draws, packed here as Flow packs */
+      const tr=tupAt(tupBar(sec,bi),bc), pl=tr?tupSlots(tr,m,bc):null;
+      const res=pl?pl.length:beatRes(byT,bc,m.sub,m.base), stride=m.sub/res;
+      if(kk===0) cell.dataset.res=res;
       for(let k=0;k<res;k++){
-        const t=b*m.sub+k*stride, rel=bi*m.bp+t;
+        const t=pl?pl[k].t:bc*m.sub+k*stride, rel=bi*m.bp+t;
         const pos=document.createElement("span"); pos.className="fpos"; pos.dataset.rel=rel;
         // the fold's other passes land on this position through hidden anchors
         for(let q=1;q<reps;q++){ const a=document.createElement("i"); a.hidden=true; a.dataset.rel=rel+q*D.span*m.bp; pos.appendChild(a); }
@@ -17823,16 +17980,18 @@ function renderFlowSection(sc,nm,ai,absStart){
            pulse in the DOM is what lets their shared seek paths get it
            right. */
         if(absStart!=null) pos.dataset.abs=absStart+rel;
-        if(k>0&&k%slotStep(res,m.base)===0) pos.classList.add("smark");
+        if(pl&&pl[k].gap) pos.classList.add("gap");
+        if((k>0&&(pl||k%slotStep(res,m.base)===0))||(k===0&&kk>0)) pos.classList.add("smark");   // …and a count boundary inside a group
         const ct=document.createElement("span");
-        ct.className="fct"+(k===0?" b":"");
+        ct.className="fct"+(k===0?" b":"")+(k===0&&kk>0?" cs":"");
         /* four ticks to the beat here too, by the same step — a cell of eight
-           gets 1 · + · with the fast positions unlabelled between them */
+           gets 1 · + · with the fast positions unlabelled between them; a
+           range's strokes are off the ruler, so only the count's number stands */
         const cstep=slotStep(res,m.base), cden=res/cstep;
-        if(k%cstep===0){
+        if(pl?k===0:k%cstep===0){
           const q=k/cstep;
           ct.dataset.ctf=rel;
-          ct.textContent=q===0?String(b+1):(cden%2===0&&q===cden/2?"+":"·");
+          ct.textContent=q===0?String(bc+1):(cden%2===0&&q===cden/2?"+":"·");
         }
         pos.appendChild(ct);
         const evs=byT.get(t)||[];
@@ -17855,6 +18014,7 @@ function renderFlowSection(sc,nm,ai,absStart){
           seekToPulse((absStart==null?viewFromPulse():absStart)+rel); });
         prow.appendChild(pos);
       }
+      }   // the cell's counts
       if(cellExt) cell.classList.add("ext");
       /* the lane ladder, in the cell's own em: the reach rows are .98 and the
          anchors 1.16, with .06 between — so a marker that starts at row t and
@@ -17872,10 +18032,10 @@ function renderFlowSection(sc,nm,ai,absStart){
       cell.appendChild(prow);
       // the CELL is the tap target — the skin's atom, and a finger's size
       cell.addEventListener("pointerdown",()=>{
-        seekToPulse((absStart==null?viewFromPulse():absStart)+bi*m.bp+b*m.sub); });
+        seekToPulse((absStart==null?viewFromPulse():absStart)+bi*m.bp+cl.start); });
       // the beat cell too — cellAtPoint answers gap clicks at cell grain
-      if(absStart!=null) cell.dataset.abs=absStart+bi*m.bp+b*m.sub;
-      cells.push({el:cell,bar:bi,rel0:bi*m.bp+b*m.sub});
+      if(absStart!=null) cell.dataset.abs=absStart+bi*m.bp+cl.start;
+      cells.push({el:cell,bar:bi,rel0:bi*m.bp+cl.start,len:cl.len});
     }
   });
   // measure in place, then set the systems. The measuring pass wraps freely
@@ -17908,7 +18068,7 @@ function renderFlowSection(sc,nm,ai,absStart){
   lines.forEach((ln,li)=>{
     const sys=document.createElement("div");
     const lead=ln[0].c, tail=ln[ln.length-1].c;
-    if(absStart==null) markRow(sys,lead.rel0,tail.rel0+m.sub);  // a system loops like a row
+    if(absStart==null) markRow(sys,lead.rel0,tail.rel0+(tail.len||m.sub));  // a system loops like a row
     sys.classList.add("fsys");
     if(li===lines.length-1) sys.classList.add("flast");
     // the system announces the bar it begins in (mid-bar starts carry theirs)
@@ -19212,6 +19372,41 @@ function updateHandInd(){
 function slotEvents(loc){ return piece.sections[loc.sec].bars[loc.bar].filter(e=>e.t===loc.t); }
 function clearSlot(loc){ const bar=piece.sections[loc.sec].bars[loc.bar];
   for(let i=bar.length-1;i>=0;i--) if(bar[i].t===loc.t) bar.splice(i,1); }
+/* ⌫ CLEARS WHAT THE CURSOR NAMES (David, 16 Sep: "why is backspace deleting a
+   complete cell instead of just the right or the left hand when in tab mode?"):
+   the picked lane while one stands — the same pick the Hand row lights and a
+   placed note takes — otherwise the whole slot. An empty lane clears nothing
+   ("it should clear nothing"), and an empty slot takes no undo step either.
+   The desktop's Backspace and the phone deck's ⌫ are this one function. */
+function edClearHere(){
+  const loc=viewLoc(); if(!loc) return;
+  const bar=piece.sections[loc.sec].bars[loc.bar];
+  const evs=bar.filter(e=>e.t===loc.t);
+  const lh=laneHandHere();
+  const gone=lh?evs.filter(e=>laneHandOf(e,evs)===lh):evs;
+  if(!gone.length) return;
+  snapshot();
+  for(const e of gone) bar.splice(bar.indexOf(e),1);
+  refresh();
+}
+/* CLEAR THE LOOP (David, 16 Sep: "a clear option when I have selected to loop,
+   so all the notes and accents in there get cleared") — every event in the
+   looped span goes, articulation, flams and rolls with the notes they sit on.
+   A chord name rides on the note it starts with, so it goes with that note
+   and the toast says so. The span is the loop as edCopyLoop reads it. */
+function edClearLoop(){
+  if(!loopSec||!editing) return;
+  const m=SM(piece,viewSec), sec=piece.sections[viewSec], base=viewFromPulse();
+  const r0=loopSec.from-base, r1=loopSec.to-base;
+  let n=0, chords=0;
+  const keep=sec.bars.map((bar,bi)=>bar.filter(e=>{ const r=bi*m.bp+e.t;
+    if(r<r0||r>=r1) return true; n++; if(e.chord) chords++; return false; }));
+  if(!n){ toast("The loop is already empty"); return; }
+  snapshot();
+  keep.forEach((bar,bi)=>{ sec.bars[bi]=bar; });
+  refresh();
+  toast("Cleared "+n+(n===1?" note":" notes")+(chords?" · "+chords+(chords===1?" chord name":" chord names")+" went with them":""));
+}
 function viewLoc(){
   const m=SM(piece,viewSec), bars=piece.sections[viewSec].bars;
   const bar=Math.floor(cursor/m.bp);
@@ -19343,7 +19538,7 @@ function edDropBar(){
   if(!sec||sec.bars.length<=1){ toast("A table needs at least one bar"); return; }
   const m=SM(piece,viewSec), last=sec.bars.length-1;
   const had=sec.bars[last].length;
-  snapshot(); sec.bars.pop();
+  snapshot(); sec.bars.pop(); tupShift(sec,sec.bars.length,-1);
   if(cursor>=sec.bars.length*m.bp) cursor=Math.max(0,sec.bars.length*m.bp-1);
   refresh();
   if(had) toast("Last bar removed — undo brings it back");
@@ -19370,12 +19565,11 @@ function editorKeys(e){
   else if(k==="."||k==="g"){ place({v:"ghost",hand:nextHand()}); e.preventDefault(); }
   else if(k==="h"){ laneHand=null; selHand=selHand==="L"?"R":selHand==="R"?"alt":"L"; renderEditbar(); }
   else if(k===","){ laneHand=null; selHand=selHand==="L"?"R":"L"; renderEditbar(); e.preventDefault(); }
-  else if(e.key==="ArrowRight"){ cursor=(cursor+1)%total; render(); e.preventDefault(); }
-  else if(e.key==="ArrowLeft"){ cursor=(cursor-1+total)%total; render(); e.preventDefault(); }
-  else if(e.key==="ArrowDown"){ cursor=(cursor+bp)%total; render(); e.preventDefault(); }
-  else if(e.key==="ArrowUp"){ cursor=(cursor-bp+total)%total; render(); e.preventDefault(); }
-  else if(e.key==="Backspace"||e.key==="Delete"){ const loc=viewLoc();
-    if(loc){ snapshot(); clearSlot(loc); refresh(); } e.preventDefault(); }
+  else if(e.key==="ArrowRight"){ cursor=edOfferedStep(1); render(); e.preventDefault(); }
+  else if(e.key==="ArrowLeft"){ cursor=edOfferedStep(-1); render(); e.preventDefault(); }
+  else if(e.key==="ArrowDown"){ cursor=edOfferedNear((cursor+bp)%total); render(); e.preventDefault(); }
+  else if(e.key==="ArrowUp"){ cursor=edOfferedNear((cursor-bp+total)%total); render(); e.preventDefault(); }
+  else if(e.key==="Backspace"||e.key==="Delete"){ edClearHere(); e.preventDefault(); }
 }
 /* the pan's complete chords, as <option>s — the New groove dialog, the phone
    bench and the desktop bench all offer the same list */
@@ -19674,6 +19868,11 @@ function renderEditbar(){
        +[["1","No subdivision"],["2","2 per count"],["3","3 per count"],["4","4 per count"]]
          .map(([v,l])=>'<option value="'+v+'"'+(+v===piece.sub?" selected":"")+'>'+l+'</option>').join("")
      +'</select>'
+     /* …and the GROUPS this meter has (16 Sep) — none for a meter without any */
+     +(GROUPINGS[tsNow]?'<select class="ctl" id="gwGroups" aria-label="Groups">'
+       +[["","No groups"]].concat(GROUPINGS[tsNow].map(g=>[g,"Groups "+g.replace(/-/g,"+")]))
+         .map(([v,l])=>'<option value="'+v+'"'+(v===(groupsOf(SM(piece,"Groove"))||[]).join("-")?" selected":"")+'>'+l+'</option>').join("")
+       +'</select>':"")
      /* …and WHICH CHORD it is written on, beside the per-count select (David,
         30 Aug). Same list the New groove dialog offers — the pan's complete
         chords — and changing it re-labels the bench rather than rebuilding the
@@ -19783,6 +19982,7 @@ function renderEditbar(){
     const set=()=>grooveSetTime($("gwTS").value,$("gwSub").value);
     $("gwTS").addEventListener("change",set);
     $("gwSub").addEventListener("change",set);
+    if($("gwGroups")) $("gwGroups").addEventListener("change",()=>grooveSetGroups($("gwGroups").value));
     const gr=$("gwRef");
     if(gr) gr.addEventListener("change",()=>grooveSetRef(gr.value));
   }
@@ -19799,19 +19999,55 @@ function renderEditbar(){
    slots under ~40px), and ‹ › walk windows, rolling across bars and sections. */
 let edPanFor=null;   // which pan the deck's drawing was built for
 function edWin(){
-  const m=SM(piece,viewSec);
-  let wb=m.beats; while(wb*m.sub>8&&wb>1) wb=Math.ceil(wb/2);
-  return {m,winBeats:wb,winBP:wb*m.sub};
+  const m=SM(piece,viewSec), cells=cellsOf(m);
+  /* THE WINDOW HOLDS WHOLE CELLS — as many as keep it at eight pulses or fewer,
+     halving until it does. A grouped bar's cells are uneven (16 Sep), so a
+     window is a LIST of cells with its own from/to, not a pulse count; an
+     ungrouped bar gives exactly the windows it always did. */
+  /* …measured in OFFERED SLOTS since 16 Sep, not stored pulses: a raised grid
+     (a triplet table at 12) still shows four slots a count. The cursor's bar
+     is the one the row shows, so its content decides. */
+  const sec=piece.sections[viewSec], bar=Math.floor(cursor/m.bp), byT=new Map();
+  for(const ev of (sec&&sec.bars[bar])||[]){ if(!byT.has(ev.t)) byT.set(ev.t,[]); byT.get(ev.t).push(ev); }
+  const tp=tupBar(sec,bar), slotsIn=c=>cellSlots(byT,c,m,tp).length;
+  const span=k=>{ let w=0; for(let i=0;i<cells.length;i+=k){ const ws=cells.slice(i,i+k); w=Math.max(w,ws.reduce((s,c)=>s+slotsIn(c),0)); } return w; };
+  let n=cells.length; while(n>1&&span(n)>8) n=Math.ceil(n/2);
+  const wins=[]; for(let i=0;i<cells.length;i+=n){ const ws=cells.slice(i,i+n); const last=ws[ws.length-1];
+    wins.push({from:ws[0].start,to:last.start+last.len,cells:ws}); }
+  return {m,cells,wins,winBP:wins[0].to-wins[0].from};
 }
+/* THE CURSOR WALKS THE OFFERED POSITIONS (16 Sep) — the slots the editor
+   draws, gaps left out — never a stored pulse nothing shows. One list for
+   the section, from the same cellSlots the views use. */
+function edOffered(){
+  const m=SM(piece,viewSec), sec=piece.sections[viewSec], out=[];
+  if(!sec) return out;
+  sec.bars.forEach((bar,bi)=>{ const byT=new Map();
+    for(const ev of bar){ if(!byT.has(ev.t)) byT.set(ev.t,[]); byT.get(ev.t).push(ev); }
+    const tp=tupBar(sec,bi);
+    for(const cl of cellsOf(m)) for(const o of cellSlots(byT,cl,m,tp)) if(!o.gap) out.push(bi*m.bp+o.t); });
+  return out;
+}
+function edOfferedStep(dir){
+  const L=edOffered(); if(!L.length) return cursor;
+  if(dir>0){ const n=L.find(p=>p>cursor); return n!=null?n:L[0]; }
+  let prev=null; for(const p of L){ if(p<cursor) prev=p; else break; }
+  return prev!=null?prev:L[L.length-1];
+}
+function edOfferedNear(p){   // the last offered position at or before p, else the first after
+  const L=edOffered(); if(!L.length) return p;
+  let best=null; for(const q of L){ if(q<=p) best=q; else break; }
+  return best!=null?best:L[0];
+}
+function edWinAt(wins,inBar){ return wins.find(x=>inBar>=x.from&&inBar<x.to)||wins[wins.length-1]; }
 /* the pulses the editing row shows, section-relative: the cursor's bar, or
    its window of it — one computation for the lane and for the notation's
    frame around it */
 function edWindowRange(){
   const sec=piece&&piece.sections[viewSec]; if(!sec) return null;
-  const {m,winBP}=edWin();
-  const bar=Math.floor(cursor/m.bp), inBar=cursor-bar*m.bp;
-  const from=bar*m.bp+Math.floor(inBar/winBP)*winBP;
-  return {from,to:Math.min(from+winBP,sec.bars.length*m.bp)};
+  const {m,wins}=edWin();
+  const bar=Math.floor(cursor/m.bp), inBar=cursor-bar*m.bp, w=edWinAt(wins,inBar);
+  return {from:bar*m.bp+w.from,to:Math.min(bar*m.bp+w.to,sec.bars.length*m.bp)};
 }
 /* A BLUE FRAME IN THE NOTATION AROUND WHAT THE EDITING ROW SHOWS (David,
    3 Sep). The cursor's blue on the slot says where the next note goes; this
@@ -19837,12 +20073,11 @@ function paintEditWindow(){
 function paintEditDeck(){
   if(!PHONE||!editing) return;
   const sec=piece.sections[viewSec]; if(!sec) return;
-  const {m,winBeats,winBP}=edWin();
+  const {m,wins}=edWin();
   const total=sec.bars.length*m.bp;
   if(cursor>=total) cursor=Math.max(0,total-1);
   const bar=Math.floor(cursor/m.bp), inBar=cursor-bar*m.bp;
-  const winStart=bar*m.bp+Math.floor(inBar/winBP)*winBP;
-  const b0=Math.floor((winStart-bar*m.bp)/m.sub);
+  const win=edWinAt(wins,inBar), winStart=bar*m.bp+win.from;
   {
     /* THE LABEL FOLDS (31 Aug): with undo/redo in this row, the words give
        way rung by rung — "Bar x of y" shrinks to x/y. The ▾ survives every
@@ -19854,20 +20089,23 @@ function paintEditDeck(){
     if(tight()) lab.textContent=viewSec+" · "+(bar+1)+"/"+sec.bars.length+" ▾";
   }
   const box=$("edCells"); box.innerHTML="";
-  box.style.gridTemplateColumns="repeat("+winBeats+",minmax(0,1fr))";
+  box.style.gridTemplateColumns=groupsOf(m)?win.cells.map(c=>"minmax(0,"+c.counts+"fr)").join(" "):"repeat("+win.cells.length+",minmax(0,1fr))";
   const data=sec.bars[bar]||[], byT=new Map();
   for(const ev of data){ if(!byT.has(ev.t)) byT.set(ev.t,[]); byT.get(ev.t).push(ev); }
-  for(let b=0;b<winBeats;b++){
-    if(b0+b>=m.beats) break;              // a clamped window shows only real beats
+  for(const cl of win.cells){                 // the window's cells: a group's, or a count's
     const be=document.createElement("div"); be.className="edbeat";
-    be.style.gridTemplateColumns="repeat("+m.sub+",minmax(0,1fr))";
+    /* the cell's OFFERED positions, the same list the table's editor draws
+       (cellSlots, editing): a range's strokes, else the count's own grid;
+       each slot as wide as the pulses it holds (16 Sep) */
+    const sls=cellSlots(byT,cl,m,tupBar(sec,bar));
+    be.style.gridTemplateColumns=sls.map(o=>"minmax(0,"+o.span+"fr)").join(" ");
     const num=document.createElement("span"); num.className="edbeatnum";
-    num.textContent=b0+b+1; be.appendChild(num);
-    for(let sN=0;sN<m.sub;sN++){
-      const rel=winStart+b*m.sub+sN;
+    num.textContent=cl.c0+1; be.appendChild(num);
+    for(const o of sls){
+      const rel=bar*m.bp+o.t;
       if(rel>=total) break;
-      const t=rel-bar*m.bp;
-      const sl=document.createElement("div"); sl.className="edslot";
+      const t=o.t;
+      const sl=document.createElement("div"); sl.className="edslot"+(o.gap?" gap":"");
       const evs=byT.get(t)||[];
       const symEl=ev=>{ const g=glyphFor(ev,true), el=document.createElement("span");
         el.className=g.cls+(handOf(ev)==="L"?" l":" r"); el.innerHTML=g.t; if(g.st) el.style.cssText=g.st; return el; };
@@ -19907,7 +20145,7 @@ function paintEditDeck(){
          of the editing field so that the hand gets defined like that") —
          the cell's upper half is the green hand, the lower the black, the
          same pick the score's lanes make, keyed to this slot. */
-      sl.addEventListener("pointerdown",e=>{
+      if(!o.gap) sl.addEventListener("pointerdown",e=>{
         if(view==="tab"){ const r=sl.getBoundingClientRect();
           laneHand={sec:viewSec,at:rel,hand:e.clientY<r.top+r.height/2?"L":"R"}; }
         cursor=rel; refresh(); });
@@ -19920,10 +20158,14 @@ function paintEditDeck(){
        They are absolutely positioned, so they are out of flow and take no grid
        cell of their own. */
     const nSl=be.querySelectorAll(".edslot").length;
-    be.style.setProperty("--sn",m.sub);
+    be.style.setProperty("--sn",cl.len);
+    /* a line at each slot boundary, placed by the pulses before it — uneven
+       slots (a range's) land their lines where the slots meet */
+    let acc=0;
     for(let k=1;k<nSl;k++){
+      acc+=sls[k-1].span;
       const ln=document.createElement("i"); ln.className="edsline";
-      ln.style.setProperty("--k",k); be.appendChild(ln);
+      ln.style.setProperty("--k",acc); be.appendChild(ln);
     }
     box.appendChild(be);
   }
@@ -19933,6 +20175,10 @@ function paintEditDeck(){
   if(grooveEdit){
     $("edTS").value=piece.meter[0]+"/"+piece.meter[1];
     $("edSub").value=String(piece.sub);
+    { const gs=$("edGroups"), gl=GROUPINGS[piece.meter[0]+"/"+piece.meter[1]];   // the Groups select: this meter's, or hidden
+      if(gs){ if(gl){ const now=(groupsOf(SM(piece,"Groove"))||[]).join("-");
+          gs.innerHTML=[["","No groups"]].concat(gl.map(g=>[g,"Groups "+g.replace(/-/g,"+")])).map(([v,l])=>'<option value="'+v+'"'+(v===now?" selected":"")+'>'+l+'</option>').join("");
+          gs.hidden=false; } else gs.hidden=true; } }
     const er=$("edRef");
     if(er){ er.innerHTML=grooveRefOpts(grooveEdit&&grooveEdit.ref);
             if(grooveEdit&&grooveEdit.ref) er.value=grooveEdit.ref; }
@@ -20146,17 +20392,16 @@ function paintEditLoopBtn(){
 }
 function edPill(id,on){ const b=$(id); if(b) b.setAttribute("aria-pressed",on?"true":"false"); }
 function edStep(dir){
-  const {m,winBP}=edWin();
+  const {m,wins}=edWin();
   const sec=piece.sections[viewSec], total=sec.bars.length*m.bp;
   const bar=Math.floor(cursor/m.bp);
-  const winIdx=Math.floor((cursor-bar*m.bp)/winBP);
+  const winIdx=wins.indexOf(edWinAt(wins,cursor-bar*m.bp));
   let target;
   if(dir>0){
-    target=bar*m.bp+(winIdx+1)*winBP;
-    if(target>=(bar+1)*m.bp) target=(bar+1)*m.bp;   // next bar's first window
+    target=winIdx+1<wins.length?bar*m.bp+wins[winIdx+1].from:(bar+1)*m.bp;   // else the next bar's first window
   } else {
-    if(winIdx>0) target=bar*m.bp+(winIdx-1)*winBP;
-    else if(bar>0) target=(bar-1)*m.bp+Math.floor((m.bp-1)/winBP)*winBP;
+    if(winIdx>0) target=bar*m.bp+wins[winIdx-1].from;
+    else if(bar>0) target=(bar-1)*m.bp+wins[wins.length-1].from;
     else target=-1;
   }
   if(target>=total){ edCrossSection(1); return; }
@@ -20171,9 +20416,8 @@ function edCrossSection(dir){
   viewSec=secs[(i+dir+secs.length)%secs.length];
   if(dir>0) cursor=0;
   else{
-    const {m,winBP}=edWin();                        // measured on the NEW section
-    cursor=(piece.sections[viewSec].bars.length-1)*m.bp
-      +Math.floor((m.bp-1)/winBP)*winBP;
+    const {m,wins}=edWin();                         // measured on the NEW section
+    cursor=(piece.sections[viewSec].bars.length-1)*m.bp+wins[wins.length-1].from;
   }
   refresh();
 }
@@ -20230,8 +20474,23 @@ function edPasteAt(rel0){
     evs=evs.map(e=>{ const c=Object.assign({},e); delete c.art; return c; });
   }
   snapshot();
+  /* THE RANGES LAND FIRST (16 Sep): each becomes whole counts of one target
+     bar, or is left out; the target's grid rises for them, which rescales the
+     notes already there — so the clip's notes are converted AFTER, against
+     the grid the paste will really write into. */
+  let rgSkipped=0;
+  if(edClip.tup&&edClip.tup.length&&!grooveEdit){
+    const mm=SM(piece,viewSec), k0=mm.sub/fromSub; let added=0;
+    for(const r of edClip.tup){ const a=rel0+r.t0*k0, len=r.len*k0, bar=Math.floor(a/mm.bp);
+      const from=(a-bar*mm.bp)/mm.sub, cnt=len/mm.sub;
+      if(!Number.isInteger(from)||!Number.isInteger(cnt)||from+cnt>mm.beats||bar>=sec.bars.length){ rgSkipped++; continue; }
+      sec.tup=tupsOf(sec).filter(x=>!(x.bar===bar&&x.from<from+cnt&&from<x.from+x.len)); sec.tup.push({bar,from,len:cnt,n:r.n}); added++; }
+    if(added){ tupRaise(viewSec); const m2=SM(piece,viewSec); const k2=m2.sub/m.sub;   // the grid rose: re-read the paste against it
+      if(k2!==1){ rel0*=k2; evs=edClip.ev.map(e=>Object.assign({},e,{t:Math.round(e.t*m2.sub/fromSub)})); span=Math.max(1,Math.round(edClip.span*m2.sub/fromSub)); m.sub=m2.sub; m.bp=m2.bp; } }
+  }
+  const total2=sec.bars.length*m.bp;
   let clipped=0;
-  if(span>total-rel0){ clipped=span-(total-rel0); span=total-rel0; }
+  if(span>total2-rel0){ clipped=span-(total2-rel0); span=total2-rel0; }
   for(let bi=0;bi<sec.bars.length;bi++){            // clear the target span
     const b0=bi*m.bp;
     sec.bars[bi]=sec.bars[bi].filter(e=>{
@@ -20251,6 +20510,31 @@ function edPasteAt(rel0){
   if(dropped) said.push(dropped+" not in "+grooveEdit.ref);
   if(clipped) said.push("cut short at the end");
   toast(said.join(" · "));
+  return span;                      // the slots written — ⌘V moves the cursor past them
+}
+/* ⌘C AND ⌘V (David, 16 Sep: "give me Command-C and Command-V for copy and
+   paste in the editor") — the right-click menu's two actions on the keyboard,
+   one clipboard with it: ⌘C takes the loop, ⌘V writes it at the cursor and
+   moves the cursor past what it wrote, so ⌘V ⌘V ⌘V lays the phrase end to
+   end. Returns true when the key was the editor's, false to leave it to the
+   system: a text selection on the page keeps its ordinary ⌘C, and outside
+   the editor ⌘V has nothing to write into. */
+function edClipKeys(k){
+  if(k==="c"){
+    try{ if(String(window.getSelection()||"")) return false; }catch(x){}
+    if(loopSec){ edCopyLoop(); return true; }
+    if(editing){ toast("Loop the bars you want to copy first"); return true; }
+    return false;
+  }
+  if(k==="v"){
+    if(!editing) return false;
+    if(!edClip){ toast("Copy something first"); return true; }
+    const m=SM(piece,viewSec), total=piece.sections[viewSec].bars.length*m.bp;
+    const span=edPasteAt(cursor);
+    if(span){ cursor=Math.min(cursor+span,total-1); refresh(); }
+    return true;
+  }
+  return false;
 }
 /* the loop as WHOLE BARS of the section on screen, or null if either end
    falls between barlines */
@@ -20262,11 +20546,67 @@ function edLoopBars(){
   if(r0%m.bp||r1%m.bp||r1<=r0) return null;
   return {first:r0/m.bp, n:(r1-r0)/m.bp};
 }
+/* ── THE RANGE OPERATIONS (16 Sep) ─────────────────────────────────────────
+   tupRaise: the table's grid rises to hold its ranges — notes, the video
+   sync's anchors, the cursor and the loop all scale with it, and `base` is
+   pinned to what was drawn so nothing draws finer. The grid only ever rises:
+   a lowered grid would have to drop notes, and a raised one costs nothing. */
+function tupRaise(nm){
+  const sec=piece.sections[nm], m=SM(piece,nm), S=tupGrid(sec,m.sub);
+  if(S===m.sub) return false;
+  if(!sec.base) sec.base=m.base;                  // the drawn grid stays the groove's
+  const k=S/m.sub;
+  /* the sync map holds ABSOLUTE pulses: every appearance of this table in the
+     arrangement stretches, and everything after it moves on by the same */
+  if(piece.syncMap&&piece.syncMap.length){
+    const segs=[]; let o=0,n=0;
+    for(const s2 of piece.arrangement){ const len=piece.sections[s2].bars.length*SM(piece,s2).bp, kk=s2===nm?k:1;
+      segs.push({o,len,n,k:kk}); o+=len; n+=len*kk; }
+    for(const an of piece.syncMap){ const g=segs.find(x=>an.p>=x.o&&an.p<x.o+x.len)||segs[segs.length-1];
+      an.p=g?g.n+(an.p-g.o)*g.k:an.p*k; }
+    SyncMap.normalise(piece.syncMap);
+  }
+  if(loopSec){ const base=viewFromPulse(); if(viewSec===nm){ loopSec={from:base+(loopSec.from-base)*k,to:base+(loopSec.to-base)*k}; } }
+  if(viewSec===nm) cursor*=k;
+  resub(nm,m.sub,S);                                // multiples only: nothing falls between
+  sec.sub=S;
+  return true;
+}
+/* a range set on a bar: replaces what it overlaps, raises the grid, and drops
+   the notes that no longer sit on an offered position — toasted and undoable
+   (David, 16 Sep). n = 0 puts the counts back on the table's grid. */
+function edSetTup(bar,from,len,n){
+  const sec=piece.sections[viewSec]; if(!sec) return;
+  snapshot();
+  const old=tupsOf(sec), gone=old.filter(r=>r.bar===bar&&r.from<from+len&&from<r.from+r.len);
+  sec.tup=old.filter(r=>!gone.includes(r));
+  if(n>1) sec.tup.push({bar,from,len,n});
+  if(!sec.tup.length) delete sec.tup;
+  tupRaise(viewSec);
+  const m=SM(piece,viewSec), tp=tupBar(sec,bar);
+  // the counts touched: the new range's and the replaced ones'
+  const touched=new Set(); for(let b=from;b<from+len;b++) touched.add(b);
+  for(const r of gone) for(let b=r.from;b<r.from+r.len;b++) touched.add(b);
+  const ok=new Set();
+  for(const b of touched){ const r=tupAt(tp,b);
+    if(r) tupSlots(r,m,b).forEach(o=>{ if(!o.gap) ok.add(o.t); });
+    else { const st=m.sub/m.base; for(let k=0;k<m.base;k++) ok.add(b*m.sub+k*st); } }
+  let dropped=0; const bb=sec.bars[bar]||[];
+  for(let i=bb.length-1;i>=0;i--){ const b=Math.floor(bb[i].t/m.sub); if(touched.has(b)&&!ok.has(bb[i].t)){ bb.splice(i,1); dropped++; } }
+  if(!ok.has(cursor-bar*m.bp)&&Math.floor(cursor/m.bp)===bar) cursor=edOfferedNear(cursor);
+  refresh(); paintLoopFrame();
+  const what=n>1?(n+" strokes over "+len+(len===1?" count":" counts")):"Back on the grid";
+  toast(what+(dropped?" · "+dropped+(dropped===1?" note":" notes")+" fell between the positions — undo brings "+(dropped===1?"it":"them")+" back":""));
+}
+/* the bars a range belongs to move with the bars (delete, insert, drop) */
+function tupShift(sec,at,by){ if(!sec||!sec.tup) return;
+  sec.tup=sec.tup.filter(r=>!(by<0&&r.bar>=at&&r.bar<at-by)).map(r=>r.bar>=at?Object.assign({},r,{bar:r.bar+by}):r);
+  if(!sec.tup.length) delete sec.tup; }
 function edDeleteBars(b){
   const sec=piece.sections[viewSec];
   if(b.n>=sec.bars.length){ toast("A table keeps at least one bar"); return; }
   snapshot();
-  sec.bars.splice(b.first,b.n);
+  sec.bars.splice(b.first,b.n); tupShift(sec,b.first,-b.n);
   loopSec=null;
   const m=SM(piece,viewSec);
   cursor=Math.min(cursor,sec.bars.length*m.bp-1);
@@ -20291,7 +20631,7 @@ function edInsertBarAfter(bi){
   const sec=piece.sections[viewSec];
   if(grooveEdit&&sec.bars.length>=4){ toast("Four bars is the most for a groove"); return; }
   snapshot();
-  sec.bars.splice(bi+1,0,[]);
+  sec.bars.splice(bi+1,0,[]); tupShift(sec,bi+1,1);
   loopSec=null;
   refresh(); paintLoopFrame();
   toast("Bar inserted after bar "+(bi+1));
@@ -20310,7 +20650,11 @@ function edCopyLoop(){
      TARGET's. Same sub, faithful; different sub, every note silently lands on
      the wrong beat. Copy is global now, so a jam groove and a written piece
      routinely differ here. Recording the grid is what lets paste convert. */
-  edClip={span:r1-r0, ev, sub:m.sub, beats:m.beats};
+  /* …AND THE RANGES INSIDE THE LOOP (16 Sep), as pulse offsets from its start;
+     paste re-divides them by the target's counts and raises its grid */
+  const tup=tupsOf(sec).filter(r=>{ const a=r.bar*m.bp+r.from*m.sub, b=a+r.len*m.sub; return a>=r0&&b<=r1; })
+    .map(r=>({t0:r.bar*m.bp+r.from*m.sub-r0,len:r.len*m.sub,n:r.n}));
+  edClip={span:r1-r0, ev, sub:m.sub, beats:m.beats, tup};
   const bars=(r1-r0)/m.bp;
   toast("Copied "+(Number.isInteger(bars)&&bars>=1
     ?bars+(bars===1?" bar":" bars"):(r1-r0)+" slots")
@@ -20322,7 +20666,10 @@ function edPopAt(x,y){
   edPopClose();
   const c=cellAtPoint(x,y);
   if(!c){ return; }
-  const inLoop=!!loopSec&&c.from>=loopSec.from&&c.to<loopSec.to;
+  /* `<=`, not `<` (16 Sep): the loop's LAST cell ends exactly where the loop
+     ends, and `c.to<loopSec.to` counted a press there as outside — Copy and
+     Clear loop said "press inside the loop" while the finger was inside it */
+  const inLoop=!!loopSec&&c.from>=loopSec.from&&c.to<=loopSec.to;
   /* COPY ANYWHERE THERE IS NOTATION AND A LOOP (David, 31 Aug). It only reads,
      so there is nothing to protect. PASTE stays in the editors, because it
      writes — and a jam's table is rebuilt from the chord progression on every
@@ -20346,6 +20693,11 @@ function edPopAt(x,y){
     loopSec?"Press inside the loop to copy it":"Loop the bars you want to copy first");
   mk("Paste",()=>edPasteAt(c.from-viewFromPulse()),canPaste,
     edClip?"Paste in the arrangement or groove editor":"Copy something first");
+  /* CLEAR THE LOOP (David, 16 Sep) — in the editors only, like the bar entries
+     below, and greyed with the reason inside them */
+  if(editing) mk("Clear loop",edClearLoop,inLoop,
+    loopSec?"Press inside the loop to clear it":"Loop the bars you want to clear first",
+    "Clear every note and accent in the loop");
   /* THE PRESSED BAR (David, 10 Sep): delete it, or insert an empty bar after
      it — in the editors only, and NOT LISTED outside them ("these options
      should not show up when you are not in edit mode, not even grayed out"):
@@ -20383,9 +20735,9 @@ function edPopAt(x,y){
        finger is not, and on a phone it would be impossible. A beat with no
        notes at all has nothing to carry the chord, and says so. */
     const mBar=SM(piece,viewSec), relC=c.from-viewFromPulse();
-    const tIn=bi>=0?((relC%mBar.bp)+mBar.bp)%mBar.bp:-1;
-    const inBeat=bi>=0?(piece.sections[viewSec].bars[bi]||[])
-      .filter(e=>e.t>=tIn&&e.t<tIn+mBar.sub):[];
+    const tIn=bi>=0?((relC%mBar.bp)+mBar.bp)%mBar.bp:-1, cIn=bi>=0?cellAt(mBar,tIn):null;   // the pressed CELL — a group, in a grouped bar
+    const inBeat=cIn?(piece.sections[viewSec].bars[bi]||[])
+      .filter(e=>e.t>=cIn.start&&e.t<cIn.start+cIn.len):[];
     const tAt=inBeat.length?Math.min(...inBeat.map(e=>e.t)):-1;
     const own=inBeat.find(e=>e.chord&&e.t===tAt);
     mk(own?"Change chord — "+own.chord:"Set chord…",
@@ -20397,6 +20749,41 @@ function edPopAt(x,y){
   // one-bar loop is already the entry above
   const bars=edLoopBars();
   if(inLoop&&bars&&bars.n>1) mk("Delete "+bars.n+" bars",()=>edDeleteBars(bars),true);
+  /* STROKES IN THE LOOP (David, 16 Sep): the loop is the range — whole counts
+     inside one bar — and the number is how many strokes fit it equally, 2–8;
+     "Grid" puts the counts back. With no loop the pressed cell is the range,
+     so a plain triplet is one step shorter. Grooves keep one grid: their
+     notes are read against piece.sub on every chord. */
+  if(editing){
+    const mBar=SM(piece,viewSec), base=viewFromPulse(), secT=piece.sections[viewSec];
+    let rg=null, why="";
+    if(loopSec&&inLoop){ const r0=loopSec.from-base, r1=loopSec.to-base, b0=Math.floor(r0/mBar.bp);
+      if(Math.floor((r1-1)/mBar.bp)!==b0) why="Loop inside one bar for this";
+      else if((r0%mBar.sub)||(r1%mBar.sub)) why="Loop whole counts for this";
+      else rg={bar:b0,from:(r0-b0*mBar.bp)/mBar.sub,len:(r1-r0)/mBar.sub}; }
+    else { const bi=edBarAtCell(c); if(bi<0) why="Press inside a bar";
+      else { const cl=cellAt(mBar,((c.from-base)%mBar.bp+mBar.bp)%mBar.bp); rg={bar:bi,from:cl.c0,len:cl.counts}; } }
+    if(grooveEdit){ rg=null; why="A groove keeps one grid"; }
+    const have=rg?tupAt(tupBar(secT,rg.bar),rg.from):null;
+    const row=document.createElement("div"); row.className="tuprow";
+    const lab=document.createElement("span"); lab.className="lab";
+    lab.textContent=rg?(loopSec&&inLoop?"Strokes in the loop:":"Strokes in this "+(rg.len>1?"cell:":"count:")):"Strokes:";
+    lab.title="How many strokes fit equally into the range — a loop, or the pressed cell";
+    row.appendChild(lab);
+    const opts=[[2,"2"],[3,"3"],[4,"4"],[5,"5"],[6,"6"],[7,"7"],[8,"8"],[0,"Grid"]];
+    for(const [n,txt] of opts){ const b=document.createElement("button"); b.className="ctl"+((have?have.n===n&&have.from===rg.from&&have.len===rg.len:(n===0&&rg))?" on":""); b.textContent=txt;
+      if(!rg){ b.disabled=true; b.title=why; }
+      else { b.title=n?n+" strokes, equally spaced, over "+rg.len+(rg.len===1?" count":" counts"):"Back on the table's grid";
+        b.addEventListener("click",ev=>{ ev.stopPropagation(); edPopClose(); edSetTup(rg.bar,rg.from,rg.len,n); }); }
+      row.appendChild(b); }
+    /* TWO ROWS, ONE UNDER THE OTHER. A wrapped flex row sizes its box to every
+       item laid end to end, so the second line stretched the menu to the
+       screen's width; the first line is gathered into a row of its own and
+       the menu stacks the two. */
+    const row1=document.createElement("div"); row1.className="poprow";
+    while(pop.firstChild) row1.appendChild(pop.firstChild);
+    pop.classList.add("two"); pop.appendChild(row1); pop.appendChild(row);
+  }
   document.body.appendChild(pop);
   const r=pop.getBoundingClientRect();
   pop.style.left=Math.max(8,Math.min(innerWidth-r.width-8,x-r.width/2))+"px";
@@ -20416,7 +20803,7 @@ function edPopClose(){
    import compositions" · "build it on the desktop as well"). It replaced the
    prompt() behind the editing footer's ＋ chip — WKWebView needs native
    handling for prompts anyway. All mutations snapshot(), so undo covers them. */
-const TSOPTS=["2/4","3/4","4/4","5/4","6/8","7/8","9/8","12/8"];
+const TSOPTS=["2/4","3/4","4/4","5/4","5/8","6/8","7/8","9/8","10/8","12/8"];   // 5/8 and 10/8 joined on 16 Sep, with the groupings
 let psPickOpen=false;
 function nextSecName(base){
   let mx=0;
@@ -20595,10 +20982,18 @@ function renderPieceDlg(){
     const den=(sec.meter||piece.meter)[1];
     l2.appendChild(mkSel(TSOPTS.map(o=>[o,o]),m.beats+"/"+den,v=>{
       const p=v.split("/"); snapshot();
-      sec.meter=[+p[0],+p[1]]; psTrim(nm); refresh(); renderPieceDlg(); }));
+      sec.meter=[+p[0],+p[1]]; delete sec.groups; psTrim(nm);
+      if(sec.tup){ sec.tup=sec.tup.filter(r=>r.from+r.len<=+p[0]); if(!sec.tup.length) delete sec.tup; }   // a range past the new bar goes with it
+      refresh(); renderPieceDlg(); }));   // a grouping belongs to its meter
+    /* THE GROUPS, beside the meter (David, 16 Sep): the groupings this meter has,
+       or none — none draws the bar in single counts, as it always was */
+    { const gl=GROUPINGS[m.beats+"/"+den];
+      if(gl){ const gNow=groupsOf(m)?groupsOf(m).join("-"):"";
+        l2.appendChild(mkSel([["","No groups"]].concat(gl.map(g=>[g,"Groups "+g.replace(/-/g,"+")])),gNow,v=>{
+          snapshot(); if(v) sec.groups=v.split("-").map(Number); else delete sec.groups; refresh(); renderPieceDlg(); })); } }
     l2.appendChild(mkSel([["1","No subdivision"],["2","2 per count"],["3","3 per count"],["4","4 per count"]],
-      String(m.sub),v=>{ snapshot(); const old=m.sub; sec.sub=+v;
-        resub(nm,old,+v); psTrim(nm); refresh(); renderPieceDlg(); }));
+      String(m.sub),v=>{ snapshot(); const old=m.sub; sec.sub=+v; delete sec.base;
+        resub(nm,old,+v); tupRaise(nm); psTrim(nm); refresh(); renderPieceDlg(); }));   // the ranges keep their strokes (16 Sep)
     l2.appendChild(mkSel([["1","1 bar per row"],["2","2 bars per row"],["3","3 bars per row"],["4","4 bars per row"]],
       String(m.bpr),v=>{ snapshot(); sec.barsPerRow=+v; refresh(); renderPieceDlg(); }));
     row.append(l1,l2);
@@ -20880,7 +21275,7 @@ const JAMPATS=[
  // right on 4, both hands on 5, left on 6 — a fast 6/8, no +s in the count"
  {id:"cg7",name:"Bembé",cats:["odd","world"],meter:[6,8],sub:1,unit:16,bpr:2,ev:[
    [0,"1","R"],[1,"3","R"],[2,"5","L"],[3,"1","R"],[4,"3","R"],[4,"5","L"],[5,"5","L"]]},
- {id:"cg8",name:"7/8 rhythm",cats:["odd"],meter:[7,8],sub:1,unit:16,bpr:2,ev:[
+ {id:"cg8",name:"7/8 rhythm",cats:["odd"],meter:[7,8],sub:1,unit:16,bpr:2,groups:[3,2,2],ev:[
    [0,"5","L"],[0,"1","R"],[1,"g","L"],[2,"3","R"],[3,"5","L"],[3,"1","R"],[4,"g","L"],[5,"3","R"],[6,"g","L"]]},
  /* the same story as the 3-3-2 arpeggio (David, 29 Aug): slots 8–15 repeated
     slots 0–7 note for note, so this was one 2/4 bar written twice. Two bars to
@@ -20914,7 +21309,7 @@ const JAMPATS=[
    [0,"5","L"],[0,"1","R"],[2,"g","R"],[3,"g","L"],[4,"3","R"],[5,"5","L"],[6,"g","R"],[7,"g","L"],[8,"1","R"],[10,"5","L"],[12,"3","R"],[14,"g","R"],[15,"7","L"],[16,"1","R"],[18,"9","L"]]},
  {id:"mg4",name:"7 flow",cats:["odd"],meter:[7,8],sub:1,unit:16,bpr:2,ev:[
    [0,"5","L"],[0,"3","R"],[1,"g","L"],[2,"1","R"],[3,"g","R"],[4,"5","L"],[5,"3","R"],[6,"g","L"]]},
- {id:"mg5",name:"7/8 arpeggio",cats:["odd","arp"],meter:[7,8],sub:1,unit:16,bpr:2,ev:[
+ {id:"mg5",name:"7/8 arpeggio",cats:["odd","arp"],meter:[7,8],sub:1,unit:16,bpr:2,groups:[3,2,2],ev:[
    [0,"1","R"],[1,"3","R"],[2,"5","L"],[3,"1","R"],[4,"g","L"],[5,"3","R"],[6,"5","L"]]},
  {id:"mg6",name:"Bossa",cats:["world"],coll:"Bossa",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"5","L"],[0,"3","R"],[2,"5","L"],[3,"1","R"],[4,"1","R"],[5,"5","L"],[7,"5","L"],[7,"3","R"],[8,"3","R"],[9,"5","L"],[11,"1","R"],[12,"5","L"],[12,"1","R"],[14,"5","L"]]},
@@ -21907,14 +22302,28 @@ function jvCandidates(name,V,narrow){
       if(c.ms[i]-c.ms[i-1]<=4&&c.ms[i-1]<JV_MUD3_TOP) return false;
     return true;
   };
+  /* THE SEVENTH OR NINTH IS NOT THE LOWEST NOTE WHEN IT CAN SIT HIGHER (David,
+     16 Sep, of a G9 on a D Kurd 10 voiced A3·D4·G4: "for ninth chords, the
+     ninth should not be voiced at the bottom of the chord if there is another
+     option", then "the same rule for sevenths"). A3 is not below A3, so the
+     bass rule let the ninth through and "keep the bottom low" chose it. A rule,
+     not a price — but the WEAKEST rule: he chose (16 Sep) that the sound rules
+     above outrank it, so at each of their levels a voicing with a root, third
+     or fifth underneath is taken first, and the colour tone stays at the bottom
+     only when lifting it would put a tone or semitone low down (A9 on a C
+     Aegean 9: B3·E4·A4 rather than A3·B3·E4) or when the pan has nothing else.
+     Intervals from the root, so a triad has no such tone and is untouched. */
+  const noColourLow=c=>{ const i=jpc(c.ms[0]-rootPc); return i!==2&&i!==10&&i!==11; };
   /* strictest first, then give up one rule at a time — a semitone low down is
      the worse sound of the two, so `clean` outranks `oneLow` when the pan
-     cannot honour both */
+     cannot honour both; each level asks for the colour tone off the bottom
+     before it settles for it there */
   let use=out;
-  for(const f of [c=>c.bassOk&&clean(c)&&oneLow(c)&&noMud3(c),
+  for(const g of [c=>c.bassOk&&clean(c)&&oneLow(c)&&noMud3(c),
                   c=>c.bassOk&&clean(c)&&oneLow(c), c=>c.bassOk&&clean(c),
                   c=>c.bassOk&&oneLow(c), c=>c.bassOk]){
-    const s=out.filter(f); if(s.length){ use=s; break; }
+    const s=out.filter(g); if(!s.length) continue;
+    const up=s.filter(noColourLow); use=up.length?up:s; break;
   }
   const low=Math.min.apply(null,use.map(c=>c.ms[0]));
   for(const c of use) c.top=Math.max.apply(null,c.ms);
@@ -22058,6 +22467,39 @@ function panIsHigh(){
   PANHIGH=(myPan.fields||[]).some(f=>f&&f.midi!=null&&f.midi>MEL_EXTREME);
   return PANHIGH;
 }
+/* THE MELODY'S CEILING — the one number the line and a run's landing stop at.
+   Wide: A5 on a high pan, nothing otherwise (as before). NARROW + MOTION
+   (David, 16 Sep: "when narrow is selected and motion is selected, the upper
+   voice will move but not go to the very high register on extended pans"):
+   TWO OCTAVES ABOVE THE CENTRAL NOTE — "relative to the central note" (D5 on
+   a D Kurd, E5 on an E Kurd, F♯5 on an F♯ Kurd). It was the pan's next note
+   above that for an hour ("2 octaves+1 up"); David took the extra note off
+   the same evening: "two octaves above the ding without the extra note".
+   The ding's own pitch class, so the roof is always a note the scale
+   has, whether or not this pan carries it up there. Narrow's chord ceiling
+   (panCeilLine) is not this: at three fifths of the range it sits at E♭4 on
+   a D Kurd 10 and would have left the line nowhere to go. */
+function jamMelRoof(){
+  if(!(jam&&jam.motion&&jam.narrow&&myPan&&myPan.ding!=null)) return Infinity;
+  return myPan.ding+24;
+}
+function jamMelCeil(){ return Math.min(panIsHigh()?MEL_HI:Infinity,jamMelRoof()); }
+/* NARROW'S CEILING IS A ROOF, NOT ONLY A TARGET. Capping the line and a run's
+   landing — all A5 ever did for Wide — still let 12–40 notes in 3,000 through
+   on the extended pans (A5 over an F♯5 ceiling on an E Kurd 21): the notes
+   that move inside a bar, the run's own notes and the voicing picked after a
+   run all chose from the whole pan. So under Narrow + Motion the melody sees a
+   pan that ENDS at the ceiling — the one rule, applied where notes are chosen.
+   A chord that lives only above it keeps its voicings (nothing else exists),
+   and Wide sees the whole pan exactly as before. */
+function jamUnderRoof(fields){
+  const r=jamMelRoof();
+  return r<Infinity?fields.filter(f=>{ const m=myPan.midiFor(f); return m!=null&&m<=r; }):fields;
+}
+function jamCeilName(){                 // the ceiling as the sheet says it
+  const c=jamMelCeil();
+  return c<Infinity?spellPc(jpc(c))+(Math.floor(c/12)-1):"the top of the pan";
+}
 function jamMotionLine(N,lo,hi,seed){
   const rnd=jamRnd(seed||1), span=Math.max(1,hi-lo);
   /* MOST LINES SET OFF FROM BELOW (David, 29 Aug: "it seems that all melodies
@@ -22133,7 +22575,7 @@ function jamMotionLine(N,lo,hi,seed){
 function jamMelodyBar(n,curTop,nextTop,motif,rnd,last){
   const out=new Array(Math.max(0,n)).fill(curTop);
   if(n<=1||!motif) return out;
-  const all=rqFieldsLowHigh(), ci=all.indexOf(curTop);
+  const all=jamUnderRoof(rqFieldsLowHigh()), ci=all.indexOf(curTop);
   if(ci<0) return out;
   const ni=all.indexOf(nextTop);
   const lim=i=>Math.max(0,Math.min(all.length-1,i));
@@ -22262,11 +22704,12 @@ function jamRunFields(lad,pulses,rnd,longOk){
      bars were ending. The chord's notes at or below the ceiling are used when
      it has any; when it lives entirely above, the full ladder stands, because
      a run that cannot land is worse than one that lands high. */
-  if(panIsHigh()&&myPan&&myPan.posMidi){
-    const inb=lad.filter(f=>{ const m=myPan.posMidi(f); return m!=null&&m<=MEL_HI; });
+  const cap=jamMelCeil();                // A5 on a high pan; Narrow + Motion's own ceiling
+  if(cap<Infinity&&myPan&&myPan.posMidi){
+    const inb=lad.filter(f=>{ const m=myPan.posMidi(f); return m!=null&&m<=cap; });
     if(inb.length) lad=inb;
   }
-  const all=rqFieldsLowHigh();
+  const all=jamUnderRoof(rqFieldsLowHigh());
   /* WEIGHTED TOWARDS THE ONES YOU CAN HEAR (David, 30 Aug: "I still don't
      see them… I ran an experiment and generated again and again"). He was
      right and the arithmetic said so: a run was offered about one bar in
@@ -22388,15 +22831,23 @@ function jamFormBars(passes){
    narrow candidates are the ones that refuse to. */
 function jamMotionVoices(form,V){
   const cands=new Map();
-  for(const f of form) if(!cands.has(f.chord)) cands.set(f.chord,jvCandidates(f.chord,V,false));
+  const roof=jamMelRoof();
+  for(const f of form) if(!cands.has(f.chord)){
+    const L=jvCandidates(f.chord,V,false);
+    const u=L&&roof<Infinity?L.filter(c=>c.top<=roof):null;   // under Narrow's roof when it can be
+    cands.set(f.chord,u&&u.length?u:L);
+  }
   let lo=Infinity, hi=-Infinity;
   cands.forEach(L=>{ if(L) for(const c of L){ if(c.top<lo) lo=c.top; if(c.top>hi) hi=c.top; } });
   if(lo===Infinity) return form.map(()=>null);
   /* THE LINE IS WHERE THE REGISTER IS DECIDED. `hi` is the highest top any
      voicing offers; on an extreme pan that is E6, and the chooser follows it
      there. Capped to A5, and never below a sixth above `lo`, so a chord that
-     only lives high can still be reached. */
-  const hiL=panIsHigh()?Math.min(hi,Math.max(lo+9,MEL_HI)):hi;
+     only lives high can still be reached. Narrow's lower ceiling takes the
+     same guard, which is what keeps a low pan's line moving: an F2 Low
+     Pygmy's two octaves stop below its own chords. */
+  const cap=jamMelCeil();
+  const hiL=cap<Infinity?Math.min(hi,Math.max(lo+9,cap)):hi;
   const line=jamMotionLine(form.length,lo,hiL,jam.mseed||1);
   /* THE LINE IS FOLLOWED, NOT POUNCED ON. Scoring each bar against the target
      alone picked whichever voicing sat nearest it, and with sparse candidates
@@ -22817,7 +23268,6 @@ function jamReline(){ if(jam.motion||jam.trans) jam.mseed=jamNewSeed(); }
    RESETS IT. Predictable beats clever — the switch is right beside the pills,
    so a student who wants runs in Wide is one tap away and never has to wonder
    what the app is remembering for them. */
-function jamTransFor(mode){ return mode==="motion"; }
 function jamGenerate(bars){
   const n=Math.max(1,Math.min(JAM_MAX,bars||jamBarCount()||4));
   jamPreviewStop();
@@ -23281,12 +23731,12 @@ function buildJamPieceRaw(){
       }
       return { format:"hpd-2", id:"jam", title:"Jam", author:"",
         writtenFor:myPanId, tempo:bpm||72, meter:pat.meter, sub:pat.sub,
-        unit:pat.unit||4,
+        unit:pat.unit||4, groups:pat.groups||undefined,
         barsPerRow:pat.bpr||1, sections, arrangement:order };
     }
     return { format:"hpd-2", id:"jam", title:"Jam", author:"",
       writtenFor:myPanId, tempo:bpm||72, meter:pat.meter, sub:pat.sub,
-      unit:pat.unit||4,
+      unit:pat.unit||4, groups:pat.groups||undefined,
       barsPerRow:pat.bpr||1, sections:{Jam:{bars}}, arrangement:["Jam"] };
   }
   // the WHOLE progression is voiced together — the melody between chords is
@@ -23368,7 +23818,7 @@ function buildJamPieceRaw(){
       sections[nm]={bars:bars.slice(k*per,(k+1)*per)}; order.push(nm); }
     return { format:"hpd-2", id:"jam", title:"Jam", author:"",
       writtenFor:myPanId, tempo:bpm||72, meter:pat.meter, sub:pat.sub,
-      unit:pat.unit||4,
+      unit:pat.unit||4, groups:pat.groups||undefined,
       barsPerRow:pat.bpr||1, sections, arrangement:order };
   }
   return { format:"hpd-2", id:"jam", title:"Jam", author:"",
@@ -23421,7 +23871,12 @@ function jamToPiece(){
 function saveJamLS(){ try{localStorage.setItem("hps.jam",JSON.stringify(
   {slots:jam.slots,patternId:jam.patternId,bpm:bpm,narrow:!!jam.narrow,
    motion:!!jam.motion,trans:!!jam.trans,mpasses:jamEndless()?"inf":jamPasses(),mseed:jam.mseed||1,
-   brk:jam.brk}))}catch(e){} }
+   brk:jam.brk,vv:2}))}catch(e){} }
+/* A JAM STORED BEFORE 16 SEP carried Motion as a third voicing, so its
+   `narrow` was whatever had been chosen before Motion — meaningless while
+   Motion played. Such a jam opens as Wide + Motion, which is what it played
+   (David's answer). `vv:2` marks a jam whose narrow means something. */
+function jamVoicingMigrate(j){ if(j&&j.motion&&j.vv!==2) j.narrow=false; }
 /* THE PROGRESSION A STUDENT MEETS FIRST (David, 27 Aug): Dmin · B♭maj · Fmaj
    · Cmaj on a D-minor pan — i · VI · III · VII — and "the equivalent on the
    selected scale" everywhere else. So it is built from the pan's own home
@@ -23499,6 +23954,7 @@ function enterJam(){
   jam.brk=jamBrkNorm(jam.brk,4);      // a stored jam from before breaks existed
   // a jam stored before Transitions existed: runs were a Motion-only thing
   if(typeof jam.trans!=="boolean") jam.trans=!!jam.motion;
+  jamVoicingMigrate(jam);             // …and one from before Motion had its own switch
   if(jam.bpm) bpm=jam.bpm;
   navPush("jam","Practice",()=>leaveJam());
   jamOn=true; document.body.classList.add("jam");
@@ -23712,11 +24168,20 @@ function brkEveryLabel(){ return jam.brk.every===1?"every table":"every "+jam.br
    says what the control IS and which way it is set, in the app's own idiom. */
 /* the same captioned row the breaks and voicings use, for a group that has
    no wrap of its own to live in */
-function brkRow0(el){
+function brkRow0(el,caption){
   const r=document.createElement("span"); r.className="brkrow";
   const lab=document.createElement("span"); lab.className="lab vlab";
-  lab.textContent="Transitions:"; r.appendChild(lab); r.appendChild(el);
+  lab.textContent=caption||"Transitions:"; r.appendChild(lab); r.appendChild(el);
   return r;
+}
+/* the same for Motion, and for the voicing pair it no longer shares a group with */
+function paintMotion(){
+  const g=$("jamMotion");
+  if(g) g.querySelectorAll("button").forEach((x,i)=>
+    x.setAttribute("aria-pressed",String(!!jam.motion===(i===1))));
+  const v=$("jamVoicing");
+  if(v) v.querySelectorAll("button").forEach((x,i)=>
+    x.setAttribute("aria-pressed",String(!!jam.narrow===(i===0))));
 }
 /* ONE PAINTER, so the sheet, the drawer and a voicing switch cannot disagree */
 function paintTrans(){
@@ -24022,20 +24487,20 @@ function renderJamPanel(){
   vpills.className="pills"; vpills.id="jamVoicing";
   vpills.title=JV_TIP;
   vpills.setAttribute("role","group"); vpills.setAttribute("aria-label","Chord voicings");
-  /* THREE, SINCE 29 AUG. Narrow and Wide are two answers to "how should these
-     chords sit"; Motion answers a different question — "where should the top
-     note GO" — and takes the spread into its own hands, so it stands beside
-     them rather than under them (David's call: "a third pill"). */
-  const vsel=()=>jam.motion?"motion":(jam.narrow?"narrow":"wide");
-  [["Narrow","narrow"],["Wide","wide"],["Motion","motion"]].forEach(([label,mode])=>{
+  /* TWO AGAIN, AND MOTION ITS OWN SWITCH (David, 16 Sep: "the motion setting
+     separate from the narrow and wide settings"). From 29 Aug to 16 Sep Motion
+     was a third pill and took the spread into its own hands; now it answers
+     only "where does the top note go", and Narrow and Wide go on answering
+     "how do the chords sit" underneath it — with Motion on, Narrow is the
+     line kept out of the pan's top (`jamMelCeil`). */
+  [["Narrow",true],["Wide",false]].forEach(([label,nar])=>{
     const b=document.createElement("button");
     b.textContent=label;
-    b.setAttribute("aria-pressed",String(vsel()===mode));
-    b.title=mode==="narrow"?"The pan's high notes stay free for your melody"
-           :mode==="wide"?"Grounded voicings that use the whole pan"
-           :"The top note travels — a line that climbs and comes back over the whole form";
+    b.setAttribute("aria-pressed",String(!!jam.narrow===nar));
+    b.title=nar?"The pan's high notes stay free for your melody"
+               :"Grounded voicings that use the whole pan";
     b.addEventListener("click",()=>{
-      if(vsel()===mode) return;
+      if(!!jam.narrow===nar) return;
       /* MOVE THE PRESSED STATE HERE, not by waiting for a re-render. These
          pills used to be rebuilt by applyJam() with the new state baked in,
          which was enough while they lived in the head. Now they can be on
@@ -24044,28 +24509,12 @@ function renderJamPanel(){
          "the narrow/wide button still doesn't animate"). */
       vpills.querySelectorAll("button").forEach(x=>
         x.setAttribute("aria-pressed",String(x===b)));
-      jam.motion=mode==="motion";
-      if(mode!=="motion") jam.narrow=mode==="narrow";
-      /* CHANGING THE VOICING RESETS TRANSITIONS (his answer (a)): on for
-         Motion, off for Narrow and Wide. The pills below say so immediately,
-         so nothing is hidden. */
-      jam.trans=jamTransFor(mode);
-      if(typeof paintTrans==="function") paintTrans();
-      /* AND TURNING TO MOTION RESETS MELODY CYCLES TO 2× (David, 3 Sep: "when
-         motion is selected … make Melody cycles 2x the default setting"). 2×
-         was already the fallback for a fresh jam, but a 1× or 4× tapped
-         earlier is remembered across jams and sessions, so Motion kept coming
-         up at whatever was last chosen. Same rule as Transitions, one line up:
-         choosing a voicing sets its defaults; the pills are one tap away. */
-      if(jam.motion) jam.mpasses=2;
-      // a first turn to Motion needs a line to sing; later turns keep theirs
-      if(jam.motion&&!jam.mseed) jam.mseed=jamNewSeed();
+      jam.narrow=nar;
       applyJam(); saveJamLS();
       if(typeof paintVoicingDesc==="function") paintVoicingDesc();
-      toast(mode==="narrow"?"Narrow chords — the top of the pan is yours"
-           :mode==="wide"?"Wide chords"
-           :"Motion — the top note travels over "+jamPasses()
-             +(jamPasses()===1?" pass":" passes")+" of the chords");
+      toast(nar?(jam.motion?"Narrow — the line stays out of the top of the pan"
+                           :"Narrow chords — the top of the pan is yours")
+               :"Wide chords");
     });
     vpills.appendChild(b);
   });
@@ -24096,6 +24545,43 @@ function renderJamPanel(){
     });
     tpills.appendChild(b);
   });
+  /* MOTION, a switch of its own (David, 16 Sep). Turning it on sets its
+     defaults — Transitions on, Melody cycles 2× (3 Sep), a line to sing —
+     and turning it off sets Transitions off; Transitions stays its own
+     switch either way ("transition can be controlled independently"). */
+  const mpills=document.createElement("span");
+  mpills.className="pills"; mpills.id="jamMotion";
+  mpills.title="The top note travels — a line that climbs and comes back over the whole form";
+  mpills.setAttribute("role","group"); mpills.setAttribute("aria-label","Motion");
+  [["Off",false],["On",true]].forEach(([label,val])=>{
+    const b=document.createElement("button");
+    b.textContent=label;
+    b.setAttribute("aria-pressed",String(!!jam.motion===val));
+    b.title=val?"The top note travels over the whole form"
+               :"The chords sit still; the top note stays put";
+    b.addEventListener("click",()=>{
+      if(!!jam.motion===val) return;
+      mpills.querySelectorAll("button").forEach(x=>
+        x.setAttribute("aria-pressed",String(x===b)));
+      jam.motion=val;
+      jam.trans=val;                                  // his default, one tap from changing
+      if(typeof paintTrans==="function") paintTrans();
+      /* AND TURNING MOTION ON RESETS MELODY CYCLES TO 2× (David, 3 Sep: "when
+         motion is selected … make Melody cycles 2x the default setting"). 2×
+         was already the fallback for a fresh jam, but a 1× or 4× tapped
+         earlier is remembered across jams and sessions. */
+      if(val) jam.mpasses=2;
+      // a first turn to Motion needs a line to sing; later turns keep theirs
+      if(val&&!jam.mseed) jam.mseed=jamNewSeed();
+      applyJam(); saveJamLS();
+      if(typeof paintVoicingDesc==="function") paintVoicingDesc();
+      toast(val?"Motion — the top note travels over "+jamPasses()
+                 +(jamPasses()===1?" pass":" passes")+" of the chords"
+               :"Motion off — transitions off too");
+    });
+    mpills.appendChild(b);
+  });
+  deep.appendChild(brkRow0(mpills,"Motion:"));
   deep.appendChild(brkRow0(tpills));
   deep.appendChild(cwrap);
   /* THE BREAKS GROUP travels the same way the voicings and the spice slider
@@ -26097,7 +26583,7 @@ function cpBuildRaw(seq){
         }));
       }
     });
-    built={format:"hpd-2",author:"",writtenFor:myPanId,meter:pat.meter,sub:pat.sub,unit:pat.unit||4,barsPerRow:pat.bpr||1};
+    built={format:"hpd-2",author:"",writtenFor:myPanId,meter:pat.meter,sub:pat.sub,unit:pat.unit||4,groups:pat.groups||undefined,barsPerRow:pat.bpr||1};
   }
   /* EVERY bar wears its chord, not only a slot's first: the row, the pan and
      the block chords read the label, and a bar without one would be GUESSED
@@ -29178,12 +29664,18 @@ function grooveNotes(def){
 /* the workbench's LIVE time controls (26 Aug, David: "there also needs to be
    a time signature selector, ideally above the groove editor") — one mutation
    behind both platforms' selectors. Shrinking trims like the Piece sheet. */
+/* the bench's Groups select, both platforms (16 Sep): the groove's bar in groups, or in single counts */
+function grooveSetGroups(v){
+  if(!grooveEdit) return; snapshot();
+  if(v) piece.groups=String(v).split("-").map(Number); else delete piece.groups;
+  refresh();
+}
 function grooveSetTime(tsVal,subVal){
   if(!grooveEdit) return;
   const p=tsVal.split("/"), beats=+p[0], den=+p[1];
   snapshot();
   const oldSub=piece.sub;
-  piece.meter=[beats,den];
+  piece.meter=[beats,den]; delete piece.groups;      // a grouping belongs to its meter (16 Sep)
   if(den===8) piece.unit=8; else delete piece.unit;   // x/8 counts eighths (Bembé's rule)
   piece.sub=+subVal;
   resub("Groove",oldSub,+subVal);   // notes stay where they SOUND
@@ -29232,6 +29724,7 @@ function startGrooveEdit(opts){    // opts: {id?, name, meter, sub, unit?, ref, 
     writtenFor:myPanId, tempo:prevBpm||72, meter:opts.meter, sub:opts.sub,
     barsPerRow:1, sections:{Groove:{bars}}, arrangement:["Groove"] };
   if(opts.unit&&opts.unit!==4) p.unit=opts.unit;
+  if(opts.groups) p.groups=opts.groups.slice();
   grooveEdit={id:opts.id||null, ref:opts.ref, wasJam, prevPiece, prevBpm,
     origin:opts.origin||"browser", sig0:""};
   fsLeave();                    // the editors take no part in fullscreen
@@ -29322,6 +29815,7 @@ function grooveAsPattern(opts){
   const g={id, name, user:true,
     meter:piece.meter, sub:piece.sub, bpr:1, bars:gbars.length, ev, ref:grooveEdit.ref};
   if(piece.unit&&piece.unit!==4) g.unit=piece.unit;
+  if(groupsOf(SM(piece,"Groove"))) g.groups=piece.groups.slice();   // the bar's grouping travels with the groove (16 Sep)
   return g;
 }
 /* LOAD another groove into the workbench, in place. A user groove loads as
@@ -29340,6 +29834,7 @@ function grooveLoadInto(g){
   grooveEdit.id=g.user?g.id:null;
   piece.meter=g.meter.slice(); piece.sub=g.sub||1;
   if(g.unit&&g.unit!==4) piece.unit=g.unit; else delete piece.unit;
+  if(g.groups) piece.groups=g.groups.slice(); else delete piece.groups;
   piece.title=g.name; $("title").value=g.name; fitTitle();
   const lbp=piece.meter[0]*piece.sub, lb=patBars(g);
   const nb=Array.from({length:lb},()=>[]);
@@ -29447,7 +29942,7 @@ function openGrooveLoadDlg(){
    change meter or subdivision without a note moving. */
 function grooveSig(){
   const gb=(piece.sections.Groove&&piece.sections.Groove.bars)||[];
-  return JSON.stringify([piece.meter,piece.sub,piece.unit||4,gb]);
+  return JSON.stringify([piece.meter,piece.sub,piece.unit||4,piece.groups||null,gb]);
 }
 function grooveDirty(){ return !!grooveEdit&&grooveSig()!==grooveEdit.sig0; }
 let grooveExitGo=null;      // "save" | "drop" while the dialog drives the exit
@@ -29689,7 +30184,7 @@ function jamRecipe(){
   const pat=allPats().find(p=>p.id===jam.patternId);
   const r={v:1, slots:jam.slots.map(s=>({chord:s.chord,bars:s.bars||1})), brk:jam.brk,
     patternId:jam.patternId, bpm:bpm, narrow:!!jam.narrow,
-    motion:!!jam.motion, trans:!!jam.trans, mpasses:jamEndless()?"inf":jamPasses(), mseed:jam.mseed||1};
+    motion:!!jam.motion, trans:!!jam.trans, mpasses:jamEndless()?"inf":jamPasses(), mseed:jam.mseed||1, vv:2};
   if(pat&&pat.user) r.groove=pat;      // travels with it
   return r;
 }
@@ -29722,7 +30217,7 @@ function importJam(r){
   }
   jam.slots=r.slots.map(s=>({chord:s.chord,bars:Math.max(1,s.bars||1)}));
   jam.patternId=allPats().some(p=>p.id===r.patternId)?r.patternId:JAMPATS[0].id;
-  jam.narrow=!!r.narrow;
+  jamVoicingMigrate(r); jam.narrow=!!r.narrow;   // a shared jam from before Motion had its own switch
   /* the line travels with the jam, seed and all — a shared Motion jam must
      sing the same tune at the other end, not merely the same chords */
   jam.motion=!!r.motion; jam.mpasses=r.mpasses||2; jam.mseed=r.mseed||1;
@@ -30278,17 +30773,26 @@ function jamSetRehome(vp,cw){
      when they were added. Anything built into `deep` must be rehomed here. */
   const th=$("jsTransHost"), tp=document.querySelector('.pills[aria-label="Transitions"]');
   if(th&&tp){ th.innerHTML=""; th.appendChild(tp); }
-  paintColour(); paintVoicingDesc(); paintTrans();
+  const mh=$("jsMotionHost"), mp=$("jamMotion");     // and Motion, since 16 Sep
+  if(mh&&mp){ mh.innerHTML=""; mh.appendChild(mp); }
+  paintColour(); paintVoicingDesc(); paintTrans(); paintMotion();
   return true;
 }
 function jamNewSeed(){ return 1+Math.floor(Math.random()*4294967294); }
 function paintVoicingDesc(){
   const el=$("jsVoicingDesc");
-  if(el) el.textContent=(jam&&jam.motion)
+  if(el) el.textContent=(jam&&jam.narrow)
+    ? (jam.motion
+      ? "Narrow keeps the moving top note out of the top of the pan: it goes no higher than "
+        +jamCeilName()+", two octaves above the central note."
+      : "Narrow keeps the chords in the middle of the pan, so its high notes stay free for your melody.")
+    : (jam&&jam.motion
+      ? "Wide lets the moving top note use the whole instrument."
+      : "Wide uses the whole instrument and grounds each chord in the bass.");
+  const md=$("jsMotionOnDesc");
+  if(md) md.textContent=(jam&&jam.motion)
     ? "Motion gives the top note somewhere to go: it climbs and comes back across the whole form, and every chord underneath it is still a real voicing of that chord."
-    : (jam&&jam.narrow)
-    ? "Narrow keeps the chords in the middle of the pan, so its high notes stay free for your melody."
-    : "Wide uses the whole instrument and grounds each chord in the bass.";
+    : "Off: the chords sit where the voicing puts them, the same way every time round.";
   /* Motion's own controls appear with it and say what the choice MEANS in
      bars, because "2×" is only a number until you know the progression. */
   const row=$("jsMotionRow");
@@ -30335,13 +30839,15 @@ function openJamSet(){
      already open, which is why adding it there alone left the group sitting
      in the notation head, correct and invisible. */
   { const t=$("jamTrans"); if(t) $("jsTransHost").appendChild(t); }
-  paintColour(); paintVoicingDesc(); paintTrans(); openDlg($("jamSetDlg"));
+  { const m=$("jamMotion"); if(m) $("jsMotionHost").appendChild(m); }
+  paintColour(); paintVoicingDesc(); paintTrans(); paintMotion(); openDlg($("jamSetDlg"));
 }
 function closeJamSet(){
   const deep=document.querySelector(".jdeep");
   if(deep){ deep.appendChild($("jamVoicing")); deep.appendChild($("jamColourWrap"));
     // …and home again, or the next render would build a second copy
-    const t=$("jamTrans"); if(t) deep.appendChild(t); }
+    const t=$("jamTrans"); if(t) deep.appendChild(t);
+    const m=$("jamMotion"); if(m) deep.appendChild(m); }
   $("jamSetDlg").close();
 }
 
@@ -31025,6 +31531,7 @@ function boot(){
     const deep=document.querySelector(".jdeep");
     if(deep&&!deep.contains($("jamVoicing"))){
       deep.appendChild($("jamVoicing")); deep.appendChild($("jamColourWrap"));
+      const m=$("jamMotion"); if(m) deep.appendChild(m);   // Motion lives in the sheet too (16 Sep)
       fitJamHead(); }
   });
   $("modePos").addEventListener("click",()=>setMode("pos"));
@@ -31472,6 +31979,8 @@ function boot(){
       e.preventDefault(); e.shiftKey?doRedo():doUndo(); return; }
     if((e.metaKey||e.ctrlKey)&&!typing&&e.key.toLowerCase()==="y"){
       e.preventDefault(); doRedo(); return; }
+    if((e.metaKey||e.ctrlKey)&&!typing&&!e.shiftKey&&!e.altKey
+      &&edClipKeys(e.key.toLowerCase())){ e.preventDefault(); return; }
     editorKeys(e);
   });
   $("backBtn").addEventListener("click",navBack);
@@ -32899,8 +33408,7 @@ if(PHONE){
      same functions the desktop palette calls ---- */
   $("edPrev").addEventListener("click",()=>edStep(-1));
   $("edNext").addEventListener("click",()=>edStep(1));
-  $("edDel").addEventListener("click",()=>{
-    const loc=viewLoc(); if(loc){ snapshot(); clearSlot(loc); refresh(); } });
+  $("edDel").addEventListener("click",edClearHere);
   // colour tokens: R = green = LEFT (the desktop palette's own mapping)
   $("edHandL").addEventListener("click",()=>{ laneHand=null; selHand="L"; paintEditDeck(); updateHandInd(); });
   $("edHandR").addEventListener("click",()=>{ laneHand=null; selHand="R"; paintEditDeck(); updateHandInd(); });
@@ -32954,6 +33462,7 @@ if(PHONE){
   const edSetTime=()=>grooveSetTime($("edTS").value,$("edSub").value);
   $("edTS").addEventListener("change",edSetTime);
   $("edSub").addEventListener("change",edSetTime);
+  $("edGroups").addEventListener("change",()=>grooveSetGroups($("edGroups").value));
   $("edRef").addEventListener("change",()=>grooveSetRef($("edRef").value));
   // loop the bar the lane is showing (David, 27 Aug) — the same loopSec the
   // drag gesture drives, so playback and the frame need nothing new

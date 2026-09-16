@@ -62,13 +62,24 @@ SyncMap.barStarts=function(piece,compile){
   }
   return out;
 };
+/* THE BAR'S CELLS, as the app cuts them (16 Sep 2026, app.html cellsOf): a section
+   with a grouping — 7/8 as [3,2,2], counts per group — has a cell per group; without
+   one, a cell per count. A "beat" here is a cell, so a grouped bar is tapped once per
+   group and labelled by group. The offsets are pulses into the bar. */
+SyncMap.cellStarts=function(m){
+  const g=m.groups, ok=Array.isArray(g)&&g.length>1&&g.every(n=>Number.isInteger(n)&&n>0)&&g.reduce((a,b)=>a+b,0)===m.beats;
+  const out=[]; let q=0;
+  if(ok){ for(const n of g){ out.push(q); q+=n*m.sub; } }
+  else for(let k=0;k<m.beats;k++) out.push(k*m.sub);
+  return out;
+};
 SyncMap.beatStarts=function(piece,compile,SM){
   const out=[], c=compile(piece);
   for(const sec of c.secStarts){
     const s=piece.sections[sec.name]; if(!s) continue;
-    const m=SM(piece,sec.name);
+    const m=SM(piece,sec.name), starts=SyncMap.cellStarts(m);
     for(let b=0;b<s.bars.length;b++)
-      for(let k=0;k<m.beats;k++) out.push(sec.pulse+b*m.bp+k*m.sub);
+      for(const o of starts) out.push(sec.pulse+b*m.bp+o);
   }
   return out;
 };
@@ -85,7 +96,8 @@ SyncMap.pulseLabel=function(piece,compile,SM,p){ // "A1·2" = section table, bar
   if(p>=c.total) return "End";
   let sec=c.secStarts[0]; for(const x of c.secStarts) if(x.pulse<=p) sec=x;
   const m=SM(piece,sec.name), rel=p-sec.pulse;
-  const bar=Math.floor(rel/m.bp)+1, beat=Math.floor((rel%m.bp)/m.sub)+1;
+  const bar=Math.floor(rel/m.bp)+1, inBar=rel%m.bp, starts=SyncMap.cellStarts(m);
+  let beat=1; for(let i=0;i<starts.length;i++) if(starts[i]<=inBar) beat=i+1;   // the cell (a group, in a grouped bar)
   return sec.name+"·"+bar+(beat>1?"·b"+beat:"");
 };
 
