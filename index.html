@@ -31157,10 +31157,38 @@ function edAdoptPan(quiet){
   if(!editing||grooveEdit||!piece||!myPanId||piece.writtenFor===myPanId) return false;
   const p=panById(myPanId); if(!p) return false;
   if(!quiet) snapshot();
+  /* WHAT YOU WERE READING IS WHAT YOU EDIT (David, 17 Sep: "when the user has
+     selected a different pan, looks at an arrangement, and then opens it in
+     the editor, it should stay. All the numbers should stay as they were when
+     the user had For my pan selected. That becomes the new baseline"). At the
+     door the reading map is still standing (refresh has not run for the
+     editor yet), so the transposition is written INTO the piece: every note
+     takes the field the map gave it — a stand-in its true interval's field,
+     a note the pan lacks stays FOREIGN by interval (drawn purple, sounding
+     its pitch, in every mode) — and every chord name moves by the same shift,
+     spelled for this pan. Mid-edit, with no map, the numbers stay put. */
+  let foreign=0, dropped=0;
+  if(mode==="trans"&&MAP&&srcPan){
+    const shift=transChordShift();
+    for(const nm in piece.sections) for(const bar of piece.sections[nm].bars||[]) for(let i=0;i<bar.length;i++){
+      const ev=bar[i];
+      if(ev.chord&&shift) ev.chord=shiftChordName(ev.chord,shift,myPan);
+      if(ev.v!=="field") continue;
+      let f=null, iv=null;
+      const fo=foreignOf(ev);
+      if(fo){ if(fo.pos===null) iv=(ev.sub&&ev.oi!=null?ev.oi:srcPan.posIv(ev.f))+TRANSADJ; else f=fo.pos; }
+      else { const back=standInPos(ev); if(back!=null) f=back;
+        else { const m=MAP[ev.f]; if(m!=null&&m!==FOREIGN) f=m; else { const iv0=srcPan.posIv(ev.f); if(iv0==null){ bar.splice(i,1); i--; dropped++; continue; } iv=iv0+TRANSADJ; } } }
+      delete ev.sub; delete ev.oi; delete ev.fo; delete ev.ha;
+      if(f!=null) ev.f=f; else { ev.fo=true; ev.oi=iv; foreign++; }
+    }
+  }
   piece.writtenFor=p.id; piecePanUnknown=false;
   const spec=panSpecFor(p.id); if(spec) piece.panSpec=spec; else delete piece.panSpec;
   edPanFor=null;
-  if(!quiet){ refresh(); if(!PHONE) try{ renderEditbar(); }catch(e){} toast("Now written for "+p.name); }
+  const said=[]; if(foreign) said.push(foreign+(foreign===1?" note has":" notes have")+" no field here and stay foreign"); if(dropped) said.push(dropped+" left out");
+  if(!quiet){ refresh(); if(!PHONE) try{ renderEditbar(); }catch(e){} }
+  if(!quiet||said.length) toast("Now written for "+p.name+(said.length?" · "+said.join(" · "):""));
   return true;
 }
 function renderPanPick(){
