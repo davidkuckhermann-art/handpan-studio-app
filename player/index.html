@@ -637,8 +637,8 @@ dialog:focus-visible{outline:2px solid var(--steel); outline-offset:4px}
 header{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px}
 
 #brandLogo{height:30px; width:auto; flex:none; display:block; margin-right:2px}
-body.phone #brandLogo, body.tablet:not(.phone) #brandLogo, html.player #brandLogo{display:none}
-@media (max-width:1000px){ #brandLogo{display:none} }   
+
+body.phone #brandLogo, body.tablet:not(.phone) #brandLogo{display:none}
 html[data-theme="dark"] #brandLogo{filter:invert(1) hue-rotate(180deg)}   
 .brand{font-size:11px; font-weight:800; letter-spacing:.16em;
   color:var(--brand-ink,var(--accent-solid,var(--dixie))); text-transform:uppercase}
@@ -649,6 +649,8 @@ header{gap:9px}
 
 .hside{display:flex; align-items:center; gap:9px; flex:1 1 0; min-width:0; flex-wrap:nowrap}
 .hright{justify-content:flex-end}
+
+html.player .hside.hright{flex:0 0 auto}
 body:not(.phone) .hleft>.brand, body:not(.phone) .hleft>#srcBadge{flex:none}
 body:not(.phone) .hleft>#title{flex:0 1 auto; min-width:60px}
 
@@ -1787,12 +1789,6 @@ body.jam #srcBadge{display:none !important}
 .pgroup>.ctl{position:relative}
 
 
-@media (max-width:840px){
-  body:not(.phone) .hside{flex-wrap:wrap}
-  body:not(.phone) .pgroup{align-self:flex-start}
-  body:not(.phone) .pgroup::before{bottom:auto; height:calc(100% + var(--pagetop) + 11px)}
-}
-
 
 
 .psep{height:1px; background:var(--rule2); margin:12px 0 11px}
@@ -2411,6 +2407,9 @@ body.phone #editPop.two .tuprow .ctl{min-width:0; padding:9px 0; font-size:14px;
 
 #shareBtn svg{width:27px; height:20px; display:block}
 body:not(.phone) #shareBtn{padding:7px 12px}
+
+body:not(.phone) #setBtn.wordless, body:not(.phone) #shareBtn.wordless{column-gap:0; padding-left:9px; padding-right:9px}
+body:not(.phone) .wordless>.w{flex:0 0 0; min-width:0; width:0; overflow:hidden}
 
 
 body:not(.phone) #syncOpen{padding:0; width:26px; height:26px; border-radius:8px;
@@ -6293,16 +6292,21 @@ function fitHeader(){
 }
 
 
-function fitLinkBulb(){
-  const b=$("linkBtn"); if(!b) return;
-  b.classList.remove("shed");
-  if((b.classList.contains("hidden"))) return;
-  const R=document.querySelector(".hright"); if(!R||!R.clientWidth) return;
+function fitHeaderRight(){
+  
+
+  const R=document.querySelector(".hright");
+  const words=[$("setBtn"),$("shareBtn")], b=$("linkBtn");
+  words.forEach(x=>{ if(x) x.classList.remove("wordless"); });
+  if(b) b.classList.remove("shed");
+  if((!R)||!R.clientWidth) return;
   const gap=parseFloat(getComputedStyle(R).gap)||9;
-  const k=[...R.children].filter(el=>getComputedStyle(el).display!=="none");
-  const sum=k.reduce((n,el)=>n+el.getBoundingClientRect().width,0)
-    +gap*Math.max(0,k.length-1);
-  if(sum>R.clientWidth+1) b.classList.add("shed");
+  const vis=el=>el&&getComputedStyle(el).display!=="none";
+  const sum=()=>{ const k=[...R.children].filter(vis);
+    return k.reduce((n,el)=>n+el.getBoundingClientRect().width,0)+gap*Math.max(0,k.length-1); };
+  if(sum()<=R.clientWidth+1) return;
+  for(const x of words){ if(vis(x)){ x.classList.add("wordless"); if(sum()<=R.clientWidth+1) return; } }
+  if(vis(b)) b.classList.add("shed");
 }
 
 
@@ -10238,7 +10242,7 @@ function refresh(){
 
 function updateLinkBtn(){
   const b=$("linkBtn"); if(b) b.classList.toggle("hidden",!(piece&&piece.link));
-  fitLinkBulb();
+  fitHeaderRight();
 }
 
  
@@ -14450,13 +14454,13 @@ function boot(){
       toast("Video size reset"); });
      
     window.addEventListener("resize",applyVidH);
-  window.addEventListener("resize",()=>{ { fitFooter(); fitHeader(); fitLinkBulb(); refitScore(); } });
+  window.addEventListener("resize",()=>{ { fitFooter(); fitHeader(); fitHeaderRight(); refitScore(); } });
   
 
   {
-    requestAnimationFrame(()=>{ fitFooter(); fitHeader(); });
+    requestAnimationFrame(()=>{ fitFooter(); fitHeader(); fitHeaderRight(); });
     if(document.fonts&&document.fonts.ready)
-      document.fonts.ready.then(()=>{ fitFooter(); fitHeader(); });
+      document.fonts.ready.then(()=>{ fitFooter(); fitHeader(); fitHeaderRight(); });
   }
   })();
   $("vidClose").addEventListener("click",closeVideo);
