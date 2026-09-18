@@ -19158,6 +19158,7 @@ function refresh(){
   /* stamped on every refresh, so the spec stays current through renames and
      rides out through every save, code, file and restore (see panSpecFor) */
   { const spec=panSpecFor(piece.writtenFor); if(spec) piece.panSpec=spec; }
+  warmShort();   // the short link is made in the background, ready before anyone presses Copy (see enc)
   srcPan=derive(panById(piece.writtenFor));
   myPan=derive(panById(myPanId));
   paintPanSel();          // the closed chooser always says the pan you hold
@@ -21035,8 +21036,54 @@ function renderPieceDlg(){
 }
 
 /* ---------------- share / library ---------------- */
-function enc(p){ return btoa(unescape(encodeURIComponent(JSON.stringify(p))))
-  .replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
+/* SHORT LINKS, WRITING SIDE (David, 17 Sep 2026, step 2 — after the readers
+   went live in pages 52ccd06). Every link, code, file and restore the app
+   writes goes through enc(), and the Lab calls encShort() through its iframe.
+   THE SQUEEZING IS THE BROWSER'S OWN (David: "switch to the built-in
+   compressor for packing, and keep our own unpacker"): CompressionStream,
+   which answers a moment later. So enc() stays instant — Safari lets a page
+   write the clipboard only inside the click — by handing out a short form
+   the browser has ALREADY made for exactly this piece, and the plain form
+   otherwise. refresh() has one made in the background whenever the piece
+   settles (warmShort), so by the time anyone presses Copy it is there; a
+   browser without CompressionStream (older than Safari 16.4) simply writes
+   plain links, which every build reads. Each short form is unpacked again
+   with the app's own inflateRaw and kept only if it comes back identical
+   and is shorter — a fault can cost length, never a lesson. */
+const SHORTS=new Map();                  // the piece's JSON → its short payload, or null (none better)
+function plainEnc(json){ return btoa(unescape(encodeURIComponent(json))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
+function shortFor(json){
+  if(SHORTS.has(json)) return Promise.resolve(SHORTS.get(json));
+  if(typeof CompressionStream==="undefined") return Promise.resolve(null);
+  let stream;
+  try{ stream=new Blob([json]).stream().pipeThrough(new CompressionStream("deflate-raw")); }catch(e){ return Promise.resolve(null); }
+  return new Response(stream).arrayBuffer().then(ab=>{
+    const d=new Uint8Array(ab);
+    let z=null;
+    if(new TextDecoder().decode(inflateRaw(d))===json){
+      let b=""; for(let i=0;i<d.length;i++) b+=String.fromCharCode(d[i]);
+      z="z"+btoa(b).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+      if(z.length>=plainEnc(json).length) z=null;
+    }
+    SHORTS.set(json,z);
+    if(SHORTS.size>8) SHORTS.delete(SHORTS.keys().next().value);
+    return z;
+  }).catch(()=>null);
+}
+function enc(p){                         // instant: the short form if it is ready, else the plain one
+  const json=JSON.stringify(p), z=SHORTS.get(json);
+  if(z===undefined) shortFor(json);
+  return z||plainEnc(json);
+}
+async function encShort(p){              // waits for the short form (the Lab's Embed, Copy lesson link, Copy code)
+  const json=JSON.stringify(p);
+  return (await shortFor(json))||plainEnc(json);
+}
+let warmT=0;
+function warmShort(){                    // after the piece settles, have its short form made
+  clearTimeout(warmT);
+  warmT=setTimeout(()=>{ try{ if(typeof piece!=="undefined"&&piece) shortFor(JSON.stringify(shareable())); }catch(e){} },50);
+}
 /* SHORT LINKS, READING SIDE (David, 17 Sep 2026: "encode the compositions …
    so we don't need as crazy embed codes"). A link or code whose payload starts
    with "z" carries the piece's JSON squeezed with raw DEFLATE — the zip
@@ -21046,8 +21093,9 @@ function enc(p){ return btoa(unescape(encodeURIComponent(JSON.stringify(p))))
    every existing #p= link and HPS1: code reads exactly as before.
    The unpacker is the app's own (inflateRaw below), not the browser's
    DecompressionStream, which only arrived in 2023 (Safari 16.4) and would
-   leave an older iPhone with an empty lesson. Nothing WRITES the short form
-   yet: every reader has to be published first (bench/links/check.js). */
+   leave an older iPhone with an empty lesson. The readers were published
+   first (pages 52ccd06); enc() above writes the short form since step 2
+   (bench/links/check.js judges both sides). */
 function dec(s){ const z=s[0]==="z"; if(z) s=s.slice(1);
   s=s.replace(/-/g,"+").replace(/_/g,"/"); while(s.length%4)s+="=";
   if(z){ const b=atob(s), u=new Uint8Array(b.length);
