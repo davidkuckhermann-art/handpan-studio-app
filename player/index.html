@@ -981,6 +981,8 @@ body.slotlines .bar.nowbar .beat>.slot.smark::before{background:var(--sc-thru2)}
   left:0; right:0; top:50%; height:.94em; transform:translateY(-50%);
   border-radius:.26em; background:var(--sc-under)}
 
+.sym.bt.mu::before{top:-.1em; bottom:calc(50% - .47em); height:auto; transform:none}
+
 html[data-bt="m"] .sym.bt::before, html[data-bt="m"] .btcap::before{
   background:var(--sc-under-mid)}
 html[data-bt="g"] .sym.bt::before, html[data-bt="g"] .btcap::before{
@@ -1009,6 +1011,8 @@ body.fs .btcap,body.fs .sym.bt{--btpad:.07em}
   inset:calc((var(--symlh,1.02) - 1.206) * .5em + .101em) 0
         calc((var(--symlh,1.02) - 1.206) * .5em + .109em);
   border-radius:.28em; background:var(--sc-under)}
+
+.btcap:has(> .sym.mu:last-child)::before{top:-.1em}
 .btcap .sym.bt{padding-inline:0; max-width:none}   
 .btcap .sym.bt::before{display:none}
 
@@ -2126,7 +2130,7 @@ body.phone #pvwrap.sides #pvsvg{width:min(calc(236px*var(--panzoom,1)*var(--panf
 #panZoom.pzplay #panZoomX{position:fixed; top:calc(14px + env(safe-area-inset-top)); right:14px; left:auto}
 
 #panZoom.pzplay{justify-content:center; padding-top:calc(72px + env(safe-area-inset-top))}
-#panZoom.pzplay #panZoomInner{width:min(94vw,calc(100vh - 150px),780px); height:min(94vw,calc(100vh - 150px),780px)}
+#panZoom.pzplay #panZoomInner{width:min(calc(100vw - 16px),calc(100vh - 150px),780px); height:min(calc(100vw - 16px),calc(100vh - 150px),780px)}
 
 
 #panZoom.pzplay #pzBar{position:fixed; z-index:2; left:60px; right:60px;
@@ -2427,6 +2431,8 @@ body.slotlines .fpos.smark .flanes::before{content:""; position:absolute;
   top:-.04em; bottom:-.1em; transform:none}
 .flane.vj2 .sym.bt::before{border-radius:0 0 .26em .26em; height:auto;
   top:-.1em; bottom:-.04em; transform:none}
+
+.flane.vj1 .sym.bt.mu::before{top:-.1em}
 
 
 #landGenBtn{display:none}
@@ -8824,6 +8830,7 @@ function pzShow(P,lesson){
   x.title="Close"; x.setAttribute("aria-label","Close"); x.textContent="\u00d7";
   x.addEventListener("click",closePanZoom);
   host.appendChild(x);
+  { const svg=host.querySelector("svg"); if(svg) requestAnimationFrame(()=>pzFitBox(svg)); }
   const id=P.pan&&P.pan.id, mine=id===myPanId;
   $("pzName").textContent=(P.pan&&P.pan.name)||"This pan";
   $("pzUse").hidden=mine;
@@ -8856,6 +8863,26 @@ function pzWire(){
 }
 
 
+
+
+function pzFitBox(svg){
+  const vb=svg.viewBox.baseVal, r=svg.getBoundingClientRect();
+  if(!r.width||!vb.width) return;
+  const k=vb.width/r.width;                        
+  const X=x=>vb.x+(x-r.left)*k, Y=y=>vb.y+(y-r.top)*k;
+  const shell=svg.querySelector("circle"); if(!shell) return;    
+  const sc=shell.getBoundingClientRect();
+  const cx=X((sc.left+sc.right)/2), cy=Y((sc.top+sc.bottom)/2);
+  let l=Infinity,rt=-Infinity,tp=Infinity,bt=-Infinity;
+  for(const el of svg.querySelectorAll("circle,text,path,rect,line,polyline,polygon")){
+    if(el.classList.contains("pvhit")) continue;   
+    const b=el.getBoundingClientRect(); if(!b.width&&!b.height) continue;
+    l=Math.min(l,X(b.left)); rt=Math.max(rt,X(b.right)); tp=Math.min(tp,Y(b.top)); bt=Math.max(bt,Y(b.bottom));
+  }
+  if(!(rt>l)) return;
+  const M=4, hw=Math.max(cx-l,rt-cx)+M, hh=Math.max(cy-tp,bt-cy)+M;
+  svg.setAttribute("viewBox",(cx-hw).toFixed(1)+" "+(cy-hh).toFixed(1)+" "+(2*hw).toFixed(1)+" "+(2*hh).toFixed(1));
+}
 function pzStrike(midi,g){
   wakeAudio();
   bankPlay(midi,b=>fire(b,ctx.currentTime+0.01,1));
