@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <title>Handpan Studio</title>
 <meta name="robots" content="noindex,nofollow">
+<!-- the tab's icon, beside every published page (the app, the phone, the
+     player), so the browser's own look-up finds one instead of a 404 -->
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="icon-192.png" sizes="192x192">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -3579,7 +3583,8 @@ body.phone #pvwrap.sides #pvsvg{width:min(calc(236px*var(--panzoom,1)*var(--panf
    thumb that long-pressed; the playing pan is touched all over, and the
    selector above it takes the room the top used to give. */
 #panZoom.pzplay{justify-content:center; padding-top:calc(72px + env(safe-area-inset-top))}
-#panZoom.pzplay #panZoomInner{width:min(calc(100vw - 16px),calc(100vh - 150px),780px); height:min(calc(100vw - 16px),calc(100vh - 150px),780px)}
+#panZoom.pzplay #panZoomInner{width:min(calc(100vw - 16px),calc(100vh - 110px),780px); height:min(calc(100vw - 16px),calc(100vh - 110px),780px)}
+#panZoom.pzplay #panZoomCap:empty{display:none}
 /* THE SELECTOR AT THE WINDOW'S EDGE (David, 19 Sep: "to the very top of the
    window on desktop and to the bottom of the window on phones" — the tablet
    takes the top). The pan keeps the middle; on the phone the caption rides
@@ -17497,7 +17502,9 @@ function pzShow(P,lesson){
   const id=P.pan&&P.pan.id, mine=id===myPanId;
   $("pzName").querySelector(".pznm").textContent=(P.pan&&P.pan.name)||"This pan";
   $("pzUse").hidden=mine;
-  $("panZoomCap").textContent=mine?"Your pan · tap the fields to play":"Tap the fields to play";
+  // no caption on the playable pan (David, 20 Sep: "I don't think we need
+  // 'your pan tap the fields to play'") — the room goes to the drawing
+  $("panZoomCap").textContent="";
 }
 function pzStep(d){
   const all=ppOrder(); if(!all.length) return;
@@ -17558,6 +17565,20 @@ function pzFitBox(svg){
   if(!(rt>l)) return;
   const M=4, hw=Math.max(cx-l,rt-cx)+M, hh=Math.max(cy-tp,bt-cy)+M;
   svg.setAttribute("viewBox",(cx-hw).toFixed(1)+" "+(cy-hh).toFixed(1)+" "+(2*hw).toFixed(1)+" "+(2*hh).toFixed(1));
+  /* AND THE BOX TAKES THE DRAWING'S PROPORTIONS (David, 20 Sep, of D Kurd 14
+     against D Kurd 12: "why does the pan with bottom notes not use the free
+     space?"). Bottom notes below and to the left make the frame taller than it
+     is wide — the shell stays centred, that is the price — and a SQUARE box
+     then fits that by height and leaves the width empty. The box is given the
+     frame's own ratio instead: width to the screen, height to follow, or the
+     other way about when the height is the tighter one. */
+  const z=$("panZoom"), host=$("panZoomInner"), zs=getComputedStyle(z), cap=$("panZoomCap");
+  const availW=Math.min(innerWidth-16,780);
+  const availH=z.clientHeight-parseFloat(zs.paddingTop||0)-parseFloat(zs.paddingBottom||0)
+               -(cap.offsetHeight||0)-(parseFloat(zs.gap)||0);
+  const ratio=(2*hw)/(2*hh);
+  const W=Math.max(80,Math.min(availW,availH*ratio));
+  host.style.width=W.toFixed(1)+"px"; host.style.height=(W/ratio).toFixed(1)+"px";
 }
 function pzStrike(midi,g){
   wakeAudio();
@@ -17567,6 +17588,7 @@ function pzStrike(midi,g){
 function closePanZoom(){
   const z=$("panZoom"); if(!z||!z.classList.contains("on")) return;
   z.classList.remove("on","four","pzplay");
+  { const h=$("panZoomInner"); h.style.width=""; h.style.height=""; }   // the fitted size belonged to that drawing
   $("panZoomInner").innerHTML="";                 // the drawing is not kept
   if(z.parentElement!==document.body) document.body.appendChild(z);
 }
