@@ -1794,8 +1794,8 @@ body.slotlines .bar.nowbar .beat>.slot.smark::before{background:var(--sc-thru2)}
    it is not already a flex item; flex-start keeps the overtone ring at the
    top, as vertical-align:top did. */
 .sym.bt::before{content:""; position:absolute; z-index:-1;
-  left:0; right:0; top:50%; height:.94em; transform:translateY(-50%);
-  border-radius:.26em; background:var(--sc-under)}
+  left:0; right:0; top:calc(50% + var(--btdy,0em)); height:.94em; transform:translateY(-50%);
+  border-radius:.26em; background:var(--sc-under)}   /* --btdy: a shrunken glyph's measured ink offset — badgeInkDy() */
 /* A MUTED BOTTOM NOTE'S BADGE RISES TO HOLD THE LINE (David, 19 Sep: "the
    muted line sits kind of on the edge of the bottom note badge" — and, shown
    the two ways out on a sheet, "A"). The bar is the NOTE's and stays where
@@ -1808,7 +1808,7 @@ body.slotlines .bar.nowbar .beat>.slot.smark::before{background:var(--sc-thru2)}
    the bar, so it holds at every --symlh. The same sentence is said twice more
    below, where the ground is drawn by something else: the shared capsule
    (.btcap) and Flow's fused pair (.flane.vj1). */
-.sym.bt.mu::before{top:-.1em; bottom:calc(50% - .47em); height:auto; transform:none}
+.sym.bt.mu::before{top:-.1em; bottom:calc(50% - .47em - var(--btdy,0em)); height:auto; transform:none}
 /* THE BADGE'S GROUND AND EDGE, CHOSEN IN SETTINGS (David, 5 Sep 2026: "the
    beige is not always easy to see, especially inside the marker … they don't
    have an outline"; then, after a first round in the app, the violet went —
@@ -3595,10 +3595,17 @@ body.phone #panZoom.pzplay #panZoomCap{order:-1}
 #panZoom.pzplay #pzBar{display:flex}
 #pzBar .ib{width:40px; height:40px; font-size:26px; line-height:1; color:#fff; background:rgba(255,255,255,.12);
   border-color:rgba(255,255,255,.28); border-radius:50%; display:inline-grid; place-items:center; padding:0 0 3px}
+/* THE NAME GIVES WAY, THE BAR STAYS ONE LINE (David, 19 Sep: "let the pan name
+   truncate so the bar stays one line" — "E La Sirena 20" wrapped it at 375 px).
+   The name is its own span so the ▾ is never the part that is cut. */
 #pzName{font:inherit; font-size:18px; font-weight:700; color:#fff; background:none; border:1px solid rgba(255,255,255,.28);
-  border-radius:12px; padding:7px 14px; min-width:12ch}
-#pzName::after{content:" \25BE"; font-size:.7em; opacity:.8}
-#pzUse{background:var(--card); color:var(--ink)}
+  border-radius:12px; padding:7px 14px; min-width:0; display:inline-flex; align-items:center; gap:5px}
+#pzName .pznm{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:3ch}
+#pzName::after{content:"\25BE"; font-size:.7em; opacity:.8; flex:0 0 auto}
+#panZoom.pzplay #pzBar{flex-wrap:nowrap}
+/* the name is the only thing that gives way: "Use this pan" keeps its words
+   on one line (squeezed to 97 px it broke in two and took the bar with it) */
+#pzUse{background:var(--card); color:var(--ink); white-space:nowrap; flex:0 0 auto}
 /* the scale browser opened FROM the full-screen pan browses: its rows show a
    scale there, so the doors that lead elsewhere stand aside (David, 19 Sep:
    "can it use a similar structure as it does in the scale selector?") */
@@ -7418,7 +7425,7 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <!-- the playable pan's scale selector (David, 19 Sep): step, search, adopt -->
   <div id="pzBar">
     <button class="ib" id="pzPrev" type="button" title="Previous scale" aria-label="Previous scale">&lsaquo;</button>
-    <button id="pzName" type="button" title="Choose a scale" aria-haspopup="listbox"></button>
+    <button id="pzName" type="button" title="Choose a scale" aria-haspopup="listbox"><span class="pznm"></span></button>
     <button class="ib" id="pzNext" type="button" title="Next scale" aria-label="Next scale">&rsaquo;</button>
     <button class="ctl" id="pzUse" type="button" title="Make this the pan you play everything on">Use this pan</button>
   </div>
@@ -16576,12 +16583,47 @@ function fitBeatGlyphs(root){
         el.style.fontSize=fs.toFixed(2)+"px";
         el.style.position="relative";
         el.style.top=(-(LIFT*(base-fs))).toFixed(2)+"px";
+        if(el.classList.contains("bt")) el.style.setProperty("--btdy",badgeInkDy(el)+"em");
       }
     }
     dropCrossedLines(be);
   }
   root.querySelectorAll(".beat").forEach(dropCrossedLines);
 }
+/* A SHRUNKEN GLYPH'S BADGE FOLLOWS ITS INK, MEASURED (David, 19 Sep, of a run
+   of 32nds: "the numbers don't sit vertically centered in their badges" — his
+   screenshot: 5px above the digit, 8 below). The badge is centred on the
+   glyph's BOX, and the stylesheet's claim that the ink is centred there too
+   holds for the sizes it was measured at. The shrink above writes sizes nobody
+   measured — 26.16px — and WebKit lays text out in WHOLE pixels: ascent,
+   descent and line-height are each rounded, so at such a size the baseline
+   lands most of a pixel off and the digit rides high in a badge that is
+   exactly where it was told to be. Chromium keeps the fractions and shows
+   nothing. So, as with the lift: MY shrink caused it, my shrink gives it back,
+   and it is MEASURED in the engine that is running, not modelled — a hidden
+   glyph of the same size in the same slot, a zero-size inline-block sitting on
+   its baseline, and the cap height from the canvas. The answer is the ink
+   centre's offset from the box centre in em, written as --btdy, which
+   .sym.bt::before adds to its 50%. One probe per size, cached; rect units are
+   divided by a 100px ruler so the phone's zoomed card reads the same. */
+const badgeInkDy=(()=>{
+  const cache=new Map(); let cap=0;
+  if(document.fonts&&document.fonts.addEventListener) document.fonts.addEventListener("loadingdone",()=>{ cache.clear(); cap=0; });
+  return el=>{
+    const cs=getComputedStyle(el), fs=parseFloat(cs.fontSize), key=cs.fontFamily+"|"+cs.fontWeight+"|"+cs.fontSize+"|"+cs.lineHeight;
+    if(cache.has(key)) return cache.get(key);
+    if(!cap){ const ctx=document.createElement("canvas").getContext("2d");
+      ctx.font=cs.fontWeight+" 200px "+cs.fontFamily; cap=(ctx.measureText("1").actualBoundingBoxAscent||145)/200; }
+    const s=document.createElement("span"); s.className="sym";
+    s.style.cssText="position:absolute;visibility:hidden;left:0;top:0;padding:0;font-size:"+el.style.fontSize;
+    s.innerHTML='1<i style="display:inline-block;width:0;height:0"></i><i style="position:absolute;left:0;top:0;width:100px;height:0"></i>';
+    el.parentNode.appendChild(s);
+    const k=s.lastChild.getBoundingClientRect().width/100||1, sb=s.getBoundingClientRect();
+    const base=(s.children[0].getBoundingClientRect().top-sb.top)/k, h=sb.height/k;
+    s.remove();
+    const dy=+((base-cap*fs/2-h/2)/fs).toFixed(4);
+    cache.set(key,dy); return dy; };
+})();
 /* THE SIZES BELONG TO A WIDTH, SO THEY ARE RETAKEN WHEN THE WIDTH CHANGES.
    The phone refits on rotation rather than re-rendering, so nothing rebuilt the
    glyph sizes and a portrait screen wore the landscape ones. Flow is not here:
@@ -17453,7 +17495,7 @@ function pzShow(P,lesson){
   host.appendChild(x);
   { const svg=host.querySelector("svg"); if(svg) requestAnimationFrame(()=>pzFitBox(svg)); }
   const id=P.pan&&P.pan.id, mine=id===myPanId;
-  $("pzName").textContent=(P.pan&&P.pan.name)||"This pan";
+  $("pzName").querySelector(".pznm").textContent=(P.pan&&P.pan.name)||"This pan";
   $("pzUse").hidden=mine;
   $("panZoomCap").textContent=mine?"Your pan · tap the fields to play":"Tap the fields to play";
 }
@@ -33156,7 +33198,18 @@ function boot(){
       else if(room==="edit"){ const b=$("editBtn"); if(b&&!editing) b.click(); }
     }catch(e){}
   }
-  window.addEventListener("beforeunload",()=>{
+  /* THE PIECE IS SAVED ON EVERY SIGNAL THE ROOM IS (David, 20 Sep: "when I
+     close the app and reopen it, can it open the same composition/arrangement
+     that was opened when I closed the app?"). It was meant to — but the piece
+     was written on `beforeunload` ALONE, the one signal the note below says
+     Safari skips and a quit WebKit shell never sends, while the room went out
+     on all three. So the Mac app and the home-screen app came back in the
+     right room holding whatever piece the last RELOAD had stored. One
+     function, three signals. Behind the room's own gate (`roomOpen`): nothing
+     is written before restoreSession has read what was there, and the lesson
+     player and the embeds — which share this origin's storage — never
+     overwrite the app's last piece with a lesson's. */
+  function saveSession(){
     // never persist a generated jam OR a groove workbench as the "last piece"
     // — closing mid-jam/mid-groove stores the piece they replaced (the jam
     // recipe lives in hps.jam; a half-written groove is simply lost)
@@ -33168,18 +33221,20 @@ function boot(){
        Written HERE, in the one handler that already runs at closing time,
        rather than in each of the eight enter/leave functions — five places
        each half-remembering is how they drift apart. */
+    if(!roomOpen) return;
     saveRoom();
     const p=jamOn&&jamPrev?jamPrev.piece:(cpOn&&cpPrev?cpPrev.piece:(grooveEdit?grooveEdit.prevPiece:piece));
-    if(p&&(p.id==="jam"||p.id==="groove-edit"||p.id==="cp")) return;
+    if(!p||p.id==="jam"||p.id==="groove-edit"||p.id==="cp") return;
     try{ localStorage.setItem("hps.lastPiece","HPS1:"+enc(p===piece&&book?book:p)); }catch(e){}
-  });
+  }
+  window.addEventListener("beforeunload",saveSession);
   /* …and two signals `beforeunload` does not give. Safari fires `pagehide`
      where it skips `beforeunload` entirely, and a WebKit shell being quit
      often gives nothing but `visibilitychange`. Both are cheap and idempotent
-     — saveRoom writes one short string. */
-  window.addEventListener("pagehide",saveRoom);
+     — one short string and one piece. */
+  window.addEventListener("pagehide",saveSession);
   document.addEventListener("visibilitychange",()=>{
-    if(document.visibilityState==="hidden") saveRoom(); });
+    if(document.visibilityState==="hidden") saveSession(); });
   /* PAINTED ONCE AT BOOT, not on the button. Hooking it to #setBtn left the
      phone showing a dash forever: its sweep lifts these rows into the menu
      sheet, which opens by another door entirely. document.lastModified cannot

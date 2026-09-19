@@ -978,10 +978,10 @@ body.slotlines .bar.nowbar .beat>.slot.smark::before{background:var(--sc-thru2)}
   display:inline-flex; justify-content:center; align-items:flex-start}
 
 .sym.bt::before{content:""; position:absolute; z-index:-1;
-  left:0; right:0; top:50%; height:.94em; transform:translateY(-50%);
-  border-radius:.26em; background:var(--sc-under)}
+  left:0; right:0; top:calc(50% + var(--btdy,0em)); height:.94em; transform:translateY(-50%);
+  border-radius:.26em; background:var(--sc-under)}   
 
-.sym.bt.mu::before{top:-.1em; bottom:calc(50% - .47em); height:auto; transform:none}
+.sym.bt.mu::before{top:-.1em; bottom:calc(50% - .47em - var(--btdy,0em)); height:auto; transform:none}
 
 html[data-bt="m"] .sym.bt::before, html[data-bt="m"] .btcap::before{
   background:var(--sc-under-mid)}
@@ -2142,10 +2142,14 @@ body.phone #panZoom.pzplay #panZoomCap{order:-1}
 #panZoom.pzplay #pzBar{display:flex}
 #pzBar .ib{width:40px; height:40px; font-size:26px; line-height:1; color:#fff; background:rgba(255,255,255,.12);
   border-color:rgba(255,255,255,.28); border-radius:50%; display:inline-grid; place-items:center; padding:0 0 3px}
+
 #pzName{font:inherit; font-size:18px; font-weight:700; color:#fff; background:none; border:1px solid rgba(255,255,255,.28);
-  border-radius:12px; padding:7px 14px; min-width:12ch}
-#pzName::after{content:" \25BE"; font-size:.7em; opacity:.8}
-#pzUse{background:var(--card); color:var(--ink)}
+  border-radius:12px; padding:7px 14px; min-width:0; display:inline-flex; align-items:center; gap:5px}
+#pzName .pznm{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:3ch}
+#pzName::after{content:"\25BE"; font-size:.7em; opacity:.8; flex:0 0 auto}
+#panZoom.pzplay #pzBar{flex-wrap:nowrap}
+
+#pzUse{background:var(--card); color:var(--ink); white-space:nowrap; flex:0 0 auto}
 
 #panPickDlg.browse .ppco,#panPickDlg.browse .ppib,#panPickDlg.browse #ppChords,
 #panPickDlg.browse .pprow:has(.ppadd){display:none}
@@ -3901,7 +3905,7 @@ if(false
   
   <div id="pzBar">
     <button class="ib" id="pzPrev" type="button" title="Previous scale" aria-label="Previous scale">&lsaquo;</button>
-    <button id="pzName" type="button" title="Choose a scale" aria-haspopup="listbox"></button>
+    <button id="pzName" type="button" title="Choose a scale" aria-haspopup="listbox"><span class="pznm"></span></button>
     <button class="ib" id="pzNext" type="button" title="Next scale" aria-label="Next scale">&rsaquo;</button>
     <button class="ctl" id="pzUse" type="button" title="Make this the pan you play everything on">Use this pan</button>
   </div>
@@ -8250,12 +8254,33 @@ function fitBeatGlyphs(root){
         el.style.fontSize=fs.toFixed(2)+"px";
         el.style.position="relative";
         el.style.top=(-(LIFT*(base-fs))).toFixed(2)+"px";
+        if(el.classList.contains("bt")) el.style.setProperty("--btdy",badgeInkDy(el)+"em");
       }
     }
     dropCrossedLines(be);
   }
   root.querySelectorAll(".beat").forEach(dropCrossedLines);
 }
+
+
+const badgeInkDy=(()=>{
+  const cache=new Map(); let cap=0;
+  if(document.fonts&&document.fonts.addEventListener) document.fonts.addEventListener("loadingdone",()=>{ cache.clear(); cap=0; });
+  return el=>{
+    const cs=getComputedStyle(el), fs=parseFloat(cs.fontSize), key=cs.fontFamily+"|"+cs.fontWeight+"|"+cs.fontSize+"|"+cs.lineHeight;
+    if(cache.has(key)) return cache.get(key);
+    if(!cap){ const ctx=document.createElement("canvas").getContext("2d");
+      ctx.font=cs.fontWeight+" 200px "+cs.fontFamily; cap=(ctx.measureText("1").actualBoundingBoxAscent||145)/200; }
+    const s=document.createElement("span"); s.className="sym";
+    s.style.cssText="position:absolute;visibility:hidden;left:0;top:0;padding:0;font-size:"+el.style.fontSize;
+    s.innerHTML='1<i style="display:inline-block;width:0;height:0"></i><i style="position:absolute;left:0;top:0;width:100px;height:0"></i>';
+    el.parentNode.appendChild(s);
+    const k=s.lastChild.getBoundingClientRect().width/100||1, sb=s.getBoundingClientRect();
+    const base=(s.children[0].getBoundingClientRect().top-sb.top)/k, h=sb.height/k;
+    s.remove();
+    const dy=+((base-cap*fs/2-h/2)/fs).toFixed(4);
+    cache.set(key,dy); return dy; };
+})();
 
 
 function refitScore(){
@@ -8832,7 +8857,7 @@ function pzShow(P,lesson){
   host.appendChild(x);
   { const svg=host.querySelector("svg"); if(svg) requestAnimationFrame(()=>pzFitBox(svg)); }
   const id=P.pan&&P.pan.id, mine=id===myPanId;
-  $("pzName").textContent=(P.pan&&P.pan.name)||"This pan";
+  $("pzName").querySelector(".pznm").textContent=(P.pan&&P.pan.name)||"This pan";
   $("pzUse").hidden=mine;
   $("panZoomCap").textContent=mine?"Your pan · tap the fields to play":"Tap the fields to play";
 }
@@ -14885,22 +14910,26 @@ function boot(){
       ;
     }catch(e){}
   }
-  window.addEventListener("beforeunload",()=>{
+  
+
+  function saveSession(){
      
      
      
     
 
+    if(!roomOpen) return;
     saveRoom();
     const p=((grooveEdit?grooveEdit.prevPiece:piece));
-    if(p&&(p.id==="jam"||p.id==="groove-edit"||p.id==="cp")) return;
+    if(!p||p.id==="jam"||p.id==="groove-edit"||p.id==="cp") return;
     try{ localStorage.setItem("hps.lastPiece","HPS1:"+enc(p===piece&&book?book:p)); }catch(e){}
-  });
+  }
+  window.addEventListener("beforeunload",saveSession);
   
 
-  window.addEventListener("pagehide",saveRoom);
+  window.addEventListener("pagehide",saveSession);
   document.addEventListener("visibilitychange",()=>{
-    if(document.visibilityState==="hidden") saveRoom(); });
+    if(document.visibilityState==="hidden") saveSession(); });
   
 
   paintVersion();
