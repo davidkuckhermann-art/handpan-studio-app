@@ -2278,10 +2278,20 @@ html.player #landClose{left:auto; right:calc(50px + env(safe-area-inset-right))}
 #pcbar .ctl{padding:5px 10px; font-size:12.5px}
 body.phone #pcbar{font-size:11.5px}
 
-#panbox.customising .pvf{cursor:grab; touch-action:none}
-#panbox.customising .pvf.dragging{cursor:grabbing}
-#panbox.customising .pvf.dragging .pvbase{stroke:var(--dixie); stroke-width:3}
-#panbox.customising #pvsvg{touch-action:none}
+
+#panbox.customising .pvf,#npPan .pvf{cursor:grab; touch-action:none}
+#panbox.customising .pvf.dragging,#npPan .pvf.dragging{cursor:grabbing}
+#panbox.customising .pvf.dragging .pvbase,#npPan .pvf.dragging .pvbase{stroke:var(--dixie); stroke-width:3}
+#panbox.customising #pvsvg,#npPan .pvsvg{touch-action:none}
+
+#panDlg{max-height:88vh; overflow:auto}
+#npPanWrap{margin:10px 0 2px; display:flex; flex-direction:column; align-items:center; gap:4px}
+#npPan{width:100%; max-width:330px}
+#npPan svg{display:block; width:100%; height:auto}
+
+#npPan.stale{opacity:.72}
+#npPanHint{font-size:11.5px; color:var(--ink3); text-align:center; margin:0}
+#npDel{color:var(--warn-red); border-color:var(--warn-red)}
 
 .pvf.clit .pvbase{fill:var(--dixie-soft); stroke:var(--accent-lit,var(--dixie)); stroke-width:2.5}
 
@@ -3889,6 +3899,9 @@ if(false
   <div class="drow"><span>Layout</span>
     <button class="ctl" id="pmCustom" title="Drag the fields to match your instrument">Edit pan layout…</button></div>
   
+  <div class="drow"><span>My pans</span>
+    <button class="ctl" id="pmSaveMine" title="Keep a copy of this pan under My pans, to edit and customise">Save this pan to my pans</button></div>
+  
   <div class="drow"><span>Turn the pan around</span>
     <span class="pills" role="group" aria-label="Turn the pan around">
       <button id="pmTurnOff" title="The pan as it is built: field 1 nearest you">Normal</button>
@@ -4050,8 +4063,15 @@ if(false
   <div class="row"><span class="lab">Underside</span><input type="text" id="npBottom" placeholder="F3 G3 — optional, leave empty if your pan has none" style="flex:1"></div>
   <p class="hint">Notes low to high, 1 → highest. Sharps # or flats b both work.
   The underside is its own series, numbered 1 from its lowest note.</p>
-  <div class="row"><button class="ctl on" id="npSave">Save pan</button>
-  <span class="spacer"></span><button class="ctl" id="npClose">Cancel</button></div>
+  
+  <div id="npPanWrap">
+    <div id="npPan"></div>
+    <p id="npPanHint">Drag a field to where it sits on your pan</p>
+  </div>
+  <div class="row"><button class="ctl" id="npDel">Delete pan</button>
+  <span class="spacer"></span>
+  <button class="ctl on" id="npSave">Save pan</button>
+  <button class="ctl" id="npClose">Cancel</button></div>
 </dialog>
 
 
@@ -4361,7 +4381,9 @@ function panById(id){ return allPans().find(p=>p.id===id)
 
 
 
-function panTurned(){ if(typeof panCustom!=="undefined"&&panCustom) return false;    
+function panTurned(){ if((typeof panCustom!=="undefined"&&panCustom)
+                     ||(typeof npCustom!=="undefined"&&npCustom)) return false;    
+                                                                                   
   return (TURN&&mode==="trans"&&!!MAP)||!!(piece&&piece.panTurn); }
 
 
@@ -5346,6 +5368,9 @@ let panOrient=localStorage.getItem("hps.panorient")==="1"?"1":"2";
 
 
 let panCustom=false;
+
+
+let npCustom=false;
 function setPanCustom(v){
   const was=panCustom;
   panCustom=!!v;
@@ -8955,7 +8980,7 @@ function panViewSVG(pan,label,opts){
 
   const half=(!LAY&&panOrient==="2")?Math.PI/n:0;
   const VB=430+2*pad;
-  let h='<svg id="pvsvg" viewBox="0 0 '+VB+' '+VB+'" role="img" aria-label="'+(label||"Your pan from above — tap a field to hear it")+'">'
+  let h='<svg id="pvsvg" class="pvsvg" viewBox="0 0 '+VB+' '+VB+'" role="img" aria-label="'+(label||"Your pan from above — tap a field to hear it")+'">'
    +'<defs><radialGradient id="pvg" cx="50%" cy="42%" r="68%">'
    +'<stop offset="0%" stop-color="var(--pan-1)"/><stop offset="72%" stop-color="var(--pan-2)"/>'
    +'<stop offset="100%" stop-color="var(--pan-3)"/></radialGradient>'
@@ -9622,8 +9647,17 @@ function paintSuggestPane(){
   w.textContent=myPan.pan.name+" — "+n+" field"+(n===1?"":"s")+" on the top shell"
     +(m?" and "+m+" underside":"")+"."+mut;
 }
-function wirePanDrag(box){
-  const svg=box.querySelector("#pvsvg"); if(!svg) return;
+
+
+function wirePanDrag(box,ctx){
+  const C=ctx||{};
+  const DP=()=>C.pan||myPan;
+  const DID=()=>C.id||myPan.pan.id;
+  const SNAP=C.snapshot||panSnapshot;
+  const AFTER=C.after||renderPanPanel;
+  
+
+  const svg=box.querySelector("#pvsvg,.pvsvg"); if(!svg) return;
   const VB=svg.viewBox.baseVal.width, pad=(VB-430)/2, R=207, cx=215;
    
   const items=[...svg.querySelectorAll(".pvf")].map(g=>{
@@ -9703,28 +9737,28 @@ function wirePanDrag(box){
     
 
     if(!shifted) return;
-    panSnapshot();                  
-    const all=panLayouts(), id=myPan.pan.id, L={f:{},b:{}};
+    SNAP();                         
+    const all=panLayouts(), id=DID(), L={f:{},b:{}};
     items.forEach(it=>{ const t=it.key[0]==="b"?L.b:L.f;
       t[it.key.slice(1)]={x:it.x,y:it.y}; });
     
 
-    const was=layoutFor(id)||defaultLayout(myPan);
+    const was=layoutFor(id)||defaultLayout(DP());
     if(was&&was.cyc){ L.cyc=was.cyc.slice(); L.cycs=was.cycs; L.ringR=was.ringR;
       if(was.cycrows) L.cycrows=was.cycrows.slice(); }
     all[id]=L; setPanLayouts(all);
   };
   svg.addEventListener("pointerup",drop);
   svg.addEventListener("pointercancel",drop);
-  const rb=$("pcReset");
+  const rb=(C.resetBtn===undefined)?$("pcReset"):C.resetBtn;
   if(rb) rb.addEventListener("click",()=>{
-    panSnapshot();
-    const all=panLayouts(); delete all[myPan.pan.id]; setPanLayouts(all);
-    renderPanPanel();
+    SNAP();
+    const all=panLayouts(); delete all[DID()]; setPanLayouts(all);
+    AFTER();
     
 
-    toast(mutantCount(myPan)?"Layout reset — back to the standard layout for this pan"
-                            :"Layout reset — back to the standard circle");
+    toast(mutantCount(DP())?"Layout reset — back to the standard layout for this pan"
+                           :"Layout reset — back to the standard circle");
   });
 }
 
@@ -9791,6 +9825,15 @@ function openPanMenu(){ paintPanMenu(); openDlg($("panMenuDlg")); }
   on("pmTurnOn",()=>setTurn(true));
   on("pmTurnOff",()=>setTurn(false));
   on("pmCustom",()=>{ $("panMenuDlg").close(); if(!panCustom) setPanCustom(true); });
+  
+
+  on("pmSaveMine",()=>{
+    const src=panById(myPanId);
+    $("panMenuDlg").close();
+    const c=savePanCopy(src);
+    if(!c){ toast("Could not save this pan"); return; }
+    const pd=$("panPickDlg"); if(pd&&pd.open) renderPanPick();
+    toast("Saved to My pans as “"+c.name+"”"); });
   on("pmClose",()=>$("panMenuDlg").close());
 }
 
@@ -14764,11 +14807,14 @@ function renderPanPick(){
       ed.type="button"; ed.className="ppib"; ed.textContent="✎";
       ed.setAttribute("aria-label","Edit "+p.name);
       ed.addEventListener("click",e=>{ e.stopPropagation(); openOwnPan(p.id); });
-      const del=document.createElement("button");
-      del.type="button"; del.className="ppib"; del.textContent="✕";
-      del.setAttribute("aria-label","Delete "+p.name);
-      del.addEventListener("click",e=>{ e.stopPropagation(); deleteOwnPan(p.id); });
-      row.insertBefore(del,row.lastChild); row.insertBefore(ed,del);
+      
+
+      const dup=document.createElement("button");
+      dup.type="button"; dup.className="ppib"; dup.textContent="⧉";
+      dup.title="Duplicate "+p.name;
+      dup.setAttribute("aria-label","Duplicate "+p.name);
+      dup.addEventListener("click",e=>{ e.stopPropagation(); duplicateOwnPan(p.id); });
+      row.insertBefore(dup,row.lastChild); row.insertBefore(ed,dup);
       L.appendChild(row);
     }
     const add=document.createElement("button");
@@ -14866,6 +14912,77 @@ function openPanPick(fromDoor){
 
 
 let npEditing=null;
+
+
+const NP_DRAFT="np-draft";
+let npPan=null;             
+let npSeen={f:-1,b:-1};     
+function npLayout(){ return panLayouts()[NP_DRAFT]||null; }
+function npSetLayout(L){ const all=panLayouts();
+  if(L&&(L.f||L.b)) all[NP_DRAFT]=L; else delete all[NP_DRAFT];
+  setPanLayouts(all); }
+
+
+function npRecord(){
+  const name=$("npName").value.trim()||"My pan";
+  const ding=$("npDing").value.trim();
+  const fields=$("npFields").value.trim().split(/[\s,]+/).filter(Boolean);
+  const bottom=$("npBottom").value.trim().split(/[\s,]+/).filter(Boolean);
+  const ok=midiOf(ding)!==null&&fields.length&&fields.every(f=>midiOf(f)!==null)
+           &&bottom.every(f=>midiOf(f)!==null);
+  if(ok) bottom.sort((a,b)=>midiOf(a)-midiOf(b));
+  return {name,ding,fields,bottom,ok};
+}
+
+
+function npCountsChanged(nf,nb){
+  const L=npLayout(); if(!L){ npSeen={f:nf,b:nb}; return; }
+  let ch=false;
+  if(npSeen.f>=0&&npSeen.f!==nf&&L.f){
+    delete L.f; delete L.cyc; delete L.cycs; delete L.ringR; delete L.cycrows; ch=true; }
+  if(npSeen.b>=0&&npSeen.b!==nb&&L.b){ delete L.b; ch=true; }
+  npSeen={f:nf,b:nb};
+  if(ch) npSetLayout(L);
+}
+
+
+function npUnreadable(r){
+  if(r.ding&&midiOf(r.ding)===null) return r.ding;
+  const f=r.fields.find(x=>midiOf(x)===null); if(f) return f;
+  const b=r.bottom.find(x=>midiOf(x)===null); if(b) return b;
+  return "";
+}
+function npRender(){
+  const host=$("npPan"), hint=$("npPanHint"); if(!host) return;
+  const r=npRecord();
+  if(!r.ok){
+    
+
+    const bad=npUnreadable(r);
+    if(hint) hint.textContent = !npPan
+      ? "Type the ding and the tone fields to see your pan"
+      : bad
+        ? "“"+bad+"” is not a note name yet — still showing the last pan that read"
+        : "Still showing the last pan that read — needs a ding and at least one tone field";
+    host.classList.toggle("stale",!!npPan);
+    return;                        
+  }
+  host.classList.remove("stale");
+  npCountsChanged(r.fields.length,r.bottom.length);
+  npPan=derive({id:NP_DRAFT,name:r.name,ding:r.ding,fields:r.fields,bottom:r.bottom});
+  
+
+  npCustom=true;
+  try{
+    
+
+    panSvgInto(host,panViewSVG(npPan,"Your pan — drag a field to where it sits on your instrument",{under:true}),"np");
+  } finally { npCustom=false; }
+  wirePanDrag(host,{pan:npPan,id:NP_DRAFT,snapshot:()=>{},after:npRender,resetBtn:null});
+  if(hint) hint.textContent=r.bottom.length
+    ? "Drag a field to where it sits — underside notes slide around the rim"
+    : "Drag a field to where it sits on your pan";
+}
 function openOwnPan(id){
   npEditing=id;
   const p=id?userPans().find(x=>x.id===id):null;
@@ -14873,16 +14990,62 @@ function openOwnPan(id){
   $("npDing").value=p?p.ding:"";
   $("npFields").value=p?p.fields.join(" "):"";
   $("npBottom").value=p&&p.bottom?p.bottom.join(" "):"";
+  
+
+  const src=p?panLayouts()[p.id]:null;
+  npSetLayout(src?JSON.parse(JSON.stringify(src)):null);
+  npSeen={f:-1,b:-1};
+  
+
+  const del=$("npDel"); if(del) del.classList.toggle("hidden",!p);
+  const h=$("panDlg").querySelector("h3"); if(h) h.textContent=p?"Edit my pan":"My own pan";
+  
+
+  npPan=null;
+  { const host=$("npPan"); if(host){ host.innerHTML=""; host.classList.remove("stale"); } }
+  npRender();
   openDlg($("panDlg"));
 }
 function deleteOwnPan(id){
-  const p=userPans().find(x=>x.id===id); if(!p) return;
+  const p=userPans().find(x=>x.id===id); if(!p) return false;
   if(!confirm("Delete “"+p.name+"”? Pieces written for it will fall back to D Kurd."))
-    return;
+    return false;
   try{ localStorage.setItem("hps.pans",JSON.stringify(userPans().filter(x=>x.id!==id))); }catch(e){}
+  
+
+  { const all=panLayouts(); if(all[id]){ delete all[id]; setPanLayouts(all); } }
   if(myPanId===id){ myPanId="d-kurd-9";
     try{ localStorage.setItem("hps.panId",myPanId); }catch(e){} refresh(); }
   renderPanPick(); toast("Pan deleted");
+  return true;
+}
+
+
+function copyPanName(base){
+  const stem=String(base||"My pan").replace(/ copy(?: \d+)?$/,"");
+  const taken=new Set(allPans().map(x=>x.name));
+  let n=stem+" copy";
+  for(let i=2; taken.has(n); i++) n=stem+" copy "+i;
+  return n;
+}
+function savePanCopy(src){
+  if(!src||!Array.isArray(src.fields)||!src.fields.length||midiOf(src.ding)===null) return null;
+  const rec={id:"u-"+Date.now().toString(36)+Math.random().toString(36).slice(2,5),
+             name:copyPanName(src.name), ding:src.ding, fields:src.fields.slice()};
+  if(src.bottom&&src.bottom.length) rec.bottom=src.bottom.slice();
+  try{ const l=userPans(); l.push(rec);
+       localStorage.setItem("hps.pans",JSON.stringify(l)); }catch(e){ return null; }
+  
+
+  const L=panLayouts()[src.id];
+  if(L){ const all=panLayouts(); all[rec.id]=JSON.parse(JSON.stringify(L)); setPanLayouts(all); }
+  return rec;
+}
+function duplicateOwnPan(id){
+  const p=userPans().find(x=>x.id===id); if(!p) return;
+  const c=savePanCopy(p);
+  if(!c){ toast("Could not duplicate this pan"); return; }
+  renderPanPick(); toast("Duplicated as “"+c.name+"”");
 }
  
 function paintPanSel(){
@@ -15812,6 +15975,19 @@ function boot(){
   ;
   ;         
   $("npClose").addEventListener("click",()=>$("panDlg").close());
+  
+
+  ["npName","npDing","npFields","npBottom"].forEach(id=>{
+    const el=$(id); if(el) el.addEventListener("input",npRender); });
+  
+
+  
+
+  $("panDlg").addEventListener("close",()=>{
+    if($("panDlg").open) return;
+    npSetLayout(null); npSeen={f:-1,b:-1}; });
+  { const dl=$("npDel"); if(dl) dl.addEventListener("click",()=>{
+      if(npEditing&&deleteOwnPan(npEditing)){ npEditing=null; $("panDlg").close(); } }); }
   $("npSave").addEventListener("click",()=>{
     const name=$("npName").value.trim(), ding=$("npDing").value.trim();
     const fields=$("npFields").value.trim().split(/[\s,]+/).filter(Boolean);
@@ -15823,11 +15999,17 @@ function boot(){
 
     bottom.sort((a,b)=>midiOf(a)-midiOf(b));
     const rec={name,ding,fields}; if(bottom.length) rec.bottom=bottom;
-    let l=userPans();
-    if(npEditing){ l=l.map(x=>x.id===npEditing?Object.assign({},x,rec):x); myPanId=npEditing; }
-    else { rec.id="u-"+Date.now().toString(36); l.push(rec); myPanId=rec.id; }
+    let l=userPans(), tgt;
+    if(npEditing){ l=l.map(x=>x.id===npEditing?Object.assign({},x,rec):x); tgt=npEditing; }
+    else { rec.id="u-"+Date.now().toString(36); l.push(rec); tgt=rec.id; }
+    myPanId=tgt;
     try{localStorage.setItem("hps.pans",JSON.stringify(l))}catch(e){}
     try{localStorage.setItem("hps.panId",myPanId)}catch(e){}
+    
+
+    { const all=panLayouts(), L=all[NP_DRAFT]; delete all[NP_DRAFT];
+      if(L&&(L.f||L.b)) all[tgt]=L; else delete all[tgt];
+      setPanLayouts(all); }
     npEditing=null; $("panDlg").close();
     if($("panPickDlg").open) renderPanPick();
     refresh(); toast("Pan saved"); });

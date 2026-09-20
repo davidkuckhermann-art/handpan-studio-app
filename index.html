@@ -3787,10 +3787,28 @@ html.player #landClose{left:auto; right:calc(50px + env(safe-area-inset-right))}
 #pcbar .ctl{padding:5px 10px; font-size:12.5px}
 body.phone #pcbar{font-size:11.5px}
 /* customising: the fields are handles, so they say so and stop inviting a tap */
-#panbox.customising .pvf{cursor:grab; touch-action:none}
-#panbox.customising .pvf.dragging{cursor:grabbing}
-#panbox.customising .pvf.dragging .pvbase{stroke:var(--dixie); stroke-width:3}
-#panbox.customising #pvsvg{touch-action:none}
+/* TWO PLACES DRAG THE SAME PAN (20 Sep): the card's layout editor and the
+   “My own pan” window, whose drawing is a customiser from the moment it
+   opens — so the handle styling is written once, for both hosts. */
+#panbox.customising .pvf,#npPan .pvf{cursor:grab; touch-action:none}
+#panbox.customising .pvf.dragging,#npPan .pvf.dragging{cursor:grabbing}
+#panbox.customising .pvf.dragging .pvbase,#npPan .pvf.dragging .pvbase{stroke:var(--dixie); stroke-width:3}
+#panbox.customising #pvsvg,#npPan .pvsvg{touch-action:none}
+/* THE INSTRUMENT UNDER THE NOTE ROWS (David, 20 Sep: “the graphical
+   representation of the layout of the instrument should update, and I want to
+   be able to drag around tone fields just like when Edit Pan Layout is
+   activated … so that the users can really fully customize the instruments
+   here”). The window scrolls, because the drawing doubles its height. */
+#panDlg{max-height:88vh; overflow:auto}
+#npPanWrap{margin:10px 0 2px; display:flex; flex-direction:column; align-items:center; gap:4px}
+#npPan{width:100%; max-width:330px}
+#npPan svg{display:block; width:100%; height:auto}
+/* SHOWING THE LAST PAN THAT READ: dimmed just enough to say "not live",
+   and deliberately without a transition — this state is entered and left
+   on single keystrokes, and a fade would flash. */
+#npPan.stale{opacity:.72}
+#npPanHint{font-size:11.5px; color:var(--ink3); text-align:center; margin:0}
+#npDel{color:var(--warn-red); border-color:var(--warn-red)}
 /* THE PAN IS WHERE AN ACCENT ACCUMULATES — seven lit notes at once, each a
    soft fill inside a 2.5px ring, which is more accent area than the whole
    rest of the screen. --accent-lit lets a scheme lighten THAT ring without
@@ -7040,6 +7058,12 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
       <button class="ctl" id="pmZoomUp" title="Bigger pan">＋</button></span></div>
   <div class="drow"><span>Layout</span>
     <button class="ctl" id="pmCustom" title="Drag the fields to match your instrument">Edit pan layout…</button></div>
+  <!-- KEEP THIS INSTRUMENT AS YOUR OWN (David, 20 Sep: “give me an option to save this pan to my pans,
+       so I can edit it afterwards and customize it further”). It copies the pan on show — notes, underside
+       and whatever layout has been dragged for it — into My pans, where the ✎ opens it for editing. It
+       does NOT move you onto the copy: you asked to keep it, not to change instruments. -->
+  <div class="drow"><span>My pans</span>
+    <button class="ctl" id="pmSaveMine" title="Keep a copy of this pan under My pans, to edit and customise">Save this pan to my pans</button></div>
   <!-- TURN THE PAN ROUND (David, 20 Sep: "we also need to give the user the option to rotate the pan by 180
        degrees manually in the pan tab settings menu"). Saved WITH THE PIECE, so a lesson shows the instrument
        the way the piece is played. The notation never changes: field 2 is still 2, it sits on the other side. -->
@@ -7659,8 +7683,19 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
   <div class="row"><span class="lab">Underside</span><input type="text" id="npBottom" placeholder="F3 G3 — optional, leave empty if your pan has none" style="flex:1"></div>
   <p class="hint">Notes low to high, 1 → highest. Sharps # or flats b both work.
   The underside is its own series, numbered 1 from its lowest note.</p>
-  <div class="row"><button class="ctl on" id="npSave">Save pan</button>
-  <span class="spacer"></span><button class="ctl" id="npClose">Cancel</button></div>
+  <!-- THE PAN IS PART OF THE FORM (David, 20 Sep). It redraws as the note rows
+       are typed and its fields drag exactly as in Edit pan layout, so one
+       window builds the whole instrument — what it is, and where it sits.
+       Nothing here touches a saved pan until Save pan: the drawing works on a
+       draft layout under its own id, which Cancel throws away. -->
+  <div id="npPanWrap">
+    <div id="npPan"></div>
+    <p id="npPanHint">Drag a field to where it sits on your pan</p>
+  </div>
+  <div class="row"><button class="ctl" id="npDel">Delete pan</button>
+  <span class="spacer"></span>
+  <button class="ctl on" id="npSave">Save pan</button>
+  <button class="ctl" id="npClose">Cancel</button></div>
 </dialog>
 
 <!-- NEW PIECE (26 Aug, David: "New piece needs to be there with
@@ -8162,7 +8197,9 @@ function panById(id){ return allPans().find(p=>p.id===id)
    card's setting) travels with the piece; the transposition card's fourth way (`TURN`) belongs to the map it
    was chosen on, so it counts ONLY while For my pan is showing one. Without that guard the turn survived
    leaving the mode and turned every pan in the app, the bench's included (20 Sep). */
-function panTurned(){ if(typeof panCustom!=="undefined"&&panCustom) return false;   // the layout is dragged on the pan AS BUILT
+function panTurned(){ if((typeof panCustom!=="undefined"&&panCustom)
+                     ||(typeof npCustom!=="undefined"&&npCustom)) return false;   // the layout is dragged on the pan AS BUILT,
+                                                                                  // in the card's customiser and in the own-pan window alike
   return (TURN&&mode==="trans"&&!!MAP)||!!(piece&&piece.panTurn); }
 /* `turn` here is only for asking what a turned pan WOULD look like; the pan's own state already reaches this
    function through topSpots, so assignHands passes nothing and the places arrive turned or not as they are. */
@@ -10414,6 +10451,11 @@ let panOrient=localStorage.getItem("hps.panorient")==="1"?"1":"2";   // 2 centre
    student who reopens the app inside a drag mode has lost their tap-to-hear
    with no idea why */
 let panCustom=false;
+/* ITS SIBLING, declared here rather than beside the rest of the draft-pan code
+   below: panTurned() reads both flags, and a `let` that panTurned could reach
+   before this line ran would throw rather than read as undefined. True only
+   while the "My own pan" window is DRAWING its draft. */
+let npCustom=false;
 function setPanCustom(v){
   const was=panCustom;
   panCustom=!!v;
@@ -17716,7 +17758,7 @@ function panViewSVG(pan,label,opts){
      midpoint is π/2 − π/n, and adding π/n puts that midpoint at the bottom. */
   const half=(!LAY&&panOrient==="2")?Math.PI/n:0;
   const VB=430+2*pad;
-  let h='<svg id="pvsvg" viewBox="0 0 '+VB+' '+VB+'" role="img" aria-label="'+(label||"Your pan from above — tap a field to hear it")+'">'
+  let h='<svg id="pvsvg" class="pvsvg" viewBox="0 0 '+VB+' '+VB+'" role="img" aria-label="'+(label||"Your pan from above — tap a field to hear it")+'">'
    +'<defs><radialGradient id="pvg" cx="50%" cy="42%" r="68%">'
    +'<stop offset="0%" stop-color="var(--pan-1)"/><stop offset="72%" stop-color="var(--pan-2)"/>'
    +'<stop offset="100%" stop-color="var(--pan-3)"/></radialGradient>'
@@ -18611,8 +18653,25 @@ function paintSuggestPane(){
   w.textContent=myPan.pan.name+" — "+n+" field"+(n===1?"":"s")+" on the top shell"
     +(m?" and "+m+" underside":"")+"."+mut;
 }
-function wirePanDrag(box){
-  const svg=box.querySelector("#pvsvg"); if(!svg) return;
+/* ONE DRAG MECHANISM, TWO HOSTS (20 Sep). The card's layout customiser and the
+   “My own pan” window drag the same fields under the same rules and the same
+   geometry; the only thing that differs is the ANSWER to “whose layout is
+   this” — so that answer is an argument and everything else is shared. `ctx`
+   omitted IS the card, behaving exactly as before:
+     pan       the derived pan being dragged
+     id        the key its layout is stored under (the window uses a draft id)
+     snapshot  what one drag pushes onto undo
+     after     what to redraw when Reset empties the layout
+     resetBtn  the Reset button, or null where there is none */
+function wirePanDrag(box,ctx){
+  const C=ctx||{};
+  const DP=()=>C.pan||myPan;
+  const DID=()=>C.id||myPan.pan.id;
+  const SNAP=C.snapshot||panSnapshot;
+  const AFTER=C.after||renderPanPanel;
+  /* found by CLASS as well as by id: panSvgInto strips every id but the two
+     gradients, so a copied drawing has no #pvsvg to answer to. */
+  const svg=box.querySelector("#pvsvg,.pvsvg"); if(!svg) return;
   const VB=svg.viewBox.baseVal.width, pad=(VB-430)/2, R=207, cx=215;
   // every draggable field, with the radius the overlap test needs
   const items=[...svg.querySelectorAll(".pvf")].map(g=>{
@@ -18703,30 +18762,30 @@ function wirePanDrag(box){
        and a customised pan stops following the orientation toggle, which is
        a setting quietly going dead for a reason nobody could see. */
     if(!shifted) return;
-    panSnapshot();                 // one drag, one step back
-    const all=panLayouts(), id=myPan.pan.id, L={f:{},b:{}};
+    SNAP();                        // one drag, one step back
+    const all=panLayouts(), id=DID(), L={f:{},b:{}};
     items.forEach(it=>{ const t=it.key[0]==="b"?L.b:L.f;
       t[it.key.slice(1)]={x:it.x,y:it.y}; });
     /* CARRY THE MUTANT FACTS ACROSS. The drag records positions only, so a
        nudge on a computed layout used to drop `cyc` — and the fields the
        player had just been looking at snapped back to full ring size, because
        panRadii no longer knew they were cyclops. */
-    const was=layoutFor(id)||defaultLayout(myPan);
+    const was=layoutFor(id)||defaultLayout(DP());
     if(was&&was.cyc){ L.cyc=was.cyc.slice(); L.cycs=was.cycs; L.ringR=was.ringR;
       if(was.cycrows) L.cycrows=was.cycrows.slice(); }
     all[id]=L; setPanLayouts(all);
   };
   svg.addEventListener("pointerup",drop);
   svg.addEventListener("pointercancel",drop);
-  const rb=$("pcReset");
+  const rb=(C.resetBtn===undefined)?$("pcReset"):C.resetBtn;
   if(rb) rb.addEventListener("click",()=>{
-    panSnapshot();
-    const all=panLayouts(); delete all[myPan.pan.id]; setPanLayouts(all);
-    renderPanPanel();
+    SNAP();
+    const all=panLayouts(); delete all[DID()]; setPanLayouts(all);
+    AFTER();
     /* "the standard circle" is a lie on a mutant: reset hands it back to the
        computed layout, which still has an inner row. */
-    toast(mutantCount(myPan)?"Layout reset — back to the standard layout for this pan"
-                            :"Layout reset — back to the standard circle");
+    toast(mutantCount(DP())?"Layout reset — back to the standard layout for this pan"
+                           :"Layout reset — back to the standard circle");
   });
 }
 /* the pane only ever appears while customising, and closing the customiser
@@ -18802,6 +18861,17 @@ function openPanMenu(){ paintPanMenu(); openDlg($("panMenuDlg")); }
   on("pmTurnOn",()=>setTurn(true));
   on("pmTurnOff",()=>setTurn(false));
   on("pmCustom",()=>{ $("panMenuDlg").close(); if(!panCustom) setPanCustom(true); });
+  /* SAVE THIS PAN TO MY PANS (David, 20 Sep) — silent, as he asked: no dialog,
+     no question, just the copy and a line saying where it went. The menu is
+     closed FIRST because a showModal() dialog paints in the top layer and the
+     toast underneath it would never be seen. */
+  on("pmSaveMine",()=>{
+    const src=panById(myPanId);
+    $("panMenuDlg").close();
+    const c=savePanCopy(src);
+    if(!c){ toast("Could not save this pan"); return; }
+    const pd=$("panPickDlg"); if(pd&&pd.open) renderPanPick();
+    toast("Saved to My pans as “"+c.name+"”"); });
   on("pmClose",()=>$("panMenuDlg").close());
 }
 /* Which pulse the pan should describe when the music isn't moving: the
@@ -32669,11 +32739,17 @@ function renderPanPick(){
       ed.type="button"; ed.className="ppib"; ed.textContent="✎";
       ed.setAttribute("aria-label","Edit "+p.name);
       ed.addEventListener("click",e=>{ e.stopPropagation(); openOwnPan(p.id); });
-      const del=document.createElement("button");
-      del.type="button"; del.className="ppib"; del.textContent="✕";
-      del.setAttribute("aria-label","Delete "+p.name);
-      del.addEventListener("click",e=>{ e.stopPropagation(); deleteOwnPan(p.id); });
-      row.insertBefore(del,row.lastChild); row.insertBefore(ed,del);
+      /* DUPLICATE STANDS WHERE DELETE STOOD (David, 20 Sep: that row "is
+         getting too crowded"). The list now carries the two safe, frequent
+         actions — edit and duplicate — and Delete moved inside the editor,
+         which makes removing a pan two deliberate steps instead of one tap
+         beside the one you meant. */
+      const dup=document.createElement("button");
+      dup.type="button"; dup.className="ppib"; dup.textContent="⧉";
+      dup.title="Duplicate "+p.name;
+      dup.setAttribute("aria-label","Duplicate "+p.name);
+      dup.addEventListener("click",e=>{ e.stopPropagation(); duplicateOwnPan(p.id); });
+      row.insertBefore(dup,row.lastChild); row.insertBefore(ed,dup);
       L.appendChild(row);
     }
     const add=document.createElement("button");
@@ -32787,6 +32863,100 @@ function openPanPick(fromDoor){
 /* the own-pan dialog serves both new and edit; `npEditing` is the id it will
    write back to, or null for a new one */
 let npEditing=null;
+/* THE DRAFT INSTRUMENT (David, 20 Sep: the window needs “the draggable layout
+   pan tab of the instrument to show below the fields where I enter the notes
+   … so that the users can really fully customize the instruments here”).
+   The window's pan is drawn and dragged by exactly the code the pan card uses,
+   which is only possible because it HAS an id: the draft layout lives under
+   NP_DRAFT in the same store as every other layout, so panViewSVG, topSpots
+   and wirePanDrag need to know nothing about this window. Save pan moves it
+   onto the pan's real id; Cancel, Esc and reopening throw it away — nothing
+   dragged here touches a saved pan until you save. */
+const NP_DRAFT="np-draft";
+let npPan=null;            // the derived draft, or null while the note rows do not parse
+let npSeen={f:-1,b:-1};    // the two counts the draft layout was made for
+function npLayout(){ return panLayouts()[NP_DRAFT]||null; }
+function npSetLayout(L){ const all=panLayouts();
+  if(L&&(L.f||L.b)) all[NP_DRAFT]=L; else delete all[NP_DRAFT];
+  setPanLayouts(all); }
+/* what the four rows currently say, read the way npSave reads them — so the
+   drawing is the pan that would be saved, underside sorted and all */
+function npRecord(){
+  const name=$("npName").value.trim()||"My pan";
+  const ding=$("npDing").value.trim();
+  const fields=$("npFields").value.trim().split(/[\s,]+/).filter(Boolean);
+  const bottom=$("npBottom").value.trim().split(/[\s,]+/).filter(Boolean);
+  const ok=midiOf(ding)!==null&&fields.length&&fields.every(f=>midiOf(f)!==null)
+           &&bottom.every(f=>midiOf(f)!==null);
+  if(ok) bottom.sort((a,b)=>midiOf(a)-midiOf(b));
+  return {name,ding,fields,bottom,ok};
+}
+/* A FIELD'S PLACE BELONGS TO ITS NUMBER (David's rule, 20 Sep): renaming a
+   note keeps where it sits, changing HOW MANY there are re-rings that series,
+   because field 7 of a nine-field pan is not field 7 of a twelve-field one.
+   The two surfaces are counted apart, so adding an underside note leaves the
+   top shell exactly where it was dragged. A re-ringed top shell drops the
+   mutant facts with it — they describe a ring that no longer exists. */
+function npCountsChanged(nf,nb){
+  const L=npLayout(); if(!L){ npSeen={f:nf,b:nb}; return; }
+  let ch=false;
+  if(npSeen.f>=0&&npSeen.f!==nf&&L.f){
+    delete L.f; delete L.cyc; delete L.cycs; delete L.ringR; delete L.cycrows; ch=true; }
+  if(npSeen.b>=0&&npSeen.b!==nb&&L.b){ delete L.b; ch=true; }
+  npSeen={f:nf,b:nb};
+  if(ch) npSetLayout(L);
+}
+/* the first thing in the rows that does not read as a note, or "" when the
+   rows are simply not finished yet (no ding, or no fields at all) */
+function npUnreadable(r){
+  if(r.ding&&midiOf(r.ding)===null) return r.ding;
+  const f=r.fields.find(x=>midiOf(x)===null); if(f) return f;
+  const b=r.bottom.find(x=>midiOf(x)===null); if(b) return b;
+  return "";
+}
+function npRender(){
+  const host=$("npPan"), hint=$("npPanHint"); if(!host) return;
+  const r=npRecord();
+  if(!r.ok){
+    /* THE DRAWING DOES NOT BLINK OUT MID-EDIT (David, 20 Sep: "when I delete
+       the number behind the letter, the whole pan layout window disappears").
+       Deleting the 4 of C4 is a keystroke on the way to C5, not a request to
+       take the instrument away — and the first version of this renderer read
+       every half-typed note as "no pan" and emptied the host.
+       ONE RULE: the window shows the most recent pan it could READ, and the
+       line beneath says when that is not what the rows currently say. The
+       empty prompt is not an exception to it — a pan nothing readable has been
+       typed for yet is simply the case where there is no such pan.
+       The fields stay draggable meanwhile: a drag records positions against
+       field NUMBERS, and those do not move while a note's name is being
+       repaired. An edit that does change how many fields there are re-rings
+       that series when it parses, by the rule in npCountsChanged. */
+    const bad=npUnreadable(r);
+    if(hint) hint.textContent = !npPan
+      ? "Type the ding and the tone fields to see your pan"
+      : bad
+        ? "“"+bad+"” is not a note name yet — still showing the last pan that read"
+        : "Still showing the last pan that read — needs a ding and at least one tone field";
+    host.classList.toggle("stale",!!npPan);
+    return;                       // whatever is drawn stays drawn
+  }
+  host.classList.remove("stale");
+  npCountsChanged(r.fields.length,r.bottom.length);
+  npPan=derive({id:NP_DRAFT,name:r.name,ding:r.ding,fields:r.fields,bottom:r.bottom});
+  /* drawn AS BUILT: the piece's "turn the pan around" is a way of showing an
+     instrument, not a fact about it, and a drawing that turned while the drag
+     wrote untuned coordinates would disagree with itself. */
+  npCustom=true;
+  try{
+    /* a COPY of the pan drawing renames its gradients or it paints hollow —
+       the card's #pvg is not ours to borrow (19 Sep) */
+    panSvgInto(host,panViewSVG(npPan,"Your pan — drag a field to where it sits on your instrument",{under:true}),"np");
+  } finally { npCustom=false; }
+  wirePanDrag(host,{pan:npPan,id:NP_DRAFT,snapshot:()=>{},after:npRender,resetBtn:null});
+  if(hint) hint.textContent=r.bottom.length
+    ? "Drag a field to where it sits — underside notes slide around the rim"
+    : "Drag a field to where it sits on your pan";
+}
 function openOwnPan(id){
   npEditing=id;
   const p=id?userPans().find(x=>x.id===id):null;
@@ -32794,16 +32964,69 @@ function openOwnPan(id){
   $("npDing").value=p?p.ding:"";
   $("npFields").value=p?p.fields.join(" "):"";
   $("npBottom").value=p&&p.bottom?p.bottom.join(" "):"";
+  /* the draft opens as a COPY of whatever layout the pan already wears, so a
+     pan dragged into shape opens looking like itself */
+  const src=p?panLayouts()[p.id]:null;
+  npSetLayout(src?JSON.parse(JSON.stringify(src)):null);
+  npSeen={f:-1,b:-1};
+  /* DELETE LIVES IN HERE NOW (David, 20 Sep: the list row "is getting too
+     crowded"; Duplicate took the ✕'s place there). It shows only when there
+     is a saved pan to delete, and it sits at the far end of the row from Save
+     — the distance Reset keeps from the customiser's tick, for the same reason. */
+  const del=$("npDel"); if(del) del.classList.toggle("hidden",!p);
+  const h=$("panDlg").querySelector("h3"); if(h) h.textContent=p?"Edit my pan":"My own pan";
+  /* THE LAST PAN THAT READ BELONGS TO THIS SITTING, like npSeen does. Without
+     this, "+ My own pan..." opened showing the LAST instrument edited, dimmed:
+     npRender now keeps whatever it could last draw, and npPan outlives the
+     window. A window that has just opened has read nothing yet. */
+  npPan=null;
+  { const host=$("npPan"); if(host){ host.innerHTML=""; host.classList.remove("stale"); } }
+  npRender();
   openDlg($("panDlg"));
 }
 function deleteOwnPan(id){
-  const p=userPans().find(x=>x.id===id); if(!p) return;
+  const p=userPans().find(x=>x.id===id); if(!p) return false;
   if(!confirm("Delete “"+p.name+"”? Pieces written for it will fall back to D Kurd."))
-    return;
+    return false;
   try{ localStorage.setItem("hps.pans",JSON.stringify(userPans().filter(x=>x.id!==id))); }catch(e){}
+  /* its layout goes with it, or the next pan handed this id inherits a
+     stranger's positions */
+  { const all=panLayouts(); if(all[id]){ delete all[id]; setPanLayouts(all); } }
   if(myPanId===id){ myPanId="d-kurd-9";
     try{ localStorage.setItem("hps.panId",myPanId); }catch(e){} refresh(); }
   renderPanPick(); toast("Pan deleted");
+  return true;
+}
+/* KEEPING AN INSTRUMENT AS YOUR OWN (David, 20 Sep) — ONE copier, used by the
+   Pan tab's "Save this pan to my pans" and by Duplicate in My pans. It takes
+   the notes AND the layout that has been dragged for the source, under a fresh
+   id, and it does not change which pan you are holding. */
+function copyPanName(base){
+  const stem=String(base||"My pan").replace(/ copy(?: \d+)?$/,"");
+  const taken=new Set(allPans().map(x=>x.name));
+  let n=stem+" copy";
+  for(let i=2; taken.has(n); i++) n=stem+" copy "+i;
+  return n;
+}
+function savePanCopy(src){
+  if(!src||!Array.isArray(src.fields)||!src.fields.length||midiOf(src.ding)===null) return null;
+  const rec={id:"u-"+Date.now().toString(36)+Math.random().toString(36).slice(2,5),
+             name:copyPanName(src.name), ding:src.ding, fields:src.fields.slice()};
+  if(src.bottom&&src.bottom.length) rec.bottom=src.bottom.slice();
+  try{ const l=userPans(); l.push(rec);
+       localStorage.setItem("hps.pans",JSON.stringify(l)); }catch(e){ return null; }
+  /* THE LAYOUT RIDES ALONG. A pan dragged into shape is the pan you meant to
+     keep, and a copy that snapped back to the plain ring would start by
+     undoing that work. */
+  const L=panLayouts()[src.id];
+  if(L){ const all=panLayouts(); all[rec.id]=JSON.parse(JSON.stringify(L)); setPanLayouts(all); }
+  return rec;
+}
+function duplicateOwnPan(id){
+  const p=userPans().find(x=>x.id===id); if(!p) return;
+  const c=savePanCopy(p);
+  if(!c){ toast("Could not duplicate this pan"); return; }
+  renderPanPick(); toast("Duplicated as “"+c.name+"”");
 }
 /* the closed control shows the pan's name and nothing else */
 function paintPanSel(){
@@ -34354,6 +34577,23 @@ function boot(){
     editExitGo=true; try{ if(editing) $("editBtn").click(); } finally{ editExitGo=false; }
     runAfterEdit(); });        // savePieceToLibrary already said so
   $("npClose").addEventListener("click",()=>$("panDlg").close());
+  /* THE DRAWING FOLLOWS THE TYPING (David, 20 Sep: "when I change the notes in
+     the fields, the graphical representation of the layout of the instrument
+     should update"). One listener per row, one renderer. */
+  ["npName","npDing","npFields","npBottom"].forEach(id=>{
+    const el=$(id); if(el) el.addEventListener("input",npRender); });
+  /* THE DRAFT DIES WITH THE WINDOW, however it closes — Cancel, Esc, or the
+     backdrop. Save has already moved it out by the time this runs, so there is
+     nothing left to throw away. */
+  /* … and a LATE close from an earlier visit must not empty a draft that has
+     since been opened. `close` is fired in a queued task, not synchronously,
+     so cancelling and reopening can land in that order — the same trap, and
+     the same guard, as the pan picker's own close listener. */
+  $("panDlg").addEventListener("close",()=>{
+    if($("panDlg").open) return;
+    npSetLayout(null); npSeen={f:-1,b:-1}; });
+  { const dl=$("npDel"); if(dl) dl.addEventListener("click",()=>{
+      if(npEditing&&deleteOwnPan(npEditing)){ npEditing=null; $("panDlg").close(); } }); }
   $("npSave").addEventListener("click",()=>{
     const name=$("npName").value.trim(), ding=$("npDing").value.trim();
     const fields=$("npFields").value.trim().split(/[\s,]+/).filter(Boolean);
@@ -34365,11 +34605,20 @@ function boot(){
        so a pan typed out of order still numbers itself sensibly */
     bottom.sort((a,b)=>midiOf(a)-midiOf(b));
     const rec={name,ding,fields}; if(bottom.length) rec.bottom=bottom;
-    let l=userPans();
-    if(npEditing){ l=l.map(x=>x.id===npEditing?Object.assign({},x,rec):x); myPanId=npEditing; }
-    else { rec.id="u-"+Date.now().toString(36); l.push(rec); myPanId=rec.id; }
+    let l=userPans(), tgt;
+    if(npEditing){ l=l.map(x=>x.id===npEditing?Object.assign({},x,rec):x); tgt=npEditing; }
+    else { rec.id="u-"+Date.now().toString(36); l.push(rec); tgt=rec.id; }
+    myPanId=tgt;
     try{localStorage.setItem("hps.pans",JSON.stringify(l))}catch(e){}
     try{localStorage.setItem("hps.panId",myPanId)}catch(e){}
+    /* AND NOW THE DRAFT BECOMES THE PAN'S OWN LAYOUT. This is the only moment
+       anything dragged in that window reaches a saved pan — which is what
+       makes Cancel honest. An empty draft clears the pan's layout rather than
+       leaving the old one standing: the window showed the plain ring, so the
+       plain ring is what was agreed to. */
+    { const all=panLayouts(), L=all[NP_DRAFT]; delete all[NP_DRAFT];
+      if(L&&(L.f||L.b)) all[tgt]=L; else delete all[tgt];
+      setPanLayouts(all); }
     npEditing=null; $("panDlg").close();
     if($("panPickDlg").open) renderPanPick();
     refresh(); toast("Pan saved"); });
