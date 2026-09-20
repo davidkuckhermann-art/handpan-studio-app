@@ -3805,15 +3805,21 @@ body.phone #pcbar{font-size:11.5px}
    be able to drag around tone fields just like when Edit Pan Layout is
    activated … so that the users can really fully customize the instruments
    here”). The window scrolls, because the drawing doubles its height. */
-#panDlg{max-height:88vh; overflow:auto}
-#npPanWrap{margin:10px 0 2px; display:flex; flex-direction:column; align-items:center; gap:4px}
-#npPan{width:100%; max-width:330px}
+#panDlg{max-height:92vh; overflow:auto}
+#npPanWrap{margin:6px 0 2px; display:flex; flex-direction:column; align-items:center; gap:4px}
+/* THE DRAWING YIELDS BEFORE THE BUTTONS DO. It is square, so its width IS its
+   height: capping it against the viewport keeps Save pan on screen in a short
+   window instead of pushing it under the fold, and on any normal window the
+   330px cap is the one that binds. */
+#npPan{width:100%; max-width:min(330px,40vh)}
 #npPan svg{display:block; width:100%; height:auto}
 /* SHOWING THE LAST PAN THAT READ: dimmed just enough to say "not live",
    and deliberately without a transition — this state is entered and left
    on single keystrokes, and a fade would flash. */
 #npPan.stale{opacity:.72}
+#npPanFoot{display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; width:100%}
 #npPanHint{font-size:11.5px; color:var(--ink3); text-align:center; margin:0}
+#npReset{padding:4px 12px; font-size:12px; flex:none}
 #npDel{color:var(--warn-red); border-color:var(--warn-red)}
 /* THE PAN IS WHERE AN ACCENT ACCUMULATES — seven lit notes at once, each a
    soft fill inside a 2.5px ring, which is more accent area than the whole
@@ -7696,7 +7702,16 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
        draft layout under its own id, which Cancel throws away. -->
   <div id="npPanWrap">
     <div id="npPan"></div>
-    <p id="npPanHint">Drag a field to where it sits on your pan</p>
+    <!-- RESET LIVES WITH THE DRAWING (David, 20 Sep: "I need a way to reset to
+         default layout here"), not in the row below: that row commits or
+         abandons the whole pan, and this undoes only where the fields sit. It
+         is also the row's full width already on a phone.
+         It shares the hint's LINE rather than taking one of its own — a line
+         of its own pushed Save pan under the fold in a short window. */ -->
+    <div id="npPanFoot">
+      <p id="npPanHint">Drag a field to where it sits on your pan</p>
+      <button class="ctl" id="npReset" type="button">Reset layout</button>
+    </div>
   </div>
   <div class="row"><button class="ctl" id="npDel">Delete pan</button>
   <span class="spacer"></span>
@@ -17370,7 +17385,14 @@ function panSpin(list,cx){
   return list.map(o=>Object.assign({},o,{x:+(2*cx-o.x).toFixed(1), y:+(2*cx-o.y).toFixed(1)},
     o.a===undefined?{}:{a:o.a+Math.PI}));
 }
-function undersideGeom(P,under,desk){
+/* `botR` overrides the PHONE's uniform disc radius for one drawing (David,
+   20 Sep, of the own-pan window: "let's make the bass bottom notes a little
+   bigger here"). The uniform 24 below is a decision about the CARD, where the
+   desktop's ramp was measured to be invisible at the phone's ~0.52 scale; a
+   drawing whose underside notes are drag targets wants a bigger disc than one
+   you only read. It changes the disc only - the seat radius on the phone is
+   207 whatever the size, so the drag's own bottomRing() still agrees with it. */
+function undersideGeom(P,under,desk,botR){
   const bots=(under&&P.bottom)||[];
   if(!bots.length) return {bots:[],pad:0,place:null};
   const R=207, m=bots.length;
@@ -17413,7 +17435,7 @@ function undersideGeom(P,under,desk){
        0.78px — 1.57px of diameter. Below what a bump is for. Half a pixel of
        geometry is not worth a branch in the sizing, so the phone keeps its
        uniform 24 and the ramp stays a desktop rule, where a unit is a pixel. */
-    if(PHONE&&!desk) return 24;              // uniform: there is no room to say more (the full-screen pan has it: desk)
+    if(PHONE&&!desk) return botR||24;        // uniform: there is no room to say more (the full-screen pan has it: desk)
     /* "on desktop you can make bass bottom notes bigger" and later "make the
        low ones a bit bigger still" (David). Ramped from the ding, so it reads
        the same on any instrument rather than against whatever bottoms this one
@@ -17745,7 +17767,7 @@ function panSvgInto(host,html,pre){
 function panViewSVG(pan,label,opts){
   const P=pan||myPan, n=P.fields.length, ring=zigzag(n);
   const cx=215, R=207, fr=37, dr=52, pr=148;
-  const U=undersideGeom(P,opts&&opts.under,opts&&opts.desk), pad=U.pad;
+  const U=undersideGeom(P,opts&&opts.under,opts&&opts.desk,opts&&opts.botR), pad=U.pad;
   /* stored first, computed second: a drag or a Suggest is the player telling
      us where the fields really are, and it outranks anything we work out. */
   const LAY=layoutFor(P.pan&&P.pan.id)||defaultLayout(P);
@@ -32879,6 +32901,11 @@ let npEditing=null;
    onto the pan's real id; Cancel, Esc and reopening throw it away — nothing
    dragged here touches a saved pan until you save. */
 const NP_DRAFT="np-draft";
+/* the underside disc in THIS window, on the phone: bigger than the card's
+   uniform 24 because here it is something you drag with a finger, not
+   something you read (David, 20 Sep). Desktop is untouched - it already ramps
+   these 28-45 from the ding. */
+const NP_BOTR=30;
 let npPan=null;            // the derived draft, or null while the note rows do not parse
 let npSeen={f:-1,b:-1};    // the two counts the draft layout was made for
 function npLayout(){ return panLayouts()[NP_DRAFT]||null; }
@@ -32956,7 +32983,8 @@ function npRender(){
   try{
     /* a COPY of the pan drawing renames its gradients or it paints hollow —
        the card's #pvg is not ours to borrow (19 Sep) */
-    panSvgInto(host,panViewSVG(npPan,"Your pan — drag a field to where it sits on your instrument",{under:true}),"np");
+    panSvgInto(host,panViewSVG(npPan,"Your pan — drag a field to where it sits on your instrument",
+                               {under:true, botR:NP_BOTR}),"np");
   } finally { npCustom=false; }
   wirePanDrag(host,{pan:npPan,id:NP_DRAFT,snapshot:()=>{},after:npRender,resetBtn:null});
   if(hint) hint.textContent=r.bottom.length
@@ -34598,6 +34626,13 @@ function boot(){
   $("panDlg").addEventListener("close",()=>{
     if($("panDlg").open) return;
     npSetLayout(null); npSeen={f:-1,b:-1}; });
+  { const rs=$("npReset"); if(rs) rs.addEventListener("click",()=>{
+      npSetLayout(null); npSeen={f:-1,b:-1}; npRender();
+      /* "the standard circle" is a lie on a mutant: reset hands it back to the
+         computed layout, which still has an inner row. */
+      toast(npPan&&mutantCount(npPan)
+        ? "Layout reset — back to the standard layout for this pan"
+        : "Layout reset — back to the standard circle"); }); }
   { const dl=$("npDel"); if(dl) dl.addEventListener("click",()=>{
       if(npEditing&&deleteOwnPan(npEditing)){ npEditing=null; $("panDlg").close(); } }); }
   $("npSave").addEventListener("click",()=>{

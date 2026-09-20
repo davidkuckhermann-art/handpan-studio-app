@@ -2284,13 +2284,16 @@ body.phone #pcbar{font-size:11.5px}
 #panbox.customising .pvf.dragging .pvbase,#npPan .pvf.dragging .pvbase{stroke:var(--dixie); stroke-width:3}
 #panbox.customising #pvsvg,#npPan .pvsvg{touch-action:none}
 
-#panDlg{max-height:88vh; overflow:auto}
-#npPanWrap{margin:10px 0 2px; display:flex; flex-direction:column; align-items:center; gap:4px}
-#npPan{width:100%; max-width:330px}
+#panDlg{max-height:92vh; overflow:auto}
+#npPanWrap{margin:6px 0 2px; display:flex; flex-direction:column; align-items:center; gap:4px}
+
+#npPan{width:100%; max-width:min(330px,40vh)}
 #npPan svg{display:block; width:100%; height:auto}
 
 #npPan.stale{opacity:.72}
+#npPanFoot{display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; width:100%}
 #npPanHint{font-size:11.5px; color:var(--ink3); text-align:center; margin:0}
+#npReset{padding:4px 12px; font-size:12px; flex:none}
 #npDel{color:var(--warn-red); border-color:var(--warn-red)}
 
 .pvf.clit .pvbase{fill:var(--dixie-soft); stroke:var(--accent-lit,var(--dixie)); stroke-width:2.5}
@@ -4066,7 +4069,11 @@ if(false
   
   <div id="npPanWrap">
     <div id="npPan"></div>
-    <p id="npPanHint">Drag a field to where it sits on your pan</p>
+    
+    <div id="npPanFoot">
+      <p id="npPanHint">Drag a field to where it sits on your pan</p>
+      <button class="ctl" id="npReset" type="button">Reset layout</button>
+    </div>
   </div>
   <div class="row"><button class="ctl" id="npDel">Delete pan</button>
   <span class="spacer"></span>
@@ -8739,7 +8746,9 @@ function panSpin(list,cx){
   return list.map(o=>Object.assign({},o,{x:+(2*cx-o.x).toFixed(1), y:+(2*cx-o.y).toFixed(1)},
     o.a===undefined?{}:{a:o.a+Math.PI}));
 }
-function undersideGeom(P,under,desk){
+
+
+function undersideGeom(P,under,desk,botR){
   const bots=(under&&P.bottom)||[];
   if(!bots.length) return {bots:[],pad:0,place:null};
   const R=207, m=bots.length;
@@ -8757,7 +8766,7 @@ function undersideGeom(P,under,desk){
     const low=b.midi<P.ding?LOWBUMP:0;
     
 
-    ;               
+    ;         
     
 
     const t=Math.max(0,Math.min(1,(b.midi-P.ding+4)/16));
@@ -8967,7 +8976,7 @@ function panSvgInto(host,html,pre){
 function panViewSVG(pan,label,opts){
   const P=pan||myPan, n=P.fields.length, ring=zigzag(n);
   const cx=215, R=207, fr=37, dr=52, pr=148;
-  const U=undersideGeom(P,opts&&opts.under,opts&&opts.desk), pad=U.pad;
+  const U=undersideGeom(P,opts&&opts.under,opts&&opts.desk,opts&&opts.botR), pad=U.pad;
   
 
   const LAY=layoutFor(P.pan&&P.pan.id)||defaultLayout(P);
@@ -14915,6 +14924,9 @@ let npEditing=null;
 
 
 const NP_DRAFT="np-draft";
+
+
+const NP_BOTR=30;
 let npPan=null;             
 let npSeen={f:-1,b:-1};     
 function npLayout(){ return panLayouts()[NP_DRAFT]||null; }
@@ -14976,7 +14988,8 @@ function npRender(){
   try{
     
 
-    panSvgInto(host,panViewSVG(npPan,"Your pan — drag a field to where it sits on your instrument",{under:true}),"np");
+    panSvgInto(host,panViewSVG(npPan,"Your pan — drag a field to where it sits on your instrument",
+                               {under:true, botR:NP_BOTR}),"np");
   } finally { npCustom=false; }
   wirePanDrag(host,{pan:npPan,id:NP_DRAFT,snapshot:()=>{},after:npRender,resetBtn:null});
   if(hint) hint.textContent=r.bottom.length
@@ -15986,6 +15999,13 @@ function boot(){
   $("panDlg").addEventListener("close",()=>{
     if($("panDlg").open) return;
     npSetLayout(null); npSeen={f:-1,b:-1}; });
+  { const rs=$("npReset"); if(rs) rs.addEventListener("click",()=>{
+      npSetLayout(null); npSeen={f:-1,b:-1}; npRender();
+      
+
+      toast(npPan&&mutantCount(npPan)
+        ? "Layout reset — back to the standard layout for this pan"
+        : "Layout reset — back to the standard circle"); }); }
   { const dl=$("npDel"); if(dl) dl.addEventListener("click",()=>{
       if(npEditing&&deleteOwnPan(npEditing)){ npEditing=null; $("panDlg").close(); } }); }
   $("npSave").addEventListener("click",()=>{
