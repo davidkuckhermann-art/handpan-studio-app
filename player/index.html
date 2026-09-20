@@ -2027,6 +2027,13 @@ body.phone #drawerExtra #jamColourWrap{width:auto}
 .pinrow .pills{flex-wrap:wrap}
 .pinrow .pills button{font-size:12.5px; padding:5px 11px}
 .pinrow .pills button[disabled]{opacity:.45}
+.pinrow .pills.stack{flex-direction:column; align-items:stretch; border-radius:16px; flex-basis:100%}
+.pinrow .pills.stack button{text-align:left}
+
+.repadv{position:absolute; top:10px; right:42px; display:flex; align-items:center; gap:6px;
+  font-size:12.5px; color:var(--ink2); cursor:pointer; user-select:none; -webkit-user-select:none}
+.repadv input{margin:0; width:15px; height:15px; accent-color:var(--dixie)}
+body:not(.phone) #report .fitline{padding-right:170px}
 .rsico{display:none}                       
 .pinnote{font-size:12.5px; color:var(--ink3)}
 .howsum{color:var(--ink3); font-weight:400}
@@ -2685,7 +2692,7 @@ html[data-theme="zones-dark"]{
 }
 
 body.phone #report:not(.hidden){position:fixed; left:10px; right:10px;
-  top:64px; bottom:96px; overflow-y:auto; overflow-x:hidden; z-index:60; margin:0;
+  top:64px; bottom:calc(10px + env(safe-area-inset-bottom)); overflow-y:auto; overflow-x:hidden; z-index:60; margin:0;
   box-shadow:var(--shadow)}
 
 body.phone table.map{table-layout:fixed; width:100%; max-width:100%; font-size:12px}
@@ -2705,6 +2712,7 @@ body.phone #repReset{position:absolute; top:7px; right:39px; width:26px; height:
 body.phone #repReset .rstxt{display:none}
 body.phone #repReset .rsico{display:block; width:17px; height:17px}
 body.phone .resetrow{margin:0}
+body.phone #report.hasreset .repadv{right:74px}
 body.phone .resetrow:not(.hasnote){height:0; overflow:visible}
 
 #roomSel{display:none}
@@ -10800,7 +10808,11 @@ function renderReport(){
   if(mode!=="trans"||!REPORT||reportClosed){ R.classList.add("hidden"); return; }
   R.classList.remove("hidden");
   const tag=r=>({exact:"Exact",octave:"Octave",sub:"Substituted",drop:"Dropped",foreign:"Foreign"})[r]||r;
-  let h='<button class="ib" id="repX" title="Close — it comes back when you choose For my pan">'
+  { const key=(piece&&piece.id||"")+"|"+myPanId; if(repAdvKey!==key){ repAdvKey=key; repAdv=false; } }
+  const kfNow=(bulkPrev[myPanId]||{}).kind||"none", adv=repAdv||kfNow!=="none";
+  R.classList.toggle("hasreset",!!REPORT.nPins);
+  let h='<label class="repadv" title="The choices for missing notes and for the hands — the defaults suit most pieces"><input type="checkbox" id="repAdv"'+(adv?' checked':'')+'> Advanced options</label>'
+   +'<button class="ib" id="repX" title="Close — it comes back when you choose For my pan">'
    +'<svg viewBox="0 0 24 24" width="13" height="13"><path d="M7 7l10 10M17 7L7 17" fill="none" '
    +'stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></button>'
    +'<div class="fitline"><span class="fitpc">'+REPORT.fit+'%</span>'
@@ -10820,7 +10832,7 @@ function renderReport(){
 
   
 
-  { const kk=(bulkPrev[myPanId]||{}).kind||"none";
+  if(adv){ const kk=kfNow;
     const kb=(v,label,title)=>'<button data-kf="'+v+'" aria-pressed="'+(kk===v?"true":"false")+'" title="'+title+'">'+label+'</button>';
     h+='<div class="pinrow"><span class="pinnote">Keep missing notes foreign:</span>'
       +'<span class="pills kfpills" role="group" aria-label="Keep missing notes foreign">'
@@ -10841,6 +10853,8 @@ function renderReport(){
   
 
   { const way=transHandsNow(), T=transTurnWorth();
+    if(!adv) h+='<div class="pinrow"><span class="pinnote">Hand pattern is modified where necessary.</span></div>';
+    else {
     const hb=(v,label,title)=>'<button data-th="'+v+'" aria-pressed="'+(way===v?"true":"false")+'" title="'+title+'">'+label+(v==="modify"?'<small class="defmark"> default</small>':'')+'</button>';
     h+='<div class="pinrow"><span class="pinnote">Hands:</span>'
       +'<span class="pills thpills" role="group" aria-label="Hands">'
@@ -10848,7 +10862,7 @@ function renderReport(){
       +hb("keep","Keep the original hands","Every hand exactly as written, even where this pan makes it awkward.")
       +hb("fresh","Work out new hands","The piece is handed again from scratch for this pan.")
       +hb("turn","Turn the pan around","Keep the hand pattern and turn the instrument instead: the pan is drawn round, low notes at the top. The notation does not change — field 2 is still 2, it just sits on the other side.")
-      +'</span></div>';
+      +'</span></div>'; }
     const said=way==="keep"?"Every hand as written."
       :way==="turn"?("The pan below is drawn turned round"+(THANDN?" — "+THANDN+" hand"+(THANDN===1?"":"s")+" still had to move":"; every hand as written")+".")
       :THANDN?(THANDN+" hand"+(THANDN===1?"":"s")+" moved"+(way==="modify"?" — this pan forced it":""))
@@ -10856,7 +10870,7 @@ function renderReport(){
     h+='<div class="pinrow"><span class="pinnote fitparts">'+said+'</span></div>';
     
 
-    if(T&&T.share>=0.6&&way!=="turn")
+    if(adv&&T&&T.share>=0.6&&way!=="turn")
       h+='<div class="pinrow"><span class="pinnote fitparts" id="turnOffer">'+T.moved+' of '+T.sided+' notes have landed on the other side of the pan. Turning the handpan around can help to stay closer to the original hand pattern.</span></div>'; }
   
 
@@ -10905,7 +10919,15 @@ function renderReport(){
       +'</b> cannot be shared between two hands on this pan — the notes play, but check the fingering.</div>';
   R.innerHTML=h;
   const rx=$("repX");
-  if(rx) rx.addEventListener("click",()=>{ reportClosed=true; renderReport(); });
+  if(rx) rx.addEventListener("click",()=>{ reportClosed=true; repAdv=false; renderReport(); });
+  const ra=$("repAdv");
+  if(ra) ra.addEventListener("change",()=>{
+    if(ra.checked){ repAdv=true; renderReport(); return; }
+    repAdv=false; transHandsChoice=null;
+    if(((bulkPrev[myPanId]||{}).kind||"none")!=="none"){ bulkUndo(); saveOv(); }
+    refresh();
+  });
+  fitCardPills(R);
   R.querySelectorAll(".howpills button[data-how]").forEach(b=>b.addEventListener("click",()=>{
     if(b.disabled) return;
     transHowChoice=b.dataset.how; refresh(); if(ctx) preloadBank();    
@@ -10932,6 +10954,15 @@ function renderReport(){
     else overrides[myPanId][sf]=v==="drop"?null:(isBotPos(v)?v:+v);
     saveOv(); refresh();
   }));
+}
+
+
+function fitCardPills(R){
+  R.querySelectorAll(".pinrow .pills").forEach(p=>{
+    p.classList.remove("stack");
+    const b=[...p.children]; if(b.length<2) return;
+    if(b.some(x=>Math.abs(x.offsetTop-b[0].offsetTop)>2)) p.classList.add("stack");
+  });
 }
 function saveOv(){ try{localStorage.setItem("hps.ov."+piece.id,JSON.stringify(overrides));
   localStorage.setItem("hps.ovb."+piece.id,JSON.stringify(bulkPrev)); }catch(e){} }
@@ -11805,6 +11836,9 @@ let jamOn=false, jamPrev=null, jamEditSlot=-1, jam=null, jamSugOn=false;
 
 
 let reportClosed=false;
+
+
+let repAdv=false, repAdvKey="";
 const JAM_MAX=8;    
 const jpc=m=>((m%12)+12)%12;
 
@@ -15251,7 +15285,7 @@ function fitHeadMode(){
 }
 function setMode(m){
   ;    
-  if(m==="trans") reportClosed=false;    
+  if(m==="trans"){ reportClosed=false; repAdv=false; }    
   mode=m;
   
 
