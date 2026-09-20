@@ -605,6 +605,8 @@ body.nonota #scorefoot{margin-top:0; border-top:none}
 
 #panPrefBtn svg{color:var(--warn-red)}
 
+.turnhint,.pinnote.turnhint{color:var(--warn-red); font-weight:700}   
+
 html:not(.player) #panPrefBtn{display:none !important}
 
 .ib.wlab{width:auto; padding:0 9px; display:inline-flex; align-items:center; gap:6px}
@@ -3871,6 +3873,11 @@ if(false
       <button class="ctl" id="pmZoomUp" title="Bigger pan">＋</button></span></div>
   <div class="drow"><span>Layout</span>
     <button class="ctl" id="pmCustom" title="Drag the fields to match your instrument">Edit pan layout…</button></div>
+  
+  <div class="drow"><span>Turn the pan around</span>
+    <span class="pills" role="group" aria-label="Turn the pan around">
+      <button id="pmTurnOff" title="The pan as it is built: field 1 nearest you">Normal</button>
+      <button id="pmTurnOn" title="Turned half round: the low notes at the top. The notation stays as it is — only the drawing turns">Turned</button></span></div>
   <div class="row" style="justify-content:flex-end;margin:12px 0 0">
     <button class="ctl" id="pmClose">Done</button></div>
 </dialog>
@@ -4337,32 +4344,90 @@ function panById(id){ return allPans().find(p=>p.id===id)
  
 
 
-function handGeom(P){                           
+
+
+function panTurned(){ if(typeof panCustom!=="undefined"&&panCustom) return false;    
+  return (TURN&&mode==="trans"&&!!MAP)||!!(piece&&piece.panTurn); }
+
+
+function handGeom(P,turn){                      
   const cx=215, out=new Map();
-  const at=(x,y,bottom)=>({side:Math.abs(x-cx)<12?"C":(x>cx?"R":"L"),ang:Math.atan2(y-cx,x-cx)*180/Math.PI,bottom});
-  const spots=topSpots(P); const topY=Math.min(...spots.filter(s=>s.f!==0).map(s=>s.y));
-  for(const s of spots){ const q=at(s.x,s.y,false); if(s.f!==0&&s.y<=topY+8) q.side="C"; out.set(s.f,q); }    
+  const spots=topSpots(P), wide=Math.max(60,...spots.map(s=>Math.abs(s.x-cx)));
+  
+
+  const at=(x,y,bottom)=>{ const X=turn?2*cx-x:x, Y=turn?2*cx-y:y, lat=+((X-cx)/wide).toFixed(4);
+    return {side:Math.abs(lat)<0.12?"C":(lat>0?"R":"L"),lat,x:X,y:Y,ang:Math.atan2(Y-cx,X-cx)*180/Math.PI,bottom}; };
+  for(const s of spots) out.set(s.f,at(s.x,s.y,false));
   const L=layoutFor(P.pan&&P.pan.id); const U=undersideGeom(P,true);
-  (U.place||[]).forEach(pl=>{ const c=L&&L.b&&L.b[pl.i]; out.set(botPos(pl.i+1),c?at(c.x,c.y,true):at(pl.x,pl.y,true)); });
+  (U.place||[]).forEach(pl=>{ const c=panSpinPt(L&&L.b&&L.b[pl.i],cx); out.set(botPos(pl.i+1),c?at(c.x,c.y,true):at(pl.x,pl.y,true)); });
   return out;
 }
 
- 
+
+
 function handPair(P){ const ring=zigzag((P.fields||[]).length), adj=new Set(); const pr=(a,b)=>{ adj.add(a+"|"+b); adj.add(b+"|"+a); };
   for(let k=0;k<ring.length;k++) pr(ring[k],ring[(k+1)%ring.length]); pr(0,1); pr(0,2);
-  
-
   const nb=(P.bottom||[]).length; for(let i=1;i+2<=nb;i++) pr(botPos(i),botPos(i+2));
   return (a,b)=>adj.has(a+"|"+b); }
-const HAND_COST={bottomWrong:1000,pairImpossible:1000,thrice:1000,pattern:40,side:30,wedgeFar:25,wedgeMid:10,ringPref:15,split:8,repeat:3};
 
 
+const HAND_COST={ bottomWrong:3000, bottomBusy:3000, pairStep:[0,0,200,450,1500],
+  threeSame:8, threeTwo:60, threeDiff:300, keepSoft:350, keepHard:1200,
+  side:55, move:45, cross:200, leftDouble:6, rhythm:6, dingRight:15, repeat:2, jam:120, keepPerc:20 };
+
+
+const HAND_BEAM=600;                        
+
+
+const HAND_FRESH=new Set(["let-it-be","let-it-be-sheet","canon-in-d","amazing-grace","amazing-grace-bass","scarborough-fair","greensleeves"]);
+function handKeepsOriginal(p){ return !!p && p.handsFrom!=="piano" && !HAND_FRESH.has(p.id); }
+function handRingStep(P,a,b){               
+  if(a===b) return 0;
+  const ring=zigzag((P.fields||[]).length), n=ring.length; if(!n) return 9;
+  const at=f=>f===0?null:ring.indexOf(f);
+  if(a===0||b===0){ const o=at(a===0?b:a); if(o==null||o<0) return 9; const one=ring.indexOf(1);
+    const d=Math.min(Math.abs(o-one),n-Math.abs(o-one)); return 1+d; }          
+  const ia=at(a), ib=at(b); if(ia<0||ib<0) return 9;
+  return Math.min(Math.abs(ia-ib),n-Math.abs(ia-ib));
+}
+function handPairCost(P,a,b){               
+  const S=HAND_COST.pairStep, k=handRingStep(P,a,b);
+  return S[Math.min(k,S.length-1)];
+}
+function handRhythmPref(m,t){               
+  const sub=m.sub||4, p=((t%sub)+sub)%sub;
+  if(p===0) return "R";
+  if(sub===3) return p===1?"R":"L";         
+  if(sub%2===0) return (p===sub/2)?"R":"L"; 
+  return null;
+}
+
+
+
+
+function handHardFree(P,G,slotEvs){
+  const free=new Set(), byHand={L:[],R:[]};
+  for(const e of slotEvs){ if(!e.hand) continue; byHand[e.hand==="L"?"L":"R"].push(e); }
+  for(const e of slotEvs){ if(e.v!=="field"||!e.hand) continue; const g=G.get(e.f);
+    if(g&&g.bottom&&g.side!=="C"&&e.hand!==g.side) free.add(e); }                  
+  for(const h of ["L","R"]){ const mine=byHand[h]; if(mine.length<2) continue;
+    const fields=mine.filter(e=>e.v==="field"), pos=fields.map(e=>e.f);
+    if(pos.some(f=>{ const g=G.get(f); return g&&g.bottom; })) { mine.forEach(e=>free.add(e)); continue; }    
+    if(fields.length>2){ mine.forEach(e=>free.add(e)); continue; }
+    if(fields.length===2&&handPairCost(P,pos[0],pos[1])>=HAND_COST.pairStep[HAND_COST.pairStep.length-1]) fields.forEach(e=>free.add(e)); }
+  return free;
+}
 function assignHands(piece,P,opts){
-  opts=opts||{}; const G=handGeom(P), pair=handPair(P), C=HAND_COST; let changed=0,total=0;
+  opts=opts||{}; const G=handGeom(P,opts.turn), C=HAND_COST; let changed=0,total=0;
+  const keepMode=opts.keep||(opts.onlyAuto?"none":(handKeepsOriginal(piece)?"soft":"none"));
+  const keepCost=keepMode==="none"?0:C.keepSoft;
   const names=opts.window?[opts.window.sec]:(opts.sections||Object.keys(piece.sections||{}));
-  const angDiff=(a,b)=>{ let d=Math.abs(a-b)%360; return d>180?360-d:d; };
+  const span=(a,b)=>{ const x=G.get(a), y=G.get(b); if(!x||!y) return 0;
+    return Math.hypot(x.x-y.x,x.y-y.y)/296; };                                  
+  const dist=(a,b)=>Math.min(1,span(a,b));                                      
   for(const nm of names){ const sec=piece.sections[nm]; if(!sec) continue; const m=SM(piece,nm), bp=m.bp, sub=m.sub;
     const from=opts.window?Math.max(0,opts.window.from):0, to=opts.window?Math.min(sec.bars.length-1,opts.window.to):sec.bars.length-1;
+    const starts=new Set((cellsOf(m)||[]).map(c=>c.start));                     
     
 
     const pref=new Map();
@@ -4374,34 +4439,105 @@ function assignHands(piece,P,opts){
       for(const e of evs){ if(rightOnes.includes(e.f)) pref.set(e,"R"); else if(leftOne!=null&&e.f===leftOne) pref.set(e,"L"); } }
      
     const slots=[]; for(let b=from;b<=to;b++){ const byT=new Map(); for(const e of sec.bars[b]||[]){ if(e.v!=="field"&&e.v!=="perc"&&e.v!=="ghost") continue; if(!byT.has(e.t)) byT.set(e.t,[]); byT.get(e.t).push(e); }
-      for(const t of [...byT.keys()].sort((a,b)=>a-b)) slots.push({at:b*bp+t,evs:byT.get(t)}); }
+      for(const t of [...byT.keys()].sort((a,b)=>a-b)) slots.push({at:b*bp+t,t,evs:byT.get(t)}); }
     if(!slots.length) continue;
-    const fixed=e=>opts.onlyAuto&&!e.ha&&e.hand;                         
-    const key=st=>st.fL+"|"+st.fR+"|"+(st.pL?1:0)+(st.pR?1:0)+"|"+st.rL+st.rR;
-    let layer=new Map([[key({fL:null,fR:null,pL:false,pR:false,rL:0,rR:0}),{st:{fL:null,fR:null,pL:false,pR:false,rL:0,rR:0},cost:0,back:null,pick:null}]]);
-    for(let i=0;i<slots.length;i++){ const sl=slots[i], gap=i?sl.at-slots[i-1].at:1e9, sixteenth=sub>=4&&gap===1; const n=sl.evs.length, next=new Map();
-      for(let mask=0;mask<(1<<n);mask++){ const hs=sl.evs.map((e,k)=>(mask>>k)&1?"R":"L"); let bad=false, c0=0;
-        for(let k=0;k<n&&!bad;k++){ const e=sl.evs[k], h=hs[k]; if(fixed(e)&&e.hand!==h){ bad=true; break; } if(e.v!=="field") continue; const g=G.get(e.f);
-          if(g&&g.bottom&&g.side!=="C"&&h!==g.side) c0+=C.bottomWrong;
-          else if(g&&g.side!=="C"&&h!==g.side) c0+=C.side;
-          else if(g&&g.side==="C"&&!g.bottom&&(e.f===0||e.f===1)&&h==="L") c0+=C.ringPref;
-          const p=pref.get(e); if(p&&p!==h) c0+=C.pattern; }
+    
+
+    const freed=new Set(), loose=new Set();
+    const atOf=new Map(); for(const sl of slots) for(const e of sl.evs) atOf.set(e,sl.at);
+    if(keepMode==="soft"){
+      for(const sl of slots) for(const e of handHardFree(P,G,sl.evs)) freed.add(e);
+      
+
+      const last={L:null,R:null};
+      for(const sl of slots){
+        for(const e of sl.evs){ if(!e.hand) continue; const h=e.hand==="L"?"L":"R", pv=last[h];
+          if(pv&&pv.v==="field"&&e.v==="field"&&(sl.at-atOf.get(pv))*3<=sub
+            &&span(pv.f,e.f)>1.1&&!sl.evs.some(x=>x.hand&&x.hand!==e.hand)){ loose.add(e); loose.add(pv); } }
+        for(const e of sl.evs) if(e.hand) last[e.hand==="L"?"L":"R"]=e; }
+      
+
+      const seeds=[...freed,...loose].map(e=>atOf.get(e));
+      if(seeds.length) for(const sl of slots) for(const e of sl.evs)
+        if(e.hand&&!freed.has(e)&&!loose.has(e)&&seeds.some(a=>Math.abs(a-sl.at)<=sub)) loose.add(e);
+    }
+    
+
+    const percFreedFrom=handOfEv=>{ const s=new Set(); if(keepMode!=="soft") return s;
+      for(let i=1;i<slots.length-1;i++){
+        const a=slots[i-1], b=slots[i], c=slots[i+1];
+        if((b.at-a.at)*3>sub||(c.at-b.at)*3>sub) continue;                      
+        if(b.evs.length!==1) continue;                                          
+        const e=b.evs[0]; if(e.v!=="perc"||!e.hand) continue;
+        const all=(sl,h)=>sl.evs.length&&sl.evs.every(x=>handOfEv(x)===h);
+        if(all(a,e.hand)&&all(c,e.hand)) s.add(e); }
+      return s; };
+    let percFreed=percFreedFrom(e=>e.hand);
+    const fixed=e=>(opts.onlyAuto&&!e.ha&&e.hand)                               
+      ||(keepMode!=="none"&&e.hand&&!freed.has(e)&&!loose.has(e)&&!percFreed.has(e));    
+    const S0={fL:null,gL:null,nL:0,pL:false,fR:null,gR:null,nR:0,pR:false};
+    const key=st=>st.fL+"~"+st.gL+"~"+st.nL+(st.pL?1:0)+"|"+st.fR+"~"+st.gR+"~"+st.nR+(st.pR?1:0);
+    const solve=()=>{
+    let layer=new Map([[key(S0),{st:S0,cost:0,back:null,pick:null}]]);
+    
+
+    for(let i=0;i<slots.length;i++){ const sl=slots[i], gap=i?sl.at-slots[i-1].at:1e9, fast=gap*3<=sub, n=sl.evs.length, next=new Map();
+      const rp=handRhythmPref(m,sl.t), groupStart=starts.has(sl.t);
+      const want=groupStart?"R":rp;                                             
+      for(let mask=0;mask<(1<<n);mask++){ const hs=sl.evs.map((e,k)=>(mask>>k)&1?"R":"L"); let bad=false, c0=0, rmiss=0;
+        for(let k=0;k<n&&!bad;k++){ const e=sl.evs[k], h=hs[k];
+          if(fixed(e)&&e.hand!==h){ bad=true; break; }
+          if(e.hand&&e.hand!==h&&keepCost&&!fixed(e))
+            c0+= loose.has(e) ? 0 : (percFreed.has(e)?C.keepPerc:keepCost);      
+          const p=pref.get(e); if(p&&p!==h) c0+=C.jam;
+          if(want&&want!==h&&e.v!=="ghost") rmiss++;
+          if(e.v!=="field") continue; const g=G.get(e.f); if(!g) continue;
+          if(g.bottom){ if(h!==g.side) c0+=C.bottomWrong; }
+          else { if(g.lat>0?h!=="R":h!=="L") c0+=C.side*Math.abs(g.lat);         
+                 if((e.f===0||e.f===1)&&h==="L") c0+=C.dingRight; } }
         if(bad) continue;
-        for(const h of ["L","R"]){ const fl=sl.evs.filter((e,k)=>hs[k]===h&&e.v==="field").map(e=>e.f); if(fl.length>2||(fl.length===2&&!pair(fl[0],fl[1]))) c0+=C.pairImpossible; }
-        { const fl=sl.evs.filter(e=>e.v==="field"); if(fl.length===2&&pair(fl[0].f,fl[1].f)&&hs[sl.evs.indexOf(fl[0])]!==hs[sl.evs.indexOf(fl[1])]) c0+=C.split; }    
-        const used={L:hs.includes("L"),R:hs.includes("R")};
-        for(const [k0,node] of layer){ const st=node.st; let c=c0; const ns={fL:st.fL,fR:st.fR,pL:used.L,pR:used.R,rL:0,rR:0};
-          for(const h of ["L","R"]){ const p="p"+h, f="f"+h, r="r"+h; if(!used[h]){ ns[r]=st[p]&&sixteenth?st[r]:0; continue; }
-            const run=(st[p]&&sixteenth)?st[r]+1:1; ns[r]=Math.min(run,3); if(run>=3) c+=C.thrice;
-            if(st[p]&&!used[h==="L"?"R":"L"]&&!(used.L&&used.R)) c+=C.repeat;                                            
-            const fs=sl.evs.filter((e,k)=>hs[k]===h&&e.v==="field").map(e=>e.f); if(!fs.length) continue;
-            if(st[p]&&st[f]!=null){ const a=G.get(st[f]), b=G.get(fs[0]); if(a&&b&&a.bottom!==b.bottom){ const d=angDiff(a.ang,b.ang); c+=d<=45?0:d<=90?C.wedgeMid:C.wedgeFar; } }    
-            ns[f]=fs[0]; }
-          const k1=key(ns); const prev=next.get(k1); if(!prev||node.cost+c<prev.cost) next.set(k1,{st:ns,cost:node.cost+c,back:node,pick:hs}); }
+        for(const h of ["L","R"]){ const fl=sl.evs.filter((e,k)=>hs[k]===h&&e.v==="field").map(e=>e.f);
+          if(fl.some(f=>{ const g=G.get(f); return g&&g.bottom; })&&sl.evs.filter((e,k)=>hs[k]===h).length>1) c0+=C.bottomBusy;    
+          if(fl.length===2) c0+=handPairCost(P,fl[0],fl[1]);
+          else if(fl.length>2){ c0+=C.pairStep[C.pairStep.length-1]; for(let a=0;a<fl.length;a++) for(let b=a+1;b<fl.length;b++) c0+=handPairCost(P,fl[a],fl[b]); } }
+        for(const [,node] of layer){ const st=node.st; let c=c0;
+          
+
+          if(rmiss&&want&&!st["p"+want]) c+=C.rhythm*rmiss;
+          const ns={fL:st.fL,gL:st.gL,nL:0,pL:false,fR:st.fR,gR:st.gR,nR:0,pR:false};
+          for(const h of ["L","R"]){ const F="f"+h, Gp="g"+h, N="n"+h, Pp="p"+h;
+            const mine=sl.evs.filter((e,k)=>hs[k]===h); if(!mine.length){ ns[N]=st[Pp]&&fast?st[N]:0; continue; }
+            ns[Pp]=true;
+            const f=mine.map(e=>e.v==="field"?e.f:null).find(x=>x!=null);
+            const run=(st[Pp]&&fast)?st[N]+1:1; ns[N]=Math.min(run,3);
+            if(st[Pp]&&st[F]!=null&&f!=null) c+=C.move*dist(st[F],f);           
+            if(run>=3){ const three=[st[Gp],st[F],f];
+              c+= three.some(x=>x==null) ? C.threeTwo
+                : (three[0]===three[1]&&three[1]===three[2]) ? C.threeSame
+                : (new Set(three).size===2) ? C.threeTwo : C.threeDiff; }        
+            if(run===2&&h==="L") c+=C.leftDouble;                               
+            const other=h==="L"?"R":"L"; if(st[Pp]&&!hs.includes(other)) c+=C.repeat;    
+            ns[Gp]=st[F]; if(f!=null) ns[F]=f; }
+          
+
+          const liveL=ns.pL||st.pL, liveR=ns.pR||st.pR;
+          const gl=liveL&&ns.fL!=null&&G.get(ns.fL), gr=liveR&&ns.fR!=null&&G.get(ns.fR);
+          if(gl&&gr&&gl.lat>0.3&&gr.lat<-0.3) c+=C.cross*Math.min(1,(gl.lat-gr.lat)/2);
+          const k1=key(ns), prev=next.get(k1); if(!prev||node.cost+c<prev.cost) next.set(k1,{st:ns,cost:node.cost+c,back:node,pick:hs}); }
       }
-      layer=next; }
+      layer=next;
+      if(layer.size>HAND_BEAM) layer=new Map([...layer.entries()].sort((a,b)=>a[1].cost-b[1].cost).slice(0,HAND_BEAM));
+    }
     let best=null; for(const node of layer.values()) if(!best||node.cost<best.cost) best=node;
     const picks=[]; for(let node=best;node&&node.pick;node=node.back) picks.unshift(node.pick);
+    return picks; };
+    let picks=solve();
+     
+    for(let pass=0;pass<2;pass++){
+      const now=new Map(); slots.forEach((sl,i)=>sl.evs.forEach((e,k)=>now.set(e,picks[i][k])));
+      const again=percFreedFrom(e=>now.get(e)||e.hand);
+      if(again.size===percFreed.size&&[...again].every(e=>percFreed.has(e))) break;
+      percFreed=again; picks=solve(); }
     slots.forEach((sl,i)=>sl.evs.forEach((e,k)=>{ if(fixed(e)) return; total++; if(e.hand!==picks[i][k]) changed++; e.hand=picks[i][k]; e.ha=true; })); }
   return {changed,total};
 }
@@ -4906,7 +5042,7 @@ function rhyFit(m){
 
  
  
-
+const F=(t,f,h,o)=>Object.assign({t,v:"field",f,hand:h},o||{});
 const P=(t,s,h,o)=>Object.assign({t,v:"perc",s,hand:h},o||{});
 const G=(t,h)=>({t,v:"ghost",hand:h});
 
@@ -4987,6 +5123,22 @@ const DEMOS=[];
  
 
 
+
+
+const HAND_BAKED={
+  "let-it-be":"LRRRLRLRLLRRRRLRLRLRLRLLRLRLLLLRLLRLRRLLRLRLRRRLRLRLRLRLLRRRLRRLRRRLRLRLLRRRRLRLRLRLRLLRLRLLLLRLLRLRRLLRLRLRRRLRLRLRLRLLRRRRLRLRRLRLRLRLRRLRLRLRRRLLRLRLRLLRRLRRRLLRRLRRLLRLRLRLRRLRLRLRLRLLRLRRLRLRLRLRRLRLRLRLRRLRLRLRRRLLRLRLRLLRRLRRRLRRLRRLLRLRLRLRRLRLRLRLRLLRLRRRLRRLRRLLRLRLRLRRLRLRLRLRLLRLR",
+  "let-it-be-sheet":"LRRLRLRLRRRRLRRLRRLRLRRLLLRLRLLRLRLRRLRLRLRRRLRRLLRLRLRRLLLRLRLLRLRLRRLRLRLRRRR",
+  "canon-in-d":"RLRLRLLRLRRLRRLRLRRLRLRLLRRLRLLRRRRLRLLRLLRRRLRRLRLLLLRLRLRLRLLLRLRLLRRLRRRLRLLRLLRLLLRRRLRRLRLLRLLLRLRLRLRLLLRLLRRLRLRLLRLLRRRLRRRLRLLRLLLRRRRLRRLLLLLRLRRLRRRLRLLLLRRLRLLRRLLLRRRLRLLRLLLLLRRRRLRRLLLLLLLRLRRLRRRLRRRLLLLLRRLRLLRRRLLLL",
+  "amazing-grace":"RRLLLRLLRRLRLLLRRRRLLLRLLRRLRLLLRLLLRLRLRLLLLLRRRRLRLLRLLRRLRLRLLR",
+  "amazing-grace-bass":"RLRLRLRRRRLLLRRRLLRLLLLRRRLRRRRLLLRRLLRRRRLLRRRLLLLRRRLRRLLLLLLRRRLRRRLLLLLRRRRRRRLRLRRLR",
+  "scarborough-fair":"LRLLRLLLLRRLLLRRRRRRLLLLRLRRLLRRLLLRRRLRLRLLLLRRLLLRRLRRRLLRLRLRRRLLLLLRRRRRLLRLLLRLLRLR",
+  "greensleeves":"LRLLRLRRLRRLRLLLLRLRRRLRRRRRLRLLLRLLLLLRLRRRLRRRLRRLLLLRLLLLRLRRRLRRRRRLRLLLRLLRLRRLRLRLRLLLLLRLRRRLRRLRRRRLLRRRRLRLLLRLLLLLRLRRRLRRRLRRLLLLLRRLRRRRLLRRRRLRLLLRLLLLRRLRRLRLLRLLLLRRR"
+};
+for(const d of DEMOS){ const s=HAND_BAKED[d.id]; if(!s) continue;
+  const evs=[]; for(const n in d.sections) for(const bar of d.sections[n].bars) for(const e of bar)
+    if(e.v==="field"||e.v==="perc"||e.v==="ghost") evs.push(e);
+  if(evs.length!==s.length) continue;                        
+  evs.forEach((e,i)=>{ e.hand=s[i]; e.ha=true; }); }
 
 function SM(p,nm){  
   const s=p.sections[nm]||{};
@@ -5096,6 +5248,27 @@ let mode="pos", MAP=null, REPORT=null, overrides={};
 
 
 let transHowChoice=null, transHowKey=null, TRANSHOW="root", TRANSADJ=0;
+
+
+
+let transHandsChoice=null, transHandsKey="";
+function transHandsNow(){
+  if(!piece||!srcPan||!myPan) return "modify";
+  const key=(piece.id||"")+"|"+myPanId;
+  if(transHandsKey!==key){ transHandsKey=key; transHandsChoice=null; }
+  return transHandsChoice||"modify";
+}
+
+
+function transTurnWorth(){
+  if(!piece||!srcPan||!myPan||!MAP) return null;
+  const GS=handGeom(srcPan), GT=handGeom(myPan); let moved=0, sided=0;
+  for(const nm in piece.sections) for(const bar of piece.sections[nm].bars||[]) for(const ev of bar){
+    if(ev.v!=="field") continue; const to=MAP[ev.f]; if(to===null||to===undefined) continue;
+    const a=GS.get(ev.f), b=GT.get(to); if(!a||!b||Math.abs(a.lat)<0.12||Math.abs(b.lat)<0.12) continue;
+    sided++; if((a.lat>0)!==(b.lat>0)) moved++; }
+  return sided?{moved,sided,share:moved/sided}:null;
+}
 function transHowNow(){
   if(!piece||!srcPan||!myPan) return "root";
   const key=(piece.id||"")+"|"+myPanId;
@@ -6405,13 +6578,26 @@ function transHands(){
   THAND=new WeakMap(); if(!piece||!myPan||!MAP) return;
   const copy={sections:{},meter:piece.meter,sub:piece.sub,barsPerRow:piece.barsPerRow,groups:piece.groups}, links=[];
   for(const nm in piece.sections){ const sec=piece.sections[nm]; const cs={bars:[]}; if(sec.meter) cs.meter=sec.meter; if(sec.sub) cs.sub=sec.sub; if(sec.groups) cs.groups=sec.groups;
-    for(const bar of sec.bars||[]){ const cb=[]; for(const ev of bar){ if(ev.v!=="field"){ cb.push(Object.assign({},ev)); continue; }
+    
+
+    for(const bar of sec.bars||[]){ const cb=[]; for(const ev of bar){ if(ev.v!=="field"){ const c=Object.assign({},ev); delete c.ha; cb.push(c); links.push([c,ev]); continue; }
         let f=ev.f; const fo=foreignOf(ev); if(fo){ if(fo.pos===null) continue; f=fo.pos; } else { const back=standInPos(ev); if(back!=null) f=back; else { f=MAP[f]; if(f===null||f===undefined) continue; } }
         const c=Object.assign({},ev,{f}); delete c.ha; cb.push(c); links.push([c,ev]); }
       cs.bars.push(cb); }
     copy.sections[nm]=cs; }
-  try{ assignHands(copy,myPan,{}); for(const [c,ev] of links) THAND.set(ev,c.hand); }catch(e){ THAND=new WeakMap(); }
+  
+
+  const way=transHandsNow(); TURN=(way==="turn");
+  try{
+    if(way==="keep"){ for(const [c,ev] of links) THAND.set(ev,ev.hand); THANDN=0; }
+    
+
+    else { const r=assignHands(copy,myPan,{keep:way==="fresh"?"none":"soft"});
+      let n=0; for(const [c,ev] of links){ THAND.set(ev,c.hand); if(ev.hand&&c.hand!==ev.hand) n++; }
+      THANDN=n; }
+  }catch(e){ THAND=new WeakMap(); THANDN=0; }
 }
+let THANDN=0, TURN=false;
 
 
 function handOf(ev){ return (mode==="trans"&&MAP&&true&&THAND.has(ev))?THAND.get(ev):ev.hand; }
@@ -8483,7 +8669,7 @@ const pvId=p=>isBotPos(p)?"pvb"+(botIdx(p)-1):"pvf"+p;
 
 
 
-function topSpots(P,LAY){
+function topSpots(P,LAY,raw){    
   const cx=215, pr=148, n=P.fields.length, ring=zigzag(n);
   const L=(LAY===undefined)?(layoutFor(P.pan&&P.pan.id)||defaultLayout(P)):LAY;
   const RAD=panRadii(P,L);
@@ -8496,7 +8682,19 @@ function topSpots(P,LAY){
   });
   const c0=L&&L.f&&L.f[0];
   out.push({f:0, r:52, x:c0?c0.x:cx, y:c0?c0.y:cx});
-  return out;
+  return raw?out:panSpin(out,cx);
+}
+
+
+function panSpinPt(p,cx){    
+  if(!panTurned()||!p) return p;
+  const c=cx===undefined?215:cx;
+  return {x:+(2*c-p.x).toFixed(1), y:+(2*c-p.y).toFixed(1)};
+}
+function panSpin(list,cx){
+  if(!panTurned()) return list;
+  return list.map(o=>Object.assign({},o,{x:+(2*cx-o.x).toFixed(1), y:+(2*cx-o.y).toFixed(1)},
+    o.a===undefined?{}:{a:o.a+Math.PI}));
 }
 function undersideGeom(P,under,desk){
   const bots=(under&&P.bottom)||[];
@@ -8560,7 +8758,7 @@ function undersideGeom(P,under,desk){
   
 
   const UGAP=5;                        
-  const tops=topSpots(P);
+  const tops=topSpots(P,undefined,true);    
   const intrude=pl=>{ let w=0;
     for(const t of tops){ const need=pl.r+t.r+UGAP, d=Math.hypot(pl.x-t.x,pl.y-t.y);
       if(d<need) w=Math.max(w,need-d); }
@@ -8591,7 +8789,7 @@ function undersideGeom(P,under,desk){
   });
   let pad=0;
   for(const pl of place) pad=Math.max(pad,Math.hypot(pl.x-215,pl.y-215)+pl.r-R);
-  return {bots,pad:Math.max(0,Math.ceil(pad)+2),place,push};
+  return {bots,pad:Math.max(0,Math.ceil(pad)+2),place:panSpin(place,215),push};
 }
 
 
@@ -8785,9 +8983,12 @@ function panViewSVG(pan,label,opts){
 
   const ringPos=topSpots(P,LAY).filter(q=>q.f!==0);
   ringPos.forEach(q=>spots.push(q));
-  spots.push({f:0,r:dr,x:(LAY&&LAY.f&&LAY.f[0]?LAY.f[0].x:cx),y:(LAY&&LAY.f&&LAY.f[0]?LAY.f[0].y:cx)});
+  
+
+  const lay0=panSpinPt(LAY&&LAY.f&&LAY.f[0],cx);
+  spots.push({f:0,r:dr,x:(lay0?lay0.x:cx),y:(lay0?lay0.y:cx)});
   (U.place||[]).forEach(pl0=>{
-    const c=LAY&&LAY.b&&LAY.b[pl0.i];
+    const c=panSpinPt(LAY&&LAY.b&&LAY.b[pl0.i],cx);
     spots.push({b:pl0.i,r:pl0.r,x:c?c.x:pl0.x,y:c?c.y:pl0.y});
   });
    
@@ -8796,12 +8997,12 @@ function panViewSVG(pan,label,opts){
     h+=field(q.f,q.x,q.y,q.r,String(q.f),P.labelFor(q.f),
              +(q.r*.568).toFixed(1),+(q.r*.649).toFixed(1));
   });
-  const c0=LAY&&LAY.f&&LAY.f[0];
+  const c0=panSpinPt(LAY&&LAY.f&&LAY.f[0],cx);
   h+=field(0,c0?c0.x:cx,c0?c0.y:cx,dr,"D",P.labelFor(0),26,32);
   
 
   (U.place||[]).forEach(pl0=>{
-    const c=LAY&&LAY.b&&LAY.b[pl0.i];
+    const c=panSpinPt(LAY&&LAY.b&&LAY.b[pl0.i],cx);
     const pl=c?Object.assign({},pl0,{x:c.x,y:c.y}):pl0;
     const ns=Math.max(13,Math.round(pl.r*.58));
     h+='<g class="pvf pvb" id="pvb'+pl.i+'" data-b="'+pl.i+'" tabindex="0" role="button"'
@@ -9528,6 +9729,9 @@ function paintPanMenu(){
   $("pmNums").setAttribute("aria-pressed",String(panLabels!=="note"));
   $("pmNotes").setAttribute("aria-pressed",String(panLabels==="note"));
   $("pmZoomVal").textContent=Math.round(panZoom*100)+"%";
+  { const on=!!(piece&&piece.panTurn);       
+    const a=$("pmTurnOn"), b=$("pmTurnOff");
+    if(a) a.setAttribute("aria-pressed",String(on)); if(b) b.setAttribute("aria-pressed",String(!on)); }
   
 
   const autoFits=false;
@@ -9560,6 +9764,14 @@ function openPanMenu(){ paintPanMenu(); openDlg($("panMenuDlg")); }
     renderPanPanel(); paintPanMenu(); };
   on("pmZoomDn",()=>zoomBy(-.1));
   on("pmZoomUp",()=>zoomBy(.1));
+  
+
+  const setTurn=on=>{ if(!piece){ toast("Open a piece first"); return; } if(!!piece.panTurn===on) return;
+    snapshot(); if(on) piece.panTurn=true; else delete piece.panTurn;
+    paintPanMenu(); refresh();
+    toast(on?"The pan is drawn turned around — the notation is unchanged":"The pan is drawn as it is built"); };
+  on("pmTurnOn",()=>setTurn(true));
+  on("pmTurnOff",()=>setTurn(false));
   on("pmCustom",()=>{ $("panMenuDlg").close(); if(!panCustom) setPanCustom(true); });
   on("pmClose",()=>$("panMenuDlg").close());
 }
@@ -10533,6 +10745,26 @@ function renderReport(){
       +(live?'':'<span class="pinnote">— the same either way on these two pans</span>')+'</div>'; }
   
 
+  { const way=transHandsNow(), T=transTurnWorth();
+    const hb=(v,label,title)=>'<button data-th="'+v+'" aria-pressed="'+(way===v?"true":"false")+'" title="'+title+'">'+label+(v==="modify"?'<small class="defmark"> default</small>':'')+'</button>';
+    h+='<div class="pinrow"><span class="pinnote">Hands:</span>'
+      +'<span class="pills thpills" role="group" aria-label="Hands">'
+      +hb("modify","Modify where necessary","Your hand pattern stays. A hand moves only where this pan forces it: a bottom note now on the other side, a hand that would have to play a bottom note and another note at once, or a chord one hand cannot reach.")
+      +hb("keep","Keep the original hands","Every hand exactly as written, even where this pan makes it awkward.")
+      +hb("fresh","Work out new hands","The piece is handed again from scratch for this pan.")
+      +hb("turn","Turn the pan around","Keep the hand pattern and turn the instrument instead: the pan is drawn round, low notes at the top. The notation does not change — field 2 is still 2, it just sits on the other side.")
+      +'</span></div>';
+    const said=way==="keep"?"Every hand as written."
+      :way==="turn"?("The pan below is drawn turned round"+(THANDN?" — "+THANDN+" hand"+(THANDN===1?"":"s")+" still had to move":"; every hand as written")+".")
+      :THANDN?(THANDN+" hand"+(THANDN===1?"":"s")+" moved"+(way==="modify"?" — this pan forced it":""))
+      :(way==="modify"?"No hand had to move.":"Handed again for this pan.");
+    h+='<div class="pinrow"><span class="pinnote fitparts">'+said+'</span></div>';
+    
+
+    if(T&&T.share>=0.6&&way!=="turn")
+      h+='<div class="pinrow"><span class="pinnote fitparts turnhint">'+T.moved+' of '+T.sided+' notes have landed on the other side of the pan. Turning the handpan around can help to stay closer to the original hand pattern.</span></div>'; }
+  
+
   
 
   if(REPORT.nPins)
@@ -10585,6 +10817,10 @@ function renderReport(){
   }));
   const rr=$("repReset");
   if(rr) rr.addEventListener("click",()=>{ delete overrides[myPanId]; delete bulkPrev[myPanId]; saveOv(); refresh(); });
+  R.querySelectorAll(".thpills button[data-th]").forEach(b=>b.addEventListener("click",()=>{
+    if(transHandsChoice===b.dataset.th) return;
+    transHandsChoice=b.dataset.th; refresh();
+  }));
   R.querySelectorAll(".kfpills button[data-kf]").forEach(b=>b.addEventListener("click",()=>{
     const v=b.dataset.kf, now=(bulkPrev[myPanId]||{}).kind||"none";
     if(v===now) return;

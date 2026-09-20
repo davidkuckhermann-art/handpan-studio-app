@@ -1013,6 +1013,10 @@ body.nonota #scorefoot{margin-top:0; border-top:none}
 /* the bell alone is red — the button stays a plain icon button like its
    neighbours, so only the thing that undoes a silenced message stands out */
 #panPrefBtn svg{color:var(--warn-red)}
+/* THE TURN HINT IS THE ONE LINE ON THIS CARD THAT ASKS FOR A DECISION (David, 20 Sep: "can we color it in dark
+   red so it's something that people see readily?") — the app's own warning red, which already has its dark-mode
+   value, and a touch of weight so it carries at a glance without shouting. */
+.turnhint,.pinnote.turnhint{color:var(--warn-red); font-weight:700}   /* the offer to turn the pan, in the one red that is not clay — .pinnote sets --ink3 later in the sheet, so the class alone would lose */
 /* THE BELL BELONGS TO THE LESSON (David, 29 Aug: "take out the red bell to
    re-enable popups. We only need that bell in the kajabi embed version").
    What it brings back are the video-sound messages — may the app play the pan
@@ -7020,6 +7024,13 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
       <button class="ctl" id="pmZoomUp" title="Bigger pan">＋</button></span></div>
   <div class="drow"><span>Layout</span>
     <button class="ctl" id="pmCustom" title="Drag the fields to match your instrument">Edit pan layout…</button></div>
+  <!-- TURN THE PAN ROUND (David, 20 Sep: "we also need to give the user the option to rotate the pan by 180
+       degrees manually in the pan tab settings menu"). Saved WITH THE PIECE, so a lesson shows the instrument
+       the way the piece is played. The notation never changes: field 2 is still 2, it sits on the other side. -->
+  <div class="drow"><span>Turn the pan around</span>
+    <span class="pills" role="group" aria-label="Turn the pan around">
+      <button id="pmTurnOff" title="The pan as it is built: field 1 nearest you">Normal</button>
+      <button id="pmTurnOn" title="Turned half round: the low notes at the top. The notation stays as it is — only the drawing turns">Turned</button></span></div>
   <div class="row" style="justify-content:flex-end;margin:12px 0 0">
     <button class="ctl" id="pmClose">Done</button></div>
 </dialog>
@@ -8130,6 +8141,14 @@ function panById(id){ return allPans().find(p=>p.id===id)
    lower two notes", runs, repeats, two-note strikes, percussive strokes, the ranking. The old rules this
    replaces — bass to the left, alternation by position — were piano habits ("nonsense on the handpan").
    ═══════════════════════════════════════════════════════════════════════ */
+/* THE INSTRUMENT DRAWN ROUND — two sources, and only one of them lasts. The piece's own `panTurn` (the pan
+   card's setting) travels with the piece; the transposition card's fourth way (`TURN`) belongs to the map it
+   was chosen on, so it counts ONLY while For my pan is showing one. Without that guard the turn survived
+   leaving the mode and turned every pan in the app, the bench's included (20 Sep). */
+function panTurned(){ if(typeof panCustom!=="undefined"&&panCustom) return false;   // the layout is dragged on the pan AS BUILT
+  return (TURN&&mode==="trans"&&!!MAP)||!!(piece&&piece.panTurn); }
+/* `turn` here is only for asking what a turned pan WOULD look like; the pan's own state already reaches this
+   function through topSpots, so assignHands passes nothing and the places arrive turned or not as they are. */
 function handGeom(P,turn){                     // position → {side:"L"|"R"|"C", lat (−1 far left … +1 far right), x, y, ang, bottom}
   const cx=215, out=new Map();
   const spots=topSpots(P), wide=Math.max(60,...spots.map(s=>Math.abs(s.x-cx)));
@@ -8138,11 +8157,11 @@ function handGeom(P,turn){                     // position → {side:"L"|"R"|"C"
      hand, a field at 12 o'clock is 50/50, the widest fields are strongly their side's). `lat` is that distance,
      −1 (far left) to +1 (far right); `side` stays for the callers that only want a label. `turn` mirrors the
      instrument — the player turned the pan round (his transposition card), so the sides swap. */
-  const at=(x,y,bottom)=>{ const lat=+(((turn?2*cx-x:x)-cx)/wide).toFixed(4);
-    return {side:Math.abs(lat)<0.12?"C":(lat>0?"R":"L"),lat,x:turn?2*cx-x:x,y,ang:Math.atan2(y-cx,(turn?2*cx-x:x)-cx)*180/Math.PI,bottom}; };
+  const at=(x,y,bottom)=>{ const X=turn?2*cx-x:x, Y=turn?2*cx-y:y, lat=+((X-cx)/wide).toFixed(4);
+    return {side:Math.abs(lat)<0.12?"C":(lat>0?"R":"L"),lat,x:X,y:Y,ang:Math.atan2(Y-cx,X-cx)*180/Math.PI,bottom}; };
   for(const s of spots) out.set(s.f,at(s.x,s.y,false));
   const L=layoutFor(P.pan&&P.pan.id); const U=undersideGeom(P,true);
-  (U.place||[]).forEach(pl=>{ const c=L&&L.b&&L.b[pl.i]; out.set(botPos(pl.i+1),c?at(c.x,c.y,true):at(pl.x,pl.y,true)); });
+  (U.place||[]).forEach(pl=>{ const c=panSpinPt(L&&L.b&&L.b[pl.i],cx); out.set(botPos(pl.i+1),c?at(c.x,c.y,true):at(pl.x,pl.y,true)); });
   return out;
 }
 function handSides(P){ return handGeom(P); }
@@ -8166,7 +8185,7 @@ function handPair(P){ const ring=zigzag((P.fields||[]).length), adj=new Set(); c
    alternation, last.                                                                                        */
 const HAND_COST={ bottomWrong:3000, bottomBusy:3000, pairStep:[0,0,200,450,1500],
   threeSame:8, threeTwo:60, threeDiff:300, keepSoft:350, keepHard:1200,
-  side:55, move:45, cross:200, leftDouble:6, rhythm:6, dingRight:15, repeat:2, jam:120 };
+  side:55, move:45, cross:200, leftDouble:6, rhythm:6, dingRight:15, repeat:2, jam:120, keepPerc:20 };
 /* THE HARD ONES OUTRANK EVEN "KEEP THE ORIGINAL HANDS" (David, 18 Sep: "hard/semi-hard physical playability >
    original hand structure"): a bottom note on the wrong side and a hand that would have to play a bottom note
    and another note at once cost 3000, an unreachable pair 1500, against 1200 for breaking a hard keep and 250
@@ -8239,8 +8258,9 @@ function assignHands(piece,P,opts){
   const keepMode=opts.keep||(opts.onlyAuto?"none":(handKeepsOriginal(piece)?"soft":"none"));
   const keepCost=keepMode==="none"?0:C.keepSoft;
   const names=opts.window?[opts.window.sec]:(opts.sections||Object.keys(piece.sections||{}));
-  const dist=(a,b)=>{ const x=G.get(a), y=G.get(b); if(!x||!y) return 0;
-    return Math.min(1,Math.hypot(x.x-y.x,x.y-y.y)/296); };                     // 0 … 1, the pan's own diameter
+  const span=(a,b)=>{ const x=G.get(a), y=G.get(b); if(!x||!y) return 0;
+    return Math.hypot(x.x-y.x,x.y-y.y)/296; };                                 // in pan widths; a bottom note can exceed 1
+  const dist=(a,b)=>Math.min(1,span(a,b));                                     // 0 … 1, for the movement cost
   for(const nm of names){ const sec=piece.sections[nm]; if(!sec) continue; const m=SM(piece,nm), bp=m.bp, sub=m.sub;
     const from=opts.window?Math.max(0,opts.window.from):0, to=opts.window?Math.min(sec.bars.length-1,opts.window.to):sec.bars.length-1;
     const starts=new Set((cellsOf(m)||[]).map(c=>c.start));                    // a subdivision's start: the right hand's default
@@ -8257,22 +8277,95 @@ function assignHands(piece,P,opts){
     const slots=[]; for(let b=from;b<=to;b++){ const byT=new Map(); for(const e of sec.bars[b]||[]){ if(e.v!=="field"&&e.v!=="perc"&&e.v!=="ghost") continue; if(!byT.has(e.t)) byT.set(e.t,[]); byT.get(e.t).push(e); }
       for(const t of [...byT.keys()].sort((a,b)=>a-b)) slots.push({at:b*bp+t,t,evs:byT.get(t)}); }
     if(!slots.length) continue;
-    /* the notes a keep holds still: everything with a hand, minus the ones a hard trouble frees */
-    const freed=new Set();
-    if(keepMode==="soft") for(const sl of slots) for(const e of handHardFree(P,G,sl.evs)) freed.add(e);
+    /* THE NOTES A KEEP HOLDS STILL — three tiers since 20 Sep: PINNED (the piece's own hand, which no cost can
+       move) · FREED (a hard trouble: the hand may move, but still prefers where it was, at keepSoft) · LOOSE
+       (decided on playability alone, with no keep price at all). */
+    const freed=new Set(), loose=new Set();
+    const atOf=new Map(); for(const sl of slots) for(const e of sl.evs) atOf.set(e,sl.at);
+    if(keepMode==="soft"){
+      for(const sl of slots) for(const e of handHardFree(P,G,sl.evs)) freed.add(e);
+      /* A HAND CANNOT CROSS THE INSTRUMENT BETWEEN TWO STROKES (David, 20 Sep, of Flavourful Freestyle's A1 on
+         his B2 Amara 17: the left hand fetching 5 on the far right and then the bottom note 4 on the far left
+         one sixteenth later — 384 px on a 296 px pan, 146 ms at 103 BPM — while the right hand, standing on 3
+         right beside 5, rested). That is a physical limit at tempo, not a side preference, so it outranks the
+         piece's own hands. BOTH strokes go loose when one hand would travel FURTHER THAN THE PAN IS WIDE
+         between two strokes at stroke speed, and the other hand plays nothing where it lands.
+         THE THRESHOLD IS MEASURED, NOT CHOSEN. Every hand jump at stroke speed in all of David's own pieces
+         was listed: 544 of them, the largest 0.99 pan widths (Baran's tune, 3 → 6; Let It Be, 7 → 2 — opposite
+         fields on the top, which is as far as the top surface reaches). The bar that prompted the rule jumps
+         1.30, because a bottom note lies outside the dome. Half a width — the first guess — freed 94 of his
+         own jumps and rewrote 118 notes of his pieces. A full width plus a tenth for slack frees none of them
+         and still catches the case. */
+      const last={L:null,R:null};
+      for(const sl of slots){
+        for(const e of sl.evs){ if(!e.hand) continue; const h=e.hand==="L"?"L":"R", pv=last[h];
+          if(pv&&pv.v==="field"&&e.v==="field"&&(sl.at-atOf.get(pv))*3<=sub
+            &&span(pv.f,e.f)>1.1&&!sl.evs.some(x=>x.hand&&x.hand!==e.hand)){ loose.add(e); loose.add(pv); } }
+        for(const e of sl.evs) if(e.hand) last[e.hand==="L"?"L":"R"]=e; }
+      /* ONCE ONE NOTE OF A PATTERN HAS MOVED, THE ONES AROUND IT MOVE MORE EASILY (David, 20 Sep: "as soon as
+         one note of a pattern is changed, the others can also be changed more easily. The cost of that should
+         be lowered" — and, asked which notes and how much: the ones immediately around it, within about a
+         beat, and free rather than merely cheaper). A hand pattern is a shape; half a broken shape plays worse
+         than a new one. */
+      const seeds=[...freed,...loose].map(e=>atOf.get(e));
+      if(seeds.length) for(const sl of slots) for(const e of sl.evs)
+        if(e.hand&&!freed.has(e)&&!loose.has(e)&&seeds.some(a=>Math.abs(a-sl.at)<=sub)) loose.add(e);
+    }
+    /* A PERCUSSIVE STROKE IS FREED BY ONE THING ONLY: THE REASON DAVID GAVE FOR FREEING IT (20 Sep 2026).
+       A slap, tak or knock has no side, so the rule may decide it — but "the original hand pattern should hold a
+       preference; any change needs a good reason", and the reason he named is one sentence long: "the slaps on
+       the second beat of the first and third bars should be played right BECAUSE THE NOTES BEFORE AND AFTER ARE
+       BOTH PLAYED LEFT". So a percussive stroke is freed when the stroke before it and the stroke after it are
+       both fast neighbours and both carry the hand it is written with — one hand playing three in a row where
+       the other is free. Everywhere else it stands like any note.
+       IT CANNOT BE A WEIGHT. A flat price for moving a slap was tried across 0…100: his own pieces drift at any
+       price under 60 (six slaps in Baran's tune, ten in Alien Next Door, on nothing but movement), while the
+       three-in-a-row case he described is only worth about 25 — there is no number that keeps the one and allows
+       the other. The separation is the reason, not the price; once freed, C.keepPerc is only a light preference
+       so a freed stroke does not flip on a coin.
+       A GHOST IS NOT PERCUSSION (David, 20 Sep, having read every move the exemption would make in his own
+       pieces — every one of them a ghost): "apply it to slaps, taks and knocks but not ghosts". A run of ghosts
+       is grouped the way he plays it, and that grouping is a musical decision, not a movement one; the rule
+       would simply have made it alternate. So a ghost keeps its hand like any note on a field.
+       IT IS JUDGED AGAINST THE HANDS THIS PASS PRODUCES, not the written ones (David, 20 Sep, of the slap in
+       Flavourful Freestyle's A1 on his B2 Amara 17: "why is the slap on beat 2 played with the left hand while
+       it sits between two left-hand notes?"). As written, that slap alternates — its neighbours are right-hand
+       notes — so the test left it pinned; but on his pan those neighbours are a bottom note the hard rule moves
+       to the LEFT, and the slap ends up in the middle of three left strokes with its own hand nailed down. The
+       test judged the before and applied it to the after. So the pass runs, the test is taken again on the
+       hands that came out, and the pass runs once more if it changed anything. */
+    const percFreedFrom=handOfEv=>{ const s=new Set(); if(keepMode!=="soft") return s;
+      for(let i=1;i<slots.length-1;i++){
+        const a=slots[i-1], b=slots[i], c=slots[i+1];
+        if((b.at-a.at)*3>sub||(c.at-b.at)*3>sub) continue;                     // both neighbours at stroke speed
+        if(b.evs.length!==1) continue;                                         // …and the stroke alone in its slot
+        const e=b.evs[0]; if(e.v!=="perc"||!e.hand) continue;
+        const all=(sl,h)=>sl.evs.length&&sl.evs.every(x=>handOfEv(x)===h);
+        if(all(a,e.hand)&&all(c,e.hand)) s.add(e); }
+      return s; };
+    let percFreed=percFreedFrom(e=>e.hand);
     const fixed=e=>(opts.onlyAuto&&!e.ha&&e.hand)                              // a hand a person set stands (the editor)
-      ||(keepMode!=="none"&&e.hand&&!freed.has(e));                            // …and so does the piece's own, bar a hard trouble
+      ||(keepMode!=="none"&&e.hand&&!freed.has(e)&&!loose.has(e)&&!percFreed.has(e));   // …and so does the piece's own, bar a trouble
     const S0={fL:null,gL:null,nL:0,pL:false,fR:null,gR:null,nR:0,pR:false};
     const key=st=>st.fL+"~"+st.gL+"~"+st.nL+(st.pL?1:0)+"|"+st.fR+"~"+st.gR+"~"+st.nR+(st.pR?1:0);
+    const solve=()=>{
     let layer=new Map([[key(S0),{st:S0,cost:0,back:null,pick:null}]]);
-    for(let i=0;i<slots.length;i++){ const sl=slots[i], gap=i?sl.at-slots[i-1].at:1e9, fast=sub>=4&&gap===1, n=sl.evs.length, next=new Map();
+    /* FAST IS A LENGTH OF TIME, NOT A NUMBER OF GRID STEPS (20 Sep 2026). "Three strokes in a row" only counts
+       for fast notes (David, 18 Sep), and the test read gap===1 — one step of the section's own grid. A section
+       written on 32nds (sub 8) has its sixteenths TWO steps apart, so in Flavourful Freestyle's D1, where every
+       note is a sixteenth, no two strokes were ever seen as consecutive and the alternation rules never ran at
+       all. Fast now means the gap is at most a third of a beat: a sixteenth, a 32nd, a triplet eighth — the same
+       stroke speed on every grid. */
+    for(let i=0;i<slots.length;i++){ const sl=slots[i], gap=i?sl.at-slots[i-1].at:1e9, fast=gap*3<=sub, n=sl.evs.length, next=new Map();
       const rp=handRhythmPref(m,sl.t), groupStart=starts.has(sl.t);
-      for(let mask=0;mask<(1<<n);mask++){ const hs=sl.evs.map((e,k)=>(mask>>k)&1?"R":"L"); let bad=false, c0=0;
+      const want=groupStart?"R":rp;                                            // the rhythmic default for this slot
+      for(let mask=0;mask<(1<<n);mask++){ const hs=sl.evs.map((e,k)=>(mask>>k)&1?"R":"L"); let bad=false, c0=0, rmiss=0;
         for(let k=0;k<n&&!bad;k++){ const e=sl.evs[k], h=hs[k];
           if(fixed(e)&&e.hand!==h){ bad=true; break; }
-          if(keepCost&&e.hand&&!fixed(e)&&e.hand!==h) c0+=keepCost;             // the piece's own hands: changed only for a reason
+          if(e.hand&&e.hand!==h&&keepCost&&!fixed(e))
+            c0+= loose.has(e) ? 0 : (percFreed.has(e)?C.keepPerc:keepCost);     // loose: playability alone · freed: still prefers where it was
           const p=pref.get(e); if(p&&p!==h) c0+=C.jam;
-          if((groupStart||rp)&&e.v!=="ghost"){ const want=groupStart?"R":rp; if(want&&want!==h) c0+=C.rhythm; }
+          if(want&&want!==h&&e.v!=="ghost") rmiss++;
           if(e.v!=="field") continue; const g=G.get(e.f); if(!g) continue;
           if(g.bottom){ if(h!==g.side) c0+=C.bottomWrong; }
           else { if(g.lat>0?h!=="R":h!=="L") c0+=C.side*Math.abs(g.lat);        // the side, by how far out the field sits
@@ -8283,6 +8376,11 @@ function assignHands(piece,P,opts){
           if(fl.length===2) c0+=handPairCost(P,fl[0],fl[1]);
           else if(fl.length>2){ c0+=C.pairStep[C.pairStep.length-1]; for(let a=0;a<fl.length;a++) for(let b=a+1;b<fl.length;b++) c0+=handPairCost(P,fl[a],fl[b]); } }
         for(const [,node] of layer){ const st=node.st; let c=c0;
+          /* THE RHYTHMIC DEFAULT NEVER ASKS A HAND TO PLAY TWICE (David, 20 Sep, of a slap written between two
+             right-hand notes and moved onto the right: his alternation became three right strokes). "Right on
+             the beat" is a style preference; taking the hand that just played, when the other is free, is not
+             what he means by it. So the default is silent when the hand it wants struck the slot before. */
+          if(rmiss&&want&&!st["p"+want]) c+=C.rhythm*rmiss;
           const ns={fL:st.fL,gL:st.gL,nL:0,pL:false,fR:st.fR,gR:st.gR,nR:0,pR:false};
           for(const h of ["L","R"]){ const F="f"+h, Gp="g"+h, N="n"+h, Pp="p"+h;
             const mine=sl.evs.filter((e,k)=>hs[k]===h); if(!mine.length){ ns[N]=st[Pp]&&fast?st[N]:0; continue; }
@@ -8312,6 +8410,14 @@ function assignHands(piece,P,opts){
     }
     let best=null; for(const node of layer.values()) if(!best||node.cost<best.cost) best=node;
     const picks=[]; for(let node=best;node&&node.pick;node=node.back) picks.unshift(node.pick);
+    return picks; };
+    let picks=solve();
+    /* the second look: was a percussive stroke left pinned that the hands this pass produced would free? */
+    for(let pass=0;pass<2;pass++){
+      const now=new Map(); slots.forEach((sl,i)=>sl.evs.forEach((e,k)=>now.set(e,picks[i][k])));
+      const again=percFreedFrom(e=>now.get(e)||e.hand);
+      if(again.size===percFreed.size&&[...again].every(e=>percFreed.has(e))) break;
+      percFreed=again; picks=solve(); }
     slots.forEach((sl,i)=>sl.evs.forEach((e,k)=>{ if(fixed(e)) return; total++; if(e.hand!==picks[i][k]) changed++; e.hand=picks[i][k]; e.ha=true; })); }
   return {changed,total};
 }
@@ -10173,6 +10279,34 @@ let mode="pos", MAP=null, REPORT=null, overrides={};
    every source interval before asking the target pan for it. Root to root is
    0 by definition. */
 let transHowChoice=null, transHowKey=null, TRANSHOW="root", TRANSADJ=0;
+/* THE HANDS WHEN A PIECE MOVES TO ANOTHER PAN (David, 18–20 Sep). Four ways, his words: "1. keep original hand
+   pattern, 2. modify where necessary, 3. calculate new hand pattern, 4. turn the handpan around (in examples
+   like going from kurd to amara, where all notes basically land on the other side. In that situation, turning
+   the handpan around can be an option to play the composition comfortably instead of swapping hands which is
+   very uncomfortable and difficult for most people)". Never remembered — like Root to root, the choice lives
+   for this piece on this pan and starts at "modify" each time. Turning the pan round keeps the hands AND the
+   notation exactly as written; only the drawing turns (handGeom's `turn`), so field 2 keeps its name and
+   appears on the right. */
+const TRANS_HANDS=["modify","keep","fresh","turn"];
+let transHandsChoice=null, transHandsKey="";
+function transHandsNow(){
+  if(!piece||!srcPan||!myPan) return "modify";
+  const key=(piece.id||"")+"|"+myPanId;
+  if(transHandsKey!==key){ transHandsKey=key; transHandsChoice=null; }
+  return transHandsChoice||"modify";
+}
+/* WHEN TURNING THE PAN ROUND IS WORTH OFFERING: most of the notes the piece actually plays have landed on the
+   other side of the instrument. Measured on the mapped positions, the ding and the fields within a hair of the
+   centre line left out of the count (they have no side to change). */
+function transTurnWorth(){
+  if(!piece||!srcPan||!myPan||!MAP) return null;
+  const GS=handGeom(srcPan), GT=handGeom(myPan); let moved=0, sided=0;
+  for(const nm in piece.sections) for(const bar of piece.sections[nm].bars||[]) for(const ev of bar){
+    if(ev.v!=="field") continue; const to=MAP[ev.f]; if(to===null||to===undefined) continue;
+    const a=GS.get(ev.f), b=GT.get(to); if(!a||!b||Math.abs(a.lat)<0.12||Math.abs(b.lat)<0.12) continue;
+    sided++; if((a.lat>0)!==(b.lat>0)) moved++; }
+  return sided?{moved,sided,share:moved/sided}:null;
+}
 function transHowNow(){
   if(!piece||!srcPan||!myPan) return "root";
   const key=(piece.id||"")+"|"+myPanId;
@@ -12957,13 +13091,31 @@ function transHands(){
   THAND=new WeakMap(); if(!piece||!myPan||!MAP) return;
   const copy={sections:{},meter:piece.meter,sub:piece.sub,barsPerRow:piece.barsPerRow,groups:piece.groups}, links=[];
   for(const nm in piece.sections){ const sec=piece.sections[nm]; const cs={bars:[]}; if(sec.meter) cs.meter=sec.meter; if(sec.sub) cs.sub=sec.sub; if(sec.groups) cs.groups=sec.groups;
-    for(const bar of sec.bars||[]){ const cb=[]; for(const ev of bar){ if(ev.v!=="field"){ cb.push(Object.assign({},ev)); continue; }
+    /* EVERY STROKE IS LINKED, NOT ONLY THE NOTES ON A FIELD (20 Sep 2026). A slap, tak, knock or ghost was
+       cloned into the copy but never put in `links`, so the rule's answer for it was computed and thrown away
+       and the table drew the hand the piece was WRITTEN with. That is what David saw on his B2 Amara 17: "why
+       is the slap on beat 2 played with the left hand while it sits between two left-hand notes?" — the notes
+       beside it were showing their re-derived hands and the slap was showing its old one. */
+    for(const bar of sec.bars||[]){ const cb=[]; for(const ev of bar){ if(ev.v!=="field"){ const c=Object.assign({},ev); delete c.ha; cb.push(c); links.push([c,ev]); continue; }
         let f=ev.f; const fo=foreignOf(ev); if(fo){ if(fo.pos===null) continue; f=fo.pos; } else { const back=standInPos(ev); if(back!=null) f=back; else { f=MAP[f]; if(f===null||f===undefined) continue; } }
         const c=Object.assign({},ev,{f}); delete c.ha; cb.push(c); links.push([c,ev]); }
       cs.bars.push(cb); }
     copy.sections[nm]=cs; }
-  try{ assignHands(copy,myPan,{}); for(const [c,ev] of links) THAND.set(ev,c.hand); }catch(e){ THAND=new WeakMap(); }
+  /* the four ways: keep every hand · modify where a hard trouble forces it (the default) · work them out
+     afresh · turn the pan round, which keeps the hands and mirrors the instrument under them */
+  const way=transHandsNow(); TURN=(way==="turn");
+  try{
+    if(way==="keep"){ for(const [c,ev] of links) THAND.set(ev,ev.hand); THANDN=0; }
+    /* TURNING DOES NOT DECIDE THE HANDS (David, 20 Sep: "turning the pan around should not by itself change the
+       hand pattern. After the pan is turned around, the rules should be run to see where there are necessary
+       changes"). So the turn is a geometry, and the SAME soft keep runs on it: the hands stand, and one moves
+       only where the turned instrument forces it. */
+    else { const r=assignHands(copy,myPan,{keep:way==="fresh"?"none":"soft"});
+      let n=0; for(const [c,ev] of links){ THAND.set(ev,c.hand); if(ev.hand&&c.hand!==ev.hand) n++; }
+      THANDN=n; }
+  }catch(e){ THAND=new WeakMap(); THANDN=0; }
 }
+let THANDN=0, TURN=false;
 /* …BUT NEVER WHILE EDITING (David, 17 Sep: in the tab "every time I click into
    a lower cell the hand should be set to right … the 7 and 3 in the cell to
    the left change position even though I don't touch them"). Reproduced in
@@ -17112,7 +17264,7 @@ const pvEl=p=>$(pvId(p));
    come to rest on top of a field and nothing in the drawing noticed. Both now
    read this. Pass LAY if you already resolved it; omit it and the same
    stored-then-computed order is used that panViewSVG uses. */
-function topSpots(P,LAY){
+function topSpots(P,LAY,raw){   // raw: the places as the pan is built, without the turn (undersideGeom seats in that frame)
   const cx=215, pr=148, n=P.fields.length, ring=zigzag(n);
   const L=(LAY===undefined)?(layoutFor(P.pan&&P.pan.id)||defaultLayout(P)):LAY;
   const RAD=panRadii(P,L);
@@ -17125,7 +17277,24 @@ function topSpots(P,LAY){
   });
   const c0=L&&L.f&&L.f[0];
   out.push({f:0, r:52, x:c0?c0.x:cx, y:c0?c0.y:cx});
-  return out;
+  return raw?out:panSpin(out,cx);
+}
+/* THE INSTRUMENT TURNED ROUND (David, 18–20 Sep: "turning the handpan around can be an option to play the
+   composition comfortably instead of swapping hands"; the pan "should then display rotated 180 degrees with
+   the low notes on top and the high notes on the bottom"). ONE PLACE DOES IT: the places themselves are
+   rotated half a turn about the pan's centre, so everything that reads them follows — the drawing, the hand
+   rule's sides, the full-screen pan, the chord overview. The NOTATION never changes: field 2 is still 2, it
+   simply sits on the other side, and the labels are drawn upright as always because only the coordinates turn,
+   never the elements. */
+function panSpinPt(p,cx){   // one place taken from a stored layout, turned with the rest of the drawing
+  if(!panTurned()||!p) return p;
+  const c=cx===undefined?215:cx;
+  return {x:+(2*c-p.x).toFixed(1), y:+(2*c-p.y).toFixed(1)};
+}
+function panSpin(list,cx){
+  if(!panTurned()) return list;
+  return list.map(o=>Object.assign({},o,{x:+(2*cx-o.x).toFixed(1), y:+(2*cx-o.y).toFixed(1)},
+    o.a===undefined?{}:{a:o.a+Math.PI}));
 }
 function undersideGeom(P,under,desk){
   const bots=(under&&P.bottom)||[];
@@ -17260,7 +17429,7 @@ function undersideGeom(P,under,desk){
      after that slides along the rim on its own, which does break the
      symmetry, and it moves the fewest degrees that clear. */
   const UGAP=5;                       // "a few px" between any two tone fields
-  const tops=topSpots(P);
+  const tops=topSpots(P,undefined,true);   // the unturned frame: the seats are worked out as the pan is built, and the whole underside turns with the top at the end
   const intrude=pl=>{ let w=0;
     for(const t of tops){ const need=pl.r+t.r+UGAP, d=Math.hypot(pl.x-t.x,pl.y-t.y);
       if(d<need) w=Math.max(w,need-d); }
@@ -17291,7 +17460,7 @@ function undersideGeom(P,under,desk){
   });
   let pad=0;
   for(const pl of place) pad=Math.max(pad,Math.hypot(pl.x-215,pl.y-215)+pl.r-R);
-  return {bots,pad:Math.max(0,Math.ceil(pad)+2),place,push};
+  return {bots,pad:Math.max(0,Math.ceil(pad)+2),place:panSpin(place,215),push};
 }
 /* ---- THE MUTANT LAYOUT, COMPUTED (David, 29 Aug) --------------------------
    "Instead of storing a custom layout with every scale, create an algorithm
@@ -17581,9 +17750,14 @@ function panViewSVG(pan,label,opts){
      were. topSpots() is that one answer now, and the loop below reads it. */
   const ringPos=topSpots(P,LAY).filter(q=>q.f!==0);
   ringPos.forEach(q=>spots.push(q));
-  spots.push({f:0,r:dr,x:(LAY&&LAY.f&&LAY.f[0]?LAY.f[0].x:cx),y:(LAY&&LAY.f&&LAY.f[0]?LAY.f[0].y:cx)});
+  /* THE WHOLE DRAWING TURNS AS ONE PIECE (David, 20 Sep: "turning the pan around currently messes up the design
+     of the handpan"). The ring came through topSpots, which turns; the dome and the underside are read from the
+     STORED LAYOUT, which does not — so on a pan with inner notes the dome sat where it always had while the ring
+     went round it, and the two collided. Every coordinate taken from a layout passes through panSpinPt now. */
+  const lay0=panSpinPt(LAY&&LAY.f&&LAY.f[0],cx);
+  spots.push({f:0,r:dr,x:(lay0?lay0.x:cx),y:(lay0?lay0.y:cx)});
   (U.place||[]).forEach(pl0=>{
-    const c=LAY&&LAY.b&&LAY.b[pl0.i];
+    const c=panSpinPt(LAY&&LAY.b&&LAY.b[pl0.i],cx);
     spots.push({b:pl0.i,r:pl0.r,x:c?c.x:pl0.x,y:c?c.y:pl0.y});
   });
   // mirrored: the zigzag's odd fields sit on the player's RIGHT (David, 26 Aug —
@@ -17592,13 +17766,13 @@ function panViewSVG(pan,label,opts){
     h+=field(q.f,q.x,q.y,q.r,String(q.f),P.labelFor(q.f),
              +(q.r*.568).toFixed(1),+(q.r*.649).toFixed(1));
   });
-  const c0=LAY&&LAY.f&&LAY.f[0];
+  const c0=panSpinPt(LAY&&LAY.f&&LAY.f[0],cx);
   h+=field(0,c0?c0.x:cx,c0?c0.y:cx,dr,"D",P.labelFor(0),26,32);
   /* drawn AFTER the ring so a straddling field sits over the rim line, and
      dust-filled + dashed — the same neutral disc David chose for the notation
      mark, so the score and the drawing say "underside" in one voice */
   (U.place||[]).forEach(pl0=>{
-    const c=LAY&&LAY.b&&LAY.b[pl0.i];
+    const c=panSpinPt(LAY&&LAY.b&&LAY.b[pl0.i],cx);
     const pl=c?Object.assign({},pl0,{x:c.x,y:c.y}):pl0;
     const ns=Math.max(13,Math.round(pl.r*.58));
     h+='<g class="pvf pvb" id="pvb'+pl.i+'" data-b="'+pl.i+'" tabindex="0" role="button"'
@@ -18549,6 +18723,9 @@ function paintPanMenu(){
   $("pmNums").setAttribute("aria-pressed",String(panLabels!=="note"));
   $("pmNotes").setAttribute("aria-pressed",String(panLabels==="note"));
   $("pmZoomVal").textContent=Math.round(panZoom*100)+"%";
+  { const on=!!(piece&&piece.panTurn);      // the piece's own turn (the transposition card's is the map's, and temporary)
+    const a=$("pmTurnOn"), b=$("pmTurnOff");
+    if(a) a.setAttribute("aria-pressed",String(on)); if(b) b.setAttribute("aria-pressed",String(!on)); }
   /* NO SIZE ROW ON MOBILE AT ALL (David, 4 Sep: "there should be no pan size
      setting on mobile because, on mobile, the pan automatically adjusts size
      to the available space"). He is right in the literal sense, which is why
@@ -18590,6 +18767,14 @@ function openPanMenu(){ paintPanMenu(); openDlg($("panMenuDlg")); }
     renderPanPanel(); paintPanMenu(); };
   on("pmZoomDn",()=>zoomBy(-.1));
   on("pmZoomUp",()=>zoomBy(.1));
+  /* TURN THE PAN ROUND BY HAND (David, 20 Sep) — saved with the piece, undoable, and it changes nothing but
+     the drawing: the notation keeps every number and every hand. */
+  const setTurn=on=>{ if(!piece){ toast("Open a piece first"); return; } if(!!piece.panTurn===on) return;
+    snapshot(); if(on) piece.panTurn=true; else delete piece.panTurn;
+    paintPanMenu(); refresh();
+    toast(on?"The pan is drawn turned around — the notation is unchanged":"The pan is drawn as it is built"); };
+  on("pmTurnOn",()=>setTurn(true));
+  on("pmTurnOff",()=>setTurn(false));
   on("pmCustom",()=>{ $("panMenuDlg").close(); if(!panCustom) setPanCustom(true); });
   on("pmClose",()=>$("panMenuDlg").close());
 }
@@ -20036,6 +20221,28 @@ function renderReport(){
     h+='<div class="pinrow howrow"><span class="pinnote">Move the piece:</span>'
       +'<span class="pills howpills" role="group" aria-label="Move the piece">'+b("root","Root to root")+b("mode","Same mode")+'</span>'
       +(live?'':'<span class="pinnote">— the same either way on these two pans</span>')+'</div>'; }
+  /* THE HANDS ROW (David, 18–20 Sep). Four ways, the same pill row as the two above, never remembered; and it
+     SAYS WHAT IT DID ("yes, say what it did") — how many hands the rule had to move, or that nothing moved.
+     Turning the pan round is offered on its own line when most of the played notes have changed sides, which
+     is the Kurd → Amara case he tried. */
+  { const way=transHandsNow(), T=transTurnWorth();
+    const hb=(v,label,title)=>'<button data-th="'+v+'" aria-pressed="'+(way===v?"true":"false")+'" title="'+title+'">'+label+(v==="modify"?'<small class="defmark"> default</small>':'')+'</button>';
+    h+='<div class="pinrow"><span class="pinnote">Hands:</span>'
+      +'<span class="pills thpills" role="group" aria-label="Hands">'
+      +hb("modify","Modify where necessary","Your hand pattern stays. A hand moves only where this pan forces it: a bottom note now on the other side, a hand that would have to play a bottom note and another note at once, or a chord one hand cannot reach.")
+      +hb("keep","Keep the original hands","Every hand exactly as written, even where this pan makes it awkward.")
+      +hb("fresh","Work out new hands","The piece is handed again from scratch for this pan.")
+      +hb("turn","Turn the pan around","Keep the hand pattern and turn the instrument instead: the pan is drawn round, low notes at the top. The notation does not change — field 2 is still 2, it just sits on the other side.")
+      +'</span></div>';
+    const said=way==="keep"?"Every hand as written."
+      :way==="turn"?("The pan below is drawn turned round"+(THANDN?" — "+THANDN+" hand"+(THANDN===1?"":"s")+" still had to move":"; every hand as written")+".")
+      :THANDN?(THANDN+" hand"+(THANDN===1?"":"s")+" moved"+(way==="modify"?" — this pan forced it":""))
+      :(way==="modify"?"No hand had to move.":"Handed again for this pan.");
+    h+='<div class="pinrow"><span class="pinnote fitparts">'+said+'</span></div>';
+    /* THE OFFER, in David's own words (20 Sep): "Isn't this amount of tonefield length on the other side?
+       Turning the handpan around can help to stay closer to the original hand pattern." */
+    if(T&&T.share>=0.6&&way!=="turn")
+      h+='<div class="pinrow"><span class="pinnote fitparts turnhint">'+T.moved+' of '+T.sided+' notes have landed on the other side of the pan. Turning the handpan around can help to stay closer to the original hand pattern.</span></div>'; }
   /* A PIN OUTRANKS EVERY RULE — so there has to be a way back out (David,
      12 Sep). The count is of this PAN's pins for this piece, which is exactly
      what the button clears and exactly what the second solve left out. */
@@ -20096,6 +20303,10 @@ function renderReport(){
   }));
   const rr=$("repReset");
   if(rr) rr.addEventListener("click",()=>{ delete overrides[myPanId]; delete bulkPrev[myPanId]; saveOv(); refresh(); });
+  R.querySelectorAll(".thpills button[data-th]").forEach(b=>b.addEventListener("click",()=>{
+    if(transHandsChoice===b.dataset.th) return;
+    transHandsChoice=b.dataset.th; refresh();
+  }));
   R.querySelectorAll(".kfpills button[data-kf]").forEach(b=>b.addEventListener("click",()=>{
     const v=b.dataset.kf, now=(bulkPrev[myPanId]||{}).kind||"none";
     if(v===now) return;
