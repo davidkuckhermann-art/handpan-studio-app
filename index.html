@@ -8124,90 +8124,35 @@ function panById(id){ return allPans().find(p=>p.id===id)
    lower two notes", runs, repeats, two-note strikes, percussive strokes, the ranking. The old rules this
    replaces — bass to the left, alternation by position — were piano habits ("nonsense on the handpan").
    ═══════════════════════════════════════════════════════════════════════ */
-function handGeom(P,turn){                     // position → {side:"L"|"R"|"C", lat (−1 far left … +1 far right), x, y, ang, bottom}
+function handGeom(P){                          // position → {side:"L"|"R"|"C", ang (degrees round the centre), bottom}
   const cx=215, out=new Map();
-  const spots=topSpots(P), wide=Math.max(60,...spots.map(s=>Math.abs(s.x-cx)));
-  /* THE SIDE IS A DISTANCE, NOT A LABEL (David, 18 Sep: "the further laterally a field sits from the player's
-     centre line, the stronger its side preference" — fields 2 and 3 are near the centre and easy for either
-     hand, a field at 12 o'clock is 50/50, the widest fields are strongly their side's). `lat` is that distance,
-     −1 (far left) to +1 (far right); `side` stays for the callers that only want a label. `turn` mirrors the
-     instrument — the player turned the pan round (his transposition card), so the sides swap. */
-  const at=(x,y,bottom)=>{ const lat=+(((turn?2*cx-x:x)-cx)/wide).toFixed(4);
-    return {side:Math.abs(lat)<0.12?"C":(lat>0?"R":"L"),lat,x:turn?2*cx-x:x,y,ang:Math.atan2(y-cx,(turn?2*cx-x:x)-cx)*180/Math.PI,bottom}; };
-  for(const s of spots) out.set(s.f,at(s.x,s.y,false));
+  const at=(x,y,bottom)=>({side:Math.abs(x-cx)<12?"C":(x>cx?"R":"L"),ang:Math.atan2(y-cx,x-cx)*180/Math.PI,bottom});
+  const spots=topSpots(P); const topY=Math.min(...spots.filter(s=>s.f!==0).map(s=>s.y));
+  for(const s of spots){ const q=at(s.x,s.y,false); if(s.f!==0&&s.y<=topY+8) q.side="C"; out.set(s.f,q); }   // the top end: either hand
   const L=layoutFor(P.pan&&P.pan.id); const U=undersideGeom(P,true);
   (U.place||[]).forEach(pl=>{ const c=L&&L.b&&L.b[pl.i]; out.set(botPos(pl.i+1),c?at(c.x,c.y,true):at(pl.x,pl.y,true)); });
   return out;
 }
 function handSides(P){ return handGeom(P); }
-/* the pairs one hand strikes together: ring neighbours, and the ding with 1 or 2 (the arranger's reach) —
-   kept for the transposer's chord check; assignHands weighs a pair by how far apart it is (handPairCost) */
+/* the pairs one hand strikes together: ring neighbours, and the ding with 1 or 2 (the arranger's reach) */
 function handPair(P){ const ring=zigzag((P.fields||[]).length), adj=new Set(); const pr=(a,b)=>{ adj.add(a+"|"+b); adj.add(b+"|"+a); };
   for(let k=0;k<ring.length;k++) pr(ring[k],ring[(k+1)%ring.length]); pr(0,1); pr(0,2);
+  /* the underside too: two bottom notes side by side on one side (b1 with b3, b2 with b4 — the low ones walk up
+     the same zigzag) are one hand's, as a chord of two bottom notes in Let It Be's bass showed (8 Sep) */
   const nb=(P.bottom||[]).length; for(let i=1;i+2<=nb;i++) pr(botPos(i),botPos(i+2));
   return (a,b)=>adj.has(a+"|"+b); }
-/* ═══════════════════════════════════════════════════════════════════════
-   HANDS — David's interview of 18 Sep 2026 (HANDS.md is the spec; this is the cost model).
-   "Hand assignment should not be decided note by note. The algorithm should look at the complete musical
-   context and find a playable, natural hand pattern." So every cost below is a weight, not a law: the solver
-   scores every way of handing a section and keeps the cheapest. Tempo is NOT an input — a movement is awkward
-   or easy whatever the BPM.
-   THE ORDER, strongest first: the bottom notes' side and the hand that plays one taking nothing else · an
-   unreachable pair / three different fields with one hand (last resorts, not bans) · the piece's OWN hands ·
-   repeated patterns and hand roles · where both hands are and where they must go (movement, and never both
-   hands deep on the wrong side at once) · a field's side, weighted by how far it sits laterally · double
-   strokes, the right hand slightly favoured for them · the rhythmic default (right on a subdivision's start) ·
-   alternation, last.                                                                                        */
-const HAND_COST={ bottomWrong:3000, bottomBusy:3000, pairStep:[0,0,200,450,1500],
-  threeSame:8, threeTwo:60, threeDiff:300, keepSoft:250, keepHard:1200,
-  side:55, move:45, cross:160, leftDouble:6, rhythm:6, dingRight:30, repeat:2, jam:120 };
-/* THE HARD ONES OUTRANK EVEN "KEEP THE ORIGINAL HANDS" (David, 18 Sep: "hard/semi-hard physical playability >
-   original hand structure"): a bottom note on the wrong side and a hand that would have to play a bottom note
-   and another note at once cost 3000, an unreachable pair 1500, against 1200 for breaking a hard keep and 250
-   for a soft one. Three different fields in a row (300) sits below a keep on purpose — it is discouraged, not
-   a reason to rewrite a composer's hands. The ding and field 1 lean right at 30: enough to open a groove with
-   the right hand (his test G), not enough to stop the left taking the ding when the phrase wants it (test A). */
-const HAND_BEAM=600;                       // states kept per slot (the search is a beam, so a long bar cannot explode)
-/* THE PIECES WHOSE HANDS ARE NOT THEIRS (David, 18 Sep: "the pieces that I imported from notation tables and
-   that I edited by hand should stay exactly as they are. What can change are the traditional pieces, that came
-   from piano notation"). Everything else keeps its own hands unless a strong reason breaks them. */
-const HAND_FRESH=new Set(["let-it-be","let-it-be-sheet","canon-in-d","amazing-grace","amazing-grace-bass","scarborough-fair","greensleeves"]);
-function handKeepsOriginal(p){ return !!p && p.handsFrom!=="piano" && !HAND_FRESH.has(p.id); }
-function handRingStep(P,a,b){              // how many ring steps apart two positions are; the ding counts from field 1
-  if(a===b) return 0;
-  const ring=zigzag((P.fields||[]).length), n=ring.length; if(!n) return 9;
-  const at=f=>f===0?null:ring.indexOf(f);
-  if(a===0||b===0){ const o=at(a===0?b:a); if(o==null||o<0) return 9; const one=ring.indexOf(1);
-    const d=Math.min(Math.abs(o-one),n-Math.abs(o-one)); return 1+d; }         // ding+1 is the comfortable one
-  const ia=at(a), ib=at(b); if(ia<0||ib<0) return 9;
-  return Math.min(Math.abs(ia-ib),n-Math.abs(ia-ib));
-}
-function handPairCost(P,a,b){              // two notes at once in one hand: 0 for neighbours, steep beyond, never infinite
-  const S=HAND_COST.pairStep, k=handRingStep(P,a,b);
-  return S[Math.min(k,S.length-1)];
-}
-function handRhythmPref(m,t){              // the weak default: the right hand on a subdivision's start (David, 18 Sep)
-  const sub=m.sub||4, p=((t%sub)+sub)%sub;
-  if(p===0) return "R";
-  if(sub===3) return p===1?"R":"L";        // triplets: R R L
-  if(sub%2===0) return (p===sub/2)?"R":"L";// sixteenths 1 e & a → R L R L
-  return null;
-}
-/* assignHands(piece, pan, opts) — the one function every automatic hand choice calls.
-   opts: jam (the groove pattern applies) · sections (names, else all) · window {sec,from,to} (bars) ·
-   onlyAuto (the editor's Auto: a hand a person set is fixed, the rule re-decides only its own) ·
-   keep "hard" | "soft" | "none" (the transposition card: keep the original hands · modify where necessary ·
-   work out new ones; default soft for a piece whose hands are its own) · turn (the pan turned round). */
+const HAND_COST={bottomWrong:1000,pairImpossible:1000,thrice:1000,pattern:40,side:30,wedgeFar:25,wedgeMid:10,ringPref:15,split:8,repeat:3};
+/* assignHands(piece, pan, opts) — the rule. opts: jam (the groove pattern applies), sections (names, else all),
+   window {sec,from,to} (bars, inclusive), onlyAuto (re-decide only notes the rule chose before — ev.ha — and
+   keep every hand a person set). Every way of handing a window's strokes is scored and the cheapest kept:
+   a dynamic programme over the time slots whose state is, per hand, the position it struck last, whether it
+   struck the slot before, and how many sixteenths in a row it has played. */
 function assignHands(piece,P,opts){
-  opts=opts||{}; const G=handGeom(P,opts.turn), C=HAND_COST; let changed=0,total=0;
-  const keepMode=opts.keep||(opts.onlyAuto?"none":(handKeepsOriginal(piece)?"soft":"none"));
-  const keepCost=keepMode==="hard"?C.keepHard:keepMode==="soft"?C.keepSoft:0;
+  opts=opts||{}; const G=handGeom(P), pair=handPair(P), C=HAND_COST; let changed=0,total=0;
   const names=opts.window?[opts.window.sec]:(opts.sections||Object.keys(piece.sections||{}));
-  const dist=(a,b)=>{ const x=G.get(a), y=G.get(b); if(!x||!y) return 0;
-    return Math.min(1,Math.hypot(x.x-y.x,x.y-y.y)/296); };                     // 0 … 1, the pan's own diameter
+  const angDiff=(a,b)=>{ let d=Math.abs(a-b)%360; return d>180?360-d:d; };
   for(const nm of names){ const sec=piece.sections[nm]; if(!sec) continue; const m=SM(piece,nm), bp=m.bp, sub=m.sub;
     const from=opts.window?Math.max(0,opts.window.from):0, to=opts.window?Math.min(sec.bars.length-1,opts.window.to):sec.bars.length-1;
-    const starts=new Set((cellsOf(m)||[]).map(c=>c.start));                    // a subdivision's start: the right hand's default
     /* the jam's groove pattern, per bar: the lower two notes the right hand's, the highest the left's; when the
        lowest is a bottom note on the left, the right hand takes the next two if they are top fields */
     const pref=new Map();
@@ -8219,53 +8164,32 @@ function assignHands(piece,P,opts){
       for(const e of evs){ if(rightOnes.includes(e.f)) pref.set(e,"R"); else if(leftOne!=null&&e.f===leftOne) pref.set(e,"L"); } }
     // the slots of the window, in time, with the events that get a hand
     const slots=[]; for(let b=from;b<=to;b++){ const byT=new Map(); for(const e of sec.bars[b]||[]){ if(e.v!=="field"&&e.v!=="perc"&&e.v!=="ghost") continue; if(!byT.has(e.t)) byT.set(e.t,[]); byT.get(e.t).push(e); }
-      for(const t of [...byT.keys()].sort((a,b)=>a-b)) slots.push({at:b*bp+t,t,evs:byT.get(t)}); }
+      for(const t of [...byT.keys()].sort((a,b)=>a-b)) slots.push({at:b*bp+t,evs:byT.get(t)}); }
     if(!slots.length) continue;
-    const fixed=e=>opts.onlyAuto&&!e.ha&&e.hand;                               // a hand a person set stands (the editor)
-    const S0={fL:null,gL:null,nL:0,pL:false,fR:null,gR:null,nR:0,pR:false};
-    const key=st=>st.fL+"~"+st.gL+"~"+st.nL+(st.pL?1:0)+"|"+st.fR+"~"+st.gR+"~"+st.nR+(st.pR?1:0);
-    let layer=new Map([[key(S0),{st:S0,cost:0,back:null,pick:null}]]);
-    for(let i=0;i<slots.length;i++){ const sl=slots[i], gap=i?sl.at-slots[i-1].at:1e9, fast=sub>=4&&gap===1, n=sl.evs.length, next=new Map();
-      const rp=handRhythmPref(m,sl.t), groupStart=starts.has(sl.t);
+    const fixed=e=>opts.onlyAuto&&!e.ha&&e.hand;                        // a hand a person set stands
+    const key=st=>st.fL+"|"+st.fR+"|"+(st.pL?1:0)+(st.pR?1:0)+"|"+st.rL+st.rR;
+    let layer=new Map([[key({fL:null,fR:null,pL:false,pR:false,rL:0,rR:0}),{st:{fL:null,fR:null,pL:false,pR:false,rL:0,rR:0},cost:0,back:null,pick:null}]]);
+    for(let i=0;i<slots.length;i++){ const sl=slots[i], gap=i?sl.at-slots[i-1].at:1e9, sixteenth=sub>=4&&gap===1; const n=sl.evs.length, next=new Map();
       for(let mask=0;mask<(1<<n);mask++){ const hs=sl.evs.map((e,k)=>(mask>>k)&1?"R":"L"); let bad=false, c0=0;
-        for(let k=0;k<n&&!bad;k++){ const e=sl.evs[k], h=hs[k];
-          if(fixed(e)&&e.hand!==h){ bad=true; break; }
-          if(keepCost&&e.hand&&!fixed(e)&&e.hand!==h) c0+=keepCost;             // the piece's own hands: changed only for a reason
-          const p=pref.get(e); if(p&&p!==h) c0+=C.jam;
-          if((groupStart||rp)&&e.v!=="ghost"){ const want=groupStart?"R":rp; if(want&&want!==h) c0+=C.rhythm; }
-          if(e.v!=="field") continue; const g=G.get(e.f); if(!g) continue;
-          if(g.bottom){ if(h!==g.side) c0+=C.bottomWrong; }
-          else { if(g.lat>0?h!=="R":h!=="L") c0+=C.side*Math.abs(g.lat);        // the side, by how far out the field sits
-                 if((e.f===0||e.f===1)&&h==="L") c0+=C.dingRight; } }
+        for(let k=0;k<n&&!bad;k++){ const e=sl.evs[k], h=hs[k]; if(fixed(e)&&e.hand!==h){ bad=true; break; } if(e.v!=="field") continue; const g=G.get(e.f);
+          if(g&&g.bottom&&g.side!=="C"&&h!==g.side) c0+=C.bottomWrong;
+          else if(g&&g.side!=="C"&&h!==g.side) c0+=C.side;
+          else if(g&&g.side==="C"&&!g.bottom&&(e.f===0||e.f===1)&&h==="L") c0+=C.ringPref;
+          const p=pref.get(e); if(p&&p!==h) c0+=C.pattern; }
         if(bad) continue;
-        for(const h of ["L","R"]){ const fl=sl.evs.filter((e,k)=>hs[k]===h&&e.v==="field").map(e=>e.f);
-          if(fl.some(f=>{ const g=G.get(f); return g&&g.bottom; })&&sl.evs.filter((e,k)=>hs[k]===h).length>1) c0+=C.bottomBusy;   // a hand on a bottom note plays nothing else
-          if(fl.length===2) c0+=handPairCost(P,fl[0],fl[1]);
-          else if(fl.length>2){ c0+=C.pairStep[C.pairStep.length-1]; for(let a=0;a<fl.length;a++) for(let b=a+1;b<fl.length;b++) c0+=handPairCost(P,fl[a],fl[b]); } }
-        for(const [,node] of layer){ const st=node.st; let c=c0;
-          const ns={fL:st.fL,gL:st.gL,nL:0,pL:false,fR:st.fR,gR:st.gR,nR:0,pR:false};
-          for(const h of ["L","R"]){ const F="f"+h, Gp="g"+h, N="n"+h, Pp="p"+h;
-            const mine=sl.evs.filter((e,k)=>hs[k]===h); if(!mine.length){ ns[N]=st[Pp]&&fast?st[N]:0; continue; }
-            ns[Pp]=true;
-            const f=mine.map(e=>e.v==="field"?e.f:null).find(x=>x!=null);
-            const run=(st[Pp]&&fast)?st[N]+1:1; ns[N]=Math.min(run,3);
-            if(st[Pp]&&st[F]!=null&&f!=null) c+=C.move*dist(st[F],f);          // how far this hand travels
-            if(run>=3){ const three=[st[Gp],st[F],f];
-              c+= three.some(x=>x==null) ? C.threeTwo
-                : (three[0]===three[1]&&three[1]===three[2]) ? C.threeSame
-                : (new Set(three).size===2) ? C.threeTwo : C.threeDiff; }       // AAA · A-B-A · A-B-C
-            if(run===2&&h==="L") c+=C.leftDouble;                              // the right hand carries a double a little better
-            const other=h==="L"?"R":"L"; if(st[Pp]&&!hs.includes(other)) c+=C.repeat;   // alternation, last
-            ns[Gp]=st[F]; if(f!=null) ns[F]=f; }
-          /* BOTH HANDS DEEP ON THE WRONG SIDE AT ONCE (his test F): one hand crossing over is normal, the two
-             crossing past each other is not */
-          const gl=ns.fL!=null&&G.get(ns.fL), gr=ns.fR!=null&&G.get(ns.fR);
-          if(gl&&gr&&gl.lat>0.3&&gr.lat<-0.3) c+=C.cross*Math.min(1,(gl.lat-gr.lat)/2);
-          const k1=key(ns), prev=next.get(k1); if(!prev||node.cost+c<prev.cost) next.set(k1,{st:ns,cost:node.cost+c,back:node,pick:hs}); }
+        for(const h of ["L","R"]){ const fl=sl.evs.filter((e,k)=>hs[k]===h&&e.v==="field").map(e=>e.f); if(fl.length>2||(fl.length===2&&!pair(fl[0],fl[1]))) c0+=C.pairImpossible; }
+        { const fl=sl.evs.filter(e=>e.v==="field"); if(fl.length===2&&pair(fl[0].f,fl[1].f)&&hs[sl.evs.indexOf(fl[0])]!==hs[sl.evs.indexOf(fl[1])]) c0+=C.split; }   // two notes one hand can strike together, one hand strikes
+        const used={L:hs.includes("L"),R:hs.includes("R")};
+        for(const [k0,node] of layer){ const st=node.st; let c=c0; const ns={fL:st.fL,fR:st.fR,pL:used.L,pR:used.R,rL:0,rR:0};
+          for(const h of ["L","R"]){ const p="p"+h, f="f"+h, r="r"+h; if(!used[h]){ ns[r]=st[p]&&sixteenth?st[r]:0; continue; }
+            const run=(st[p]&&sixteenth)?st[r]+1:1; ns[r]=Math.min(run,3); if(run>=3) c+=C.thrice;
+            if(st[p]&&!used[h==="L"?"R":"L"]&&!(used.L&&used.R)) c+=C.repeat;                                           // the same hand again where the other could have played: alternation, last
+            const fs=sl.evs.filter((e,k)=>hs[k]===h&&e.v==="field").map(e=>e.f); if(!fs.length) continue;
+            if(st[p]&&st[f]!=null){ const a=G.get(st[f]), b=G.get(fs[0]); if(a&&b&&a.bottom!==b.bottom){ const d=angDiff(a.ang,b.ang); c+=d<=45?0:d<=90?C.wedgeMid:C.wedgeFar; } }   // from a bottom note to the top side (or back) with one hand: the wedge
+            ns[f]=fs[0]; }
+          const k1=key(ns); const prev=next.get(k1); if(!prev||node.cost+c<prev.cost) next.set(k1,{st:ns,cost:node.cost+c,back:node,pick:hs}); }
       }
-      layer=next;
-      if(layer.size>HAND_BEAM) layer=new Map([...layer.entries()].sort((a,b)=>a[1].cost-b[1].cost).slice(0,HAND_BEAM));
-    }
+      layer=next; }
     let best=null; for(const node of layer.values()) if(!best||node.cost<best.cost) best=node;
     const picks=[]; for(let node=best;node&&node.pick;node=node.back) picks.unshift(node.pick);
     slots.forEach((sl,i)=>sl.evs.forEach((e,k)=>{ if(fixed(e)) return; total++; if(e.hand!==picks[i][k]) changed++; e.hand=picks[i][k]; e.ha=true; })); }
