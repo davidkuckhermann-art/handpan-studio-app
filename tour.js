@@ -125,7 +125,7 @@ const TEXT={
   /* THE EMBED PLAYER'S OWN SHORT TOUR (David, 21 Sep 2026) — the player under a lesson video. It covers only
      what that build carries: no library, no Settings, no rooms. It runs on the LESSON's piece, never on a
      demonstration piece of its own. */
-  "sheet.emb":     {title:"HPD studio player - A quick look around", body:"Hi, this is David. This little embedded player adds some new features to the course videos. I'd love to show you what it can do.", foot:"You can start the tutorial tour again any time with the ? above."},
+  "sheet.emb":     {title:"HPD studio player - A quick look around", body:"Hi, this is David K. This little embedded player adds some new features to the course videos. I'd love to show you what it can do.", foot:"You can start the tutorial tour again any time with the ? above."},
   "sheet.embVideo":{title:"First, press play on the video", body:"Please press play on the video above once, so it's ready. Then we can start the tour."},
   "sheet.embPlay": {title:"Before we start", body:"You can start and pause the playback any time during the tour, with the space bar or the play button. For now, let the video keep running, so you can see what the player does while the video plays."},
   "sheet.embElse": {title:"The tutorial runs under lesson 2.14", body:"Our tutorial runs under lesson 2.14, Composition 1 Advanced. Do you want to go to the tutorial? This will load a different video lesson."},
@@ -134,12 +134,11 @@ const TEXT={
   "emb.follow":    {title:"The player can follow the video", body:"As long as this switch is activated, the notation table in the player follows the video. Keep this option on for now.", try:"Tap Follow video to see it lit"},
   "emb.sound":     {title:"Two sound sources, one at a time", body:"Up in the video player's interface, you can mute the video. Once you do that, the HPD studio player asks whether you would like to unmute it. You can also manually mute/unmute the studio player at any point by clicking the small icon next to the play button.", try:"Mute the video, then answer: Turn the pan on", tip:"Mute the video in the video player above"},
   "emb.space":     {title:"Play and pause", body:"By the way, you can play and pause the playback at any time with the play button or space bar. Give it a try!", try:"Press the space bar to pause and restart playback"},
-  "emb.followoff": {title:"Using the player on its own", body:"While the player is following, the video is in charge of the timing. Switch Follow off and the player is yours: your own tempo, half speed, the little helpers and looping all wake up. Switch it back on whenever you want to play along with the video again.", try:"Switch Follow off"},
+  "emb.followoff": {title:"Using the player on its own", body:"While the player is following, the video is in charge of the timing. Switch Follow off and the HPD player is in control.", try:"Switch Follow off"},
   "emb.followback": {title:"Back to the video", body:"Follow video connects the player to the video again: the marker walks with the lesson, and the video and player navigate and start together.", try:"Switch Follow back on"},
   "emb.videosound": {title:"New playback options", body:"Now the video is running but the sound is coming from the player. That creates some nice options. For example we can slow the video down in the video player and the pan keeps its natural sound. Let's listen in 0.75 tempo.", try:"Let's listen in 0.75 tempo", btn:"OK", tip:"Change the speed in the video player above"},
   "emb.halfspeed": {title:"Even slower", body:"Let's go even slower and go to half tempo.", try:"Press Switch to half tempo", btn:"Switch to half tempo", try2:"Half tempo is on - have a listen", btn2:"Go back to normal tempo and proceed"},
   "emb.pan":       {title:"The pan tab", body:"Here you see the layout of your selected handpan. The tone fields light up when they are played. You can also listen to the tone fields by clicking them.", try:"Pause playback by pressing space", try2:"Play around on the pan for a while by clicking the tone fields"},
-  "emb.play":      {title:"The player on its own", body:"Once follow mode is switched off, you have full control of the player.", try:"Press Play"},
   "emb.controls":  {title:"Tempo and helpers", body:"Here you can adjust:\n• the tempo\n• the count-in\n• half speed\n• the metronome\n• how the marker is animated", try:"Try them out, then press Next - they go back to how they were"},
   "emb.loop":      {title:"Loop a passage", body:"Drag across the notation, over a few beats or a whole row to loop it. This is a great way to practice a tricky passage. The little loop button beside Play clears it again.", try:"Make a loop and play it through twice", phoneBody:"Double-tap and slide your finger over the notation to create a loop. The button beside Play clears it again.", okay:"✓ Well done - you made a loop and heard it twice"},
   "emb.navigate":  {title:"Move around, and the video comes with you", body:"In the notation you can navigate through the different parts of the composition. Select a part and click straight into the notation: while the player is following, the video jumps to that spot too.", try:"Try it: pick a part, click into the notation, and watch the video follow"},
@@ -449,7 +448,7 @@ const EMB=[
      an arrow up to the video, and Next greyed until the pan's sound is on BY THAT ROUTE - the positive answer to the
      pop-up, or (where the choice is remembered and no pop-up comes) the video reported muted with the pan on. No
      goal: the card waits for Next, and so it is never skipped on the way back either. */
-  {id:"emb.sound",    ch:"emb", at:["#folMute"], quiet:true, arrowUp:true, tipShot:MUTE_SHOT,
+  {id:"emb.sound",    ch:"emb", at:["#folMute"], quiet:true, arrowUp:true, tipShot:MUTE_SHOT, tipPoint:[44,52],
                       gate:()=>!followMuted&&(clicked("#psYes")||(typeof vidMuted!=="undefined"&&vidMuted===true)),
                       /* …and on by itself once it holds (David, 21 Sep: "once the video is muted and the user has selected
                          Turn the pan on … we can automatically move on to the next card") */
@@ -477,7 +476,7 @@ const EMB=[
      another card … go to half tempo … wait for the user to click Next. This option should say Go back to normal tempo and
      proceed"). With a bridge that can (can: rate) the card's button says OK and sets 0.75, starting playback if nothing
      plays; without one it is the old card - the arrow up to the video's own speed menu, and the half-tempo card is left out */
-  {id:"emb.videosound",ch:"emb", arrowUp:()=>!T.canRate, tipShot:SPEED_SHOT,
+  {id:"emb.videosound",ch:"emb", arrowUp:()=>!T.canRate, tipShot:SPEED_SHOT, tipPoint:[51,87],   // the small arrow at the speed icon (David, 21 Sep)
                       phases:()=>T.canRate?[{btn:"btn", run:()=>{ videoRate(0.75); if(!hearing()) $("playBtn").click(); }}]:null},
   {id:"emb.halfspeed",ch:"emb", only:()=>!!T.canRate,
                       phases:()=>[{btn:"btn", run:()=>{ videoRate(0.5); if(!hearing()) $("playBtn").click(); }},{btn:"btn2", run:()=>videoRate(1)}]},
@@ -510,7 +509,6 @@ const EMB=[
                         /* …and the player takes over at the same moment (David, 21 Sep: "at the same time that the video is paused,
                            let's start the player") - on the way forward only */
                         try{ if(T.dir>0&&!follow&&!playing) $("playBtn").click(); }catch(e){} }},
-  {id:"emb.play",     ch:"emb", at:["#playBtn"], done:()=>playing, hold:3500},
   /* ONE CARD FOR THE PRACTICE CONTROLS, NO DEMONSTRATION (David, 21 Sep: "the tempo and the three little helpers
      don't need an interactive demonstration … combine these into one card"). #footL holds exactly those five; the
      phone keeps them in the drawer's top row. */
@@ -593,7 +591,14 @@ const EMB=[
      once For my pan is on - and only For my pan is lit (Play stays usable, as on every card) */
   {id:"emb.ashmode",  ch:"emb", enter:()=>{ T.passes=0; T.lastP=null; if(!loopSec&&!hearing()) loopPhrase(); }, onShow:plainPlayback,
                       at:["#modeTrans2","#modeTrans",byText("#mpModeRow button","For my pan"),"#drawerGrip"],
-                      listen:true, listenAfter:howMode, done:()=>{ sameMode(); return howMode()&&onePass(); }, hold:600},
+                      listen:true, listenAfter:howMode,
+                      /* …and For my pan starts the table from its first beat (David, 21 Sep: "when the For my pan setting is
+                         switched on, playback should start from the beginning of the table") - once, when it goes on here */
+                      exit:()=>{ T.ashTop=null; },
+                      done:()=>{ if(T.ashTop==null) T.ashTop=mode==="trans"; sameMode();
+                        if(!howMode()) return false;
+                        if(!T.ashTop){ T.ashTop=true; stopPlay(); loopPhrase(); T.passes=0; T.lastP=null; T.heldAt=0; try{ $("playBtn").click(); }catch(e){} return false; }
+                        return onePass(); }, hold:600},
   /* THE MUSIC PLAYS ON (David, 21 Sep: "after these listening steps, playback should not stop except if there's a reason
      for it") - no card stops it on the way in unless it must: a listen that restarts the table from its first beat, or
      the video taking over again (Back to the video, which also clears the loop) */
@@ -615,7 +620,7 @@ const EMB=[
      on; Next greyed until the notice's Got it (its other option greyed, its timer held); then Play lit, and after
      TWO BARS of the video's sound the tour moves on WITH THE MUSIC STILL PLAYING ("after 2 bars of listening, you can
      proceed to the next card, but keep the playback going") */
-  {id:"emb.videoback",ch:"emb", at:["#folMute"], quiet:true, arrowUp:()=>typeof vidMuted!=="undefined"&&vidMuted!==false, tipShot:MUTE_SHOT,
+  {id:"emb.videoback",ch:"emb", at:["#folMute"], quiet:true, arrowUp:()=>typeof vidMuted!=="undefined"&&vidMuted!==false, tipShot:MUTE_SHOT, tipPoint:[44,52],
                       thenAt:["#playBtn"], enter:()=>{ listenFresh(); T.vb0=null; }, onShow:()=>askPanOnly(true), exit:()=>askPanOnly(false), listen:true,
                       gate:()=>clicked("#pmOk")||(followMuted&&vidMuted===false&&!isOpen("panMutedDlg")&&typeof panPref==="function"&&panPref(PK_WARN)==="off"),
                       done:()=>{ if(!T.gateMet.has("emb.videoback")) return false;
@@ -627,7 +632,7 @@ const EMB=[
      confirm that the player sound comes back on. All this can happen while the playback is still going"): nothing is
      stopped on the way in; the arrow up to the video and its screenshot until the video is muted, as on the sound card;
      the pop-up offers only its yes */
-  {id:"emb.ownscale", ch:"emb", at:["#folMute","#panbox"], stay:true, quiet:true, arrowUp:true, tipShot:MUTE_SHOT,
+  {id:"emb.ownscale", ch:"emb", at:["#folMute","#panbox"], stay:true, quiet:true, arrowUp:true, tipShot:MUTE_SHOT, tipPoint:[44,52],
                       onShow:()=>askPanOnly(true), exit:()=>askPanOnly(false)}   // the last one: enjoy it, then Finish
 ];
 /* the lesson embed marks itself before first paint; its tour is the short one */
@@ -682,14 +687,20 @@ function css(){
 #tourArrow{position:fixed;left:50%;top:6px;width:64px;height:78px;margin-left:-32px;display:none;pointer-events:none;
   filter:drop-shadow(0 6px 14px rgba(0,0,0,.5));animation:tourBob 1.1s ease-in-out infinite}
 #tourArrow.on{display:block}
-#tourTip{position:fixed;top:8px;right:calc(50% + 40px);display:none;align-items:center;gap:10px;pointer-events:none;
+#tourTip{position:fixed;top:8px;left:calc(50% + 40px);display:none;align-items:center;gap:10px;pointer-events:none;
   max-width:min(380px,calc(50vw - 52px));background:#1E1B16;color:#fff;border:1.5px solid #E59315;border-radius:12px;
   padding:8px 12px 8px 8px;box-shadow:0 12px 30px -8px rgba(0,0,0,.55);font:700 13.5px/1.35 Figtree,"Helvetica Neue",Arial,sans-serif}
 #tourTip.on{display:flex}
 #tourTip img{width:136px;height:auto;border-radius:8px;flex:none;display:block}
-#tourTip span{max-width:175px}
+#tourTip .ttext{max-width:175px}
+#tourTip .tshot{position:relative;flex:none;display:block;line-height:0}
+#tourTip .tsmall{position:absolute;width:20px;height:24px;margin-left:-10px;display:none;filter:drop-shadow(0 2px 4px rgba(0,0,0,.6));
+  animation:tourBobSmall 1.1s ease-in-out infinite}
+#tourTip .tsmall.on{display:block}
+@keyframes tourBobSmall{50%{transform:translateY(6px)}}
+@media (prefers-reduced-motion:reduce){#tourTip .tsmall{animation:none}}
 #tourTip img{max-height:210px;object-fit:contain}
-@media (max-width:600px){ #tourTip{flex-direction:column;align-items:flex-start;padding:8px} #tourTip img{width:auto;max-width:100%;max-height:180px} #tourTip span{max-width:none} }
+@media (max-width:600px){ #tourTip{flex-direction:column;align-items:flex-start;padding:8px} #tourTip img{width:auto;max-width:100%;max-height:180px} #tourTip .ttext{max-width:none} }
 @keyframes tourBob{50%{transform:translateY(-12px)}}
 #tourPoint{position:fixed;width:78px;height:64px;display:none;pointer-events:none;
   filter:drop-shadow(0 6px 14px rgba(0,0,0,.5));animation:tourNudge 1.1s ease-in-out infinite}
@@ -741,7 +752,8 @@ function build(){
   if(canPop) L.setAttribute("popover","manual");
   L.innerHTML='<div id="tourSpot" class="none"></div><div id="tourArrow" aria-hidden="true"><svg viewBox="0 0 64 78" width="64" height="78">'
     +'<path d="M32 3 L61 38 L43 38 L43 75 L21 75 L21 38 L3 38 Z" fill="#E59315" stroke="#fff" stroke-width="3" stroke-linejoin="round"/></svg></div>'
-    +'<div id="tourTip" aria-live="polite"><img alt=""><span></span></div>'
+    +'<div id="tourTip" aria-live="polite"><span class="tshot"><img alt=""><svg class="tsmall" viewBox="0 0 20 24" width="20" height="24" aria-hidden="true">'
+    +'<path d="M10 1 L19 11 L13.5 11 L13.5 23 L6.5 23 L6.5 11 L1 11 Z" fill="#E59315" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg></span><span class="ttext"></span></div>'
     +'<div id="tourPoint" aria-hidden="true"><svg viewBox="0 0 78 64" width="78" height="64">'
     +'<path d="M3 32 L38 3 L38 21 L75 21 L75 43 L38 43 L38 61 Z" fill="#E59315" stroke="#fff" stroke-width="3" stroke-linejoin="round"/></svg></div>'
     +'<div id="tourCard"></div>';
@@ -788,7 +800,11 @@ function place(){
   if(arrow) arrow.classList.toggle("on",up);
   if(tip){ const t=up&&"tipShot" in s?words(s.id).tip:"";
     tip.classList.toggle("on",!!t);
-    if(t){ const im=tip.firstChild, sp=tip.lastChild, shot=typeof s.tipShot==="string"?s.tipShot:"";
+    if(t){ const im=tip.querySelector("img"), sp=tip.querySelector(".ttext"), sm=tip.querySelector(".tsmall"), shot=typeof s.tipShot==="string"?s.tipShot:"";
+      /* A SMALL ARROW AT THE ICON IN THE PICTURE (David, 21 Sep: "a second small arrow that points to the icon that is
+         encircled in red in the screenshot, and also animate this"): `tipPoint` is where the icon sits in the picture,
+         in percent; the arrow stands just below it, pointing up */
+      const tp=shot&&s.tipPoint; if(sm){ sm.classList.toggle("on",!!tp); if(tp){ sm.style.left=tp[0]+"%"; sm.style.top="calc("+tp[1]+"% + 14px)"; } }
       im.hidden=!shot; if(shot&&im.getAttribute("src")!==shot) im.src=shot; if(sp.textContent!==t) sp.textContent=t; } }
   if(point&&!(s.point&&el&&!isPop&&!T.passed)) point.classList.remove("on");
   if(!el){ spot.className="none"; L.classList.add("dim");
@@ -899,8 +915,8 @@ function gateNext(s){
   const b=card&&card.querySelector('[data-a="next"]'); if(!b) return;
   /* `gateLive` (David, 21 Sep, of the Follow card: "gray out any option to proceed when Follow Video is not active"):
      Next follows the gate both ways instead of staying open once it was met */
-  const was=T.doneIds&&T.doneIds.has(s.id);
-  if(s.gateLive&&!was){ if(ok(s.gate)) T.gateMet.add(s.id); else T.gateMet.delete(s.id); }
+  const was=T.doneIds&&T.doneIds.has(s.id)&&!s.gateLive;
+  if(s.gateLive){ if(ok(s.gate)) T.gateMet.add(s.id); else T.gateMet.delete(s.id); }
   else if(ok(s.gate)) T.gateMet.add(s.id);
   if(was) T.gateMet.add(s.id);
   const open=T.gateMet.has(s.id);
@@ -942,7 +958,7 @@ function open(k,dir){
        ticked and a Next button, and it waits: it does not count itself done and jump ahead. */
     /* A CARD DONE ONCE STAYS DONE (David, 21 Sep: "when the condition for a certain card has been met once and I navigate
        back to it, please give me the freedom to navigate through it without fulfilling the transition again") */
-    const was=!!(T.doneIds&&T.doneIds.has(s.id));
+    const was=!!(T.doneIds&&T.doneIds.has(s.id))&&!s.gateLive;   // a live condition (Follow on / off) is never remembered (David, 21 Sep)
     const met=was||!!(s.done&&ok(s.done));
     T.k=k; T.clicks=[]; T.cpaths=[]; T.passed=met;
     if(T.cur!==s){ exitHook(); T.cur=s; T.phase=0; T.ck=was&&s.checks?s.checks.map(()=>true):[]; if(was&&s.gate) T.gateMet.add(s.id); if(s.onShow) try{ s.onShow(); }catch(e){} }
