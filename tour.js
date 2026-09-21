@@ -127,7 +127,7 @@ const TEXT={
      demonstration piece of its own. */
   "sheet.emb":     {title:"HPD studio player - A quick look around", body:"Hi, this is David K. This little embedded player adds some new features to the course videos. I'd love to show you what it can do.", foot:"You can start the tutorial tour again any time with the ? above."},
   "sheet.embVideo":{title:"First, press play on the video", body:"Please press play on the video above once, so it's ready. Then we can start the tour."},
-  "sheet.embPlay": {title:"Before we start", body:"You can start and pause the playback any time during the tour, with the space bar or the play button. For now, let the video keep running, so you can see what the player does while the video plays."},
+  "sheet.embPlay": {title:"Before we start", body:"You can start and pause the playback any time during the tour, with the space bar or the play button. For now, let's keep the video running, so you can see what the player does while the video plays."},
   "sheet.embElse": {title:"The tutorial runs under lesson 2.14", body:"Our tutorial runs under lesson 2.14, Composition 1 Advanced. Do you want to go to the tutorial? This will load a different video lesson."},
   "sheet.embEnd":  {title:"That's it 🙏", body:"I hope this will help you with your practice and to transpose the tunes from one scale to another.\nEnjoy and let us know in the village how the player works for you. 👍"},
   "emb.notation":  {title:"The notation", body:"You already know our notation - Every number is a note on your pan, and D is the ding in the middle. Green numbers are for your left hand, black ones for your right."},
@@ -143,7 +143,7 @@ const TEXT={
   "emb.loop":      {title:"Loop a passage", body:"Drag across the notation, over a few beats or a whole row to loop it. This is a great way to practice a tricky passage. The little loop button beside Play clears it again.", try:"Make a loop and play it through twice", phoneBody:"Double-tap and slide your finger over the notation to create a loop. The button beside Play clears it again.", okay:"✓ Well done - you made a loop and heard it twice"},
   "emb.navigate":  {title:"Move around, and the video comes with you", body:"In the notation you can navigate through the different parts of the composition. Select a part here and click straight into the notation: When you scroll back up, you will see how the video follows your navigation. (As long as follow mode is active)", try:"Try it: pick a part, click into the notation, and watch the video follow"},
   "emb.videoback": {title:"Hear the original again", body:"Now mute the player with the speaker icon. The video's sound comes back on by itself, because the two always take turns. Now you hear the sound of the video again.", try:"Mute the player, then press Play", pop:"Press Got it to confirm the pan is muted", then:"Press Play and listen to the original", tip:"Turn the video sound back on in the video player above"},
-  "emb.ownscale":  {title:"My favourite part", body:"As a last step, let's see what happens when we unmute the player now. The video mutes itself. You can see me playing the composition in the video, but the sound comes from the player. You will hear the composition transposed to the pan you select in the app.", try:"Turn the player's sound on. The music keeps going: watch me play the tune and, at the same time, hear it transposed to your selected scale", tip:"Mute the video in the video player above"},
+  "emb.ownscale":  {title:"My favourite part", body:"As a last step, let's see what happens when we switch back to the sound of the player. The video mutes itself. You can see me playing the composition in the video, but the sound comes from the player. You will hear the composition transposed to the pan you select in the app.", try:"Turn the player's sound on. The music keeps going: watch me play the tune and, at the same time, hear it transposed to your selected scale", tip:"Mute the video in the video player above"},
   "emb.loopb":     {title:"Now the fun part", body:"I have looped this notation table. Let's listen once to the table and then I'll show you something nice...", try:"Press Play and listen to the whole B section"},
   "emb.mypan":     {title:"Time to swap pans", body:"This piece is written on a D Kurd. But what if you have a different handpan: Let's open the scale selector.", try:"Click scale selector"},
   "emb.pickb2":    {title:"Choose your scale", body:"This is the list of handpan scales. Common shows the ones you meet most often, Rare and All show the rest. Each row is one scale, and the numbers on it are the sizes it comes in. Tap a row to take that scale for your pan.\nLet's try B2 Amara 9 - the row with the arrow.", try:"Tap B2 Amara 9"},
@@ -552,7 +552,7 @@ const EMB=[
      line while the B section plays, and on after ONE full pass (lastPaint jumps back to the loop's start); the next
      card stops the music. */
   {id:"emb.loopb",    ch:"emb", enter:()=>{ stopPlay(); loopPhrase(); T.passes=0; T.lastP=null; }, onShow:plainPlayback,
-                      at:["#score"], also:["#playBtn"], deny:["#score"], listen:true, done:onePass, hold:900, autoNext:true},   // the loop is the tour's: only Play (David, 21 Sep)
+                      at:["#score"], deny:["#score"], listen:true, done:onePass, hold:900, autoNext:true},   // the loop is the tour's: only Play (David, 21 Sep) - Play itself unframed (David, 21 Sep: "please don't put a frame around the play button")
   /* THE PAN IS CHOSEN IN TWO CARDS (David, 21 Sep: "we have to walk them through the pan selection process … click
      scale selector, and then, when the scale selector card opens, we need another tutorial card here that explains
      it, explains exactly how to select another scale, highlights the B2 Amara 9 scale, teaches the user how to
@@ -577,7 +577,7 @@ const EMB=[
      a card that is ABOUT that window opens it when it is not up - a card with nothing to point at is passed over */
   {id:"emb.mypanwin", ch:"emb", at:["#myPanDlg"], enter:()=>{ myPanUp(); try{ if(mode!=="pos"&&typeof setMode==="function") setMode("pos"); }catch(e){} }},
   {id:"emb.written",  ch:"emb", enter:asWritten, onShow:plainPlayback, at:["#modePos2","#modePos",byText("#mpModeRow button","As written"),"#drawerGrip"],
-                      also:["#playBtn"], listen:true, done:()=>mode==="pos"&&onePass(), hold:900, autoNext:true},   // on by itself after its table (David, 21 Sep)
+                      listen:true, done:()=>mode==="pos"&&onePass(), hold:900, autoNext:true},   // on by itself after its table (David, 21 Sep)
   /* FOR MY PAN, FROM THE TOP (David, 21 Sep: "the moment the user switches the For My Pan option on, playback should start
      from the beginning of that notation table"): once, when the switch goes on - the table laid again from its first
      beat, and playing */
@@ -589,7 +589,7 @@ const EMB=[
                         if(!T.mineTop){ T.mineTop=true; stopPlay(); }
                         return true; }, hold:600, autoNext:true},
   {id:"emb.report",   ch:"emb", enter:()=>{ closeAll(); setMode("trans"); }, at:["#report"]},
-  {id:"emb.listen",   ch:"emb", enter:listenFresh, onShow:plainPlayback, at:["#score"], also:["#playBtn"], listen:true, done:onePass, hold:600},
+  {id:"emb.listen",   ch:"emb", enter:listenFresh, onShow:plainPlayback, at:["#score"], listen:true, done:onePass, hold:600},
   /* AND STRAIGHT ON TO A MAJOR PAN (David, 21 Sep: "the last one should be the C Ashakiran 17, which is a major
      scale … first … as written and then … transposed to the instrument (with the same mode option)"). Tier 3, so
      it is not in the picker's Common list: the All filter is the candidate under the row, and the card says so. */
@@ -604,7 +604,8 @@ const EMB=[
      to pause here for a second and say Let's start with as written again, and we lock the as-written option") */
   {id:"emb.ashpanwin", ch:"emb", at:["#myPanDlg"], enter:()=>{ myPanUp(); try{ if(mode!=="pos"&&typeof setMode==="function") setMode("pos"); }catch(e){} }},
   {id:"emb.ashwritten",ch:"emb", enter:asWritten, onShow:plainPlayback, at:["#modePos2","#modePos",byText("#mpModeRow button","As written"),"#drawerGrip"],
-                      also:["#playBtn"], listen:true, done:()=>mode==="pos"&&onePass(), hold:600},
+                      listen:true, done:()=>mode==="pos"&&onePass(), hold:600},   /* NO FRAME ROUND PLAY ON A LISTENING CARD (David, 21 Sep, of
+                         cards 12 and 16: "please don't put a frame around the play button") - Play is always the student's anyway */
   /* the music PLAYS ON from the card before (David, 21 Sep: "after the user listened to the complete table, playback
      should not stop. It should continue, and then … only the exact button should be highlighted that we want the user
      to press: the For my pan button"): nothing stopped on the way in, the count starts afresh - a whole table heard
@@ -659,7 +660,17 @@ const EMB=[
   {id:"emb.ownscale", ch:"emb", at:["#folMute","#panbox"], stay:true, quiet:()=>!T.canSound, arrowUp:()=>!T.canSound&&vidMuted!==true, tipShot:MUTE_SHOT, tipPoint:[44,52],
                       /* Finish only once the video is muted and the player's sound is on (David, 21 Sep: "the finish option should
                          only be available once the user has muted the video and switched back to the embed player for the sound") */
-                      gate:()=>!followMuted&&typeof vidMuted!=="undefined"&&vidMuted===true,
+                      /* …AND ONLY AFTER ONE FULL B TABLE ON THE PLAYER'S SOUND (David, 21 Sep: "the finish button should only appear
+                         after the user has listened to one full table of the B section. Playback here should start again from the
+                         beginning of the B section"): the moment the player has the sound, the video goes back to the first B table
+                         (playing it if it rests), and Finish lights once that table has been heard through */
+                      enter:()=>{ T.osArm=false; T.osHeard=false; T.passes=0; T.lastP=null; }, listen:true,
+                      gate:()=>{ const ready=!followMuted&&typeof vidMuted!=="undefined"&&vidMuted===true;
+                        if(!ready&&!T.osHeard){ T.osArm=false; return false; }
+                        if(!T.osArm){ T.osArm=true; T.passes=0; T.lastP=null; T.heldAt=0; sectionStart();
+                          try{ if(follow&&!vidPlaying) window.parent.postMessage({type:"hps-video-ctl",action:"play"},"*"); }catch(e){} }
+                        if(!T.osHeard&&onePass()) T.osHeard=true;
+                        return T.osHeard; },
                       onShow:()=>askPanOnly(true), exit:()=>askPanOnly(false)}   // the last one: enjoy it, then Finish
 ];
 /* the lesson embed marks itself before first paint; its tour is the short one */
@@ -714,6 +725,9 @@ function css(){
 #tourSpot{position:fixed;border-radius:12px;box-shadow:0 0 0 200vmax rgba(30,27,22,.55);outline:2.5px solid #E59315;pointer-events:none;
   transition:left .4s cubic-bezier(.4,0,.2,1),top .4s cubic-bezier(.4,0,.2,1),width .4s cubic-bezier(.4,0,.2,1),height .4s cubic-bezier(.4,0,.2,1)}
 #tourSpot.none{display:none}
+#tourDim{position:fixed;left:0;top:0;width:100%;height:100%;display:none;pointer-events:none;overflow:visible}
+#tourDim.on{display:block} #tourDim .tdimfill{fill:rgba(30,27,22,.55)}
+#tourSpot.holed{box-shadow:none}
 #tourSpot.split{outline-color:transparent}
 .tframe{position:fixed;display:none;border-radius:12px;outline:2.5px solid #E59315;pointer-events:none}
 .tframe.on{display:block}
@@ -784,7 +798,7 @@ function build(){
   css();
   L=document.createElement("div"); L.id="tourLayer";
   if(canPop) L.setAttribute("popover","manual");
-  L.innerHTML='<div id="tourSpot" class="none"></div><div class="tframe"></div><div class="tframe"></div><div id="tourArrow" aria-hidden="true"><svg viewBox="0 0 64 78" width="64" height="78">'
+  L.innerHTML='<svg id="tourDim" aria-hidden="true"><defs><mask id="tourDimMask" maskUnits="userSpaceOnUse" x="0" y="0" width="100%" height="100%"><rect width="100%" height="100%" fill="#fff"/><path fill="#000"/></mask></defs><rect class="tdimfill" width="100%" height="100%" mask="url(#tourDimMask)"/></svg><div id="tourSpot" class="none"></div><div class="tframe"></div><div class="tframe"></div><div id="tourArrow" aria-hidden="true"><svg viewBox="0 0 64 78" width="64" height="78">'
     +'<path d="M32 3 L61 38 L43 38 L43 75 L21 75 L21 38 L3 38 Z" fill="#E59315" stroke="#fff" stroke-width="3" stroke-linejoin="round"/></svg></div>'
     +'<div id="tourTip" aria-live="polite"><span class="tshot"><img alt=""><svg class="tsmall" viewBox="0 0 20 24" width="20" height="24" aria-hidden="true">'
     +'<path d="M10 1 L19 11 L13.5 11 L13.5 23 L6.5 23 L6.5 11 L1 11 Z" fill="#E59315" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg></span><span class="ttext"></span></div>'
@@ -808,7 +822,20 @@ function raise(el){
   if(sig!==T.sig||!popOpen()){ try{ if(popOpen()) L.hidePopover(); L.showPopover(); }catch(e){} T.sig=sig; }
 }
 function showLayer(){ build(); L.classList.add("on"); raise(null); }
-function hideLayer(){ if(!L) return; L.classList.remove("on","dim","block"); if(canPop&&popOpen()) try{ L.hidePopover(); }catch(e){} }
+/* the dim shape, redrawn on every frame while it is up, so its hole travels with the gliding frame */
+function dimOn(on){ const g=L&&L.querySelector("#tourDim"); if(!g) return; g.classList.toggle("on",on);
+  if(on&&!T.dimRaf){ const step=()=>{ T.dimRaf=null; if(!g.classList.contains("on")||!L.classList.contains("on")) return; drawDim(g); T.dimRaf=requestAnimationFrame(step); }; T.dimRaf=requestAnimationFrame(step); } }
+function drawDim(g){
+  const vw=innerWidth, vh=innerHeight, pad=6, rr=(x,y,w,h,r)=>{ r=Math.max(0,Math.min(r,w/2,h/2));
+    return "M"+(x+r)+" "+y+"H"+(x+w-r)+"A"+r+" "+r+" 0 0 1 "+(x+w)+" "+(y+r)+"V"+(y+h-r)+"A"+r+" "+r+" 0 0 1 "+(x+w-r)+" "+(y+h)
+      +"H"+(x+r)+"A"+r+" "+r+" 0 0 1 "+x+" "+(y+h-r)+"V"+(y+r)+"A"+r+" "+r+" 0 0 1 "+(x+r)+" "+y+"Z"; };
+  const q=spot.getBoundingClientRect(), holes=[[q.left,q.top,q.width,q.height,12]];
+  for(const e of (T.clear||[])){ const c=e.getBoundingClientRect(); if(!c.width) continue;
+    const x=c.left-pad, y=c.top-pad, w=c.width+2*pad, h=c.height+2*pad;
+    holes.push([x,y,w,h,Math.min(w,h)/2]); }
+  const d=holes.map(a=>rr(a[0],a[1],a[2],a[3],a[4])).join("");   // holes cut from a mask: overlapping ones simply merge
+  const path=g.querySelector("mask path"); if(path.getAttribute("d")!==d) path.setAttribute("d",d); }
+function hideLayer(){ if(!L) return; dimOn(false); L.classList.remove("on","dim","block"); if(canPop&&popOpen()) try{ L.hidePopover(); }catch(e){} }
 
 /* where the card goes: under the target, else over it, else beside it, else at the foot of the screen */
 function place(){
@@ -841,10 +868,15 @@ function place(){
       const tp=shot&&s.tipPoint; if(sm){ sm.classList.toggle("on",!!tp); if(tp){ sm.style.left=tp[0]+"%"; sm.style.top="calc("+tp[1]+"% + 14px)"; } }
       im.hidden=!shot; if(shot&&im.getAttribute("src")!==shot) im.src=shot; if(sp.textContent!==t) sp.textContent=t; } }
   if(point&&!(s.point&&el&&!isPop&&!T.passed&&!(typeof s.point==="function"&&!ok(s.point)))) point.classList.remove("on");
-  if(!el){ spot.className="none"; L.classList.add("dim"); L.querySelectorAll(".tframe").forEach(f=>f.classList.remove("on"));
+  if(!el){ spot.className="none"; L.classList.add("dim"); dimOn(false); L.querySelectorAll(".tframe").forEach(f=>f.classList.remove("on"));
     card.style.left=(vw-cw)/2+"px"; card.style.top=sheetTop()+"px"; return; }   // nothing to point at: at the top of the notation, not the middle of a tall lesson frame (David, 21 Sep)
   const quiet=!!(isQuiet(s)&&!isPop&&!(s.thenAt&&T.gateMet.has(s.id)));
-  L.classList.toggle("dim",quiet); spot.className=quiet?"ring":"";
+  L.classList.toggle("dim",quiet); spot.className=quiet?"ring":"holed";
+  /* THE DIMMING HAS A HOLE FOR EVERY LIT THING (David, 21 Sep, of the listening cards: "keep play pressable and don't dim
+     it. Just have the orange play button with its original color, but put the frame there where the attention needs to
+     go"). One shape dims the page: a hole follows the card's own frame, and each element in `clear` gets a hole with no
+     frame - on every listening card that is Play. */
+  T.clear=quiet||isPop?[]:(s.clear||(s.listen?["#playBtn"]:[])).map(find).filter(Boolean); dimOn(!quiet);
   /* A SECOND ELEMENT LIT WITH THE TARGET (`also`, David, 21 Sep, of "Now the fun part": "highlight the notation,
      but also the play button"): the spotlight spans both, and the card places itself against the whole. */
   let r=el.getBoundingClientRect();
@@ -1149,7 +1181,7 @@ function sheet(html){
   if(T.mode==="steps"){ closeAll(); restore(); clearInterval(T.iv); }
   T.soundSheet=false;                                  // only the cards before the tour keep the video's sound up
   showLayer(); T.mode="sheet"; T.token++;
-  L.classList.add("dim","block"); spot.className="none"; L.querySelectorAll(".tframe").forEach(f=>f.classList.remove("on"));
+  L.classList.add("dim","block"); spot.className="none"; dimOn(false); L.querySelectorAll(".tframe").forEach(f=>f.classList.remove("on"));
   [arrow,tip,point].forEach(e=>e&&e.classList.remove("on"));
   card.className="tsheet"; card.innerHTML=html;
   const cw=Math.min(430,innerWidth-24); card.style.width=cw+"px";
