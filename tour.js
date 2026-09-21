@@ -1338,9 +1338,16 @@ new MutationObserver(()=>setTimeout(tick,30)).observe(document.body,{attributes:
 addEventListener("resize",()=>{ if(T.mode==="steps") place(); else if(T.mode==="sheet"&&card){ const cw=Math.min(430,innerWidth-24);
   card.style.width=cw+"px"; card.style.left=(innerWidth-cw)/2+"px"; card.style.top=sheetTop()+"px"; } });
 document.addEventListener("fullscreenchange",()=>setTimeout(tick,60));
+/* AN ESC THAT CLOSES FULL SCREEN DOES NOT ALSO CLOSE THE TOUR (David, 21 Sep: "I use Esc, and the tour just vanishes"
+   - after card 26). Safari leaves its own full screen BEFORE the key reaches the page, so "is full screen on?" already
+   answers no; the moment full screen ends is remembered, and an Esc within a second of it belongs to full screen. */
+const fsOffSeen=()=>{ if(!(document.fullscreenElement||document.webkitFullscreenElement)) T.fsOffAt=performance.now(); };
+document.addEventListener("fullscreenchange",fsOffSeen,true);
+document.addEventListener("webkitfullscreenchange",fsOffSeen,true);
 document.addEventListener("keydown",e=>{
   if(e.key!=="Escape"||T.mode==="off") return;
   if(document.querySelector("dialog[open]")||(typeof fsOn==="function"&&fsOn())) return;   // Esc closes those first
+  if(document.fullscreenElement||document.webkitFullscreenElement||performance.now()-(T.fsOffAt||-1e9)<1000) return;
   leave();
 });
 
