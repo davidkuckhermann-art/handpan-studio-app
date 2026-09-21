@@ -534,7 +534,11 @@ const EMB=[
   /* A LOOP, HEARD TWICE (David, 21 Sep: "wait until the user has created a loop and played it back two times
      before stopping the playback and proceeding"). lastPaint is the pulse the marker is on; inside a loop it jumps
      back to the loop's start on every pass, so two jumps back are two full passes. The next card stops the music. */
-  {id:"emb.loop",     ch:"emb", at:["#score"], allow:["#playBtn","#loopBtn"], enter:()=>{ T.passes=0; T.lastP=null; },
+  {id:"emb.loop",     ch:"emb", at:["#score"], allow:["#playBtn","#loopBtn"],
+                      /* the music stops as the card opens (David, 21 Sep: "when card 11 is opened, please stop any playback") -
+                         the player's own, and the video's if it is playing */
+                      enter:()=>{ T.passes=0; T.lastP=null; stopPlay();
+                        try{ if(typeof vidPlaying!=="undefined"&&vidPlaying&&needVideo()) window.parent.postMessage({type:"hps-video-ctl",action:"pause"},"*"); }catch(e){} },
                       /* heard twice, and it KEEPS PLAYING (David, 21 Sep: "let's not automatically move on, but let's keep the
                          loop playing until the user manually selects Next … the orange writing … should make space for the
                          green checkmark"): a gate, not a goal - Next lights and the line turns green; the next card stops it */
@@ -563,10 +567,13 @@ const EMB=[
   /* ONLY THE RIGHT PAN (David, 21 Sep: "all options except selecting the correct pan should be deactivated. That
      includes the chord overview for the pan and any favoriting or preview options"): the row and its 9 - not its 17,
      not its chords, heart or preview */
-  {id:"emb.pickb2",   ch:"emb", need:PICK, at:[titled("#ppList .pprow","B2 Amara 9")], point:true,
+  /* THE 9, WHATEVER SIZE WAS CHOSEN BEFORE (David, 21 Sep: "I had previously selected the B2 Amara 17, and now … I
+     cannot select the 9 version"): the row wears the size last taken, so a row titled "B2 Amara 9" was not there - as
+     on the Ashakiran card, the 9 chip first when it is not lit, then the row; and only the 9 counts as done */
+  {id:"emb.pickb2",   ch:"emb", need:PICK, at:[buildChip("B2 Amara","9"),builtRow("B2 Amara","9"),titled("#ppList .pprow","B2 Amara 9")], point:true,
                       deny:[".pprow .ppv",'.ppbuilds button:not([aria-label="B2 Amara 9"])'],
                       onShow:()=>listLock(true), exit:()=>listLock(false),
-                      done:()=>/^b2-amara/.test(myPanId), hold:900, autoNext:true},   // straight on to the My pan window once it is chosen (David, 21 Sep)
+                      done:()=>myPanId==="b2-amara-9", hold:900, autoNext:true},   // straight on to the My pan window once it is chosen (David, 21 Sep)
   /* the two listens (as written, then for my pan) each play the whole table, Play lit with the switch */
   /* THE MY PAN WINDOW, A MOMENT OF ITS OWN (David, 21 Sep: "after the Choose Your Scale card, we need to stay for a
      moment on the scale selection card that comes up. Briefly explain this card, and the as written option should be
@@ -1032,7 +1039,10 @@ function open(k,dir){
   for(;k>=0&&k<SEQ.length;k+=dir){
     const s=SEQ[k];
     if(s.ch!==T.ch) chapterStart(s.ch);
-    if(s.need&&!isOpen(s.need.dlg)){ const d=document.querySelector(s.need.door); if(d) d.click(); }
+    /* a card that lives in one of the app's windows opens it by its door - after closing any other window, which would
+       stand in front of the door and swallow the press (David, 21 Sep: Back from 15 never reached "Choose your scale":
+       the My pan window stayed open, the list never opened, and the card, with nothing to point at, was passed over) */
+    if(s.need&&!isOpen(s.need.dlg)){ closeAll(); const d=document.querySelector(s.need.door); if(d) d.click(); }
     if(s.enter) try{ s.enter(); }catch(e){}
     if(s.at&&!s.anywhere&&!ownTarget(s)) continue;  // nothing here to point at: not a step for this screen
     if(s.only&&!ok(s.only)) continue;                // a card for a situation that is not this one
