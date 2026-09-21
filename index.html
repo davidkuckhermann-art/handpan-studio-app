@@ -3438,6 +3438,13 @@ body.phone #drawerExtra #jamColourWrap{width:auto}
 .pinrow .pills{flex-wrap:wrap}
 .pinrow .pills button{font-size:12.5px; padding:5px 11px}
 .pinrow .pills button[disabled]{opacity:.45}
+.pinrow .pills.stack{flex-direction:column; align-items:stretch; border-radius:16px; flex-basis:100%}
+.pinrow .pills.stack button{text-align:left}
+/* the card-wide switch sits in the card's head, left of the close (and of Reset where the phone puts it there) */
+.repadv{position:absolute; top:10px; right:42px; display:flex; align-items:center; gap:6px;
+  font-size:12.5px; color:var(--ink2); cursor:pointer; user-select:none; -webkit-user-select:none}
+.repadv input{margin:0; width:15px; height:15px; accent-color:var(--dixie)}
+body:not(.phone) #report .fitline{padding-right:170px}
 .rsico{display:none}                       /* the word is the desktop's face */
 .pinnote{font-size:12.5px; color:var(--ink3)}
 .howsum{color:var(--ink3); font-weight:400}
@@ -4575,7 +4582,7 @@ html[data-theme="zones-dark"]{
 /* — the transposition report becomes an overlay sheet: in the page flow it
      sat half under the resting bar ("only half visible") */
 body.phone #report:not(.hidden){position:fixed; left:10px; right:10px;
-  top:64px; bottom:96px; overflow-y:auto; overflow-x:hidden; z-index:60; margin:0;
+  top:64px; bottom:calc(10px + env(safe-area-inset-bottom)); overflow-y:auto; overflow-x:hidden; z-index:60; margin:0;
   box-shadow:var(--shadow)}
 /* THE SHEET SCROLLS ONE WAY ONLY (David, 12 Sep: "on mobile, when the
    transposition window opens, please don't have it scrollable horizontally.
@@ -4608,6 +4615,7 @@ body.phone #repReset{position:absolute; top:7px; right:39px; width:26px; height:
 body.phone #repReset .rstxt{display:none}
 body.phone #repReset .rsico{display:block; width:17px; height:17px}
 body.phone .resetrow{margin:0}
+body.phone #report.hasreset .repadv{right:74px}
 body.phone .resetrow:not(.hasnote){height:0; overflow:visible}
 /* THE ROOM SELECTOR (David, 31 Aug, from mockups-navisle.html: "drop the
    isle idea and go for a simple drop-down button. The writing should be
@@ -20615,7 +20623,11 @@ function renderReport(){
   if(mode!=="trans"||!REPORT||reportClosed){ R.classList.add("hidden"); return; }
   R.classList.remove("hidden");
   const tag=r=>({exact:"Exact",octave:"Octave",sub:"Substituted",drop:"Dropped",foreign:"Foreign"})[r]||r;
-  let h='<button class="ib" id="repX" title="Close — it comes back when you choose For my pan">'
+  { const key=(piece&&piece.id||"")+"|"+myPanId; if(repAdvKey!==key){ repAdvKey=key; repAdv=false; } }
+  const kfNow=(bulkPrev[myPanId]||{}).kind||"none", adv=repAdv||kfNow!=="none";
+  R.classList.toggle("hasreset",!!REPORT.nPins);
+  let h='<label class="repadv" title="The choices for missing notes and for the hands — the defaults suit most pieces"><input type="checkbox" id="repAdv"'+(adv?' checked':'')+'> Advanced options</label>'
+   +'<button class="ib" id="repX" title="Close — it comes back when you choose For my pan">'
    +'<svg viewBox="0 0 24 24" width="13" height="13"><path d="M7 7l10 10M17 7L7 17" fill="none" '
    +'stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></button>'
    +'<div class="fitline"><span class="fitpc">'+REPORT.fit+'%</span>'
@@ -20646,7 +20658,7 @@ function renderReport(){
      notes first, so the state was None, out of scale, or all that cannot be
      transposed, and the row says so now. None is the way back, which pressing
      the other button used to do for you. */
-  { const kk=(bulkPrev[myPanId]||{}).kind||"none";
+  if(adv){ const kk=kfNow;
     const kb=(v,label,title)=>'<button data-kf="'+v+'" aria-pressed="'+(kk===v?"true":"false")+'" title="'+title+'">'+label+'</button>';
     h+='<div class="pinrow"><span class="pinnote">Keep missing notes foreign:</span>'
       +'<span class="pills kfpills" role="group" aria-label="Keep missing notes foreign">'
@@ -20671,6 +20683,8 @@ function renderReport(){
      Turning the pan round is offered on its own line when most of the played notes have changed sides, which
      is the Kurd → Amara case he tried. */
   { const way=transHandsNow(), T=transTurnWorth();
+    if(!adv) h+='<div class="pinrow"><span class="pinnote">Hand pattern is modified where necessary.</span></div>';
+    else {
     const hb=(v,label,title)=>'<button data-th="'+v+'" aria-pressed="'+(way===v?"true":"false")+'" title="'+title+'">'+label+(v==="modify"?'<small class="defmark"> default</small>':'')+'</button>';
     h+='<div class="pinrow"><span class="pinnote">Hands:</span>'
       +'<span class="pills thpills" role="group" aria-label="Hands">'
@@ -20678,7 +20692,7 @@ function renderReport(){
       +hb("keep","Keep the original hands","Every hand exactly as written, even where this pan makes it awkward.")
       +hb("fresh","Work out new hands","The piece is handed again from scratch for this pan.")
       +hb("turn","Turn the pan around","Keep the hand pattern and turn the instrument instead: the pan is drawn round, low notes at the top. The notation does not change — field 2 is still 2, it just sits on the other side.")
-      +'</span></div>';
+      +'</span></div>'; }
     const said=way==="keep"?"Every hand as written."
       :way==="turn"?("The pan below is drawn turned round"+(THANDN?" — "+THANDN+" hand"+(THANDN===1?"":"s")+" still had to move":"; every hand as written")+".")
       :THANDN?(THANDN+" hand"+(THANDN===1?"":"s")+" moved"+(way==="modify"?" — this pan forced it":""))
@@ -20686,7 +20700,7 @@ function renderReport(){
     h+='<div class="pinrow"><span class="pinnote fitparts">'+said+'</span></div>';
     /* THE OFFER, in David's own words (20 Sep): "Isn't this amount of tonefield length on the other side?
        Turning the handpan around can help to stay closer to the original hand pattern." */
-    if(T&&T.share>=0.6&&way!=="turn")
+    if(adv&&T&&T.share>=0.6&&way!=="turn")
       h+='<div class="pinrow"><span class="pinnote fitparts" id="turnOffer">'+T.moved+' of '+T.sided+' notes have landed on the other side of the pan. Turning the handpan around can help to stay closer to the original hand pattern.</span></div>'; }
   /* A PIN OUTRANKS EVERY RULE — so there has to be a way back out (David,
      12 Sep). The count is of this PAN's pins for this piece, which is exactly
@@ -20741,7 +20755,15 @@ function renderReport(){
       +'</b> cannot be shared between two hands on this pan — the notes play, but check the fingering.</div>';
   R.innerHTML=h;
   const rx=$("repX");
-  if(rx) rx.addEventListener("click",()=>{ reportClosed=true; renderReport(); });
+  if(rx) rx.addEventListener("click",()=>{ reportClosed=true; repAdv=false; renderReport(); });
+  const ra=$("repAdv");
+  if(ra) ra.addEventListener("change",()=>{
+    if(ra.checked){ repAdv=true; renderReport(); return; }
+    repAdv=false; transHandsChoice=null;
+    if(((bulkPrev[myPanId]||{}).kind||"none")!=="none"){ bulkUndo(); saveOv(); }
+    refresh();
+  });
+  fitCardPills(R);
   R.querySelectorAll(".howpills button[data-how]").forEach(b=>b.addEventListener("click",()=>{
     if(b.disabled) return;
     transHowChoice=b.dataset.how; refresh(); if(ctx) preloadBank();   // the notes that moved need their samples
@@ -20768,6 +20790,17 @@ function renderReport(){
     else overrides[myPanId][sf]=v==="drop"?null:(isBotPos(v)?v:+v);
     saveOv(); refresh();
   }));
+}
+/* A PILL ROW THAT DOES NOT FIT ONE LINE STACKS (David, 21 Sep, his phone: the four hands options wrapped
+   inside a pill-shaped track — a lumpy oval with the lit option askew). Measured, not guessed: when the
+   options sit on more than one line the row becomes a column, one option per line, in a track with ordinary
+   rounded corners. */
+function fitCardPills(R){
+  R.querySelectorAll(".pinrow .pills").forEach(p=>{
+    p.classList.remove("stack");
+    const b=[...p.children]; if(b.length<2) return;
+    if(b.some(x=>Math.abs(x.offsetTop-b[0].offsetTop)>2)) p.classList.add("stack");
+  });
 }
 function saveOv(){ try{localStorage.setItem("hps.ov."+piece.id,JSON.stringify(overrides));
   localStorage.setItem("hps.ovb."+piece.id,JSON.stringify(bulkPrev)); }catch(e){} }
@@ -23130,6 +23163,12 @@ let jamOn=false, jamPrev=null, jamEditSlot=-1, jam=null, jamSugOn=false;
    student asks for Transposed again (David, 26 Aug) — it is a briefing, not
    a permanent fixture, and it was un-closeable in every view. */
 let reportClosed=false;
+/* ADVANCED OPTIONS (David, 21 Sep: "not show the other options in the beginning because they can be quite
+   confusing … a little checkbox … Show Advanced Options"). One tick for the whole card, never remembered:
+   it opens unticked for every piece, pan and opening of the card — except that a choice which IS kept (missing
+   notes kept foreign, saved per pan) opens it ticked, so nothing in effect is ever hidden. Unticking puts both
+   rows back to their defaults: None, and Modify where necessary. */
+let repAdv=false, repAdvKey="";
 const JAM_MAX=8;   // longest progression jam mode takes for now (David, 26 Aug)
 const jpc=m=>((m%12)+12)%12;
 
@@ -33751,7 +33790,7 @@ function fitScoreHead(){
 function setMode(m){
   if(m==="trans"&&!allowed("transpose")) m="pos";
   if(typeof jamOn!=="undefined"&&jamOn) return;   // locked while a jam is up
-  if(m==="trans") reportClosed=false;   // asking for it again brings it back
+  if(m==="trans"){ reportClosed=false; repAdv=false; }   // asking for it again brings it back, unticked
   mode=m;
   /* …AND IT IS REMEMBERED (David, 12 Sep 2026: "the for my pan / written state
      should also be remembered"), with the piece and the pan, so the app comes
