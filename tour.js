@@ -124,43 +124,35 @@ const TEXT={
   /* THE EMBED PLAYER'S OWN SHORT TOUR (David, 21 Sep 2026) — the player under a lesson video. It covers only
      what that build carries: no library, no Settings, no rooms. It runs on the LESSON's piece, never on a
      demonstration piece of its own. */
-  "sheet.emb":     {title:"A quick look around", body:"Hi, this is David. This little player shows the notation for the piece in this lesson, and it follows my video as it plays. Shall I show you what it can do? It takes about a minute.",
-                    foot:"You can start it again any time with the ? above."},
-  "sheet.embEnd":  {title:"That's it 🙏", body:"Follow video to play along with me, Follow off to work on a passage in your own time. That one switch is the whole thing. The ? in the corner brings this back whenever you want it."},
-  "emb.notation":  {title:"The music", body:"Every number is a note on your pan, and D is the ding in the middle. Green numbers are for your left hand, black ones for your right."},
-  "emb.follow":    {title:"The player follows the video", body:"This is switched on while you watch: as my video plays, the marker walks through the notation with me, so you can always see where we are. Play here starts and stops the video itself.",
-                    try:"Tap Follow video to see it lit"},
-  "emb.sound":     {title:"Two sounds, one at a time", body:"The video and the pan take turns. While you can hear me, the pan stays quiet. Mute the video up in the lesson and the player asks whether you would like the pan's sound instead; you can also switch it on here whenever you want it.",
-                    try:"Switch the pan's sound on"},
-  "emb.followoff": {title:"Using the player on its own", body:"Everything so far happened with my video in charge of the timing. Switch Follow off and the player is yours alone: your own tempo, half speed, the little helpers and looping all wake up. Switch it back on whenever you want to come back to me.",
-                    try:"Switch Follow off"},
-  "emb.followback":{title:"Back to the video", body:"Follow video puts you back with me: the marker walks with the lesson again, and Play starts the video. That is the switch to remember, more than any other here.",
-                    try:"Switch Follow back on"},
-  "emb.videosound":{title:"My video, the player's sound", body:"With the video running and the sound coming from here, some nice things open up. Slow my video down in its own controls and my playing goes deep and strange, but the pan keeps its natural sound and simply plays along slower with me. There is more of this later on."},
-  "emb.pan":       {title:"Your pan, beside it", body:"The same numbers where they sit on the instrument. They light up as the piece plays.", try:"Tap any note to hear it"},
-  "emb.play":      {title:"Play it", body:"The marker walks through the notation while the pan lights up with it. The same button stops.", try:"Press Play"},
+  "sheet.emb":     {title:"HPD studio player - A quick look around", body:"Hi, this is David. This little player is where you read and play along with the piece from this lesson. I'd love to show you what it can do? It takes about a minute.", foot:"You can start the tutorial tour again any time with the ? above."},
+  "sheet.embEnd":  {title:"That's it 🙏", body:"I hope this will help you with your practice and to transpose the tunes from one scale to another.\nEnjoy and let us know in the village how the player works for you. 👍"},
+  "emb.notation":  {title:"The notation", body:"You already know our notation - Every number is a note on your pan, and D is the ding in the middle. Green numbers are for your left hand, black ones for your right."},
+  "emb.follow":    {title:"The player can follow the video", body:"As long as this switch is activated, the notation table in the player follows the video. Keep this option on for now.", try:"Tap Follow video to see it lit"},
+  "emb.sound":     {title:"Two sound sources, one at a time", body:"Here is where you can mute/unmute the player's sound. While you can hear the video, the pan should probably stay quiet. Mute the video up in video controls and the player asks whether you would like to unmute the player. Now look for the sound option in the video player and mute the video sound.", try:"Mute the video, then answer: Turn the pan on"},
+  "emb.followoff": {title:"Using the player on its own", body:"While the player is following, the video is in charge of the timing. Switch Follow off and the player is yours: your own tempo, half speed, the little helpers and looping all wake up. Switch it back on whenever you want to play along with the video again.", try:"Switch Follow off"},
+  "emb.followback": {title:"Back to the video", body:"Follow video connects the player to the video again: the marker walks with the lesson, and the video and player navigate and start together.", try:"Switch Follow back on"},
+  "emb.videosound": {title:"New possibilities", body:"With the video running and the sound coming from the player, we have some nice options. For example you can slow the video down in the video player and the pan keeps its natural sound. There are some really cool other possibilities that we will cover a little later."},
+  "emb.pan":       {title:"The pan tab", body:"Here you see the layout of the selected handpan. The tone fields light up when they are played.", try:"Play around on the pan for a while, then press Next"},
+  "emb.play":      {title:"The player on its own", body:"The marker walks through the notation while the pan lights up with it. You now have full manual control of the player.", try:"Press Play"},
   "emb.tempo":     {title:"Your tempo", body:"Swipe up or down on the number, or tap it and type. Take the piece as slowly as you need it.", try:"Change the tempo"},
   "emb.half":      {title:"Half speed", body:"My favourite button for a tricky passage: one tap and everything plays at half the tempo. Tap it again to come back.", try:"Press ½"},
-  "emb.extras":    {title:"Three small helpers", body:"Count-in gives you a bar of clicks before the music starts. The metronome clicks on every beat. The last one sets how the marker steps through the music.", try:"Switch on Count-in"},
-  "emb.loop":      {title:"Loop a passage", body:"Drag across the notation, over a few beats or a whole row, and only that part repeats. The button beside Play clears it again.",
-                    phoneBody:"Double-tap a row of the notation and only that row repeats. The button beside Play clears it again.", try:"Make a loop"},
-  "emb.navigate":  {title:"Move around, and the video comes with you", body:"A piece is built from parts, with the table numbers beside them. Tap a part, a table, or straight into the notation: while the player is following, my video jumps to that spot too. That is how you play one passage of the lesson over and over without touching the video.",
-                    try:"Tap a part, or a note in the notation"},
-  "emb.videoback": {title:"Hear the original again", body:"Turn my video's sound back up in its own controls and let it run. The pan steps aside by itself, because the two always take turns, so what you hear now is exactly what I played, with the notation following along.",
-                    try:"Turn my sound back on and listen"},
-  "emb.ownscale":  {title:"And now in your scale", body:"Now turn my sound down again and switch the pan's sound back on here. Same lesson, same passage, my video keeping the time, and you hear it on the C Ashakiran you chose. That is the whole trick of this little player."},
-  "emb.loopb":     {title:"One phrase, over and over", body:"Before we put other pans under it, I have looped the B section. Every instrument we try from here plays exactly the same music, so what you hear changing is the pan and not the piece."},
-  "emb.mypan":     {title:"Put another pan under it", body:"This piece is written for a D Kurd. Let's pretend you play something else: open My pan and choose B2 Amara 9, and watch the notation change under your hands.", try:"Choose B2 Amara 9"},
-  "emb.written":   {title:"First, as it is written", body:"As written keeps my numbers exactly as they are, on your pan. Press Play and listen: the same fingering, but a different tune, because your scale has different notes in those places.", try:"Tap As written, then press Play"},
-  "emb.mine":      {title:"Now For my pan", body:"For my pan moves the whole piece onto your instrument instead, keeping the music and changing the numbers.", try:"Tap For my pan"},
-  "emb.report":    {title:"What the card tells you", body:"A card comes up at the bottom with the honest arithmetic: how many notes land exactly on your pan, and whether one had to stand in for a note you do not have. The percentage is how much of the music survived the move."},
-  "emb.listen":    {title:"And hear the difference", body:"Press Play once more. Same piece, same lesson, your pan. This is what all of it is for.", try:"Press Play"},
-  "emb.ashaki":    {title:"Now something quite different", body:"C Ashakiran 17 is a major scale, a long way from a D Kurd. It is not in the Common list, so tap All first. Then, on the C Ashakiran row, tap 17 for the size with the bottom notes, and tap the row to take it.", try:"Tap All, then 17 on the C Ashakiran row"},
-  "emb.ashwritten":{title:"As written, on a major pan", body:"The same numbers again, on a major instrument. Press Play and hear what the piece becomes when nothing is moved.", try:"Tap As written, then press Play"},
-  "emb.ashmode":   {title:"Root to root, or same mode", body:"Now For my pan, and look at the card: there are two ways to move a piece. Root to root puts my central note on yours. Same mode lands a minor piece where this pan is minor, which is what keeps the tune on a major pan like this one, and the app often chooses it for you here.", try:"Tap For my pan, and see which way the card chose"},
-  "emb.ashlisten": {title:"And listen again", body:"The same phrase, a major instrument, still the piece I wrote. That is the transposing doing its best work.", try:"Press Play"},
-  "emb.sides":     {title:"What sits beside the music", body:"The pan, the chord of each bar, or nothing at all when you want only the notation.", try:"Tap Chords"},
-  "emb.views":     {title:"Table, Tab or Flow", body:"Three ways to read the same music. Tab gives each hand its own lane; Flow lets the music run on and wrap like text.", try:"Tap Tab"},
+  "emb.extras":    {title:"Three small helpers", body:"Count-in gives you a bar of clicks before the music starts. The metronome clicks on every beat. The last button sets how the marker steps through the music."},
+  "emb.loop":      {title:"Loop a passage", body:"Drag across the notation, over a few beats or a whole row to loop it. This is a great way to practice a tricky passage. The little loop button beside Play clears it again.", try:"Make a loop and play it through twice", phoneBody:"Double-tap and slide your finger over the notation to create a loop. The button beside Play clears it again."},
+  "emb.navigate":  {title:"Move around, and the video comes with you", body:"A piece is built from parts, with the table numbers beside them. Select a part and click straight into the notation: while the player is following, the video jumps to that spot too. Let's say you want to jump to the B section - you simply select the table and click into it and the video follows.", try:"Try it: pick a part, click into the notation, and watch the video follow"},
+  "emb.videoback": {title:"Hear the original again", body:"Unmute the video in the player let it run. The player asks you to mute, because the two always take turns. Now you hear the sound of the video again.", try:"Turn the video sound back on, answer the pop-up, and listen"},
+  "emb.ownscale":  {title:"My favourite part", body:"As a last step, let's see what happens when we mute the video and unmute the player. You can see me playing the composition, but the sound comes from the player. You will hear the composition played on the pan you select in the app.", try:"Mute the video and answer the pop-up with Turn the pan on. Then press Play to watch me play the tune and, at the same time, hear it transposed to your selected scale"},
+  "emb.loopb":     {title:"Now the fun part", body:"Before we put other pans under it, I have looped the B section. Every instrument we try from here plays exactly the same music, so what you hear changing is the pan and not the piece."},
+  "emb.mypan":     {title:"Time to swap pans", body:"This piece is written for a D Kurd. But what if you have a different handpan: open My pan and choose B Amara 9.", try:"Choose B2 Amara 9"},
+  "emb.written":   {title:"First, as it is written", body:"As written keeps the numbers in the notation exactly as they are, on your pan. Press Play and listen: it doesn't sound great. You can't just play the same tone fields on the Amara scale and expect it to sound good.", try:"Tap As written, then press Play"},
+  "emb.mine":      {title:"Now For my pan", body:"For my pan transposes the piece to your instrument instead, keeping the music and changing the numbers.", try:"Tap For my pan"},
+  "emb.report":    {title:"What the card tells you", body:"A transposition card comes up at the bottom with the honest arithmetic: how many notes land exactly on your pan, and whether one had to stand in for a note you do not have. The percentage is how much of the music survived the move. It will not work perfectly with every handpan, but there are many ways to make it work nicely. For now let's stick to the automatic transposition."},
+  "emb.listen":    {title:"And hear the difference", body:"Press Play once more. Same piece, same lesson, your pan.", try:"Press Play"},
+  "emb.ashaki":    {title:"Now something quite different", body:"C Ashakiran 17 is a major scale, a long way from a D Kurd. It is not in the Common scales list, so tap All first. Then, on the C Ashakiran row, tap 17 for the extended version with bottom notes, and tap the row to take it.", try:"Tap All, then 17 on the C Ashakiran row"},
+  "emb.ashwritten": {title:"As written, on a major pan", body:"Let's see what it sounds like when we simply play the tone fields of the composition on the Ashakiran handpan. Press Play and hear what the piece becomes when played on the major scale \"as written.\"", try:"Tap As written, then press Play"},
+  "emb.ashmode":   {title:"Transposition to the same mode on another scale", body:"Now let's transpose the tune. Look at the transposition card: \"Same mode\" makes it possible to play the original tune, which is written in minor, on the major handpan. The player transposes the piece for you.", try:"Tap For my pan, and see which way the card chose"},
+  "emb.ashlisten": {title:"And listen again", body:"An instrument with a different scale, but it's the same piece. That is the transposing doing its best work.", try:"Press Play"},
+  "emb.sides":     {title:"The viewing options", body:"You can activate the pan and chord tabs here. The chord tab shows the chords/harmony of the composition. The pan shows the layout of your instrument and the position of the tone fields. The pan's scale and layout are fully customisable, so you can recreate your personal instruments.", try:"Tap Chords"},
+  "emb.views":     {title:"Table, Tab or Flow", body:"Three ways to read the same music. Tab gives each hand its own lane; Flow gets rid of the notation tables and lets the music run on and wrap like text.", try:"Tap Tab"},
   "emb.fs":        {title:"Full screen", body:"Just the notation, as big as your screen allows. Good when the pan is in your lap.", try:"Press full screen"}
 };
 /* ===================================== END OF THE WORDS ===================================== */
@@ -305,20 +297,27 @@ const EMB=[
   /* the pan starts muted in an embed (followMuted = EMBEDDED), and the two players take turns */
   {id:"emb.sound",    ch:"emb", at:["#folMute"], done:()=>!followMuted, hold:1200},
   /* WHY THE PAN'S SOUND IS WORTH HAVING (David, 21 Sep): with the video's own controls at half speed his
-     playing drops in pitch, while the pan is scheduled from the video's clock (vRate) and stays natural. No
-     target: the video it talks about is outside the player, above it in the lesson. */
-  {id:"emb.videosound",ch:"emb"},
-  {id:"emb.pan",      ch:"emb", at:["#panbox","#pvsvg"], done:()=>clicked(".pvf")},
+     playing drops in pitch, while the pan is scheduled from the video's clock (vRate) and stays natural. It
+     points at Follow video, the link between the two - and that is what makes it vanish with no video behind the
+     player, like the other video cards (found on the live player, opened without a lesson video). */
+  {id:"emb.videosound",ch:"emb", at:["#followBtn"]},
+  {id:"emb.pan",      ch:"emb", at:["#panbox","#pvsvg"], stay:true},   // play as long as they like (David, 21 Sep)
   /* navigating still works while the video is the clock, because seekToPulse seeks the recording too
      (David, 21 Sep: "navigating in the Embed player also will navigate the video") */
-  {id:"emb.navigate", ch:"emb", at:["#arrChips"], enter:()=>{ T.ai0=selAi; }, done:()=>clicked("#score,#arrChips,#subChips")||selAi!==T.ai0, hold:900},
+  {id:"emb.navigate", ch:"emb", at:["#arrChips"], stay:true},          // try it, and stay until they move on (David, 21 Sep)
   /* and only now the controls the video's clock keeps out of reach */
   {id:"emb.followoff",ch:"emb", at:["#followBtn"], done:()=>!follow, hold:1200},
   {id:"emb.play",     ch:"emb", at:["#playBtn"], done:()=>playing, hold:3500},
   {id:"emb.tempo",    ch:"emb", at:["#bpmCtl"], enter:()=>{ stopPlay(); T.bpm0=bpm; }, done:()=>bpm!==T.bpm0, hold:1500},
   {id:"emb.half",     ch:"emb", at:["#halfBtn"], done:()=>halfSpeed},
-  {id:"emb.extras",   ch:"emb", at:["#countBtn"], enter:()=>{ if(halfSpeed) $("halfBtn").click(); }, done:()=>countIn},
-  {id:"emb.loop",     ch:"emb", at:["#score"], enter:stopPlay, done:()=>!!loopSec, hold:700},
+  {id:"emb.extras",   ch:"emb", at:["#countBtn"], enter:()=>{ if(halfSpeed) $("halfBtn").click(); }},   // no Try it (David, 21 Sep)
+  /* A LOOP, HEARD TWICE (David, 21 Sep: "wait until the user has created a loop and played it back two times
+     before stopping the playback and proceeding"). lastPaint is the pulse the marker is on; inside a loop it jumps
+     back to the loop's start on every pass, so two jumps back are two full passes. The next card stops the music. */
+  {id:"emb.loop",     ch:"emb", at:["#score"], enter:()=>{ stopPlay(); T.passes=0; T.lastP=null; },
+                      done:()=>{ if(!loopSec||!playing){ T.lastP=null; return false; }
+                        const p=lastPaint; if(T.lastP!=null&&p>=0&&p<T.lastP) T.passes++; if(p>=0) T.lastP=p;
+                        return T.passes>=2; }, hold:300},
   /* THE SCALE, DEMONSTRATED TWICE (David, 21 Sep: "have the student switch from D Kurd to E Amara, and first
      show what it sounds like when the composition is played as written. Afterwards, switch to for my pan,
      explain the transposition card and have the user listen to what a difference that makes"). It sits with
@@ -350,13 +349,12 @@ const EMB=[
      video option back on") */
   {id:"emb.followback",ch:"emb", at:["#followBtn"], enter:stopPlay, done:()=>follow, hold:1200},
   /* THE SOUND GOES BACK TO THE VIDEO FIRST (David, 21 Sep: "let's first turn the sound of the video back on.
-     Listen to the original, and then switch to the selected scale"). The video's own controls are outside this
-     player, so the tour cannot police the first one: where the lesson's bridge reports the video's sound the
-     step passes by itself (the app mutes the pan on that change), and otherwise the card is read and skipped.
-     The last card has no goal at all - by then the student has the scale under the lesson, which is the point. */
-  {id:"emb.videoback",ch:"emb", at:["#folMute","#score"],
-                      done:()=>followMuted||(typeof vidMuted!=="undefined"&&vidMuted===false), hold:3000},
-  {id:"emb.ownscale", ch:"emb", at:["#folMute","#panbox"]}
+     Listen to the original, and then switch to the selected scale"). Both cards STAY, and each asks for a switch
+     of the video's own sound and an answer to the pop-up the app raises ("the user should now unmute the video
+     and then mute it again and answer the pop-up every time") - the pop-up rule lights each one as it comes up.
+     Unmute: "Video sound is on", the pan steps aside. Mute: "Video sound is off - turn the pan on?". */
+  {id:"emb.videoback",ch:"emb", at:["#folMute","#score"], stay:true},   // unmute, answer the notice, listen - then Next (David, 21 Sep)
+  {id:"emb.ownscale", ch:"emb", at:["#folMute","#panbox"], stay:true}   // the last one: enjoy it, then Finish
 ];
 /* the lesson embed marks itself before first paint; its tour is the short one */
 const PLAYER=document.documentElement.classList.contains("player");
@@ -381,7 +379,14 @@ function box(el){
 }
 function find(c){ if(typeof c==="function"){ let e=null; try{ e=c(); }catch(err){} return box(e)?e:null; }
   return [...document.querySelectorAll(c)].find(box)||null; }
-function target(s){ if(!s||!s.at) return null; for(const c of s.at){ const e=find(c); if(e) return e; } return null; }
+/* THE APP'S OWN POP-UPS TAKE THE SPOTLIGHT WHILE THEY ARE OPEN (David, 21 Sep: the embed tour asks the student to
+   mute the video and answer "Turn the pan on", and that question was hidden behind the card). A pop-up is the app
+   asking or telling the student something, so for as long as one is up it is what is lit, and the card stands
+   clear of it; when it closes, the step's own target comes back. One rule for every step and every such pop-up -
+   add one here and every step already defers to it. The SKIP rule still asks only about the step's own targets. */
+const POPUPS=["#panSoundDlg","#panMutedDlg"];
+function ownTarget(s){ if(!s||!s.at) return null; for(const c of s.at){ const e=find(c); if(e) return e; } return null; }
+function target(s){ for(const c of POPUPS){ const e=find(c); if(e) return e; } return ownTarget(s); }
 
 /* the layer: one element, a popover so it paints above the app's modal dialogs and the fullscreen notation.
    A modal dialog makes everything outside it inert, so the layer moves INTO whichever one is up. */
@@ -505,7 +510,7 @@ function open(k,dir){
     if(s.ch!==T.ch) chapterStart(s.ch);
     if(s.need&&!isOpen(s.need.dlg)){ const d=document.querySelector(s.need.door); if(d) d.click(); }
     if(s.enter) try{ s.enter(); }catch(e){}
-    if(s.at&&!s.anywhere&&!target(s)) continue;     // nothing here to point at: not a step for this screen
+    if(s.at&&!s.anywhere&&!ownTarget(s)) continue;  // nothing here to point at: not a step for this screen
     if(s.done&&ok(s.done)) continue;                // its goal is met already
     T.k=k; T.clicks=[]; T.passed=false;
     paint(s); place();
@@ -531,15 +536,18 @@ function chapterStart(ch){
   T.pan0=myPanId;
 }
 function paint(s){
+  /* A STEP THAT STAYS (David, 21 Sep: "give the user the opportunity to play around … don't automatically
+     progress to the next card. Wait until the user progresses manually"): it shows its Try it line as an
+     invitation, has no goal to meet, and its button says Next, never Skip - the student moves on when done. */
   const w=words(s.id), ci=CHS.findIndex(c=>c.id===s.ch), mine=SEQ.filter(x=>x.ch===s.ch), n=mine.indexOf(s),
-        last=T.k===lastOf(s.ch), u=U(), tries=!!(s.done&&w.try);
+        last=T.k===lastOf(s.ch), u=U(), tries=!!((s.done||s.stay)&&w.try), skippy=tries&&!s.stay;
   card.className=""; T.passed=false;
   card.innerHTML='<div class="tk"><span>'+h(PLAYER?CHS[ci].name:(ci+1)+" · "+CHS[ci].name)+'</span><button class="tx" data-a="x" aria-label="'+h(u.leave)+'">✕</button></div>'
     +"<h4>"+h(w.title)+"</h4><p>"+h(w.body)+"</p>"
     +(tries?'<div class="ttry">'+h(w.try)+"</div>":"")
     +'<div class="tf"><span class="tpips">'+mine.map((x,i)=>"<i"+(i===n?' class="on"':"")+"></i>").join("")+"</span>"
     +(last?'<button class="tb gho" data-a="stop">'+h(u.stopHere)+"</button>":(n>0?'<button class="tb gho" data-a="back">'+h(u.back)+"</button>":""))
-    +'<button class="tb '+(tries?"sec":"pri")+'" data-a="next">'+h(last?(ci<CHS.length-1?u.nextChapter:u.finish):(tries?u.skip:u.next))+"</button></div>";
+    +'<button class="tb '+(skippy?"sec":"pri")+'" data-a="next">'+h(last?(ci<CHS.length-1?u.nextChapter:u.finish):(skippy?u.skip:u.next))+"</button></div>";
 }
 function onCard(e){
   e.stopPropagation();
@@ -653,5 +661,5 @@ setTimeout(()=>firstStart(0),1500);
 window.HPS_TOUR={start, menu, welcome, leave, TEXT, CHAPTERS:CHS, STEPS:SEQ, PLAYER,
   at:()=>{ const s=SEQ[T.k]; return T.mode==="steps"&&s?s.id:null; },
   probe:id=>{ const s=SEQ.find(x=>x.id===id)||SEQ[T.k]; if(!s) return null;
-    const el=target(s); return el?("#"+(el.id||"")+"."+(el.className&&el.className.baseVal!==undefined?el.className.baseVal:el.className||"")+" "+el.tagName).trim():null; }};
+    const el=ownTarget(s); return el?("#"+(el.id||"")+"."+(el.className&&el.className.baseVal!==undefined?el.className.baseVal:el.className||"")+" "+el.tagName).trim():null; }};
 })();
