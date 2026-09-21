@@ -665,6 +665,10 @@ function words(id){ const w=TEXT[id]||{}, p=phone();
   return {title:w.title||"", body:(p&&w.phoneBody)||w.body||"", try:(p&&w.phoneTry)||w.try||"", foot:(p&&w.phoneFoot)||w.foot||"", tip:w.tip||"", pop:w.pop||"", then:w.then||"", okay:w.okay||"", btn:w.btn||"", btn2:w.btn2||"", try2:w.try2||""}; }
 const U=()=>TEXT.ui;
 function ok(f){ try{ return !!f(); }catch(e){ return false; } }
+/* a quiet frame (framed, not lit, not pressable) - `quiet` true, or a function answering for the moment. ONE reading for
+   the look and the lock: the lock read the raw value, took the function for "quiet" and kept card 3's sound button
+   shut to a real click (David, 21 Sep: "during card 3, I can't currently unmute the player") */
+const isQuiet=s=>typeof s.quiet==="function"?ok(s.quiet):!!s.quiet;
 
 function box(el){
   if(!el||!el.getClientRects||!el.getClientRects().length) return false;
@@ -824,7 +828,7 @@ function place(){
   if(point&&!(s.point&&el&&!isPop&&!T.passed)) point.classList.remove("on");
   if(!el){ spot.className="none"; L.classList.add("dim");
     card.style.left=(vw-cw)/2+"px"; card.style.top=sheetTop()+"px"; return; }   // nothing to point at: at the top of the notation, not the middle of a tall lesson frame (David, 21 Sep)
-  const quiet=!!((typeof s.quiet==="function"?ok(s.quiet):s.quiet)&&!isPop&&!(s.thenAt&&T.gateMet.has(s.id)));
+  const quiet=!!(isQuiet(s)&&!isPop&&!(s.thenAt&&T.gateMet.has(s.id)));
   L.classList.toggle("dim",quiet); spot.className=quiet?"ring":"";
   /* A SECOND ELEMENT LIT WITH THE TARGET (`also`, David, 21 Sep, of "Now the fun part": "highlight the notation,
      but also the play button"): the spotlight spans both, and the card places itself against the whole. */
@@ -1084,7 +1088,7 @@ function start(ch){
   ch=ch||CHS[0].id;
   if(T.mode!=="steps") T.snap=snapshot();       // what the student had, for the end - taken before the defaults
   if(PLAYER) compositionDefaults();
-  try{ if(needVideo()&&vidMuted===true) videoSound(true); }catch(e){}   // the tour begins with the video's own sound
+  videoUp();                                        // the tour begins with the video's own sound (and the player muted)
   /* THE PAN TAB IS ON (David, 21 Sep: "make sure that the pan tab is actually active when the tutorial starts") -
      the player's own switch, pressed only when it is off */
   try{ if(PLAYER&&typeof panOn!=="undefined"&&!panOn){ const b=$("panBtn"); if(b) b.click(); } }catch(e){}
@@ -1117,6 +1121,7 @@ function sheetTop(){
 }
 function sheet(html){
   if(T.mode==="steps"){ closeAll(); restore(); clearInterval(T.iv); }
+  T.soundSheet=false;                                  // only the cards before the tour keep the video's sound up
   showLayer(); T.mode="sheet"; T.token++;
   L.classList.add("dim","block"); spot.className="none";
   [arrow,tip,point].forEach(e=>e&&e.classList.remove("on"));
@@ -1136,11 +1141,13 @@ function welcome(){
   const w=words(PLAYER?"sheet.emb":"sheet.welcome"), u=U();
   sheet("<h3>"+h(w.title)+"</h3><p>"+h(w.body)+'</p><div class="trow"><button class="tbig" data-a="go">'+h(u.show)
     +'</button><button class="tplain" data-a="later">'+h(u.notNow)+'</button></div><p class="fine">'+h(w.foot)+"</p>");
+  soundWatch();
 }
 function videoFirst(){
   const w=words("sheet.embVideo"), u=U();
   sheet("<h3>"+h(w.title)+"</h3><p>"+h(w.body)+'</p><div class="trow"><button class="tbig" data-a="begin" hidden>'+h(u.cont)
     +'</button><button class="tplain" data-a="later">'+h(u.notNow)+"</button></div>");
+  soundWatch();
   /* the arrow up to the video, as on every card that asks for something in the video player (David, 21 Sep) - until
      the video has played */
   if(arrow) arrow.classList.add("on");
@@ -1159,7 +1166,19 @@ function playNote(){
   const w=words("sheet.embPlay"), u=U();
   sheet("<h3>"+h(w.title)+"</h3><p>"+h(w.body)+'</p><div class="trow"><button class="tbig" data-a="begin2">'+h(u.startTour)
     +'</button><button class="tplain" data-a="later">'+h(u.notNow)+"</button></div>");
+  soundWatch();
 }
+/* THE VIDEO'S OWN SOUND, FROM THE FIRST CARD (David, 21 Sep: "at the beginning of the tour, the video should already be
+   unmuted … even after the very first card, a quick look around. If the check can happen there, that would be perfect").
+   ONE check, `videoUp()`: under a lesson whose bridge can, a muted video is unmuted - and the player's sound steps aside
+   first, so the app's turn-taking has nothing to announce and card 3 finds the player muted, as it expects. It runs
+   while the welcome card, the video card and Before we start are up (the video's state may arrive after the card),
+   and once more as the tour starts. Never on the end card: the tour ends with the player's sound on. */
+function videoUp(){ try{ if(!needVideo()||vidMuted!==true||!T.canSound) return;
+  if(typeof followMuted!=="undefined"&&!followMuted){ followMuted=true; if(typeof updateScoreTools==="function") updateScoreTools(); }
+  videoSound(true); }catch(e){} }
+function soundWatch(){ T.soundSheet=true; videoUp(); clearInterval(T.sw);
+  T.sw=setInterval(()=>{ if(T.mode!=="sheet"||!T.soundSheet){ clearInterval(T.sw); return; } videoUp(); },400); }
 /* under any other lesson: go to the one the tour runs under; the player there opens the welcome card by itself */
 function elsewhere(){
   const w=words("sheet.embElse"), u=U();
@@ -1219,7 +1238,7 @@ function mayTouch(el){
   /* `deny` names what stays shut inside a lit area: a selector matches ANY element it describes (el.closest) */
   for(const c of (s.deny||[])){ if(typeof c==="string"){ try{ if(el.closest(c)) return false; }catch(e){} } else { const e=find(c); if(e&&e.contains(el)) return false; } }
   const lit=[], thenPhase=s.thenAt&&T.gateMet.has(s.id);
-  if(!s.quiet||thenPhase){ const t=ownTarget(s); if(t) lit.push(t); }
+  if(!isQuiet(s)||thenPhase){ const t=ownTarget(s); if(t) lit.push(t); }
   for(const c of [...(s.also||[]),...(s.allow||[])]){ const e=find(c); if(e) lit.push(e); }
   return lit.some(e=>e.contains(el));
 }
