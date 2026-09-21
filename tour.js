@@ -131,12 +131,12 @@ const TEXT={
   "sheet.embEnd":  {title:"That's it 🙏", body:"I hope this will help you with your practice and to transpose the tunes from one scale to another.\nEnjoy and let us know in the village how the player works for you. 👍"},
   "emb.notation":  {title:"The notation", body:"You already know our notation - Every number is a note on your pan, and D is the ding in the middle. Green numbers are for your left hand, black ones for your right."},
   "emb.follow":    {title:"The player can follow the video", body:"As long as this switch is activated, the notation table in the player follows the video. Keep this option on for now.", try:"Tap Follow video to see it lit"},
-  "emb.sound":     {title:"Two sound sources, one at a time", body:"Up in the video player's interface, you can mute the video. Once you do that, the player asks whether you would like to unmute it. You can also manually mute/unmute the player at any point by clicking the small icon next to the play button.", try:"Mute the video, then answer: Turn the pan on", tip:"Mute the video in the video player above"},
-  "emb.space":     {title:"Play and pause with the space bar", body:"By the way, you can play and pause the playback at any time with the space bar. Give it a try!", try:"Press the space bar"},
+  "emb.sound":     {title:"Two sound sources, one at a time", body:"Up in the video player's interface, you can mute the video. Once you do that, our new player asks whether you would like to unmute it. You can also manually mute/unmute the player at any point by clicking the small icon next to the play button.", try:"Mute the video, then answer: Turn the pan on", tip:"Mute the video in the video player above"},
+  "emb.space":     {title:"Play and pause", body:"By the way, you can play and pause the playback at any time with the play button or space bar. Give it a try!", try:"Press the space bar to pause and restart playback"},
   "emb.followoff": {title:"Using the player on its own", body:"While the player is following, the video is in charge of the timing. Switch Follow off and the player is yours: your own tempo, half speed, the little helpers and looping all wake up. Switch it back on whenever you want to play along with the video again.", try:"Switch Follow off"},
   "emb.followback": {title:"Back to the video", body:"Follow video connects the player to the video again: the marker walks with the lesson, and the video and player navigate and start together.", try:"Switch Follow back on"},
-  "emb.videosound": {title:"New possibilities", body:"Press play and have a listen. With the video running and the sound coming from the player, we have some nice options. For example you can slow the video down in the video player and the pan keeps its natural sound. I will show you now how the same tune sounds in 0.75 tempo.", try:"Let's listen in 0.75 tempo", btn:"OK", tip:"Change the speed in the video player above"},
-  "emb.halfspeed": {title:"Even slower", body:"Let's listen even slower and go to half tempo.", try:"Press Switch to half tempo", btn:"Switch to half tempo", try2:"Have a listen at half tempo", btn2:"Go back to normal tempo and proceed"},
+  "emb.videosound": {title:"New playback options", body:"Now the video is running but the sound is coming from the player. That creates some nice options. For example we can slow the video down in the video player and the pan keeps its natural sound. Let's listen in 0.75 tempo.", try:"Let's listen in 0.75 tempo", btn:"OK", tip:"Change the speed in the video player above"},
+  "emb.halfspeed": {title:"Even slower", body:"Let's go even slower and go to half tempo.", try:"Press Switch to half tempo", btn:"Switch to half tempo", try2:"Have a listen at half tempo", btn2:"Go back to normal tempo and proceed"},
   "emb.pan":       {title:"The pan tab", body:"Here you see the layout of the selected handpan. The tone fields light up when they are played. You can also listen to the tone fields by clicking them.", try:"Pause playback by pressing space", try2:"Play around on the pan for a while by clicking the tone fields"},
   "emb.play":      {title:"The player on its own", body:"Once follow mode is switched off, you have full control of the player.", try:"Press Play"},
   "emb.controls":  {title:"Tempo and helpers", body:"Here you can adjust:\n• the tempo\n• the count-in\n• half speed\n• the metronome\n• how the marker is animated", try:"Try them out, then press Next - they go back to how they were"},
@@ -458,7 +458,13 @@ const EMB=[
   /* THE SPACE BAR (David, 21 Sep: "you can play and pause playback at any time with the spacebar. Give it a try …
      wait for the user to press spacebar before giving the option to proceed"): Play lit, Next greyed until a Space
      arrives - in the player, or from the lesson page through the bridge */
-  {id:"emb.space",    ch:"emb", at:["#playBtn"], enter:()=>{ T.spaceHit=false; }, gate:()=>!!T.spaceHit},
+  /* …and it waits for a STOP AND A RESTART (David, 21 Sep: "wait until the user has stopped and restarted playback at
+     least once. Then it can turn green, and the button to continue can come up") - however it is done: Space, Play, or
+     the video's own button */
+  {id:"emb.space",    ch:"emb", at:["#playBtn"], enter:()=>{ T.ppLast=null; T.ppStop=false; },
+                      checks:[{key:"try", ok:()=>{ const h=hearing(), was=T.ppLast; T.ppLast=h;
+                        if(was!=null&&h!==was){ if(!h) T.ppStop=true; else if(T.ppStop) return true; } return false; }}],
+                      gate:()=>checksDone()},
   /* THE TOUR SETS THE VIDEO'S SPEED (David, 21 Sep: "since we now have control of the playback speed, we can actually set
      the slower tempo for the user … the first prompt … wait for the user to click OK, and the speed goes to 0.75. Then
      another card … go to half tempo … wait for the user to click Next. This option should say Go back to normal tempo and
@@ -1068,7 +1074,7 @@ function mayTouch(el){
   for(const c of POPUPS){ const d=find(c); if(d) return d.contains(el); }
   /* PLAY IS ALWAYS THE STUDENT'S (David, 21 Sep: "the ability to play and pause playback with space should be active
      during the tutorial, and also the play button should be usable during the tutorial. Nothing else.") */
-  { const pb=$("playBtn"); if(pb&&pb.contains(el)) return true; }
+  if(el.closest&&el.closest("#playBtn,#landPlay")) return true;   // every Play the player has: the header's, and the phone's sideways view
   if(s.listen&&hearing()&&(!s.gate||T.gateMet.has(s.id))) return false;
   if(!(s.done||s.stay||s.gate)) return false;
   /* `deny` names what stays shut inside a lit area: a selector matches ANY element it describes (el.closest) */
