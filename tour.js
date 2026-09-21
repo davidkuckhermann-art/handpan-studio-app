@@ -141,21 +141,22 @@ const TEXT={
   "emb.play":      {title:"The player on its own", body:"Once follow mode is switched off, you have full control of the player.", try:"Press Play"},
   "emb.controls":  {title:"Tempo and helpers", body:"Here you can adjust:\n• the tempo\n• the count-in\n• half speed\n• the metronome\n• how the marker is animated", try:"Try them out, then press Next - they go back to how they were"},
   "emb.loop":      {title:"Loop a passage", body:"Drag across the notation, over a few beats or a whole row to loop it. This is a great way to practice a tricky passage. The little loop button beside Play clears it again.", try:"Make a loop and play it through twice", phoneBody:"Double-tap and slide your finger over the notation to create a loop. The button beside Play clears it again.", okay:"✓ Well done - you made a loop and heard it twice"},
-  "emb.navigate":  {title:"Move around, and the video comes with you", body:"Here you can navigate through the different parts of the composition. Select a part and click straight into the notation: while the player is following, the video jumps to that spot too. Let's say you want to jump to the B section - you simply select the table and click into it and the video follows.", try:"Try it: pick a part, click into the notation, and watch the video follow"},
+  "emb.navigate":  {title:"Move around, and the video comes with you", body:"In the notation you can navigate through the different parts of the composition. Select a part and click straight into the notation: while the player is following, the video jumps to that spot too. Let's say you want to jump to the B section - you simply select the table and click into it and the video follows.", try:"Try it: pick a part, click into the notation, and watch the video follow"},
   "emb.videoback": {title:"Hear the original again", body:"Unmute the video in the player let it run. The player asks you to mute, because the two always take turns. Now you hear the sound of the video again.", try:"Turn the video sound back on, confirm to mute the player in the popup and press play", pop:"Press Got it to confirm the pan is muted", then:"Press Play and listen to the original", tip:"Turn the video sound back on in the video player above"},
   "emb.ownscale":  {title:"My favourite part", body:"As a last step, let's see what happens when we mute the video now and unmute the player. You can see me playing the composition in the video, but the sound comes from the player. You will hear the composition transposed to the pan you select in the app.", try:"Mute the video and answer the pop-up with Turn the pan on. The music keeps going: watch me play the tune and, at the same time, hear it transposed to your selected scale", tip:"Mute the video in the video player above"},
-  "emb.loopb":     {title:"Now the fun part", body:"I have looped this notation table. Let's listen once on the D Kurd and then switch scale.", try:"Press Play and listen to the whole B section"},
+  "emb.loopb":     {title:"Now the fun part", body:"I have looped this notation table. Let's listen once to the table and then I'll show you something fun...", try:"Press Play and listen to the whole B section"},
   "emb.mypan":     {title:"Time to swap pans", body:"This piece is written on a D Kurd. But what if you have a different handpan: Let's open the scale selector.", try:"Click scale selector"},
   "emb.pickb2":    {title:"Choose your scale", body:"This is the list of handpan scales. Common shows the ones you meet most often, Rare and All show the rest. Each row is one scale, and the numbers on it are the sizes it comes in. Tap a row to take that scale for your pan.\nLet's try B2 Amara 9 - the row with the arrow.", try:"Tap B2 Amara 9"},
+  "emb.mypanwin":  {title:"Your pan and the piece", body:"This window shows the pan you have chosen, and how the piece is played on it. \"As written\" keeps the notation exactly as it was written for the D Kurd. \"For my pan\" transposes it onto your B2 Amara 9.\nFor now we stay with As written - let's hear what that sounds like."},
   "emb.written":   {title:"Let's listen...", body:"\"As written\" keeps the numbers in the notation exactly as they are, on your pan. Press Play and listen: it doesn't sound great. You can't just play the same tone fields on the Amara scale and expect it to sound good.", try:"Press Play and listen to the whole table"},
-  "emb.mine":      {title:"Now For my pan", body:"For my pan transposes the piece to your instrument, changing the tone fields so you can play the same tune on a different instrument.", try:"Tap For my pan"},
-  "emb.report":    {title:"What the card tells you", body:"A transposition card comes up at the bottom with the honest arithmetic: how many notes land exactly on your pan, and whether one had to stand in for a note you do not have. The percentage is how much of the music survived the move. It will not work perfectly with every handpan, but there are many ways to make it work nicely. For now let's stick to the automatic transposition."},
-  "emb.listen":    {title:"And hear the difference", body:"Press Play once more. Same piece, same lesson, your pan.", try:"Press Play and listen to the whole table"},
+  "emb.mine":      {title:"Now For my pan", body:"This switch transposes the piece to your selected scale, changing the tone fields so you can play the same tune on a different instrument. The same option is also available when you select a new scale. It's the \"For my pan\" option.", try:"Tap For my pan"},
+  "emb.report":    {title:"What the card tells you", body:"A transposition card comes up at the bottom with the honest arithmetic: how many notes land exactly on the new scale, and whether one had to stand in for a note you do not have. The percentage is how much of the music survived the move. It will not work perfectly with every handpan, but it often creates really nice results. Below you can see that one tone field can't be transposed to the B Amara instrument, because the new scale doesn't have a fitting equivalent."},
+  "emb.listen":    {title:"And hear the difference", body:"Now let's listen to the transposed version of the piece. One note was missing for the transposition, but I'd say that's a compromise that we can work with.", try:"Press Play and listen to the whole table"},
   "emb.ashaki":    {title:"Now something quite different", body:"C Ashakiran 17 is a major scale, a long way from a D Kurd. It is not in the Common list, so I've opened All for you, right at the C Ashakiran row. Tap 17 for the extended version with bottom notes, then tap the row to take it.", try:"Tap 17 on the C Ashakiran row, then the row"},
   "emb.ashwritten": {title:"As written, on a major pan", body:"I've switched on As written again. Let's see what it sounds like when we simply play the tone fields of the composition on the Ashakiran handpan. Press Play and hear what the piece becomes when played on the major scale \"as written.\"", try:"Press Play and listen to the whole table"},
   "emb.ashmode":   {title:"Transposing to another scale", body:"Now let's transpose the tune. Select the \"For my pan\" setting and let's listen to what the automatic transposition does. There are various transposition presets available, for now let's stick to the automatic one.", try:"Tap For my pan, then press Play and listen again"},
   "emb.sides":     {title:"The viewing options", body:"You can activate the pan and chord tabs here. The chord tab shows the chords/harmony of the composition. The pan shows the layout of your instrument and the position of the tone fields. The pan's scale and layout are fully customisable, so you can recreate your personal instruments.", try:"Tap Chords"},
-  "emb.views":     {title:"Table, Tab or Flow", body:"Three ways to read the same music. Tab gives each hand its own lane; Flow gets rid of the notation tables and lets the music run on and wrap like text.", try:"Tap Tab"},
+  "emb.views":     {title:"Table, Tab or Flow", body:"Three ways to read the same music. Tab gives each hand its own lane; Flow gets rid of the notation tables and lets the music run on and wrap like text.", try:"For now, select Tab view"},
   "emb.fs":        {title:"Full screen", body:"Just the notation, as big as your screen allows. Good when the pan is in your lap. Press the same button again, or Esc, to come back.", try:"Go full screen, then leave it again"}
 };
 /* ===================================== END OF THE WORDS ===================================== */
@@ -508,7 +509,7 @@ const EMB=[
   /* A LOOP, HEARD TWICE (David, 21 Sep: "wait until the user has created a loop and played it back two times
      before stopping the playback and proceeding"). lastPaint is the pulse the marker is on; inside a loop it jumps
      back to the loop's start on every pass, so two jumps back are two full passes. The next card stops the music. */
-  {id:"emb.loop",     ch:"emb", at:["#score"], allow:["#playBtn","#loopBtn"], enter:()=>{ stopPlay(); T.passes=0; T.lastP=null; },
+  {id:"emb.loop",     ch:"emb", at:["#score"], allow:["#playBtn","#loopBtn"], enter:()=>{ T.passes=0; T.lastP=null; },
                       /* heard twice, and it KEEPS PLAYING (David, 21 Sep: "let's not automatically move on, but let's keep the
                          loop playing until the user manually selects Next … the orange writing … should make space for the
                          green checkmark"): a gate, not a goal - Next lights and the line turns green; the next card stops it */
@@ -541,22 +542,35 @@ const EMB=[
                       deny:[".pprow .ppv",'.ppbuilds button:not([aria-label="B2 Amara 9"])'],
                       done:()=>/^b2-amara/.test(myPanId), hold:900},
   /* the two listens (as written, then for my pan) each play the whole table, Play lit with the switch */
+  /* THE MY PAN WINDOW, A MOMENT OF ITS OWN (David, 21 Sep: "after the Choose Your Scale card, we need to stay for a
+     moment on the scale selection card that comes up. Briefly explain this card, and the as written option should be
+     selected here with no option to change it. This needs its own card"): the window the app opens after a pan is
+     chosen, lit; As written set; a card that only tells, so nothing in the window can be pressed */
+  {id:"emb.mypanwin", ch:"emb", at:["#myPanDlg"], enter:()=>{ try{ if(mode!=="pos"&&typeof setMode==="function") setMode("pos"); }catch(e){} }},
   {id:"emb.written",  ch:"emb", enter:asWritten, onShow:plainPlayback, at:["#modePos2","#modePos",byText("#mpModeRow button","As written"),"#drawerGrip"],
                       also:["#playBtn"], listen:true, done:()=>mode==="pos"&&onePass(), hold:600},
-  {id:"emb.mine",     ch:"emb", enter:stopPlay, at:["#modeTrans2","#modeTrans",byText("#mpModeRow button","For my pan"),"#drawerGrip"], done:()=>mode==="trans"},
+  {id:"emb.mine",     ch:"emb", at:["#modeTrans2","#modeTrans",byText("#mpModeRow button","For my pan"),"#drawerGrip"], done:()=>mode==="trans"},
   {id:"emb.report",   ch:"emb", enter:()=>{ closeAll(); setMode("trans"); }, at:["#report"]},
   {id:"emb.listen",   ch:"emb", enter:listenFresh, onShow:plainPlayback, at:["#score"], also:["#playBtn"], listen:true, done:onePass, hold:600},
   /* AND STRAIGHT ON TO A MAJOR PAN (David, 21 Sep: "the last one should be the C Ashakiran 17, which is a major
      scale … first … as written and then … transposed to the instrument (with the same mode option)"). Tier 3, so
      it is not in the picker's Common list: the All filter is the candidate under the row, and the card says so. */
-  {id:"emb.ashaki",   ch:"emb", enter:()=>{ stopPlay(); pickAll(); }, need:PICK, point:true,
+  {id:"emb.ashaki",   ch:"emb", enter:()=>{ pickAll(); }, need:PICK, point:true,
                       at:[buildChip("C Ashakiran","17"),builtRow("C Ashakiran","17"),"#ppAll","#ppList","#myPanBtn","#panSel","#drawerGrip"],
                       done:()=>myPanId==="c-ashakiran-17", hold:900},
   {id:"emb.ashwritten",ch:"emb", enter:asWritten, onShow:plainPlayback, at:["#modePos2","#modePos",byText("#mpModeRow button","As written"),"#drawerGrip"],
                       also:["#playBtn"], listen:true, done:()=>mode==="pos"&&onePass(), hold:600},
-  {id:"emb.ashmode",  ch:"emb", enter:listenFresh, onShow:plainPlayback, at:["#modeTrans2","#modeTrans",byText("#mpModeRow button","For my pan"),"#drawerGrip"],
-                      also:["#playBtn"], listen:true, done:()=>{ sameMode(); return howMode()&&onePass(); }, hold:600},
-  {id:"emb.sides",    ch:"emb", enter:()=>{ stopPlay(); clearLoop(); }, at:["#chordBtn",'[aria-label="Show chords"]'], done:()=>phone()?(chordRowOn&&!panOn):chordRowOn},   // chords ON, by the student's own tap
+  /* the music PLAYS ON from the card before (David, 21 Sep: "after the user listened to the complete table, playback
+     should not stop. It should continue, and then … only the exact button should be highlighted that we want the user
+     to press: the For my pan button"): nothing stopped on the way in, the count starts afresh - a whole table heard
+     once For my pan is on - and only For my pan is lit (Play stays usable, as on every card) */
+  {id:"emb.ashmode",  ch:"emb", enter:()=>{ T.passes=0; T.lastP=null; if(!loopSec&&!hearing()) loopPhrase(); }, onShow:plainPlayback,
+                      at:["#modeTrans2","#modeTrans",byText("#mpModeRow button","For my pan"),"#drawerGrip"],
+                      listen:true, listenAfter:howMode, done:()=>{ sameMode(); return howMode()&&onePass(); }, hold:600},
+  /* THE MUSIC PLAYS ON (David, 21 Sep: "after these listening steps, playback should not stop except if there's a reason
+     for it") - no card stops it on the way in unless it must: a listen that restarts the table from its first beat, or
+     the video taking over again (Back to the video, which also clears the loop) */
+  {id:"emb.sides",    ch:"emb", at:["#chordBtn",'[aria-label="Show chords"]'], done:()=>phone()?(chordRowOn&&!panOn):chordRowOn},   // chords ON, by the student's own tap
   {id:"emb.views",    ch:"emb", at:["#viewTab"], done:()=>view==="tab"},
   /* in AND out again (David, 21 Sep: "ask them to exit full screen mode and wait until full screen mode is exited
      before proceeding") */
@@ -564,7 +578,7 @@ const EMB=[
   /* it ends where it began: back with the video - and THAT is where the scale pays off (David, 21 Sep:
      "we can add the thing about the different scale at the end of the tutorial when you switch the follow
      video option back on") */
-  {id:"emb.followback",ch:"emb", at:["#followBtn"], enter:stopPlay, done:()=>follow, hold:1200},
+  {id:"emb.followback",ch:"emb", at:["#followBtn"], enter:()=>{ stopPlay(); clearLoop(); }, done:()=>follow, hold:1200},
   /* THE SOUND GOES BACK TO THE VIDEO FIRST (David, 21 Sep: "let's first turn the sound of the video back on.
      Listen to the original, and then switch to the selected scale"). Both cards STAY, and each asks for a switch
      of the video's own sound and an answer to the pop-up the app raises ("the user should now unmute the video
@@ -635,7 +649,7 @@ function css(){
 #tourLayer.on{display:block} #tourLayer::backdrop{display:none}
 #tourLayer.dim{background:rgba(30,27,22,.55)} #tourLayer.block{pointer-events:auto}
 #tourSpot{position:fixed;border-radius:12px;box-shadow:0 0 0 200vmax rgba(30,27,22,.55);outline:2.5px solid #E59315;pointer-events:none;
-  transition:left .25s,top .25s,width .25s,height .25s}
+  transition:left .8s cubic-bezier(.4,0,.2,1),top .8s cubic-bezier(.4,0,.2,1),width .8s cubic-bezier(.4,0,.2,1),height .8s cubic-bezier(.4,0,.2,1)}
 #tourSpot.none{display:none}
 #tourSpot.ring{box-shadow:none}
 #tourArrow{position:fixed;left:50%;top:6px;width:64px;height:78px;margin-left:-32px;display:none;pointer-events:none;
@@ -658,7 +672,7 @@ function css(){
 @media (prefers-reduced-motion:reduce){#tourArrow,#tourPoint{animation:none}}
 html.tour-askpan #psNo,html.tour-askpan #panSoundDlg .dlgask,html.tour-askpan #panMutedDlg .dlgask{opacity:.35;pointer-events:none}
 #tourCard{position:fixed;box-sizing:border-box;pointer-events:auto;background:#1E1B16;color:#fff;border-radius:14px;padding:14px 16px 12px;
-  border:1px solid rgba(255,255,255,.1);box-shadow:0 20px 50px -10px rgba(0,0,0,.55);transition:left .25s,top .25s;text-align:left}
+  border:1px solid rgba(255,255,255,.1);box-shadow:0 20px 50px -10px rgba(0,0,0,.55);transition:left .8s cubic-bezier(.4,0,.2,1),top .8s cubic-bezier(.4,0,.2,1);text-align:left}
 #tourCard .tk{display:flex;justify-content:space-between;align-items:center;font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#B9B0A1}
 #tourCard .tx{background:none;border:0;color:#B9B0A1;font-size:17px;line-height:1;padding:2px 4px;margin:-4px -6px 0 0;cursor:pointer}
 #tourCard h4{margin:6px 0 4px;font-size:16.5px;font-weight:700;color:#fff}
@@ -781,6 +795,14 @@ function place(){
     else if(r.left-pad-gap-cw>=8) left=r.left-pad-gap-cw;
     else top=vh-ch-10; }
   left=Math.min(Math.max(left,10),vw-cw-10); top=Math.max(8,top);
+  /* …NOR WHAT IS ALWAYS THE STUDENT'S - Play and the part pills (David, 21 Sep: both usable throughout): where the card
+     would sit on one, it moves below it, else above its own target, else it stays */
+  const hostDlg=L.parentElement&&L.parentElement.tagName==="DIALOG"?L.parentElement:null;   // behind an open window they cannot be pressed anyway
+  for(const kc of ["#arrChips","#playBtn"]){ const ke=find(kc); if(!ke||(el&&el.contains(ke))||(hostDlg&&!hostDlg.contains(ke))) continue; const q=ke.getBoundingClientRect();
+    const over=T0=>left<q.right+6&&left+cw>q.left-6&&T0<q.bottom+6&&T0+ch>q.top-6;
+    if(!over(top)) continue;
+    if(q.bottom+10+ch<=vh-8) top=q.bottom+10;
+    else if(r.top-pad-gap-ch>=8&&!over(r.top-pad-gap-ch)) top=r.top-pad-gap-ch; }
   /* THE CARD NEVER COVERS WHAT IT POINTS AT (found on Move around: the pills and the notation together left no room above
      or below, the card fell to the foot of the screen - onto the pills - and took the student's click). When the lit
      area as a whole has no room, the card goes above, else below, the card's OWN target, over the rest if it must */
@@ -802,6 +824,10 @@ function place(){
       else if(q.right+12+cw<=vw-8) left=q.right+12;
       else if(q.left-12-cw>=8) left=q.left-12-cw;
       else top=Math.max(8,Math.min(q.top-ch-12,vh-ch-8)); } }
+  /* THE FURTHER IT GOES, THE LONGER IT TAKES (0.8 s for a hop, up to 3 s across the player) - so a card that sets off for
+     something below the fold is seen going there */
+  const dist=Math.hypot(left-(parseFloat(card.style.left)||left), top-(parseFloat(card.style.top)||top));
+  if(dist>2){ const dur=Math.min(3,Math.max(.8,dist/330)).toFixed(2)+"s"; card.style.transitionDuration=dur; spot.style.transitionDuration=dur; }
   card.style.left=left+"px"; card.style.top=top+"px";
 }
 /* bring a target into view INSTANTLY and only as far as needed - a smooth scroll can be left half-way in a
@@ -813,12 +839,11 @@ function bring(el,s){
     if(a&&a!==document.body&&a.getBoundingClientRect().height<innerHeight-2*m) el=a; } }
   /* a row in one of the app's scrolling lists (the scale picker, the library) is centred in its list, so the card
      finds room above or below it and never sits on the row's name */
-  if(el.closest(".pplist,#libList")){ el.scrollIntoView({block:"center"}); place(); return; }
-  let r=el.getBoundingClientRect();
-  if(r.top<0||r.bottom>innerHeight) el.scrollIntoView({block:"nearest"});
-  r=el.getBoundingClientRect();
-  if(r.top<m) scrollBy(0,r.top-m);
-  else if(r.bottom>innerHeight-m&&r.height<innerHeight-2*m) scrollBy(0,r.bottom-(innerHeight-m));
+  /* THE TOUR DOES NOT SCROLL THE PAGE (David, 21 Sep: "I don't think we need a gentle scroll. We just need to see how the
+     card moves downwards slower … maybe 3 seconds, and then the user can scroll down by themselves"). The card travels
+     to its target at a pace that grows with the distance (place()), and the student follows it. Only a row in one of
+     the app's own lists (the scale picker, the library) is centred in that list, so the card never sits on its name. */
+  if(el.closest(".pplist,#libList")) el.scrollIntoView({block:"center"});
   place();
 }
 function tick(){
@@ -838,7 +863,7 @@ function listenLine(s){
   if(!s||!s.listen||!card) return;
   const tr=card.querySelector(".ttry"); if(!tr||T.passed) return;
   if(s.gate&&!T.gateMet.has(s.id)) return;                 // the gate's own step comes first, and owns the line
-  const on=hearing(); card.classList.toggle("listening",on);
+  const on=hearing()&&(!s.listenAfter||ok(s.listenAfter)); card.classList.toggle("listening",on);
   const w=words(s.id), want=on?U().listening:(s.gate&&w.then?w.then:w.try); if(tr.textContent!==want) tr.textContent=want;
 }
 function gateNext(s){
@@ -857,11 +882,14 @@ function gateNext(s){
   const w=words(s.id), pop=w.pop&&POPUPS.some(c=>find(c));
   const want=open?(w.okay||U().nice):(pop?w.pop:w.try); if(tr.textContent!==want) tr.textContent=want;
 }
+/* NO CARD MOVES ON BY ITSELF (David, 21 Sep: "let's generally adapt a policy that we don't automatically proceed to
+   the next card. We wait for the user's input to click the next button"). A card whose task is done turns its line
+   green with a tick and lights Next; the student moves on. Music that is playing keeps playing until they do. */
 function pass(s){
-  T.passed=true; const tk=++T.token;
-  card.classList.add("passed");
-  const tr=card.querySelector(".ttry"); if(tr) tr.textContent=U().nice;
-  setTimeout(()=>{ if(T.mode==="steps"&&tk===T.token) next(); },s.hold||800);
+  T.passed=true; T.token++;
+  card.classList.add("passed"); card.classList.remove("listening");
+  const w=words(s.id), tr=card.querySelector(".ttry"); if(tr) tr.textContent=w.okay||U().nice;
+  const b=card.querySelector('[data-a="next"]'); if(b) b.disabled=false;
 }
 const lastOf=ch=>{ for(let i=SEQ.length-1;i>=0;i--) if(SEQ[i].ch===ch) return i; return -1; };
 
@@ -881,9 +909,9 @@ function open(k,dir){
     const met=!!(s.done&&ok(s.done));
     T.k=k; T.clicks=[]; T.cpaths=[]; T.passed=met;
     if(T.cur!==s){ exitHook(); T.cur=s; T.phase=0; T.ck=[]; if(s.onShow) try{ s.onShow(); }catch(e){} }
-    paint(s,met); place();
+    paint(s,met);
     const el=target(s);
-    if(el) bring(el,s);
+    if(el) bring(el,s); else place();     // bring() places the card itself - after the page has come to rest
     return;
   }
   if(k>=SEQ.length) finish();
@@ -908,7 +936,7 @@ function paint(s,met){
      progress to the next card. Wait until the user progresses manually"): it shows its Try it line as an
      invitation, has no goal to meet, and its button says Next, never Skip - the student moves on when done. */
   const w=words(s.id), ci=CHS.findIndex(c=>c.id===s.ch), mine=SEQ.filter(x=>x.ch===s.ch), n=mine.indexOf(s),
-        last=T.k===lastOf(s.ch), u=U(), ph=phasesOf(s), tries=!!((s.done||s.stay||s.gate||ph)&&w.try), skippy=tries&&!s.stay&&!s.gate&&!ph&&!met,
+        last=T.k===lastOf(s.ch), u=U(), ph=phasesOf(s), tries=!!((s.done||s.stay||s.gate||ph)&&w.try), skippy=false,
         tryNow=ph&&(T.phase||0)>0&&w.try2?w.try2:w.try, btnNow=ph&&w[ph[Math.min(T.phase||0,ph.length-1)].btn];
   card.className=met?"passed":"";
   card.innerHTML='<div class="tk"><span>'+h(PLAYER?CHS[ci].name:(ci+1)+" · "+CHS[ci].name)+'</span><button class="tx" data-a="x" aria-label="'+h(u.leave)+'">✕</button></div>'
@@ -917,7 +945,7 @@ function paint(s,met){
       :(tries?'<div class="ttry">'+h(met?u.nice:tryNow)+"</div>":""))
     +'<div class="tf"><span class="tpips">'+mine.map((x,i)=>"<i"+(i===n?' class="on"':"")+"></i>").join("")+"</span>"
     +(last?'<button class="tb gho" data-a="stop">'+h(u.stopHere)+"</button>":(n>0?'<button class="tb gho" data-a="back">'+h(u.back)+"</button>":""))
-    +'<button class="tb '+(skippy?"sec":"pri")+'" data-a="next"'+(s.gate&&!T.gateMet.has(s.id)&&!ok(s.gate)?" disabled":"")+'>'+h(btnNow||(last?(ci<CHS.length-1?u.nextChapter:u.finish):(skippy?u.skip:u.next)))+"</button></div>";
+    +'<button class="tb '+(skippy?"sec":"pri")+'" data-a="next"'+((s.gate&&!T.gateMet.has(s.id)&&!ok(s.gate))||(s.done&&!met&&!T.passed)?" disabled":"")+'>'+h(btnNow||(last?(ci<CHS.length-1?u.nextChapter:u.finish):(skippy?u.skip:u.next)))+"</button></div>";
 }
 /* A CARD WITH STEPS (`checks`): lines worked through in order, each turning green with a tick once its condition holds;
    the next one only counts from then. checksDone() is the card's gate. */
@@ -1075,7 +1103,13 @@ function mayTouch(el){
   /* PLAY IS ALWAYS THE STUDENT'S (David, 21 Sep: "the ability to play and pause playback with space should be active
      during the tutorial, and also the play button should be usable during the tutorial. Nothing else.") */
   if(el.closest&&el.closest("#playBtn,#landPlay")) return true;   // every Play the player has: the header's, and the phone's sideways view
-  if(s.listen&&hearing()&&(!s.gate||T.gateMet.has(s.id))) return false;
+  /* …AND SO IS FINDING ONE'S WAY (David, 21 Sep: "keep the option to move through the arrangement and click into the
+     notation to move the playhead throughout the tutorial") - on every card, unless the card names it shut (`deny`:
+     the fun part's loop, which a click or a drag in the notation would change) */
+  if(el.closest&&el.closest("#arrChips,#score")){
+    const shut=(s.deny||[]).some(c=>{ try{ return typeof c==="string"&&el.closest(c); }catch(e){ return false; } });
+    if(!shut) return true; }
+  if(s.listen&&hearing()&&(!s.gate||T.gateMet.has(s.id))&&(!s.listenAfter||ok(s.listenAfter))) return false;   // listening: hands off (from `listenAfter` on, where a card first asks for something)
   if(!(s.done||s.stay||s.gate)) return false;
   /* `deny` names what stays shut inside a lit area: a selector matches ANY element it describes (el.closest) */
   for(const c of (s.deny||[])){ if(typeof c==="string"){ try{ if(el.closest(c)) return false; }catch(e){} } else { const e=find(c); if(e&&e.contains(el)) return false; } }
