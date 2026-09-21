@@ -143,7 +143,7 @@ const TEXT={
   "emb.loop":      {title:"Loop a passage", body:"Drag across the notation, over a few beats or a whole row to loop it. This is a great way to practice a tricky passage. The little loop button beside Play clears it again.", try:"Make a loop and play it through twice", phoneBody:"Double-tap and slide your finger over the notation to create a loop. The button beside Play clears it again.", okay:"✓ Well done - you made a loop and heard it twice"},
   "emb.navigate":  {title:"Move around, and the video comes with you", body:"In the notation you can navigate through the different parts of the composition. Select a part here and click straight into the notation: When you scroll back up, you will see how the video follows your navigation. (As long as follow mode is active)", try:"Try it: pick a part, click into the notation, and watch the video follow"},
   "emb.videoback": {title:"Hear the original again", body:"Now mute the player with the speaker icon. The video's sound comes back on by itself, because the two always take turns. Now you hear the sound of the video again.", try:"Mute the player, then press Play", pop:"Press Got it to confirm the pan is muted", then:"Press Play and listen to the original", tip:"Turn the video sound back on in the video player above"},
-  "emb.ownscale":  {title:"My favourite part", body:"As a last step, let's see what happens when we switch back to the sound of the player. The video mutes itself. You can see me playing the composition in the video, but the sound comes from the player. You will hear the composition transposed to the pan you select in the app.", try:"Turn the player's sound on. The music keeps going: watch me play the tune and, at the same time, hear it transposed to your selected scale", tip:"Mute the video in the video player above"},
+  "emb.ownscale":  {title:"My favourite part", body:"As a last step, let's see what happens when we switch back to the sound of the player. The video mutes itself. You can see me playing the composition in the video, but at the same time, the sound comes from the player. You will hear the composition transposed to the pan you select in the app.", try:"Turn the player's sound on. The music keeps going: watch me play the tune and, at the same time, hear it transposed to your selected scale", tip:"Mute the video in the video player above"},
   "emb.loopb":     {title:"Now the fun part", body:"I have looped this notation table. Let's listen once to the table and then I'll show you something nice...", try:"Press Play and listen to the whole B section"},
   "emb.mypan":     {title:"Time to swap pans", body:"This piece is written on a D Kurd. But what if you have a different handpan: Let's open the scale selector.", try:"Click scale selector"},
   "emb.pickb2":    {title:"Choose your scale", body:"This is the list of handpan scales. Common shows the ones you meet most often, Rare and All show the rest. Each row is one scale, and the numbers on it are the sizes it comes in. Tap a row to take that scale for your pan.\nLet's try B2 Amara 9 - the row with the arrow.", try:"Tap B2 Amara 9"},
@@ -645,7 +645,10 @@ const EMB=[
   /* …with a bridge that can, the student mutes the PLAYER and the video's sound comes back by itself (the tour's "auto");
      Next once the player is muted and the video is heard */
   {id:"emb.videoback",ch:"emb", at:["#folMute"], quiet:()=>!T.canSound, arrowUp:()=>!T.canSound&&typeof vidMuted!=="undefined"&&vidMuted!==false, tipShot:MUTE_SHOT, tipPoint:[44,52],
-                      thenAt:["#playBtn"], enter:()=>{ listenFresh(); T.vb0=null; }, onShow:()=>askPanOnly(true), exit:()=>askPanOnly(false), listen:true,
+                      /* first only the speaker, then Play (David, 21 Sep: "first only highlight the little speaker icon, and once
+                         that is clicked, highlight the play button") - so no undimmed Play of a listening card here: `thenAt` moves
+                         the frame to Play once the gate is met */
+                      clear:[], thenAt:["#playBtn"], enter:()=>{ listenFresh(); T.vb0=null; }, onShow:()=>askPanOnly(true), exit:()=>askPanOnly(false), listen:true,
                       gate:()=>T.canSound?(followMuted&&vidMuted===false):
                         (clicked("#pmOk")||(followMuted&&vidMuted===false&&!isOpen("panMutedDlg")&&typeof panPref==="function"&&panPref(PK_WARN)==="off")),
                       done:()=>{ if(!T.gateMet.has("emb.videoback")) return false;
@@ -665,6 +668,7 @@ const EMB=[
                          beginning of the B section"): the moment the player has the sound, the video goes back to the first B table
                          (playing it if it rests), and Finish lights once that table has been heard through */
                       enter:()=>{ T.osArm=false; T.osHeard=false; T.passes=0; T.lastP=null; }, listen:true,
+                      clear:[],   // only the speaker lit (David, 21 Sep: "for card 29, only highlight the little speaker icon again")
                       gate:()=>{ const ready=!followMuted&&typeof vidMuted!=="undefined"&&vidMuted===true;
                         if(!ready&&!T.osHeard){ T.osArm=false; return false; }
                         if(!T.osArm){ T.osArm=true; T.passes=0; T.lastP=null; T.heldAt=0; sectionStart();
@@ -1083,7 +1087,9 @@ function paint(s,met){
       :(tries?(ph&&(T.phase||0)>0?'<div class="ttry ok">✓ '+h(tryNow)+"</div>"   // the step before is done: green, ticked (David, 21 Sep)
         :'<div class="ttry">'+h(met?u.nice:tryNow)+"</div>"):""))
     +'<div class="tf"><span class="tpips">'+mine.map((x,i)=>"<i"+(i===n?' class="on"':"")+"></i>").join("")+"</span>"
-    +(last?'<button class="tb gho" data-a="stop">'+h(u.stopHere)+"</button>":(n>0?'<button class="tb gho" data-a="back">'+h(u.back)+"</button>":""))
+    /* "Stop here" only where another chapter follows; the very last card has Back beside Finish (David, 21 Sep, of the
+       embed's card 29: "doesn't need a stop here button. It needs a back button and a finish button") */
+    +(last&&ci<CHS.length-1?'<button class="tb gho" data-a="stop">'+h(u.stopHere)+"</button>":(n>0?'<button class="tb gho" data-a="back">'+h(u.back)+"</button>":""))
     +'<button class="tb '+(skippy?"sec":"pri")+'" data-a="next"'+((s.gate&&!T.gateMet.has(s.id)&&!ok(s.gate))||(s.done&&!met&&!T.passed)?" disabled":"")+'>'+h(btnNow||(last?(ci<CHS.length-1?u.nextChapter:u.finish):(skippy?u.skip:u.next)))+"</button></div>";
 }
 /* A CARD WITH STEPS (`checks`): lines worked through in order, each turning green with a tick once its condition holds;
