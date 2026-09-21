@@ -529,6 +529,13 @@ body.jam.jamparts #scorefoot #arrhost{margin:0}
 #scorefoot.nolabel .lab{display:none}
 #scorefoot.nocount #countBtn{display:none}
 
+#scorefoot.arrscroll #arrhost{flex:1 1 0; min-width:0; overflow-x:auto; overflow-y:hidden;
+  scrollbar-width:none; -webkit-overflow-scrolling:touch;
+  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);
+          mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)}
+#scorefoot.arrscroll #arrhost::-webkit-scrollbar{display:none}
+#scorefoot.arrscroll #arrbox,#scorefoot.arrscroll .arrline,#scorefoot.arrscroll #arrChips{flex-wrap:nowrap !important}
+
 #scorefoot.tight,body.editing #scorefoot{flex-wrap:wrap; justify-content:center}
 
 #scorefoot.tight #arrhost,
@@ -741,7 +748,6 @@ header{gap:9px}
 .hright{justify-content:flex-end}
 
 html.player .hside.hright{flex:0 0 auto}
-
 #tourBtn{display:none}
 html.player #tourBtn{display:grid; font-weight:700; font-size:15px; line-height:1; color:var(--ink2)}
 body:not(.phone) .hleft>.brand, body:not(.phone) .hleft>#srcBadge{flex:none}
@@ -3584,7 +3590,6 @@ if(false
   
   <span class="hside hright">
     
-    
     <button class="ib tourbtn" id="tourBtn" title="A short tour of this player" aria-label="A short tour of this player">?</button>
     
   
@@ -5942,6 +5947,7 @@ function markPlayingChips(ai){
   if(ai==null) return;
   document.querySelectorAll('.chip[data-ai="'+ai+'"],.chip[data-ai-'+ai+']')
     .forEach(el=>el.classList.add("playing"));
+  if(typeof arrReveal==="function") arrReveal();    
 }
 
 
@@ -10765,7 +10771,7 @@ function maxTables(){
 
 function fitFooter(){
   const f=$("scorefoot"); if(!f||PHONE||editing) return;
-  f.classList.remove("nolabel","tcollapsed","nocount","tight");
+  f.classList.remove("nolabel","tcollapsed","nocount","tight","arrscroll");
   labelPills(false);
   
 
@@ -10784,7 +10790,23 @@ function fitFooter(){
   if(fits()) return;
   f.classList.add("nocount");                            
   if(fits()) return;
+  
+
+  const ah=$("arrhost"), ARR_MIN=150;
+  if(ah&&ah.scrollWidth>0){
+    const others=["footL","footEdit"].map(id=>{const e=$(id); return e?e.scrollWidth:0}).filter(x=>x>0);
+    const used=others.reduce((a,b)=>a+b,0)+GAP*others.length;
+    if(f.clientWidth-used>=ARR_MIN){ f.classList.add("arrscroll"); arrReveal(); return; }
+  }
   f.classList.add("tight");                              
+}
+ 
+function arrReveal(){
+  const f=$("scorefoot"), ah=$("arrhost"); if(!f||!ah||!f.classList.contains("arrscroll")) return;
+  const c=ah.querySelector(".chip.playing")||ah.querySelector(".chip.on"); if(!c) return;
+  const a=ah.getBoundingClientRect(), r=c.getBoundingClientRect(), pad=12;
+  if(r.left<a.left+pad) ah.scrollLeft-=(a.left+pad-r.left);
+  else if(r.right>a.right-pad) ah.scrollLeft+=(r.right-(a.right-pad));
 }
 function labelPills(withNum){
   const el=$("arrChips"); if(!el) return;
@@ -15292,6 +15314,8 @@ function fitScoreHead(){
   if(fb) fb.classList.remove("wordless");
   if(mp) mp.classList.remove("wordless");
   if(vp) vp.classList.remove("iconic");
+  { const sl=$("secLabel"); if(sl) sl.classList.remove("shed"); }
+  if(g) g.classList.remove("shed");
   if(!hd.offsetWidth) return;
   const vis=e=>!!e&&getComputedStyle(e).display!=="none"&&e.getBoundingClientRect().width>0;
   const sum=el=>{ if(!el) return 0; const k=[...el.children].filter(vis), gap=parseFloat(getComputedStyle(el).columnGap)||0;
@@ -15308,15 +15332,25 @@ function fitScoreHead(){
     ()=>{ if(g&&!g.classList.contains("hidden")) panModeFace(true,g); },
     ()=>{ if(jam) jamHeadFaces(true); },
     ()=>{ if(vis(fb)) fb.classList.add("wordless"); },
-    ()=>{ if(vis(mp)) mp.classList.add("wordless"); },
-    ()=>{ if(vis(vp)) vp.classList.add("iconic"); }];
+    ()=>{ if(vis(mp)) mp.classList.add("wordless"); }];
   if(fits()) return;
   for(const st of steps){ st(); if(fits()) return; }
    
   const v=vw(); hd.style.setProperty("--vw",v+"px"); hd.classList.add("packed");
+  if(fitsPacked()) return;
   
 
-  if(!fitsPacked()) hd.classList.add("wrapped");
+  if(vis(vp)) vp.classList.add("iconic");
+  if(fitsPacked()) return;
+  
+
+  const sl=$("secLabel"); if(vis(sl)) sl.classList.add("shed");
+  if(fitsPacked()) return;
+  if(g&&vis(g)) g.classList.add("shed");
+  if(fitsPacked()) return;
+  
+
+  hd.classList.add("wrapped");
 }
 function setMode(m){
   if(m==="trans"&&!allowed("transpose")) m="pos";
@@ -16892,6 +16926,6 @@ if("serviceWorker" in navigator && /github\.io$/.test(location.hostname))
   navigator.serviceWorker.register("../sw.js").catch(()=>{});
 applyFeatures();    
 </script>
-<script src="../tour.js?v=26"></script>   
+<script src="../tour.js?v=26"></script>
 </body>
 </html>

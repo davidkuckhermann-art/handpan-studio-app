@@ -909,6 +909,15 @@ body.jam.jamparts #scorefoot #arrhost{margin:0}
    footer with the control on 29 Aug, so that step went with it.) */
 #scorefoot.nolabel .lab{display:none}
 #scorefoot.nocount #countBtn{display:none}
+/* the arrangement as a sideways strip (21 Sep, fitFooter step 4): it takes the
+   rest of the row, its pills stay on one line, and a thin fade at the edge says
+   there is more */
+#scorefoot.arrscroll #arrhost{flex:1 1 0; min-width:0; overflow-x:auto; overflow-y:hidden;
+  scrollbar-width:none; -webkit-overflow-scrolling:touch;
+  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);
+          mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)}
+#scorefoot.arrscroll #arrhost::-webkit-scrollbar{display:none}
+#scorefoot.arrscroll #arrbox,#scorefoot.arrscroll .arrline,#scorefoot.arrscroll #arrChips{flex-wrap:nowrap !important}
 /* last resort: stack the three groups instead of clipping them */
 #scorefoot.tight,body.editing #scorefoot{flex-wrap:wrap; justify-content:center}
 /* stacked, the groups are centred — an auto margin would still shove one of
@@ -11573,6 +11582,7 @@ function markPlayingChips(ai){
   if(ai==null) return;
   document.querySelectorAll('.chip[data-ai="'+ai+'"],.chip[data-ai-'+ai+']')
     .forEach(el=>el.classList.add("playing"));
+  if(typeof arrReveal==="function") arrReveal();   // a scrolling arrangement follows the music
 }
 /* `seek` = the student moved the playhead by hand. The pan shows what SOUNDS,
    so a mere navigation must leave it dark (David, 28 Aug: "pan animation fires
@@ -20439,7 +20449,7 @@ function maxTables(){
    flanks are 1fr will not report an honest scrollWidth. */
 function fitFooter(){
   const f=$("scorefoot"); if(!f||PHONE||editing) return;
-  f.classList.remove("nolabel","tcollapsed","nocount","tight");
+  f.classList.remove("nolabel","tcollapsed","nocount","tight","arrscroll");
   labelPills(false);
   /* Two groups now that the transport has gone back up top, so the test is the
      honest one again: both sides plus the gap against the card. (While the
@@ -20462,7 +20472,26 @@ function fitFooter(){
   if(fits()) return;
   f.classList.add("nocount");                           // 3. the Count-in button
   if(fits()) return;
-  f.classList.add("tight");                             // 4. stack, never clip
+  /* 4. THE ARRANGEMENT SCROLLS (David, 21 Sep: "the arrangement navigator
+     section should actually start scrolling before it collapses into two
+     rows"). It keeps the rest of the row and slides sideways inside it, the
+     pill in play kept in view — while the row still leaves it room for about
+     two pills; only below that does the footer stack. */
+  const ah=$("arrhost"), ARR_MIN=150;
+  if(ah&&ah.scrollWidth>0){
+    const others=["footL","footEdit"].map(id=>{const e=$(id); return e?e.scrollWidth:0}).filter(x=>x>0);
+    const used=others.reduce((a,b)=>a+b,0)+GAP*others.length;
+    if(f.clientWidth-used>=ARR_MIN){ f.classList.add("arrscroll"); arrReveal(); return; }
+  }
+  f.classList.add("tight");                             // 5. stack, never clip
+}
+/* the pill in play (or the chosen one) kept inside the scrolling strip */
+function arrReveal(){
+  const f=$("scorefoot"), ah=$("arrhost"); if(!f||!ah||!f.classList.contains("arrscroll")) return;
+  const c=ah.querySelector(".chip.playing")||ah.querySelector(".chip.on"); if(!c) return;
+  const a=ah.getBoundingClientRect(), r=c.getBoundingClientRect(), pad=12;
+  if(r.left<a.left+pad) ah.scrollLeft-=(a.left+pad-r.left);
+  else if(r.right>a.right-pad) ah.scrollLeft+=(r.right-(a.right-pad));
 }
 function labelPills(withNum){
   const el=$("arrChips"); if(!el) return;
@@ -33578,6 +33607,8 @@ function fitScoreHead(){
   if(fb) fb.classList.remove("wordless");
   if(mp) mp.classList.remove("wordless");
   if(vp) vp.classList.remove("iconic");
+  { const sl=$("secLabel"); if(sl) sl.classList.remove("shed"); }
+  if(g) g.classList.remove("shed");
   if(!hd.offsetWidth) return;
   const vis=e=>!!e&&getComputedStyle(e).display!=="none"&&e.getBoundingClientRect().width>0;
   const sum=el=>{ if(!el) return 0; const k=[...el.children].filter(vis), gap=parseFloat(getComputedStyle(el).columnGap)||0;
@@ -33594,16 +33625,31 @@ function fitScoreHead(){
     ()=>{ if(g&&!g.classList.contains("hidden")) panModeFace(true,g); },
     ()=>{ if(jam) jamHeadFaces(true); },
     ()=>{ if(vis(fb)) fb.classList.add("wordless"); },
-    ()=>{ if(vis(mp)) mp.classList.add("wordless"); },
-    ()=>{ if(vis(vp)) vp.classList.add("iconic"); }];
+    ()=>{ if(vis(mp)) mp.classList.add("wordless"); }];
   if(fits()) return;
   for(const st of steps){ st(); if(fits()) return; }
   /* play leaves the centre, and the voices get their room in the row */
   const v=vw(); hd.style.setProperty("--vw",v+"px"); hd.classList.add("packed");
-  /* …and only where even that cannot hold — a full-app window under about
-     650px, never the lesson player — does the row wrap, which still beats
-     buttons standing outside the card */
-  if(!fitsPacked()) hd.classList.add("wrapped");
+  if(fitsPacked()) return;
+  /* THE ICONS ARE THE LAST WORD TO GO (David, 21 Sep: "exchange the table tab
+     flow for icons only in the last moment when it's really necessary … there
+     is actually still space in that row then") — after play has left the
+     centre, since that alone usually makes the room */
+  if(vis(vp)) vp.classList.add("iconic");
+  if(fitsPacked()) return;
+  /* THE TABLE'S NAME, THEN THE HEAD'S COPY OF THE SWITCH (David, 21 Sep: "the
+     last thing that we can drop is the notation table label … It's a pity to
+     drop it, but I don't want the menu to wrap"). The label is ~30px; at a
+     490px card that is not enough, so after it the As written / For my pan
+     pair steps out of the head — the same switch stays in the My pan menu,
+     so nothing becomes unreachable. */
+  const sl=$("secLabel"); if(vis(sl)) sl.classList.add("shed");
+  if(fitsPacked()) return;
+  if(g&&vis(g)) g.classList.add("shed");
+  if(fitsPacked()) return;
+  /* …and only where even that cannot hold does the row wrap, which still
+     beats buttons standing outside the card */
+  hd.classList.add("wrapped");
 }
 function setMode(m){
   if(m==="trans"&&!allowed("transpose")) m="pos";
