@@ -11764,7 +11764,8 @@ function paintPulse(pi,seek){
     document.querySelectorAll(".cchip.playing").forEach(el=>el.classList.remove("playing"));
     const mB=SM(piece,cur.name), bar=Math.floor(rel/mB.bp);
     const cc=chipAt(document,bar,((rel%mB.bp)+mB.bp)%mB.bp);
-    if(cc){ cc.classList.add("playing"); if(!PHONE) chordRowFollow(cc.closest(".chordrow"),cc); }
+    if(cc){ cc.classList.add("playing");
+      if(!PHONE&&cc!==chordFollowLast){ chordFollowLast=cc; chordRowFollow(cc.closest(".chordrow"),cc); } }
   }
 }
 function tick(){
@@ -19937,7 +19938,7 @@ function fitChordRows(){
   /* the desktop too since 21 Sep: beside the pan it has only the rest of the row */
   document.querySelectorAll("#chordbox .chordrow, #cpband .chordrow").forEach(r=>{
     fitChordRow(r);
-    if(!PHONE) chordRowFollow(r,r.querySelector(".cchip.playing,.cchip.cpon"),true);
+    if(!PHONE) chordRowFollow(r,r.querySelector(".cchip.playing,.cchip.cpon"));
   });
 }
 function paintSideDots(){
@@ -20293,7 +20294,7 @@ function renderChordRow(){
     const cc=chipAt(box,bi,inBar);        // the chord in force, not merely the bar
     if(cc) cc.classList.add("playing");
   }
-  if(!PHONE){ fitChordRow(row); chordRowFollow(row,box.querySelector(".cchip.playing"),true); }
+  if(!PHONE){ fitChordRow(row); chordRowFollow(row,box.querySelector(".cchip.playing")); }
 }
 /* WHICH CHIP IS PLAYING, now that a bar may hold two: the last chord whose
    own position has been reached (12 Sep). Both painters ask this one function,
@@ -29330,25 +29331,26 @@ function cpLightChord(idx){
        twelve wide) — in the SECOND slot, one chord behind it and the rest ahead
        (David, 3 Sep: "move the active chord further to the left"); measured by
        rectangles, since offsetLeft counts from another parent */
-    if(on&&moved) chordRowFollow(row,el,true);
+    if(on&&moved) chordRowFollow(row,el);
   });
 }
 /* ONE FOLLOW FOR EVERY CHORD ROW (21 Sep): chord practice's rule of 3 Sep,
    now the chord tab's as well — once the row overflows, the chord in force
-   stands in the SECOND slot, one chord behind it and the rest ahead. Measured
-   by rectangles, since offsetLeft counts from another parent. `jump` moves
-   it at once (a new chord, a rebuilt row); without it the row only moves when
-   the chord has left the view, so reading ahead by hand is not undone on
-   every beat. */
-function chordRowFollow(row,el,jump){
+   stands in the SECOND slot, one chord behind it and the rest ahead, and the
+   row moves at EVERY chord change (David, 21 Sep: "adapt the way that the
+   chord practice mode handles long chord sequences … the embed player the
+   same way"; the phone's chord tab keeps its own, wrapped rows). At the end
+   the row simply stops and the last chords come forward. Measured by
+   rectangles, since offsetLeft counts from another parent. Callers call it
+   when the chord changes, not every pulse — the transport keeps the last
+   chip it followed in chordFollowLast. */
+var chordFollowLast=null;
+function chordRowFollow(row,el){
   if(!row) return;
   if(el&&row.scrollWidth>row.clientWidth+1){
     const w=el.closest(".cchipwrap")||el, prev=w.previousElementSibling, gap=parseFloat(getComputedStyle(row).columnGap)||0;
-    const r=row.getBoundingClientRect(), wr=w.getBoundingClientRect();
-    if(jump||wr.left<r.left||wr.right>r.right){
-      const lead=prev?prev.getBoundingClientRect().width+gap:0;
-      row.scrollLeft=Math.max(0,row.scrollLeft+wr.left-r.left-lead);
-    }
+    const lead=prev?prev.getBoundingClientRect().width+gap:0;
+    row.scrollLeft=Math.max(0,row.scrollLeft+w.getBoundingClientRect().left-row.getBoundingClientRect().left-lead);
   }
   stripFade(row);
 }
