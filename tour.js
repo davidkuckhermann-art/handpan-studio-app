@@ -132,7 +132,7 @@ const TEXT={
   "sheet.embEnd":  {title:"That's it 🙏", body:"I hope this will help you with your practice and to transpose the tunes from one scale to another.\nEnjoy and let us know in the village how the player works for you. 👍"},
   "emb.notation":  {title:"The notation", body:"You already know our notation - Every number is a note on your pan, and D is the ding in the middle. Green numbers are for your left hand, black ones for your right."},
   "emb.follow":    {title:"The player can follow the video", body:"As long as this switch is activated, the notation table in the player follows the video. Keep this option on for now.", try:"Tap Follow video to see it lit"},
-  "emb.sound":     {title:"Two sound sources, one at a time", body:"Up in the video player's interface, you can mute the video. Once you do that, the HPD studio player asks whether you would like to unmute it. You can also manually mute/unmute the studio player at any point by clicking the small icon next to the play button.", try:"Mute the video, then answer: Turn the pan on", tip:"Mute the video in the video player above"},
+  "emb.sound":     {title:"Two sound sources, one at a time", body:"The video and the HPD studio player each have their own sound, and they take turns. The small speaker icon next to the play button turns the player's sound on and off. When you turn it on, the player asks whether it should mute the video for you.", try:"Turn the player's sound on, then answer: Mute the video", okay:"\u2713 Done. For the rest of the tour, the video mutes and unmutes by itself whenever you switch the player's sound.", tip:"Mute the video in the video player above"},
   "emb.space":     {title:"Play and pause", body:"By the way, you can play and pause the playback at any time with the play button or space bar. Give it a try!", try:"Press the space bar to pause and restart playback"},
   "emb.followoff": {title:"Using the player on its own", body:"While the player is following, the video is in charge of the timing. Switch Follow off and the HPD player is in control.", try:"Switch Follow off"},
   "emb.followback": {title:"Back to the video", body:"Follow video connects the player to the video again: the marker walks with the lesson, and the video and player navigate and start together.", try:"Switch Follow back on"},
@@ -142,8 +142,8 @@ const TEXT={
   "emb.controls":  {title:"Tempo and helpers", body:"Here you can adjust:\n• the tempo\n• the count-in\n• half speed\n• the metronome\n• how the marker is animated", try:"Try them out, then press Next - they go back to how they were"},
   "emb.loop":      {title:"Loop a passage", body:"Drag across the notation, over a few beats or a whole row to loop it. This is a great way to practice a tricky passage. The little loop button beside Play clears it again.", try:"Make a loop and play it through twice", phoneBody:"Double-tap and slide your finger over the notation to create a loop. The button beside Play clears it again.", okay:"✓ Well done - you made a loop and heard it twice"},
   "emb.navigate":  {title:"Move around, and the video comes with you", body:"In the notation you can navigate through the different parts of the composition. Select a part and click straight into the notation: while the player is following, the video jumps to that spot too.", try:"Try it: pick a part, click into the notation, and watch the video follow"},
-  "emb.videoback": {title:"Hear the original again", body:"Unmute the video in the player let it run. The player asks you to mute, because the two always take turns. Now you hear the sound of the video again.", try:"Turn the video sound back on, confirm to mute the player in the popup and press play", pop:"Press Got it to confirm the pan is muted", then:"Press Play and listen to the original", tip:"Turn the video sound back on in the video player above"},
-  "emb.ownscale":  {title:"My favourite part", body:"As a last step, let's see what happens when we mute the video now and unmute the player. You can see me playing the composition in the video, but the sound comes from the player. You will hear the composition transposed to the pan you select in the app.", try:"Mute the video and answer the pop-up with Turn the pan on. The music keeps going: watch me play the tune and, at the same time, hear it transposed to your selected scale", tip:"Mute the video in the video player above"},
+  "emb.videoback": {title:"Hear the original again", body:"Now mute the player with the speaker icon. The video's sound comes back on by itself, because the two always take turns. Now you hear the sound of the video again.", try:"Mute the player, then press Play", pop:"Press Got it to confirm the pan is muted", then:"Press Play and listen to the original", tip:"Turn the video sound back on in the video player above"},
+  "emb.ownscale":  {title:"My favourite part", body:"As a last step, let's see what happens when we unmute the player now. The video mutes itself. You can see me playing the composition in the video, but the sound comes from the player. You will hear the composition transposed to the pan you select in the app.", try:"Turn the player's sound on. The music keeps going: watch me play the tune and, at the same time, hear it transposed to your selected scale", tip:"Mute the video in the video player above"},
   "emb.loopb":     {title:"Now the fun part", body:"I have looped this notation table. Let's listen once to the table and then I'll show you something fun...", try:"Press Play and listen to the whole B section"},
   "emb.mypan":     {title:"Time to swap pans", body:"This piece is written on a D Kurd. But what if you have a different handpan: Let's open the scale selector.", try:"Click scale selector"},
   "emb.pickb2":    {title:"Choose your scale", body:"This is the list of handpan scales. Common shows the ones you meet most often, Rare and All show the rest. Each row is one scale, and the numbers on it are the sizes it comes in. Tap a row to take that scale for your pan.\nLet's try B2 Amara 9 - the row with the arrow.", try:"Tap B2 Amara 9"},
@@ -232,13 +232,20 @@ const builtRow=(scale,size)=>()=>{ const c=document.querySelector('#ppList .ppbu
    quiet" and "Don't ask again" are greyed and disabled, and the two ways of dismissing the question - a click outside
    it, and Esc - do nothing. All of it is given back when the card is left. */
 let askBlock=null;
+/* THE VIDEO FOLLOWS THE PLAYER'S SOUND, FOR THE REST OF THE TOUR (David, 21 Sep: "the first time we unmute the player,
+   there should be a pop-up if the user wants to mute the video. We should then place a little note that, for the rest
+   of the tutorial, we will deactivate this function. Every time we mute the embed player, the video will automatically
+   unmute, and every time we unmute the embed player, the video will automatically mute"). The app's `vidAsk`: "ask"
+   on the sound card (asked even where an answer is remembered), "auto" once it is answered, null when the tour ends. */
+function tourVidAsk(v){ try{ if(typeof vidAsk!=="undefined") vidAsk=v; }catch(e){} }
+const vidAskIs=v=>{ try{ return typeof vidAsk!=="undefined"&&vidAsk===v; }catch(e){ return false; } };
 /* The same for the other notice (David, 21 Sep, of "Hear the original again": "wait until the user clicks the OK
    button on the pop-up window, and also … gray out all other options again"): "Don't warn me again" is greyed, and
    the notice, which normally closes itself after four seconds, stays until Got it is pressed (tick() holds its timer). */
 function askPanOnly(on){
-  const dlgs=[$("panSoundDlg"),$("panMutedDlg")].filter(Boolean);
+  const dlgs=[$("panSoundDlg"),$("panMutedDlg"),$("vidSoundDlg")].filter(Boolean);
   document.documentElement.classList.toggle("tour-askpan",on);
-  ["psNo","psNever","pmNever"].forEach(id=>{ const b=$(id); if(b) b.disabled=on; });
+  ["psNo","psNever","pmNever","vsNo","vsNever"].forEach(id=>{ const b=$(id); if(b) b.disabled=on; });
   if(on&&!askBlock&&dlgs.length){
     askBlock={
       click:e=>{ const t=e.target; if(dlgs.some(d=>d.open&&t===d)||(t&&t.id==="dlgShade")){ e.stopPropagation(); e.preventDefault(); } },
@@ -448,11 +455,16 @@ const EMB=[
      an arrow up to the video, and Next greyed until the pan's sound is on BY THAT ROUTE - the positive answer to the
      pop-up, or (where the choice is remembered and no pop-up comes) the video reported muted with the pan on. No
      goal: the card waits for Next, and so it is never skipped on the way back either. */
-  {id:"emb.sound",    ch:"emb", at:["#folMute"], quiet:true, arrowUp:true, tipShot:MUTE_SHOT, tipPoint:[44,52],
+  /* …AND NOW THE STUDENT SWITCHES THE PLAYER'S OWN SOUND (David, 21 Sep: "instead of pointing the user to the video
+     player, we will now point him to simply mute the embed player or unmute"; "we don't need the screenshots anymore"):
+     with a bridge that can (can: sound) the sound button is lit, the app asks "Mute the video?" (only its yes), and the
+     green line says the video follows by itself from here on. An older bridge keeps the old route: the arrow up to the
+     video and its screenshot, the video muted there, and the pan's own question. */
+  {id:"emb.sound",    ch:"emb", at:["#folMute"], quiet:()=>!T.canSound, arrowUp:()=>!T.canSound&&vidMuted!==true, tipShot:MUTE_SHOT, tipPoint:[44,52],
+                      okayIf:()=>T.canSound, enter:()=>{ if(!vidAskIs("auto")) tourVidAsk("ask"); },
                       gate:()=>!followMuted&&(clicked("#psYes")||(typeof vidMuted!=="undefined"&&vidMuted===true)),
-                      /* …and on by itself once it holds (David, 21 Sep: "once the video is muted and the user has selected
-                         Turn the pan on … we can automatically move on to the next card") */
-                      done:()=>!followMuted&&(clicked("#psYes")||(typeof vidMuted!=="undefined"&&vidMuted===true)), hold:900,
+                      done:()=>{ const d=!followMuted&&(clicked("#psYes")||(typeof vidMuted!=="undefined"&&vidMuted===true));
+                        if(d&&T.canSound) tourVidAsk("auto"); return d; }, hold:900,
                       onShow:()=>askPanOnly(true), exit:()=>askPanOnly(false)},
   /* WHY THE PAN'S SOUND IS WORTH HAVING (David, 21 Sep): with the video's own controls at half speed his
      playing drops in pitch, while the pan is scheduled from the video's clock (vRate) and stays natural. It
@@ -620,9 +632,12 @@ const EMB=[
      on; Next greyed until the notice's Got it (its other option greyed, its timer held); then Play lit, and after
      TWO BARS of the video's sound the tour moves on WITH THE MUSIC STILL PLAYING ("after 2 bars of listening, you can
      proceed to the next card, but keep the playback going") */
-  {id:"emb.videoback",ch:"emb", at:["#folMute"], quiet:true, arrowUp:()=>typeof vidMuted!=="undefined"&&vidMuted!==false, tipShot:MUTE_SHOT, tipPoint:[44,52],
+  /* …with a bridge that can, the student mutes the PLAYER and the video's sound comes back by itself (the tour's "auto");
+     Next once the player is muted and the video is heard */
+  {id:"emb.videoback",ch:"emb", at:["#folMute"], quiet:()=>!T.canSound, arrowUp:()=>!T.canSound&&typeof vidMuted!=="undefined"&&vidMuted!==false, tipShot:MUTE_SHOT, tipPoint:[44,52],
                       thenAt:["#playBtn"], enter:()=>{ listenFresh(); T.vb0=null; }, onShow:()=>askPanOnly(true), exit:()=>askPanOnly(false), listen:true,
-                      gate:()=>clicked("#pmOk")||(followMuted&&vidMuted===false&&!isOpen("panMutedDlg")&&typeof panPref==="function"&&panPref(PK_WARN)==="off"),
+                      gate:()=>T.canSound?(followMuted&&vidMuted===false):
+                        (clicked("#pmOk")||(followMuted&&vidMuted===false&&!isOpen("panMutedDlg")&&typeof panPref==="function"&&panPref(PK_WARN)==="off")),
                       done:()=>{ if(!T.gateMet.has("emb.videoback")) return false;
                         if(!hearing()){ T.vb0=null; return false; }
                         const p=heardAt(); if(p<0) return false;
@@ -632,7 +647,7 @@ const EMB=[
      confirm that the player sound comes back on. All this can happen while the playback is still going"): nothing is
      stopped on the way in; the arrow up to the video and its screenshot until the video is muted, as on the sound card;
      the pop-up offers only its yes */
-  {id:"emb.ownscale", ch:"emb", at:["#folMute","#panbox"], stay:true, quiet:true, arrowUp:true, tipShot:MUTE_SHOT, tipPoint:[44,52],
+  {id:"emb.ownscale", ch:"emb", at:["#folMute","#panbox"], stay:true, quiet:()=>!T.canSound, arrowUp:()=>!T.canSound&&vidMuted!==true, tipShot:MUTE_SHOT, tipPoint:[44,52],
                       onShow:()=>askPanOnly(true), exit:()=>askPanOnly(false)}   // the last one: enjoy it, then Finish
 ];
 /* the lesson embed marks itself before first paint; its tour is the short one */
@@ -663,7 +678,7 @@ function find(c){ if(typeof c==="function"){ let e=null; try{ e=c(); }catch(err)
    asking or telling the student something, so for as long as one is up it is what is lit, and the card stands
    clear of it; when it closes, the step's own target comes back. One rule for every step and every such pop-up -
    add one here and every step already defers to it. The SKIP rule still asks only about the step's own targets. */
-const POPUPS=["#panSoundDlg","#panMutedDlg"];
+const POPUPS=["#panSoundDlg","#panMutedDlg","#vidSoundDlg"];
 /* `thenAt`: where the card points once its gate is met (David, 21 Sep, of "Hear the original again": "the press the
    play button should be highlighted so the user presses play again") */
 function ownTarget(s){ if(!s||!s.at) return null;
@@ -708,7 +723,7 @@ function css(){
 #tourPoint svg{display:block;transform:rotate(var(--rot,0deg))}
 @keyframes tourNudge{50%{transform:translate(var(--nx,0px),var(--ny,0px))}}
 @media (prefers-reduced-motion:reduce){#tourArrow,#tourPoint{animation:none}}
-html.tour-askpan #psNo,html.tour-askpan #panSoundDlg .dlgask,html.tour-askpan #panMutedDlg .dlgask{opacity:.35;pointer-events:none}
+html.tour-askpan #psNo,html.tour-askpan #vsNo,html.tour-askpan #panSoundDlg .dlgask,html.tour-askpan #panMutedDlg .dlgask,html.tour-askpan #vidSoundDlg .dlgask{opacity:.35;pointer-events:none}
 #tourCard{position:fixed;box-sizing:border-box;pointer-events:auto;background:#1E1B16;color:#fff;border-radius:14px;padding:14px 16px 12px;
   border:1px solid rgba(255,255,255,.1);box-shadow:0 20px 50px -10px rgba(0,0,0,.55);transition:left .4s cubic-bezier(.4,0,.2,1),top .4s cubic-bezier(.4,0,.2,1);text-align:left}
 #tourCard .tk{display:flex;justify-content:space-between;align-items:center;font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#B9B0A1}
@@ -809,7 +824,7 @@ function place(){
   if(point&&!(s.point&&el&&!isPop&&!T.passed)) point.classList.remove("on");
   if(!el){ spot.className="none"; L.classList.add("dim");
     card.style.left=(vw-cw)/2+"px"; card.style.top=sheetTop()+"px"; return; }   // nothing to point at: at the top of the notation, not the middle of a tall lesson frame (David, 21 Sep)
-  const quiet=!!(s.quiet&&!isPop&&!(s.thenAt&&T.gateMet.has(s.id)));
+  const quiet=!!((typeof s.quiet==="function"?ok(s.quiet):s.quiet)&&!isPop&&!(s.thenAt&&T.gateMet.has(s.id)));
   L.classList.toggle("dim",quiet); spot.className=quiet?"ring":"";
   /* A SECOND ELEMENT LIT WITH THE TARGET (`also`, David, 21 Sep, of "Now the fun part": "highlight the notation,
      but also the play button"): the spotlight spans both, and the card places itself against the whole. */
@@ -927,15 +942,17 @@ function gateNext(s){
   card.classList.toggle("passed",open);
   /* while one of the app's notices is up, a card may say what to press in it (`pop`) */
   const w=words(s.id), pop=w.pop&&POPUPS.some(c=>find(c));
-  const want=open?(w.okay||U().nice):(pop?w.pop:w.try); if(tr.textContent!==want) tr.textContent=want;
+  const want=open?(okayOf(s,w)||U().nice):(pop?w.pop:w.try); if(tr.textContent!==want) tr.textContent=want;
 }
 /* NO CARD MOVES ON BY ITSELF (David, 21 Sep: "let's generally adapt a policy that we don't automatically proceed to
    the next card. We wait for the user's input to click the next button"). A card whose task is done turns its line
    green with a tick and lights Next; the student moves on. Music that is playing keeps playing until they do. */
+/* a green line that is only true on some lessons (`okayIf`) falls back to the plain tick where it is not */
+function okayOf(s,w){ return s.okayIf&&!ok(s.okayIf)?"":w.okay; }
 function pass(s){
   T.passed=true; T.token++; (T.doneIds=T.doneIds||new Set()).add(s.id);
   card.classList.add("passed"); card.classList.remove("listening");
-  const w=words(s.id), tr=card.querySelector(".ttry"); if(tr) tr.textContent=w.okay||U().nice;
+  const w=words(s.id), tr=card.querySelector(".ttry"); if(tr) tr.textContent=okayOf(s,w)||U().nice;
   const b=card.querySelector('[data-a="next"]'); if(b) b.disabled=false;
   /* THE ONE EXCEPTION, BY NAME (`autoNext`, David, 21 Sep, of Now the fun part: "once the user has listened to the complete
      table, it should automatically proceed to the next card, and playback should continue") */
@@ -1075,13 +1092,13 @@ function start(ch){
      beginning, and then in the viewing options card, we ask the user to activate it manually") */
   try{ if(PLAYER&&typeof chordRowOn!=="undefined"&&chordRowOn){ const b=$("chordBtn"); if(b) b.click(); } }catch(e){}
   showLayer(); L.classList.remove("block");
-  T.mode="steps"; T.ch=null; T.gateMet=new Set(); T.doneIds=new Set();
+  T.mode="steps"; T.ch=null; T.gateMet=new Set(); T.doneIds=new Set(); tourVidAsk(null);
   clearInterval(T.iv); T.iv=setInterval(tick,200);
   open(SEQ.findIndex(s=>s.ch===ch),1);
 }
 function exitHook(){ const c=T.cur; T.cur=null; if(c&&c.exit) try{ c.exit(); }catch(e){} }
 function leave(){
-  T.dir=0; exitHook(); listLock(false);
+  T.dir=0; exitHook(); listLock(false); tourVidAsk(null);   // the student's own setting again
   if(T.rate&&T.rate!==1) videoRate(1);             // a tour left at a slower speed gives the video its own speed back
   const wasSteps=T.mode==="steps";
   T.mode="off"; T.token++; clearInterval(T.iv); T.iv=null;

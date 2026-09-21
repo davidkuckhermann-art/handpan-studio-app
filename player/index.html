@@ -4199,6 +4199,14 @@ if(false
     <span class="spacer"></span><button class="ctl" id="psNo">No, stay quiet</button></div>
 </dialog>
 
+<dialog id="vidSoundDlg">
+  <h3 id="vsHead">Pan sound is on</h3>
+  <p class="hint" id="vsText">Would you like to mute the video, so the two don&rsquo;t play over each other?</p>
+  <label class="dlgask"><input type="checkbox" id="vsNever"> Don&rsquo;t ask again and remember my choice</label>
+  <div class="row"><button class="ctl on" id="vsYes">Mute the video</button>
+    <span class="spacer"></span><button class="ctl" id="vsNo">No, keep both</button></div>
+</dialog>
+
 
 
 
@@ -6775,6 +6783,12 @@ let followMuted=EMBEDDED, vCursor=null, vOff=null;
 
 
 let vidMuted=null, vidMutedWas=null;
+/* THE PLAYER'S SOUND ASKS ABOUT THE VIDEO'S (David, 21 Sep: "whenever I unmute the embed player, there's a pop-up
+   that asks me if I want to mute the video. When I mute the embed player, there's a pop-up that asks me if I want to
+   unmute the video. Basically, the same mechanism that already exists the other way around"). Only a bridge that says
+   it can (can: sound, build 2026-09-21a) is ever asked. `vidAsk` is the tour's handle: "ask" always asks (a remembered
+   answer is not used), "auto" does it without asking, null leaves it to the student's own setting. */
+let bridgeSound=false, vidAsk=null;
 
 
 const WANT_PIECE=new URLSearchParams(location.search).get("piece");
@@ -7437,7 +7451,7 @@ function mapShowSpan(from,to){
 }
 
 
-const PK_ASK="hps.panask", PK_WARN="hps.panwarn", PK_LOOP="hps.loopwarn";
+const PK_ASK="hps.panask", PK_WARN="hps.panwarn", PK_LOOP="hps.loopwarn", PK_VASK="hps.vidask";
 
 
 let loopNoT=null;
@@ -7464,7 +7478,7 @@ function panPrefSet(k,v){
 
 function paintPanPrefBtn(){
   const b=$("panPrefBtn"); if(!b) return;
-  const any=panPref(PK_ASK)!=null||panPref(PK_WARN)!=null||panPref(PK_LOOP)!=null;
+  const any=panPref(PK_ASK)!=null||panPref(PK_WARN)!=null||panPref(PK_LOOP)!=null||panPref(PK_VASK)!=null;
   b.classList.toggle("hidden",!any);
   if(any&&!b.innerHTML) b.innerHTML=ico("is-bell");
   b.title="Re-enable popups";
@@ -7500,6 +7514,22 @@ function panSoundOn(){
 
 
 let panMutedT=null;
+function videoSoundSet(on){ try{ window.parent.postMessage({type:"hps-video-ctl",action:on?"unmute":"mute"},"*"); }catch(e){} }
+function vidSoundAsk(){
+  if(!follow||!bridgeSound||vidMuted==null) return;
+  const on=!followMuted;                               // the player's sound has just come on, or gone off
+  if(on?vidMuted!==false:vidMuted!==true) return;       // no clash, nothing to ask
+  const rem=vidAsk==="ask"?null:vidAsk==="auto"?"yes":panPref(PK_VASK);
+  if(rem==="yes"){ videoSoundSet(!on); return; }
+  if(rem==="no") return;
+  const d=$("vidSoundDlg"); if(!d) return;
+  d.dataset.want=on?"mute":"unmute";
+  $("vsHead").textContent=on?"Pan sound is on":"Pan sound is off";
+  $("vsText").textContent=on?"Would you like to mute the video, so the two don\u2019t play over each other?":"Would you like to hear the video instead?";
+  $("vsYes").textContent=on?"Mute the video":"Turn the video sound on";
+  $("vsNo").textContent=on?"No, keep both":"No, stay quiet";
+  try{ if(!d.open) openDlg(d); }catch(e){}
+}
 function panMutedSays(){
   const d=$("panMutedDlg"); if(!d) return;
   clearTimeout(panMutedT);             
@@ -7671,6 +7701,7 @@ window.addEventListener("message",e=>{
     vidState=(typeof d.p==="boolean")?d.p:vidState;
   }
   if(d&&d.type==="hps-bridge"){
+    if(Array.isArray(d.can)&&d.can.includes("sound")) bridgeSound=true;
     if(!videoSeen&&!syncSeenOnce) setSyncMode(true);
      
     if(videoT==null||d.status==="no-player")
@@ -15932,7 +15963,7 @@ function boot(){
     toast(follow?"Notation follows the video":"Follow off"); });
   $("folMute").addEventListener("click",()=>{ followMuted=!followMuted;
     if(!followMuted){ ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank(); }
-    updateScoreTools();
+    updateScoreTools(); vidSoundAsk();
     toast(followMuted?"Pan sound off":"Pan sound on");
     vCursor=null; });
   $("loopBtn").addEventListener("click",()=>{
@@ -16335,6 +16366,11 @@ function boot(){
     $("panSoundDlg").close();
     if($("psNever").checked) panPrefSet(PK_ASK,"no");
   });
+  $("vsYes").addEventListener("click",()=>{ const d=$("vidSoundDlg"); d.close();
+    if($("vsNever").checked) panPrefSet(PK_VASK,"yes");
+    videoSoundSet(d.dataset.want==="unmute"); });
+  $("vsNo").addEventListener("click",()=>{ $("vidSoundDlg").close();
+    if($("vsNever").checked) panPrefSet(PK_VASK,"no"); });
   $("pmOk").addEventListener("click",()=>{
     $("panMutedDlg").close();
     if($("pmNever").checked) panPrefSet(PK_WARN,"off");
@@ -16345,8 +16381,8 @@ function boot(){
   });
   paintTips();
   $("panPrefBtn").addEventListener("click",()=>{
-    panPrefSet(PK_ASK,null); panPrefSet(PK_WARN,null); panPrefSet(PK_LOOP,null);
-    $("psNever").checked=false; $("pmNever").checked=false; $("lnNever").checked=false;
+    panPrefSet(PK_ASK,null); panPrefSet(PK_WARN,null); panPrefSet(PK_LOOP,null); panPrefSet(PK_VASK,null);
+    $("psNever").checked=false; $("pmNever").checked=false; $("lnNever").checked=false; $("vsNever").checked=false;
     toast("Those messages will show again");
   });
   paintPanPrefBtn();
@@ -17069,6 +17105,6 @@ if("serviceWorker" in navigator && /github\.io$/.test(location.hostname))
   navigator.serviceWorker.register("../sw.js").catch(()=>{});
 applyFeatures();    
 </script>
-<script src="../tour.js?v=80"></script>
+<script src="../tour.js?v=81"></script>
 </body>
 </html>
