@@ -1025,6 +1025,15 @@ function leave(){
   T.ch=null; T.k=-1;
   hideLayer();
 }
+/* WHERE THE WHITE CARDS SIT (David, 21 Sep: "have the white pop-ups at the beginning and the end of the tour come up further
+   upwards, sitting above the notation table, not vertically centered when the transposition card is open"): in the
+   lesson player the frame is as tall as the whole player, so its middle can be far down the page - the card sits at the
+   top of the notation instead; elsewhere (a window that scrolls) it stays in the middle of the screen */
+function sheetTop(){
+  const ch=card.offsetHeight, mid=Math.max(12,(innerHeight-ch)/2);
+  try{ if(PLAYER){ const sc=$("score"); if(sc){ const t=sc.getBoundingClientRect().top; if(t>=0&&t+ch<innerHeight) return Math.max(12,Math.min(mid,t)); } } }catch(e){}
+  return mid;
+}
 function sheet(html){
   if(T.mode==="steps"){ closeAll(); restore(); clearInterval(T.iv); }
   showLayer(); T.mode="sheet"; T.token++;
@@ -1033,7 +1042,7 @@ function sheet(html){
   card.className="tsheet"; card.innerHTML=html;
   const cw=Math.min(430,innerWidth-24); card.style.width=cw+"px";
   raise(null);
-  card.style.left=(innerWidth-cw)/2+"px"; card.style.top=Math.max(12,(innerHeight-card.offsetHeight)/2)+"px";
+  card.style.left=(innerWidth-cw)/2+"px"; card.style.top=sheetTop()+"px";
 }
 /* THE VIDEO FIRST (David, 21 Sep: "when Show me around is clicked and the video hasn't been played, please don't gray it
    out … bring up a pop-up window that asks the user to press play on the video once. And only then give the option to
@@ -1154,7 +1163,7 @@ document.addEventListener("click",rec,true);
 document.addEventListener("close",()=>setTimeout(tick,30),true);          // a dialog closed: the layer comes home
 new MutationObserver(()=>setTimeout(tick,30)).observe(document.body,{attributes:true,attributeFilter:["open"],subtree:true});
 addEventListener("resize",()=>{ if(T.mode==="steps") place(); else if(T.mode==="sheet"&&card){ const cw=Math.min(430,innerWidth-24);
-  card.style.width=cw+"px"; card.style.left=(innerWidth-cw)/2+"px"; card.style.top=Math.max(12,(innerHeight-card.offsetHeight)/2)+"px"; } });
+  card.style.width=cw+"px"; card.style.left=(innerWidth-cw)/2+"px"; card.style.top=sheetTop()+"px"; } });
 document.addEventListener("fullscreenchange",()=>setTimeout(tick,60));
 document.addEventListener("keydown",e=>{
   if(e.key!=="Escape"||T.mode==="off") return;
