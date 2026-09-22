@@ -879,7 +879,7 @@ body:not(.phone) #score .flowpage .secrow{display:flex; margin:0 0 4px}
 /* EVERY TABLE ON THE PAGE SAYS ITS NAME, and says it loudly enough to find
    while playing (David, 30 Aug). A rule across the top of each paragraph
    separates it from the one above; the sounding table inks amber. */
-#score .flowpage{padding-top:14px; margin-top:14px; border-top:1px solid var(--rule2)}
+#score .flowpage{padding-top:14px; margin-top:14px; border-top:0}   /* no rule between sections: the bands carry the lines (22 Sep 2026) */
 #score .flowpage:first-child{padding-top:0; margin-top:0; border-top:none}
 #score .flowpage .secname{font-size:13px; font-weight:800; letter-spacing:.08em;
   color:var(--ink2)}
@@ -1658,6 +1658,10 @@ body.fs #scoreheadL #panSel{max-width:230px; flex:0 1 auto}
    dark slate the same blend warms the row by ~3. */
 #score .nrow:nth-child(odd of .nrow){background:color-mix(in srgb, color-mix(in srgb, var(--sc-edge), var(--dixie)) 3%, transparent)}
 #prSheet #score .nrow:nth-child(odd of .nrow){background:none}
+/* THE FLOW'S LINES WEAR THE TABLE'S BAND (David, 22 Sep 2026: "instead of separator lines between the rows, let's use the
+   colored bands" - both styles): every other line, counted within its parent as the table counts its rows */
+#score .fsys:nth-child(odd of .fsys){background:color-mix(in srgb, color-mix(in srgb, var(--sc-edge), var(--dixie)) 3%, transparent)}
+#prSheet #score .fsys:nth-child(odd of .fsys){background:none}
 /* THE SLOT IS THE UNIT (David, 29 Aug — mockups-notation-space.html, A).
    A slot is a share of the cell, but ink was sized to itself: a two-digit
    number outgrew its share and landed against its neighbour, so "12 6" read
@@ -2323,7 +2327,7 @@ body.phone:not(.tablet) .slot.n3 .sym.gh{font-size:18px}
 .cchipwrap{display:flex; flex-direction:column; align-items:center; gap:4px}
 .cname{font-family:Figtree,sans-serif; font-size:23px; font-weight:800;
   letter-spacing:-.01em; color:var(--ink); line-height:1.15}  /* raised at David's word, 30 Aug */
-.fl{font-size:.68em; vertical-align:.28em}
+.fl{font-size:.68em; vertical-align:.36em}   /* a touch higher (David, 22 Sep 2026: "the little raised B could sit a tiny bit higher"; was .28em) */
 .cname.inf{color:var(--ink3); font-style:italic; font-weight:700}
 .chordlab.inf{color:var(--ink3); font-style:italic}
 .cchip{--symlh:1.05; border:1.5px solid var(--sc-edge); border-radius:12px; padding:7px 12px 8px;
@@ -4185,7 +4189,7 @@ body.mkline .flow .mkbox{top:auto; bottom:.06em; height:2px}
 .fchs{height:1.5em; font-size:.48em; line-height:1.25; display:flex; gap:.9em;
   white-space:nowrap; overflow:visible}
 .fbn{font-weight:800; color:var(--sc-bn)}
-.fchn{font-weight:600; font-style:italic; color:var(--ink2)}
+.fchn{font-weight:600; font-style:italic; color:var(--ink2); padding-right:.1em}   /* the slant leans past the box: room for the last letter (22 Sep 2026) */
 .fchn.inf{opacity:.85}
 .fbnfloat{position:absolute; top:-1.15em; left:.12em; font-size:.42em; line-height:1;
   font-weight:800; color:var(--sc-bn)}
@@ -4243,7 +4247,7 @@ body.slotlines .fpos.smark .flanes::before{content:""; position:absolute;
    names its own offset. */
 .fsys{position:relative; isolation:isolate}
 .fsys::before{content:""; position:absolute; left:.05em; right:.05em;
-  top:calc(var(--fHead) + var(--fLane1)); border-top:1px solid var(--rule2);
+  top:calc(var(--fHead) + var(--fLane1)); border-top:0;   /* no hairline: the lines are banded now (David, 22 Sep 2026) */
   z-index:-1}
 .flane{height:1.16em; display:flex; align-items:center; justify-content:center}
 .flane+.flane{margin-top:.06em}
@@ -4663,7 +4667,8 @@ body.rail #scorefoot #arrbox .chip.on{background:var(--card); color:var(--ink); 
 body.rail #scorefoot #footEdit{padding-left:8px; border-left:1px solid var(--rule); gap:2px}
 /* the ⋯ and its small panel: what nobody touches while playing (the notation size stepper) */
 #footMore{display:none}
-body.rail #footMore{display:inline-flex; align-items:center; position:relative}
+/* no ⋯ any more (David, 22 Sep 2026: "there's nothing in there") - the size pair stands beside Edit instead */
+body.rail #footMore{display:none}
 #morePop{position:absolute; right:0; bottom:calc(100% + 10px); z-index:40; background:var(--card); border:1px solid var(--rule);
   border-radius:12px; padding:10px 12px; display:flex; align-items:center; gap:6px; white-space:nowrap;
   box-shadow:0 1px 2px rgba(var(--sh),.05), 0 14px 34px -16px rgba(var(--sh),.25)}
@@ -16642,9 +16647,27 @@ function flowDeskFit(){
        below is what "no matter the current size" bottoms out on. Closing a
        tab or growing the window re-runs this fit, so the space comes back
        by itself. */
+    /* THE WHOLE PIECE: THE WINDOW MINUS EVERYTHING ELSE ON THE PAGE, MEASURED (David, 22 Sep 2026: "limit it to the
+       available space once all activated tabs and extra notations below it are taken into account" - "minimum three
+       lines"). A list of named parts missed the rail's staff row and its bar, so the box grew past the window. Now:
+       the page's height with this box taken out is everything else, and the box gets what the window has left - but
+       never less than three of its lines. */
+    if(flowAll&&!jamOn){
+      const musH=mus.getBoundingClientRect().height, rest=document.documentElement.scrollHeight-musH;
+      const sys=mus.querySelectorAll(".fsys"), third=sys[Math.min(2,sys.length-1)];
+      const floor=third?third.getBoundingClientRect().bottom-mus.getBoundingClientRect().top+mus.scrollTop+8:120;
+      let h=Math.max(floor,Math.floor(innerHeight-rest-6));
+      mus.style.maxHeight=h+"px";
+      for(let i=0;i<3;i++){                                // margins that only settle once the box has its height
+        const over=document.documentElement.scrollHeight-innerHeight;
+        if(over<=0||h-over<floor) break;
+        h-=over; mus.style.maxHeight=h+"px";
+      }
+      return;
+    }
     const raw=innerHeight-top-foot-under("transport")-34;
     const below=under("belowrow");
-    avail=raw-((flowAll&&!jamOn)?below:Math.min(below,raw*.34));
+    avail=raw-Math.min(below,raw*.34);
   }
   mus.style.maxHeight=Math.max(fsOn()?120:260,avail)+"px";
   /* …and the same hard clamp the zooming skins get: whatever the arithmetic
@@ -17554,6 +17577,34 @@ function paintLoopFrame(){
      SVG lives in the score's own units — a slot's offsetParent is its cell, so
      its left is the cell's plus its own. */
   const bySlot=editing&&view!=="flow";
+  /* IN FLOW, ONE FRAME PER LINE (David, 22 Sep 2026: "loops are not working at all in Flow. They are not displayed").
+     Flow's lines stand apart, so each gets its own outline around the looped cells on it. Measured from client rects,
+     scaled back by the score's own zoom ratio, placed against #score's content (its scroll included). */
+  if(view==="flow"&&!editing){
+    const sr=sc.getBoundingClientRect(), k=(sc.offsetWidth&&sr.width)?sr.width/sc.offsetWidth:1, W=sc.scrollWidth, H=1.25;
+    const X=v=>(v-sr.left)/k+sc.scrollLeft, Y=v=>(v-sr.top)/k+sc.scrollTop;
+    const polys=[];
+    sc.querySelectorAll(".fsys").forEach(sys=>{
+      let l=Infinity,r=-Infinity,t=Infinity,b=-Infinity, ends=[Infinity,-Infinity];   // the line's first and last cell edges
+      sys.querySelectorAll(".fcell").forEach(cell=>{ const q0=cell.getBoundingClientRect(); if(q0.width){ ends[0]=Math.min(ends[0],X(q0.left)); ends[1]=Math.max(ends[1],X(q0.right)); } });
+      sys.querySelectorAll(".fcell").forEach(cell=>{
+        let from;
+        if(cell.dataset.abs!=null) from=+cell.dataset.abs;
+        else { const sl=cell.querySelector("[data-rel]"); if(!sl) return; from=viewFromPulse()+(+sl.dataset.rel); }
+        const to=from+cellLenAt(from);
+        if(from>=loopSec.to||to<=loopSec.from) return;
+        const q=cell.getBoundingClientRect();
+        l=Math.min(l,X(q.left)); r=Math.max(r,X(q.right)); t=Math.min(t,Y(q.top)); b=Math.max(b,Y(q.bottom));
+      });
+      if(r>l){ const L=l<=ends[0]+0.5?Math.max(ends[0],H):l-3, R=r>=ends[1]-0.5?Math.min(ends[1],W-H):r+3, T=t-PAD, B=b+PAD;   // at the line's ends: on its edge
+        polys.push([[R,T],[R,B],[L,B],[L,T]]); }
+    });
+    if(!polys.length){ if(svg) svg.remove(); return; }
+    if(!svg){ svg=document.createElementNS("http://www.w3.org/2000/svg","svg"); svg.id="loopframe"; sc.appendChild(svg); }
+    svg.setAttribute("width",sc.scrollWidth); svg.setAttribute("height",sc.scrollHeight);
+    svg.innerHTML=polys.map(p=>'<polygon points="'+p.map(q=>q.join(",")).join(" ")+'"/>').join("");
+    return;
+  }
   sc.querySelectorAll(".nrow").forEach(row=>{
     let l=Infinity,r=-Infinity,t=Infinity,b=-Infinity;
     if(bySlot){
@@ -20183,7 +20234,10 @@ function placeFlowStepper(){
      fullscreen, where the card head has its row back and the corner is the
      corner again */
   if(document.body.classList.contains("rail")&&!document.body.classList.contains("fs")){
-    const mp=$("morePop"); if(mp){ if(up.parentElement!==mp){ mp.appendChild(dn); mp.appendChild(up); } return; } }
+    /* …BESIDE EDIT NOW (David, 22 Sep 2026: the ⋯ goes), just before it - shown in Flow only, as it always was */
+    const fe=$("footEdit"), eb=$("editBtn");
+    if(fe){ if(up.parentElement!==fe||dn.nextSibling!==up){ const ref=(eb&&eb.parentElement===fe)?eb:fe.firstChild;
+      fe.insertBefore(dn,ref); fe.insertBefore(up,ref); } return; } }
   if(!host||up.parentElement===host) return;
   let ref=(PHONE&&!TABLET)?null:(jamFoot?host.firstChild:$("fsBtn"));
   if(ref&&ref.parentElement!==host) ref=null;   // the anchor may have left the host (the rail moves fsBtn)
@@ -34633,9 +34687,16 @@ const HEAD_AIR=16;
 function jamHeadFaces(short){
   const btn=$("jamSetBtn"), bk=$("brkBtn"), gen=$("genBtn");
   const inHead=!!(btn&&btn.closest("#scorehead"));
-  if(btn&&inHead) btn.innerHTML='<svg width="15" height="15"><use href="#is-chord"/></svg> '+(short?"Chords":"Chord settings")+' <span class="dn">▾</span>';
+  /* THE FACE IS WRITTEN WHEREVER THE BUTTON LIVES (David, 22 Sep 2026, a
+     screenshot of an empty pill beside Generate). Zones stage 2 moves Chord
+     settings and Generate out of the head into #jamTools at boot, so a guard on
+     "is it in the head?" left #jamSetBtn -- whose markup is an empty <button> --
+     blank for the whole jam, on the rail and on main alike. Only SHORTENING
+     belongs to the head: a button standing in the chord band has room for its
+     full name, and paintJamSetBtn (the phone's path) has always written it. */
+  if(btn) btn.innerHTML='<svg width="15" height="15"><use href="#is-chord"/></svg> '+((short&&inHead)?"Chords":"Chord settings")+' <span class="dn">▾</span>';
   if(bk&&!bk.classList.contains("hidden")) bk.innerHTML=brkBtnFace(!short);
-  if(gen&&gen.closest("#scorehead")) gen.innerHTML=short?"🎲":"🎲 Generate";
+  if(gen) gen.innerHTML=(short&&gen.closest("#scorehead"))?"🎲":"🎲 Generate";
 }
 function fitScoreHead(){
   const hd=$("scorehead"); if(!hd||(PHONE&&!TABLET)) return;
