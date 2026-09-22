@@ -25,7 +25,7 @@
      keyFor(pan) -> {flats, sharps, k}                       the key signature with the fewest accidentals
      clefFor(pan) -> {clef:"g"|"g8vb"|"g15mb", shift}        the octave rule
      opts: sp (staff space px, 8), pw (px per pulse; default fits the container), mode "grid"|"flow", width (flow),
-           colour (true), numbers (false), numbersRow (false), grand (false), barNumbers (true), chords (false),
+           colour (true; the numbers' hand colours), heads (true; false = every notehead in ink, David 22 Sep), numbers (false), numbersRow (false), grand (false), barNumbers (true), chords (false),
            timeSig (true), band {bar,beat}|null, fontUrl, label, finalBar, left, right,
            perSystem (0: one line; n: the table breaks into systems of n bars, stacked — the phone's way; the time
            signature shows on the first system only, clef and key on every one)
@@ -149,7 +149,7 @@ function barItems(bar,bi,ctx,keep){
 
 /* ---------- one staff ---------- */
 function staff(bars,ctx,o){
-  const {sp,pw,left,top,clef,keep,numbers,numbersRow,collect,band,barNumbers,timeSig,firstBar,prelude,colour,chords,mode,width}=o;
+  const {sp,pw,left,top,clef,keep,numbers,numbersRow,collect,band,barNumbers,timeSig,firstBar,prelude,colour,heads,chords,mode,width}=o;
   const {names,key,sub,beats,den,ppb,pulse32,groupOf}=ctx;
   const C=CLEFS[clef];const bottom=C.bottom,topS=bottom+8,mid=bottom+4;
   const yW=s=>top+(topS-s)*sp/2, y=s=>yW(s+C.shift);
@@ -203,7 +203,7 @@ function staff(bars,ctx,o){
       const lx=it.x-E.ledgerExt*sp,lw=(E.headW+2*E.ledgerExt)*sp;
       for(let s=bottom-2;s>=lo+C.shift;s-=2)g+=rect(lx,yW(s)-E.ledger*sp/2,lw,E.ledger*sp,COL.line);
       for(let s=topS+2;s<=hi+C.shift;s+=2)g+=rect(lx,yW(s)-E.ledger*sp/2,lw,E.ledger*sp,COL.line);
-      hs.forEach((hd,k)=>{const cy=y(hd.step);const fill=colour?(COL[hd.hand]||COL.ink):COL.ink;let hx=it.x;if(k>0&&hd.step-hs[k-1].step===1&&!hs[k-1].shifted){hx=up?it.x+(E.headW-E.stem)*sp:it.x-(E.headW-E.stem)*sp;hd.shifted=true}hd.x=hx;
+      hs.forEach((hd,k)=>{const cy=y(hd.step);const fill=(colour&&heads!==false)?(COL[hd.hand]||COL.ink):COL.ink;let hx=it.x;if(k>0&&hd.step-hs[k-1].step===1&&!hs[k-1].shifted){hx=up?it.x+(E.headW-E.stem)*sp:it.x-(E.headW-E.stem)*sp;hd.shifted=true}hd.x=hx;
         const gl=hd.perc?G.x:it.den<=1?G.whole:it.den<=2?G.half:G.black;g+=glyph(gl,hx,cy,fill);
         if(hd.acc)g+=glyph(hd.acc,hx-(E.accW+.25)*sp,cy);
         if(it.dot){const dy=((hd.step+C.shift)%2===0)?cy-sp/2:cy;g+=glyph(G.dot,hx+(E.headW+.35)*sp,dy)}
@@ -251,7 +251,7 @@ function makeCtx(input,opts){
 function build(input,opts){
   const ctx=makeCtx(input,opts);const {names}=ctx;
   const sp=opts.sp||8,mode=opts.mode||"grid";
-  const base={sp,left:opts.left||0,right:opts.right||0,keep:null,numbers:!!opts.numbers,numbersRow:!!opts.numbersRow,collect:false,band:opts.band||null,barNumbers:opts.barNumbers!==false&&!opts.numbers,timeSig:opts.timeSig!==false,firstBar:opts.firstBar||0,prelude:opts.prelude!==false,colour:opts.colour!==false,chords:!!opts.chords,mode,width:opts.width,pw:opts.pw||13.5,finalBar:!!opts.finalBar,label:opts.label||null,bands:opts.bands};
+  const base={sp,left:opts.left||0,right:opts.right||0,keep:null,numbers:!!opts.numbers,numbersRow:!!opts.numbersRow,collect:false,band:opts.band||null,barNumbers:opts.barNumbers!==false&&!opts.numbers,timeSig:opts.timeSig!==false,firstBar:opts.firstBar||0,prelude:opts.prelude!==false,colour:opts.colour!==false,heads:opts.heads!==false,chords:!!opts.chords,mode,width:opts.width,pw:opts.pw||13.5,finalBar:!!opts.finalBar,label:opts.label||null,bands:opts.bands};
   const bars=input.bars||[];
   let parts=[],W;
   if(opts.grand){
