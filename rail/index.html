@@ -689,6 +689,18 @@ html[data-lum="dark"][data-sheet="toned"] body:not(.light)
 #prSheet.two .prrow{display:grid; grid-template-columns:1fr 1fr; gap:0 28px}
 #prSheet .prrow > .prsec{min-width:0}
 #prSheet .prlbl{font-size:13px; font-weight:700; margin:0 0 2px}
+/* the staff needs no scaling dance: it is vector with a viewBox, drawn at the
+   column's own width, so the page gets it sharp and only needs air (23 Sep) */
+#prSheet.staff .prrow{padding-bottom:26px}
+#prSheet.staff .prinner{width:auto !important}
+#prSheet.staff .prinner .sv{margin:0 0 10px}
+/* A SHORT LAST SYSTEM KEEPS ITS OWN SIZE. staff.js gives every SVG width:100%
+   (it wants to fill a screen column), so a system of one bar would stretch to
+   the page and print its notes nearly three times too large - measured on the
+   preview copy, viewBox 257 rendering at 703. With fixed:true each system
+   carries its own width attribute; this lets that attribute win. */
+#prSheet.staff .sv{width:auto !important; max-width:100%; height:auto}
+#prDlg .drow.off{opacity:.45}
 #prSheet .prfit{overflow:hidden}                 /* the unscaled layout width must not widen the page */
 #prSheet .prinner{transform-origin:0 0}
 /* the card's own look stays on screen: here it is only the tokens' carrier */
@@ -1409,7 +1421,13 @@ select.ctl{appearance:auto; padding:6px 8px}
    wins. Nothing below the threshold ever gets the class. */
 :root{--ppleft:0px}
 body.rail:not(.fs){--ppleft:calc(148px + clamp(10px,3vw,28px))}
-#panPickDlg.twin{width:min(1180px,calc(100vw - var(--ppleft) - 48px)); max-width:none;
+/* [open] IS LOAD-BEARING (David, 23 Sep 2026: "when leaving the instruments
+   selector, it moves below the pan tab"). Without it this rule outranks the
+   browser's own dialog:not([open]){display:none} -- id plus class beats an
+   element with a pseudo-class -- so a picker that had once been a twin stayed
+   in the page after Close, 1180x855 of it, under the pan. The rule above,
+   #panPickDlg[open], had it right from the start. */
+#panPickDlg.twin[open]{width:min(1180px,calc(100vw - var(--ppleft) - 48px)); max-width:none;
   display:grid; grid-template-columns:420px minmax(0,1fr);
   grid-template-rows:auto auto minmax(0,1fr) auto}
 #panPickDlg.twin .pptop{grid-column:1; grid-row:1}
@@ -2424,6 +2442,12 @@ body:not(.phone) #chordbox{padding:14px 22px 16px}
    with the chord cards riding on it as raised clips. Structure, not paint —
    which is what tells jam apart now that the page tint is gone. */
 #jampanel{background:none; border:none; padding:0; margin:14px 0 10px}
+/* THE AIR UNDER THE BAR MATCHES THE AIR ABOVE IT (David, 23 Sep 2026: "the
+   chord row is too close to the transport"). With the bar under the table it
+   has 30px above it and the band had 14 below -- the band's ordinary margin,
+   written for the layouts where nothing stands directly above it. Only
+   body.barunder puts the bar between the two, so only it needs the air. */
+body.rail.barunder #jampanel{margin-top:30px}
 /* the lane keeps the panel's ORIGINAL card tone (David, 26 Aug: "give the
    chord track its old color back") — it is the shape that separates it, not
    the shade; the cards still ride on it as raised clips */
@@ -3062,6 +3086,13 @@ body:not(.phone) #belowrow>#cpband.four{flex:1 1 100%; max-width:100%}
 .cpfour .cell{position:relative; border:1px solid var(--rule2); border-radius:12px; padding:4px; background:var(--card); min-width:0}
 .cpfour .cell.active{background:var(--dixie-soft); border-color:var(--dixie); box-shadow:0 0 0 1px var(--dixie)}
 .cpfour .clab{position:absolute; top:8px; left:10px; z-index:1; text-align:left; line-height:1.1}
+/* THE CELL RESERVES THE NAME'S HEIGHT (David, 23 Sep 2026: "the 4 pans need a
+   bit of space for the chord names"). The name is absolutely placed, so it
+   costs no height of its own and the drawing started underneath it -- 39px of
+   overlap, measured in the jam's four-pan view. Only the two grids that lay
+   out by content: #panZoom sizes its cells from a computed --side, where
+   padding would shrink the drawing instead of making room. */
+#panwrap .cpfour .cell,#cpband .cpfour .cell{padding-top:42px}
 .cpfour .roman{font-size:11px; font-weight:700; color:var(--ink3)}
 .cpfour .cell.active .roman{color:var(--amber-ink)}
 .cpfour .cname{font-size:19px}
@@ -8194,6 +8225,12 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
        "this is set" in one small sheet reads as a toggle nobody turned on.
        Amber stays where it carries state; MP3 says it is the default in the
        hint below, and by sitting where the eye ends. -->
+  <!-- PRINT LIVES HERE TOO (David, 23 Sep 2026: "add Print to the export option
+       in the rail"). One door for getting the piece out of the app: the audio
+       and the MIDI below, the page above. openPrint asks what to print. -->
+  <div class="drow" id="expPrRow"><span>Print</span>
+    <button class="ctl" id="expPrBtn"
+      title="Print the whole piece, or save it as a PDF, in the notation you choose">Print or Save as PDF</button></div>
   <div class="row"><span class="spacer"></span>
     <button class="ctl" id="expMidi">Save MIDI</button>
     <button class="ctl" id="expWav">Save WAV</button>
@@ -8209,7 +8246,17 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
 <dialog id="prDlg">
   <h3>Print or Save as PDF</h3>
   <p class="hint" id="prWhat"></p>
-  <div class="drow"><span>Tables</span>
+  <!-- WHICH NOTATION GOES ON THE PAGE (David, 23 Sep 2026). It opens on what
+       you are reading, so the old behaviour is the default; choosing here means
+       you can print the staff without turning the app's staff view on, or print
+       the table while reading Flow. -->
+  <div class="drow" id="prViewRow"><span>Notation</span>
+    <span class="ctlgroup" role="group" aria-label="Notation to print">
+      <button class="ctl" id="prVTable" aria-pressed="true">Table</button>
+      <button class="ctl" id="prVTab" aria-pressed="false">Tab</button>
+      <button class="ctl" id="prVFlow" aria-pressed="false">Flow</button>
+      <button class="ctl" id="prVStaff" aria-pressed="false">Staff</button></span></div>
+  <div class="drow" id="prTwoRow"><span>Tables</span>
     <span class="ctlgroup" role="group" aria-label="Table size">
       <button class="ctl" id="prTwo" aria-pressed="true">Two side by side</button>
       <button class="ctl" id="prOne" aria-pressed="false">Full width</button></span></div>
@@ -13335,6 +13382,15 @@ let prPanOn=true, prChords=false;   // set again each time the door opens: pan o
    column — the width at which the app's own glyph sizes land on the design's
    proportions (37 px numbers → 14.7 px side by side) */
 const PR_W=703, PR_H=1028, PR_GAP=28, PR_DW=850;
+/* WHAT IS BEING PRINTED, which is no longer the same question as what is on
+   screen (David, 23 Sep 2026). It opens on `view` every time the door opens,
+   so nothing is remembered between prints and the default is always what you
+   are reading. */
+let prView="table";
+/* the narrowest a pulse may be drawn on paper before the notes crowd; it is
+   what decides how many bars a staff system holds, so one number governs
+   every metre and both page widths */
+const PR_STAFF_PW=11;
 /* EACH TABLE ONCE, AND AN EXACT COPY IS NOT A NEW TABLE. `print` holds the
    tables that print, in the order the arrangement first plays them; `alias`
    names, for every section, the printed table it is identical to — the same
@@ -13408,9 +13464,14 @@ function buildPrintSheet(){
   prDone();
   const sc=$("score"); if(!sc||!piece) return null;
   const plan=prPlan(), secs=plan.print; if(!secs.length) return null;
-  const look=view!=="flow";            // the design's table: Table and Tab
+  const staff=prView==="staff";
+  const look=!staff&&prView!=="flow";  // the design's table: Table and Tab
+  /* declared HERE, with the other two, because the sheet's class line below
+     reads it long before the widths are worked out (23 Sep 2026: it threw
+     "Cannot access two before initialization" on the preview copy) */
+  const two=prTwo&&!staff;             // a staff always prints full width
   const sheet=prEl("div"); sheet.id="prSheet";
-  sheet.className=(prTwo?"two":"one")+(look?" look":"")+(prChords?" chords":" nochords");
+  sheet.className=(two?"two":"one")+(look?" look":"")+(prChords?" chords":" nochords")+(staff?" staff":"");
   const H=prHands();
   sheet.style.setProperty("--hand-l",H.l); sheet.style.setProperty("--hand-r",H.r); sheet.style.setProperty("--hand-s",H.s);
   sheet.style.setProperty("--on-hand-l",onHand(H.l)); sheet.style.setProperty("--on-hand-r",onHand(H.r));
@@ -13428,7 +13489,11 @@ function buildPrintSheet(){
      the fit kept the digits big and spent the gutters ("1 3 6" read "136"), and
      CSS zoom made WebKit's print (the Mac app's, Safari's) set the chord names on
      the first number. A transform only paints smaller. */
-  const drawW=look?PR_DW:PR_W, colW=prTwo?(PR_W-PR_GAP)/2:PR_W, k=colW/drawW;
+  /* A STAFF PRINTS FULL WIDTH (23 Sep 2026): at half an A4 a system has about
+     337px, where the notes crowd and the ledger lines collide. The switch is
+     greyed while Staff is chosen rather than quietly ignored (`two` is
+     declared with `staff` and `look` above, where the class line can see it). */
+  const drawW=staff?PR_W:(look?PR_DW:PR_W), colW=two?(PR_W-PR_GAP)/2:PR_W, k=staff?1:colW/drawW;
   sheet.style.setProperty("--prl",(1/k).toFixed(3)+"px");   // a line that prints at 1 px, whatever the scale
   const stage=prEl("div","prstage"); sc.appendChild(stage);
   const blocks=[];
@@ -13441,8 +13506,9 @@ function buildPrintSheet(){
       inner.style.width=drawW+"px";
       stage.appendChild(box); blocks.push({box,fit,inner});
       viewSec=nm;
-      if(view==="flow") renderFlowSection(inner,nm,null,null);
-      else renderTableView(inner,view==="tab");
+      if(staff) prStaffInto(inner,nm,colW);
+      else if(prView==="flow") renderFlowSection(inner,nm,null,null);
+      else renderTableView(inner,prView==="tab");
       if(!prChords) inner.querySelectorAll(".flow.strip").forEach(f=>f.classList.remove("strip"));
     });
     if(look) fitBeatGlyphs(stage);
@@ -13470,9 +13536,9 @@ function buildPrintSheet(){
      tables side by side, or one at full width. The footer's own height is
      taken from the first page before anything else is placed. */
   const rows=[];
-  for(let i=0;i<blocks.length;i+=prTwo?2:1){
+  for(let i=0;i<blocks.length;i+=two?2:1){
     const r=prEl("div","prrow"); r.appendChild(blocks[i].box);
-    if(prTwo&&blocks[i+1]) r.appendChild(blocks[i+1].box);
+    if(two&&blocks[i+1]) r.appendChild(blocks[i+1].box);
     rows.push(r);
   }
   const pages=[];
@@ -13497,6 +13563,39 @@ function buildPrintSheet(){
   return sheet;
 }
 /* give the notation back and redraw the screen; safe to call any number of times */
+/* THE STAFF ON PAPER (David, 23 Sep 2026: "add an option there to export staff
+   notation"). staff.js needs no help beyond a width: render() returns the SVG
+   string and only measures its container when no width is given. What paper
+   needs that the screen does not:
+     - a system holds the most bars that keep a pulse PR_STAFF_PW wide, so the
+       break follows the metre and the page width instead of a fixed count;
+     - fixed:true, or a short last system would stretch to the column's width
+       and print its notes larger than the ones above it;
+     - band:null and bands:false: no playing band baked into the page;
+     - the staff's own Advanced settings ride along, and heads:false with them,
+       because that is what the screen draws.
+   Chord names follow the print dialog's own switch, which staff.js supports. */
+function prStaffInto(host,nm,colW){
+  if(typeof StaffView==="undefined"||!piece) return;
+  const sec=piece.sections[nm]; if(!sec) return;
+  const m=SM(piece,nm), ppb=(m.sub||4)*(m.beats||4);
+  const room=Math.max(120,colW-96);                       // the clef, key and time signature stand before the first bar
+  /* THE BARS ARE SPREAD EVENLY over as few systems as the pulse floor allows:
+     the most a system may hold decides HOW MANY systems, and then the bars are
+     divided between them. A four-bar table at three-per-system prints 3 + 1,
+     the second line a third of the page wide; the same table divided prints
+     2 + 2, and every line is full. */
+  const most=Math.max(1,Math.floor(room/(ppb*PR_STAFF_PW))||1);
+  const sys=Math.max(1,Math.ceil(sec.bars.length/most));
+  const per=Math.max(1,Math.ceil(sec.bars.length/sys));
+  try{
+    StaffView.render(host,{bars:sec.bars,pan:myPan,beats:m.beats,den:m.den,sub:m.sub,groups:m.groups,tup:tupsOf(sec)},
+      {numbers:!!staffOpts.numbers,grand:!!staffOpts.grand,heads:false,chords:!!prChords,
+       band:null,bands:false,fixed:true,perSystem:sec.bars.length>per?per:0,
+       width:colW,sp:8,
+       fontUrl:(/\/phone\//.test(location.pathname)||/\/player\//.test(location.pathname))?"../fonts/Leland.otf":"fonts/Leland.otf"});
+  }catch(e){ host.innerHTML=""; console.warn("staff print:",e); }
+}
 function prDone(){
   const s=$("prSheet");
   if(prOn&&prHome){
@@ -13516,15 +13615,32 @@ function paintPrDlg(){
   $("prOne").classList.toggle("on",!prTwo); $("prOne").setAttribute("aria-pressed",String(!prTwo));
   $("prTwo").classList.toggle("on",prTwo);  $("prTwo").setAttribute("aria-pressed",String(prTwo));
   onOff("prPan",prPanOn); onOff("prChords",prChords);
-  // the Tab carries no chord names (its cell is two hands deep), so the switch is the Table's and Flow's
-  $("prChordsRow").style.display=view==="tab"?"none":"";
+  /* the notation choice, and what it makes of the other rows */
+  for(const [id,v] of [["prVTable","table"],["prVTab","tab"],["prVFlow","flow"],["prVStaff","staff"]]){
+    const b=$(id); if(!b) continue;
+    b.classList.toggle("on",prView===v); b.setAttribute("aria-pressed",String(prView===v)); }
+  const staff=prView==="staff";
+  // the Tab carries no chord names (its cell is two hands deep), so the switch is the Table's, Flow's and the staff's
+  $("prChordsRow").style.display=prView==="tab"?"none":"";
+  /* a staff at half an A4 crowds, so it prints full width and the switch says
+     so rather than sitting there doing nothing */
+  const tw=$("prTwoRow"); if(tw){ tw.classList.toggle("off",staff); tw.title=staff?"A staff always prints full width":""; }
+  $("prTwo").disabled=staff; $("prOne").disabled=staff;
+}
+/* what the page will hold, in one line, for the dialog's hint */
+function prSay(){
+  if(!piece) return;
+  const skin={table:"Table",tab:"Tab",flow:"Flow",staff:"Staff"}[prView]||"Table", n=prSections().length;
+  $("prWhat").textContent="“"+(piece.title||"Untitled")+"” in "+skin+" — "+n+" table"+(n===1?"":"s")
+    +", each printed once, on "+((myPan&&myPan.pan)?myPan.pan.name:"your pan")+".";
 }
 function openPrint(){
   if(!allowed("print")) return;   /* a DOOR (TEST-VERSION.md): the buttons are not the only way in */
   if(!piece){ toast("There is nothing to print yet"); return; }
   if(document.documentElement.classList.contains("player")) return;   // never from a lesson
   prPanOn=true; prChords=false;
-  const skin={table:"Table",tab:"Tab",flow:"Flow"}[view]||"Table", n=prSections().length;
+  prView={table:"table",tab:"tab",flow:"flow"}[view]||"table";   // always opens on what you are reading
+  const skin={table:"Table",tab:"Tab",flow:"Flow",staff:"Staff"}[prView]||"Table", n=prSections().length;
   $("prWhat").textContent="“"+(piece.title||"Untitled")+"” in "+skin+" — "+n+" table"+(n===1?"":"s")
     +", each printed once, on "+((myPan&&myPan.pan)?myPan.pan.name:"your pan")+".";
   paintPrDlg();
@@ -26973,6 +27089,9 @@ function enterJam(){
   if(jam.bpm) bpm=jam.bpm;
   navPush("jam","Practice",()=>leaveJam());
   jamOn=true; document.body.classList.add("jam");
+  /* the furniture follows the room: the groove selector comes down into the
+     jam's GROOVE row (23 Sep 2026) */
+  try{ railFurnish(document.body.classList.contains("rail")); }catch(e){}
   paintModePills();          // As written | For my pan locks: a jam is on your pan
   voicesLoad();                                   // the jam's own bass and rhythm switches
   /* A JAM OPENS ON THE CHORDS (David, 29 Aug: "jam mode should always open
@@ -27021,6 +27140,7 @@ function leaveJam(){
   try{ $("grooveDlg").close(); }catch(e){}
   saveJamLS();
   jamOn=false; jamEditSlot=-1; document.body.classList.remove("jam");
+  try{ railFurnish(document.body.classList.contains("rail")); }catch(e){}   // …and back to the title line
   paintModePills();          // …and the piece's own face comes back with the piece
   /* THE FOUR GIVES THE TAB BACK ON THE WAY OUT (9 Sep). Dropping the memory
      was enough while entering a jam always turned the chords on again, which
@@ -35112,6 +35232,25 @@ function railHome(el){
   const n=(h.n&&h.n.parentNode===h.p)?h.n:null;
   if(el.parentNode!==h.p||el.nextSibling!==n) h.p.insertBefore(el,n);
 }
+/* a jam on a desktop is the one arrangement whose GROOVE row wants the
+   selector; the phone and the tablet hide that row entirely (see the CSS for
+   #jamGrooveHost), so they keep the rail's placement */
+function jamHasGroove(){
+  return typeof jamOn!=="undefined"&&jamOn&&!PHONE&&!TABLET&&!!document.getElementById("jamGrooveHost");
+}
+/* groove first, Breaks after it - the order Zones stage 2 set and the order
+   David asked for again */
+function railGrooveToJam(){
+  const jgh=document.getElementById("jamGrooveHost"), gh=document.getElementById("grooveHost"),
+        bb=document.getElementById("brkBtn"), tools=document.getElementById("jamTools");
+  if(!jgh||!gh) return;
+  /* the tools cluster (Chord settings, Generate) holds the row's right end by
+     margin-left:auto, so the selector and Breaks go BEFORE it - appending put
+     them to its right, which read as tools first (measured 23 Sep 2026) */
+  const at=(tools&&tools.parentElement===jgh)?tools:null;
+  jgh.insertBefore(gh,at);
+  if(bb) jgh.insertBefore(bb,at);
+}
 function railFurnish(on){
   const fs=document.body.classList.contains("fs");
   /* the title line: the card head's guests go to the page header — not in
@@ -35119,7 +35258,13 @@ function railFurnish(on){
   const badge=$("srcBadge"), hr=document.querySelector("header .hright"), link=$("linkBtn");
   if(on&&!fs&&badge&&hr){
     railPlace($("secLabel"),badge.parentNode,badge.nextSibling);
-    railPlace($("grooveHost"),badge.parentNode,$("secLabel")?$("secLabel").nextSibling:null);
+    /* THE GROOVE SELECTOR BELONGS TO THE JAM WHILE ONE IS ON (David, 23 Sep
+       2026: "The groove selector has to go to groove before breaks"). Zones
+       stage 2 puts it in the jam's GROOVE row ahead of Breaks at boot, and
+       this line used to lift it away into the title line, leaving Breaks
+       alone in the row. Outside a jam the title line is still its place. */
+    if(jamHasGroove()) railGrooveToJam();
+    else railPlace($("grooveHost"),badge.parentNode,$("secLabel")?$("secLabel").nextSibling:null);
     railPlace($("viewDoor"),hr,link);
     railPlace($("scoreheadR"),hr,link);
     railPlace($("fsBtn"),hr,link?link.nextSibling:null);
@@ -36364,9 +36509,17 @@ function boot(){
   $("prChords").addEventListener("click",()=>{ prChords=!prChords; paintPrDlg(); });
   $("prClose").addEventListener("click",()=>$("prDlg").close());
   $("prGo").addEventListener("click",doPrint);
+  /* the notation choice: one control, four segments, and the hint line says
+     what the page will hold each time it changes */
+  for(const [id,v] of [["prVTable","table"],["prVTab","tab"],["prVFlow","flow"],["prVStaff","staff"]]){
+    const b=$(id); if(!b) continue;
+    b.addEventListener("click",()=>{ prView=v; prSay(); paintPrDlg(); }); }
   /* nothing to clean up on close any more: the file is handed to the browser
      the moment it exists, so the sheet holds no blob of its own (1 Sep) */
   $("expClose").addEventListener("click",()=>$("expDlg").close());
+  /* the Export room's print door: the export dialog steps aside first, so the
+     two never stand open at once */
+  { const b=$("expPrBtn"); if(b) b.addEventListener("click",()=>{ $("expDlg").close(); openPrint(); }); }
   $("expFade").addEventListener("click",()=>{ expFade=!expFade; paintExpFade(); });
   $("expCycles").addEventListener("input",paintExpSize);
   $("expMp3").addEventListener("click",()=>doExport("mp3"));
