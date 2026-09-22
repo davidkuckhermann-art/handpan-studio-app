@@ -1836,6 +1836,11 @@ body.mkline .beat.nowbeat::after{border:none; top:auto; height:2px;
    So the bar becomes its own layer and the wash a ::before at −3, exactly the nowbeat
    pattern above — and the lines gain the same contrast under it. */
 .bar.nowbar{position:relative; z-index:1; box-shadow:inset 0 0 0 1px rgba(var(--dixie-rgb),.7)}
+/* THE FRAME ABOVE THE CELLS (David, 22 Sep 2026: in full-screen Tab the cells' row border hid the inset box-shadow's top
+   edge - it paints beneath them). A layer at z-index 2 in the bar's own stacking context; a bar that closes a chord-
+   practice repeat keeps the shadow, its ::after being the repeat sign. */
+.bar.nowbar:not(.cprep-end)::after{content:""; position:absolute; inset:0; z-index:2; pointer-events:none;
+  box-shadow:inset 0 0 0 1px rgba(var(--dixie-rgb),.7)}
 .bar.nowbar::before{content:""; position:absolute; inset:0; z-index:-3; background:var(--sc-band-t); pointer-events:none}
 body.slotlines .bar.nowbar .beat>.slot.smark::before{background:var(--sc-thru2)}
 .count span.cnow{color:var(--dixie)}
@@ -4224,6 +4229,11 @@ body.phone .pvchord{font-size:26px}
   background:var(--sc-band-t); border:1.5px solid var(--dixie);
   border-radius:.24em}
 body.mkline .fcell.nowbeat::before{background:none; border:none; border-radius:0}
+/* A MARKER OVER SEVERAL BEATS IS ONE BOX (David, 22 Sep 2026: "Longer markers in Flow render as several markers instead
+   of one large one") - a run of lit cells on a line loses its inner edges and corners, and takes one height */
+.fcell.nowbeat.nbG{--fMark:calc(var(--fHead) + var(--gkT) - .12em); --fMarkB:max(0em, calc(.1em + var(--gkB) - .12em))}
+.fcell.nowbeat.nbL::before{left:0; border-left:0; border-top-left-radius:0; border-bottom-left-radius:0}
+.fcell.nowbeat.nbR::before{border-right:0; border-top-right-radius:0; border-bottom-right-radius:0}
 /* THE LINE MARKER RIDES THE HANDS' SEAM (David, 30 Aug): the line that
    already runs between the two hands is the cell's own middle, so the
    playhead marks the beat there rather than at the foot of the lanes. */
@@ -12002,12 +12012,30 @@ function markerPulses(g,m){ // pulses covered by one marker unit (the beat is a 
   const per={"16th":m.sub/4,"8th":m.sub/2,"subdiv":m.sub*beatCells(m),"half":m.sub*2,"bar":m.bp}[g]||m.sub;
   return Math.max(1,Math.round(per));
 }
+/* A MARKER OVER SEVERAL BEATS IS ONE BOX (David, 22 Sep 2026). Each run of lit cells on one Flow line is joined: the
+   inner edges and corners go (.nbL/.nbR) and the run takes one height, the union of its cells' rows (--gkT/--gkB). */
+function flowJoinMarks(){
+  document.querySelectorAll("#score .fsys").forEach(sys=>{
+    const cells=[...sys.children].filter(c=>c.classList.contains("fcell"));
+    for(let i=0;i<cells.length;){
+      if(!cells[i].classList.contains("nowbeat")){ i++; continue; }
+      let j=i; while(j+1<cells.length&&cells[j+1].classList.contains("nowbeat")) j++;
+      if(j>i){ let t=Infinity, b=Infinity;
+        for(let k=i;k<=j;k++){ const st=cells[k].style;
+          t=Math.min(t,parseFloat(st.getPropertyValue("--mkT"))||0); b=Math.min(b,parseFloat(st.getPropertyValue("--mkB"))||0); }
+        for(let k=i;k<=j;k++){ const c=cells[k];
+          c.style.setProperty("--gkT",t+"em"); c.style.setProperty("--gkB",b+"em");
+          c.classList.add("nbG"); c.classList.toggle("nbL",k>i); c.classList.toggle("nbR",k<j); } }
+      i=j+1;
+    }
+  });
+}
 function clearSlotMarks(){
   // the classes are theirs alone, so no .beat/.bar prefix — the Flow skin's
   // cells (.fcell) wear the same marks (30 Aug)
   document.querySelectorAll(".mkbox").forEach(el=>el.remove());
   document.querySelectorAll(".mkcell").forEach(el=>el.classList.remove("mkcell"));
-  document.querySelectorAll(".nowbeat").forEach(el=>el.classList.remove("nowbeat"));
+  document.querySelectorAll(".nowbeat").forEach(el=>el.classList.remove("nowbeat","nbL","nbR","nbG"));
   document.querySelectorAll(".nowbar").forEach(el=>el.classList.remove("nowbar"));
 }
 // One even rectangle over the pulse window [s,e), drawn as full-height
@@ -12238,6 +12266,7 @@ function paintPulse(pi,seek){
       drawMarkBox(m,barI,s,s+px,FSC);
       }
     }
+    if(view==="flow") flowJoinMarks();   // a marker over several beats is one box (22 Sep 2026)
     if(countMark!=="off"){
       let ws,we;   // the lit span, into the bar
       if(countMark==="subdiv"&&groupsOf(m)){ const cl=cellAt(m,relBar); ws=cl.start; we=ws+cl.len; }   // a group's numbers, together
@@ -14213,14 +14242,21 @@ function wireMarkPop(){
 /* One popup at a time, placed against its button and kept inside the window. */
 function openPop(pop,anchor,align){
   closePop();
-  document.body.appendChild(pop);
+  /* IN FULL SCREEN ONLY THE FRAME IS PAINTED (David, 22 Sep 2026: "In full screen mode, I cannot change the marker
+     setting") - so the popup steps inside it, as the dialogs do (openDlg) */
+  const host=(typeof fsOn==="function"&&fsOn()&&$("scorewrap"))||document.body;
+  host.appendChild(pop);
   const a=anchor.getBoundingClientRect(), w=pop.offsetWidth, h=pop.offsetHeight;
   let left=align==="right"?(a.right-w):(a.left+a.width/2-w/2);
   left=Math.max(8,Math.min(left,window.innerWidth-w-8));
   let top=a.top-h-8;                              // above the button by default
   if(top<8) top=a.bottom+8;                       // …below when there is no room
-  pop.style.left=Math.round(left+window.scrollX)+"px";
-  pop.style.top=Math.round(top+window.scrollY)+"px";
+  if(host===document.body){
+    pop.style.left=Math.round(left+window.scrollX)+"px";
+    pop.style.top=Math.round(top+window.scrollY)+"px";
+  }else{ const hr=host.getBoundingClientRect();   // the wrap's own coordinates
+    pop.style.left=Math.round(left-hr.left-host.clientLeft+host.scrollLeft)+"px";
+    pop.style.top=Math.round(top-hr.top-host.clientTop+host.scrollTop)+"px"; }
   /* Only a click OUTSIDE closes it — the tempo popup has a slider and a field
      you have to be able to use without it vanishing under you. */
   _popAway=e=>{ if(!pop.contains(e.target)) closePop(); };
@@ -16762,8 +16798,10 @@ function flowDeskFit(){
        never less than three of its lines. */
     if(flowAll&&!jamOn){
       const musH=mus.getBoundingClientRect().height, rest=document.documentElement.scrollHeight-musH;
-      const sys=mus.querySelectorAll(".fsys"), third=sys[Math.min(2,sys.length-1)];
-      const floor=third?third.getBoundingClientRect().bottom-mus.getBoundingClientRect().top+mus.scrollTop+8:120;
+      /* three VISIBLE rows (22 Sep 2026): running on, one row can hold two lines, so count rows, not lines */
+      const sys=[...mus.querySelectorAll(".fsys")].filter((s,i)=>(s.dataset.row!=null?+s.dataset.row:i)<=2);
+      const low=sys.reduce((b,s)=>Math.max(b,s.getBoundingClientRect().bottom),-Infinity);
+      const floor=sys.length?low-mus.getBoundingClientRect().top+mus.scrollTop+8:120;
       let h=Math.max(floor,Math.floor(innerHeight-rest-6));
       mus.style.maxHeight=h+"px";
       for(let i=0;i<3;i++){                                // margins that only settle once the box has its height
@@ -20076,9 +20114,7 @@ function flowHandRows(pos,H,isTop,r4){
 function renderFlowView(sc){
   if(flowAll&&!jamOn){
     let acc=0;
-    const scs=getComputedStyle(sc);
     const run=(flowRun&&!prOn)?{used:0,row:-1,n:piece.arrangement.length,
-      pad:(parseFloat(scs.paddingLeft)||0)+(parseFloat(scs.paddingRight)||0),
       r4:piece.arrangement.some(nm=>flowSecR4(piece.sections[nm]))}:null;
     sc.classList.toggle("frun",!!run);
     piece.arrangement.forEach((nm,ai)=>{
@@ -20126,7 +20162,13 @@ function renderFlowSection(sc,nm,ai,absStart,run){
   let r4=false, strip=false;
   const labels=[];
   sec.bars.forEach((bar,bi)=>{
-    const bc=flowChords?barChordLabel(bar,m):null; labels[bi]=bc; if(bc) strip=true;
+    /* EVERY CHORD OF THE BAR, NOT ONLY THE ONE IT OPENS UNDER (David, 22 Sep
+       2026: "Flow notation doesn't currently show chord changes mid-bar").
+       barChordSpans has returned the whole list since 12 Sep -- the table, the
+       bass, the chord cards and the quiz all read it -- and Flow was the one
+       renderer still asking barChordLabel for the first span and dropping the
+       rest, so a change at the half was computed and thrown away. */
+    const bcs=flowChords?barChordSpans(bar,m):[]; labels[bi]=bcs; if(bcs.length) strip=true;
     const byT=new Map();
     for(const ev of bar){ if(!byT.has(ev.t)) byT.set(ev.t,[]); byT.get(ev.t).push(ev); }
     for(const evs of byT.values())
@@ -20166,11 +20208,20 @@ function renderFlowSection(sc,nm,ai,absStart,run){
         cell.appendChild(stripEl);
         if(run&&bi===0&&b===0){ const sn=document.createElement("span"); sn.className="fsn"; sn.textContent=nm;
           stripEl.appendChild(sn); }   // running on, the section's name stands over its first bar
-        if(b===0&&labels[bi]){
-          const cl=document.createElement("span");
-          cl.className="fchn"+(labels[bi].inf?" inf":"");
-          cl.innerHTML=fmtChord(labels[bi].name);
-          stripEl.appendChild(cl);
+        /* THE NAME STANDS OVER THE CELL THE CHANGE LANDS ON (David's answer,
+           22 Sep 2026). A cell covers the pulses [cl.start, cl.start+cl.len),
+           so every span is claimed exactly once and a bar-line chord still
+           lands on the bar's first cell, where it has always been. The last
+           cell keeps anything beyond its end, so no chord can be lost to a
+           metre the cells do not cover. Two changes inside one cell simply
+           stand side by side in the strip's own flex gap. */
+        const loC=cl.start, hiC=lastCell?Infinity:cl.start+cl.len;
+        for(const sp of (labels[bi]||[])){
+          if(sp.t<loC||sp.t>=hiC) continue;
+          const cn=document.createElement("span");
+          cn.className="fchn"+(sp.inf?" inf":"");
+          cn.innerHTML=fmtChord(sp.name);
+          stripEl.appendChild(cn);
         }
       }
       const prow=document.createElement("span"); prow.className="fprow";
@@ -20271,7 +20322,9 @@ function renderFlowSection(sc,nm,ai,absStart,run){
   const ws=cells.map(c=>c.el.offsetWidth||40);
   root.textContent="";
   root.classList.remove("measure");
-  const cap=Math.max(120,W-(run?run.pad:0));   // running on, the lines share one flex row: its content width exactly
+  /* THE LINES ARE SET FOR THE FRAME'S CONTENT WIDTH (22 Sep 2026): W is its client width, padding included, and a tight
+     line ran ~4px into the right-hand padding - in both section modes */
+  const scp=getComputedStyle(sc), cap=Math.max(120,W-(parseFloat(scp.paddingLeft)||0)-(parseFloat(scp.paddingRight)||0));
   /* RUNNING ON, the first line starts in the room the section before left - if the first whole bar fits there */
   let cap0=cap, cont=false;
   if(run&&run.used>0&&cells.length){ let fb=0;
@@ -30433,6 +30486,17 @@ if(!PHONE&&typeof ResizeObserver==="function"){
     q=requestAnimationFrame(()=>{ q=0; try{ fitChordRows(); }catch(e){} });
   });
   for(const id of ["belowrow","panwrap"]){ const el=document.getElementById(id); if(el) ro.observe(el); }
+}
+/* THE FLOW WINDOW REFITS WHEN WHAT STANDS UNDER IT CHANGES HEIGHT (David, 22 Sep 2026: "when I make the pan smaller,
+   the flow-notation doesn't increase in size") - the pan's zoom redraws only its card; this hands the room back */
+if(!PHONE&&typeof ResizeObserver==="function"){
+  let q=0, lastH=-1;
+  const ro=new ResizeObserver(es=>{
+    const h=Math.round(es[es.length-1].contentRect.height); if(h===lastH) return; lastH=h;
+    if(q||view!=="flow"||(typeof fsOn==="function"&&fsOn())) return;
+    q=requestAnimationFrame(()=>{ q=0; try{ flowDeskFit(); }catch(e){} });
+  });
+  const br=document.getElementById("belowrow"); if(br) ro.observe(br);
 }
 function placeCpBand(){
   const b=$("cpband"), below=$("belowrow"); if(!b||!below) return;
