@@ -24121,6 +24121,7 @@ function jamHome(){
    this richer — this is the agreed starting point. */
 const JV_TOK=["1","3","5","7","9","11","13","15"];
 const JV_BASS_TOP=57;         // midi A3 — "below A3" is bass (David); the voicer's one line for it
+const JV_TOP_REACH=7;         // a fifth: how far a top note may sit above where its chord's own voicing ends (David, 22 Sep)
 /* MELODY DECIDES (David, 27 Aug, after hearing it): a wide voicing that
    forces the top voice to leap out and back is worse than a narrow one that
    walks. "If a wide voicing would lead to large melody jumps before and
@@ -24787,26 +24788,37 @@ function jvCandidates(name,V,narrow){
      solvers all draw from this list. */
   const grounded=use.filter(c=>c.rootBottom&&c.ms[0]<BASS_TOP);
   if(grounded.length) use=grounded;
-  /* THE UPPER VOICES STAY WITHIN AN OCTAVE OF EACH OTHER; ONLY THE BASS MAY STAND
-     APART (David, 22 Sep, of four-note grooves: "the three lower notes … build a
-     coherent chord. But then the fourth note that is further up … is assigned a note
-     of very, very high register, far away from the other three"). Measured on a
-     D Kurd 17, Wide, Dmin · B♭maj · Fmaj · Cmaj in four voices: D3·A3·D4 under an
-     F5, B♭2·B♭3·D4 under an F5, F3·A3·C4 under an F5 — the top 15 to 17 semitones
-     above the note beneath it. Every rule above looks at a voicing from the BOTTOM
-     up, and the only thing that looks at the top note is the melody's stillness,
-     so the solver bought a still top line (F5 F5 F5 E5 costs 2, F4 F4 F4 G4 costs
-     8) by throwing the top voice an octave away. Nothing priced how far it sat from
-     its own chord. This is the old voice-leading rule, open below and close above,
-     and it is a RULE, not a price, like the bass and the mud rules — a price is what
-     the melody outbid. It sits under the sound rules and the bass root: it chooses
-     among the voicings they allow, and gives way only when the pan leaves nothing
-     else. Every mode draws from this list, Motion included, so a travelling melody
-     never leaves the chord beneath it behind. */
-  const closeAbove=c=>{ for(let i=2;i<c.ms.length;i++) if(c.ms[i]-c.ms[i-1]>12) return false; return true; };
-  const close=use.filter(closeAbove);
-  if(close.length) use=close;
+  /* A SPACING RULE HERE WAS TRIED AND TAKEN OUT (22 Sep) — do not put one back without
+     reading this. David: the top note of a four-note groove sat "very, very high …
+     far away from the other three". A rule that no gap above the bass exceed an
+     octave (rail 1e69eb7) removed the 15–17 semitone leaps and did not help: the
+     solver kept the top on F5 and lifted the note beneath it to meet it, D3·A3·D4·F5
+     became D3·A3·F4·F5, and he heard it at once — "not only the highest note, also
+     the second highest note feels somehow disconnected now". A tighter rule (no gap
+     more than a tone wider than the widest beneath it), simulated, did the same: E
+     Kurd 22, Emin9 E3·B3·D4·E4·G4·F♯5 became E3·B3·D4·G4·B4·F♯5 — still F♯5 — and
+     it rewrote 99 of 300 approved three-note voicings. THE LEVER IS NOT THE SHAPE,
+     IT IS THE TOP NOTE'S HEIGHT: every chord voiced alone is coherent (Emin9
+     E3·B3·D4·E4·F♯4·G4 on the same pan); what lifts the top is the progression's
+     melody term — stillness in Wide, the sung line in Motion — and spacing rules
+     only decide how the chord follows it up. */
   use.sort((a,b)=>(a.pen-b.pen)||reg(a,b));
+  /* SO THE TOP NOTE STAYS IN REACH OF ITS OWN CHORD (David, 22 Sep: Wide means "more
+     open chord shapes, but it should still sound like coherent chord shapes … not
+     like a melody that sits super high in relation to the rest of the chord"; and,
+     of the rule: "let's try your suggestion … exchange it for the new one"). The
+     chord's OWN voicing is the one it takes when voiced alone — the first of this
+     ranked list, which is what jamVoice returns — and where that voicing ends is
+     where the chord lives. No voicing may put its top note more than JV_TOP_REACH
+     above that. Measured before, on his E Kurd 22 jam in Motion: the four chords
+     alone end at G4, C5, B4 and D5, while the line roamed every top the list offered,
+     G4 to C6, and he heard G5 and E5 over an Emin9 whose own top is G4. The line's
+     range is computed from these same tops (jamMotionVoices: `lo`…`hi`), so bounding
+     the tops bounds the line — one rule, in the one list every groove and mode
+     draws from: Wide's stillness, Motion's line and Narrow alike. It cannot empty the
+     list: the chord's own voicing always stands. */
+  const ownTop=use[0].top;
+  use=use.filter(c=>c.top<=ownTop+JV_TOP_REACH);
   const CAP=14;               // plenty for the DP, and it stays instant
   return use.slice(0,CAP);
 }
