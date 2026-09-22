@@ -4637,6 +4637,10 @@ body.rail #scorefoot{margin:26px auto 0; padding:6px 10px 6px 12px; border:1px s
   border-radius:999px; background:var(--card); box-shadow:0 1px 2px rgba(var(--sh),.06), 0 6px 16px -8px rgba(var(--sh),.14);
   width:fit-content; max-width:100%; column-gap:4px; row-gap:6px; flex-wrap:wrap; justify-content:center}
 body.rail.barunder:not(.fs) #staffrow, body.rail.barunder:not(.fs) #belowrow{margin-top:30px}
+/* above the table: the bar keeps the air it has under the title line, and the table follows it
+   at the same distance the bar keeps from what stands above it elsewhere (22 Sep) */
+body.rail.barabove:not(.fs) #scorefoot{margin-top:6px}
+body.rail.barabove:not(.fs) #scorewrap{margin-top:14px}
 body.rail.fs #scorefoot{position:fixed; left:50%; bottom:14px; transform:translateX(-50%); z-index:85; margin:0}
 body.rail #scorefoot #footL{gap:2px}
 body.rail #scorefoot #sctools{display:flex; align-items:center; gap:4px; margin:0 2px 0 4px; padding-left:8px; border-left:1px solid var(--rule)}
@@ -6430,7 +6434,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
          very small button because it's only for me… we will actually remove
          it for the final version for the users"). It keeps .ctl, so the lit
          face setSyncMode paints still works — only its box shrinks. -->
-    <button class="ctl auth" id="syncOpen" aria-label="Video sync"
+    <button class="ctl auth hidden" id="syncOpen" aria-label="Video sync"
       title="Enter or leave video sync mode"><svg aria-hidden="true"><use href="#is-film"/></svg></button>
     <button class="ctl" id="setBtn" title="Notation and display settings" aria-label="Settings"><svg width="15" height="15"><use href="#is-set"/></svg> <span class="w">Settings</span></button>
   </span>
@@ -6847,7 +6851,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
        buttons move upwards, and the menu opens below those buttons"). -->
   <div class="prow" id="prow1">
     <span class="spacer"></span>
-    <span class="hint">Space bar: play / pause</span>
+    <!-- the "Space bar: play / pause" hint stood here until 22 Sep 2026 (David: "get rid of the spacebar play/pause explanation") -->
     <span id="miniarr" title="Tap a section — hold one for its tables"></span>
     <!-- LANDSCAPE JAM ONLY (David, 30 Aug): the generator under the notation,
          hard right, with the arrangement pills beside it on the left. #miniarr
@@ -7826,8 +7830,9 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
        Rail only; hps.barpos; railFurnish places the bar. -->
   <div class="drow" id="barposRow"><span>Transport bar</span>
     <span class="pills" id="barposPills" role="group" aria-label="Transport bar">
-      <button data-barpos="below" aria-pressed="true" title="Under the staff and the tabs">Below the tabs</button>
+      <button data-barpos="above" aria-pressed="false" title="Over the table, between the title line and the notation">Above the table</button>
       <button data-barpos="under" aria-pressed="false" title="Directly under the table; the staff and the tabs follow">Under the table</button>
+      <button data-barpos="below" aria-pressed="true" title="Under the staff and the tabs">Below the tabs</button>
     </span></div>
   <div class="drow" id="syncRow"><span>Video sync</span><span id="syncHost"></span></div>
   <div class="drow darkonly"><span>Score</span>
@@ -14769,6 +14774,12 @@ function updateSyncUI(){
    26 Aug: "the video should always be visible"). */
 let syncSeenOnce=false;   // timecodes auto-open the panel only until the user first closes it
 function setSyncMode(on){
+  /* THE SYNC TOOLS ARE THE LAB'S NOW (David, 22 Sep 2026: "let's disable the video sync functionality in the Handpan Studio
+     app … we will use the notation lab for that in the future"). The panel never opens here: not from the header, not
+     from a lesson frame's timecodes, not from a piece that carries a map. The follow engine underneath is untouched -
+     the embed player runs on it - and the map itself stays in the piece, written by the Lab. Hidden, not removed:
+     everything below is inert, ready if it is ever wanted back. */
+  if(on) return;
   if(on&&!allowed("video")) return;   /* a DOOR — also reached by a frame's message, so the guard lives here */
   videoSeen=on; syncSeenOnce=true;
   $("syncbar").classList.toggle("hidden",!on);
@@ -34359,7 +34370,7 @@ function wireRail(){
   }));
   /* Settings: the bar's place — Below the tabs | Under the table (22 Sep) */
   document.querySelectorAll("#barposPills [data-barpos]").forEach(b=>b.addEventListener("click",()=>{
-    try{ localStorage.setItem("hps.barpos",b.dataset.barpos==="under"?"under":"below"); }catch(e){}
+    try{ localStorage.setItem("hps.barpos",BARPOS.includes(b.dataset.barpos)?b.dataset.barpos:"below"); }catch(e){}
     railFurnish(document.body.classList.contains("rail")); paintBarposPills();
   }));
   /* the bar's ⋯ */
@@ -34395,11 +34406,15 @@ function lightApply(on){
   document.body.classList.toggle("light",on);
   if(was!==on){ try{ window.dispatchEvent(new Event("resize")); }catch(e){} try{ paintLoopFrame(); }catch(e){} }
 }
-function barPosPref(){ try{ return localStorage.getItem("hps.barpos")==="under"?"under":"below"; }catch(e){ return "below"; } }
+/* THREE PLACES FOR THE BAR (David, 22 Sep: "a third option … to put it on top of the notation
+   table"): above the table, under the table, or below everything the card shows. Anything else
+   stored - an older build wrote only two of these - reads as "below", the default it has had. */
+const BARPOS=["above","under","below"];
+function barPosPref(){ try{ const v=localStorage.getItem("hps.barpos"); return BARPOS.includes(v)?v:"below"; }catch(e){ return "below"; } }
 function paintBarposPills(){
-  const under=barPosPref()==="under";
+  const pos=barPosPref();
   document.querySelectorAll("#barposPills [data-barpos]").forEach(b=>
-    b.setAttribute("aria-pressed",String((b.dataset.barpos==="under")===under)));
+    b.setAttribute("aria-pressed",String(b.dataset.barpos===pos)));
   const row=$("barposRow"); if(row) row.classList.toggle("hidden",!document.body.classList.contains("rail"));
 }
 function paintNstylePills(){
@@ -34441,12 +34456,14 @@ function railFurnish(on){
      for the place under everything the card shows (in fullscreen: the foot of
      the fullscreen element) */
   const foot=$("scorefoot"), sct=$("sctools"), fl=$("footL"), below=$("belowrow"), wrap=$("scorewrap");
-  const under=barPosPref()==="under";
-  document.body.classList.toggle("barunder",on&&under);
+  const pos=barPosPref();
+  document.body.classList.toggle("barunder",on&&pos==="under");
+  document.body.classList.toggle("barabove",on&&pos==="above");
   if(on&&foot){
     railPlace(sct,foot,fl?fl.nextSibling:null);
     if(fs&&wrap) railPlace(foot,wrap,null);
-    else if(under&&wrap) railPlace(foot,wrap.parentNode,wrap.nextSibling);   // directly under the table (David, 22 Sep)
+    else if(pos==="above"&&wrap) railPlace(foot,wrap.parentNode,wrap);       // over the table (David, 22 Sep)
+    else if(pos==="under"&&wrap) railPlace(foot,wrap.parentNode,wrap.nextSibling);   // directly under the table (David, 22 Sep)
     else if(below) railPlace(foot,below.parentNode,below.nextSibling);
   }else{ railHome(sct); railHome(foot); }
   try{ if(!PHONE) fitFooter(); }catch(e){}
