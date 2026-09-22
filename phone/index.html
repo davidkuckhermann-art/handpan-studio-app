@@ -7927,16 +7927,16 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
      seconds — a lesson is playing behind it. -->
 <dialog id="panMutedDlg">
   <h3>Video sound is on</h3>
-  <p class="hint">The pan has been muted, so the two don&rsquo;t play over each other.</p>
+  <p class="hint">The notation player has been muted, so the two don&rsquo;t play over each other.</p>
   <label class="dlgask"><input type="checkbox" id="pmNever"> Don&rsquo;t warn me again</label>
   <div class="row"><button class="ctl on" id="pmOk">Got it</button></div>
 </dialog>
 
 <dialog id="panSoundDlg">
-  <h3>Video sound is off</h3>
-  <p class="hint">Would you like to hear the pan instead?</p>
+  <h3 id="psHead">Video sound is off</h3>
+  <p class="hint">Would you like to hear the notation player instead? It plays the notes on the pan you choose here.</p>
   <label class="dlgask"><input type="checkbox" id="psNever"> Don&rsquo;t ask again and remember my choice</label>
-  <div class="row"><button class="ctl on" id="psYes">Turn the pan on</button>
+  <div class="row"><button class="ctl on" id="psYes">Hear the player</button>
     <span class="spacer"></span><button class="ctl" id="psNo">No, stay quiet</button></div>
 </dialog>
 
@@ -13557,7 +13557,7 @@ function updateVidBar(){
 let followMuted=EMBEDDED, vCursor=null, vOff=null;
 /* what the bridge says about the VIDEO's own sound, and what it said last —
    null means an older block that does not report it at all */
-let vidMuted=null, vidMutedWas=null;
+let vidMuted=null, vidMutedWas=null, mutedStartAsked=false;
 /* THE PLAYER'S SOUND ASKS ABOUT THE VIDEO'S (David, 21 Sep: "whenever I unmute the embed player, there's a pop-up
    that asks me if I want to mute the video. When I mute the embed player, there's a pop-up that asks me if I want to
    unmute the video. Basically, the same mechanism that already exists the other way around"). Only a bridge that says
@@ -13804,7 +13804,7 @@ function updateScoreTools(){
     fm.classList.toggle("on",!followMuted);
     fm.classList.toggle("off",followMuted);
     fm.innerHTML=ico(followMuted?"is-sndoff":"is-snd");
-    fm.title=followMuted?"Pan sound off — click to hear it":"Pan sound on — click to mute";
+    fm.title=followMuted?"Player sound off — click to hear it":"Player sound on — click to mute";
     fm.setAttribute("aria-pressed",followMuted?"false":"true");
   }
   lb.classList.toggle("hidden",!loopSec);
@@ -14689,7 +14689,7 @@ function panSoundOn(){
      resumes, where they are all clamped to now and fire together. Throwing the
      offset away costs one report and the next one re-anchors it honestly. */
   vOff=null; vCursor=null; vRefT=null; vRefA=null; vLastA=null; vRateM=null;
-  preloadBank(); updateScoreTools(); toast("Pan sound on");
+  preloadBank(); updateScoreTools(); toast("Player sound on");
 }
 /* The pan-muted notice: same place and same shape as the question, but it
    closes itself, because nothing is being asked and the lesson is running. */
@@ -14716,8 +14716,8 @@ function vidSoundAsk(){
   if(rem==="no") return;
   const d=$("vidSoundDlg"); if(!d) return;
   d.dataset.want=on?"mute":"unmute";
-  $("vsHead").textContent=on?"Pan sound is on":"Pan sound is off";
-  $("vsText").textContent=on?"Would you like to mute the video, so the two don\u2019t play over each other?":"Would you like to hear the video instead?";
+  $("vsHead").textContent=on?"Player sound is on":"Player sound is off";
+  $("vsText").textContent=on?"Would you like to mute the video, so the two don\u2019t play over each other?":"Turn the video\u2019s sound back on?";
   $("vsYes").textContent=on?"Mute the video":"Turn the video sound on";
   $("vsNo").textContent=on?"No, keep both":"No, stay quiet";
   try{ if(!d.open) openDlg(d); }catch(e){}
@@ -15350,6 +15350,18 @@ function onVideoTime(t,rate){
       else if(rem!=="no"){ const d=$("panSoundDlg");
         try{ if(d&&!d.open) openDlg(d); }catch(e){} }
     }
+  }
+  /* A VIDEO THAT STARTS MUTED (David, 22 Sep: "if the video is muted, it asks the user: your video is muted, would you like
+     to unmute the HPD Studio player?"). The rule above acts on the CHANGE, so a lesson whose video was muted before its
+     first report - by the browser's autoplay, or by the student - never asked. Asked once, when the video is first seen
+     PLAYING and muted (a silent autoplay nobody has touched is not asked about), with the same question and the same
+     remembered answer; not while the tour runs (its `vidAsk` is set - it puts the video's sound on itself). */
+  if(vidMuted===true&&follow&&followMuted&&!mutedStartAsked&&(vidState===true||vidPlaying)&&(typeof vidAsk==="undefined"||vidAsk==null)){
+    mutedStartAsked=true;
+    const rem=panPref(PK_ASK);
+    if(rem==="yes") panSoundOn();
+    else if(rem!=="no"){ const d=$("panSoundDlg"), h=$("psHead"); if(h) h.textContent="Your video is muted";
+      try{ if(d&&!d.open) openDlg(d); }catch(e){} }
   }
   if(vidMuted!=null) vidMutedWas=vidMuted;
   { const vs=fmtT(t); if(vs!==vtimeStr){ vtimeStr=vs; $("vtime").textContent=vs; } }
@@ -34594,7 +34606,7 @@ function boot(){
   $("folMute").addEventListener("click",()=>{ followMuted=!followMuted;
     if(!followMuted){ ensureCtx(); ensureSink(); ctx.resume().catch(()=>{}); preloadBank(); }
     updateScoreTools(); vidSoundAsk();
-    toast(followMuted?"Pan sound off":"Pan sound on");
+    toast(followMuted?"Player sound off":"Player sound on");
     vCursor=null; });
   $("loopBtn").addEventListener("click",()=>{
     if(!loopSec) return;
@@ -35240,12 +35252,12 @@ function boot(){
      remembered, because the next time the video's sound goes off is a fresh
      decision, and the question only ever fires on that change. */
   $("psYes").addEventListener("click",()=>{
-    $("panSoundDlg").close();
+    $("panSoundDlg").close(); { const h=$("psHead"); if(h) h.textContent="Video sound is off"; }
     if($("psNever").checked) panPrefSet(PK_ASK,"yes");
     panSoundOn();
   });
   $("psNo").addEventListener("click",()=>{
-    $("panSoundDlg").close();
+    $("panSoundDlg").close(); { const h=$("psHead"); if(h) h.textContent="Video sound is off"; }
     if($("psNever").checked) panPrefSet(PK_ASK,"no");
   });
   $("vsYes").addEventListener("click",()=>{ const d=$("vidSoundDlg"); d.close();
