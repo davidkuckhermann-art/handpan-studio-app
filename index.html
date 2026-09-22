@@ -831,6 +831,13 @@ body:not(.editing):not(.gedit):not(.quiz):not(.rquiz):not(.learn):not(.cpsetup) 
 body:not(.phone):not(.tablet) #sctools{position:relative}
 body:not(.phone):not(.tablet) #jamVoices{position:absolute; left:100%; top:50%;
   transform:translateY(-50%); margin-left:10px; white-space:nowrap}
+/* …EXCEPT IN THE RAIL'S BAR (David, 22 Sep, a screenshot of the bass clef and the drum drawn
+   over the section pills). Absolute means the group takes no room, and the classic layout can
+   afford that because nothing stands right of the play button; the rail's bar packs its groups
+   side by side, so the pills are exactly there - and fitFooter leaves the group out of its
+   width for the same reason, so the bar never made room. In the rail it is an ordinary part of
+   the bar and takes its own place. */
+body.rail:not(.phone):not(.tablet) #jamVoices{position:static; transform:none; margin-left:0}
 /* the phone's tabs row is short of room: smaller faces, and the group at the
    row's right end where the section chip stood */
 /* landscape: in the bottom bar right after the BPM selector, a little air on
@@ -2316,6 +2323,11 @@ body:not(.phone) .chordrow{gap:calc(17px*var(--cfit,1))}
 body:not(.phone):not(.editing) #chordbox .chordrow,
 body:not(.phone) #belowrow>#cpband .chordrow{flex-wrap:nowrap; justify-content:safe center;
   overflow-x:auto; overflow-y:hidden; scrollbar-width:none}
+/* …AND A ROW WITH NOTHING TO SCROLL DOES NOT CLIP (22 Sep). The names are wider than their
+   boxes and italic ink leans past its own edge, so the end names lost 2-4 px to this scroll
+   box although nothing was hidden. `noclip` is set by stripFade, which already knows. */
+body:not(.phone):not(.editing) #chordbox .chordrow.noclip,
+body:not(.phone) #belowrow>#cpband .chordrow.noclip{overflow:visible}
 body:not(.phone) .chordrow::-webkit-scrollbar{display:none}
 body:not(.phone) .chordrow.fadeR{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);
                         mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent)}
@@ -21897,7 +21909,13 @@ function paintEditDeck(){
       const evs=byT.get(t)||[];
       const symEl=ev=>{ const g=glyphFor(ev,true), el=document.createElement("span");
         el.className=g.cls+(handOf(ev)==="L"?" l":" r"); el.innerHTML=g.t; if(g.st) el.style.cssText=g.st; return el; };
-      const byF=(a,c)=>(a.v==="field"?a.f:-1)-(c.v==="field"?c.f:-1);
+      /* THE EDITOR ORDERS A STACK EXACTLY AS THE SCORE DOES (David, 22 Sep, of the groove
+         editor on his phone: "why is the 13 below the 1?"). This comparator subtracted field
+         numbers, which is NaN for a bottom note ("b4"), so a stack holding one kept whatever
+         order it was stored in - which is why 6 over the bottom note 4 looked right and 13
+         over 1 did not. stackField is the score's rule: fields by number, the underside just
+         under the dome, percussion below that. */
+      const byF=(a,c)=>stackField(a)-stackField(c);
       let lanes=null;
       if(view==="tab"){
         /* THE TAB'S CELL IS TWO LANES, LIKE THE NOTATION'S (David, 3 Sep, two
@@ -21919,7 +21937,9 @@ function paintEditDeck(){
         }
       } else {
         if(evs.length) sl.classList.add(evs.length===1?"n1":evs.length===2?"n2":evs.length===3?"n3":"n4");
-        for(const ev of evs.slice(0,4).sort((a,c)=>graceLast(c,a)||byF(a,c))) sl.appendChild(symEl(ev));   // a plain column: the grace first is the grace on top
+        /* the score's cells are column-reverse and this one is a plain column, so the score's
+           order is REVERSED here: highest field on top, the grace above the note it leads into. */
+        for(const ev of sortStack(evs.slice(0,4),false).reverse()) sl.appendChild(symEl(ev));
         capUnderside(sl);
       }
       if(rel===cursor){ sl.classList.add("cur");
@@ -29498,6 +29518,7 @@ function chordRowFollow(row,el){
 function stripFade(row){
   if(!row) return;
   const over=row.scrollWidth>row.clientWidth+1;
+  row.classList.toggle("noclip",!over);      // nothing hidden, so nothing to cut off
   row.classList.toggle("fadeL",over&&row.scrollLeft>1);
   row.classList.toggle("fadeR",over&&row.scrollLeft+row.clientWidth<row.scrollWidth-1);
 }
