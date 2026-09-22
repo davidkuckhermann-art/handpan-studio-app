@@ -7088,10 +7088,12 @@ function soundActive(){ return playing||(typeof follow!=="undefined"&&follow&&vi
 
 let sinkHoldUntil=0, sinkHoldT=null;
 const SINK_HOLD=5;                  
-function sinkHold(){
-  sinkHoldUntil=Date.now()+SINK_HOLD*1000;
+function sinkHold(sec){
+  const until=Date.now()+(sec==null?SINK_HOLD:sec)*1000;
+  if(until<=sinkHoldUntil) return;
+  sinkHoldUntil=until;
   clearTimeout(sinkHoldT);
-  sinkHoldT=setTimeout(()=>{ sinkHoldT=null; sinkSync(); },SINK_HOLD*1000+80);
+  sinkHoldT=setTimeout(()=>{ sinkHoldT=null; sinkSync(); },until-Date.now()+80);
 }
 function sinkSync(){
   if(!iosSink||iosSink==="failed") return;
@@ -15031,7 +15033,7 @@ function ppBuildsOf(scale){
  
 let panPreviewGen=0;
 function panPreview(p){
-  ensureCtx(); ensureSink(); ctx.resume().catch(()=>{});
+  wakeAudio();
   const ms=[midiOf(p.ding),...p.fields.map(midiOf),...(p.bottom||[]).map(midiOf)]
     .filter(m=>m!=null).sort((a,b)=>a-b);
   
@@ -15041,6 +15043,7 @@ function panPreview(p){
     if(gen!==panPreviewGen) return;     
     const t0=ctx.currentTime+0.08;
     ms.forEach((m,i)=>fire(bankBuf("o"+m)||synthBuf(m,"open"),t0+i*0.16,0.9));
+    try{ sinkHold(0.08+(ms.length-1)*0.16+SINK_HOLD); }catch(e){}
   });
 }
 function ppRow(p,scaleKey){

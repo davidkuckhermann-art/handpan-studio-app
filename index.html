@@ -14057,10 +14057,22 @@ function soundActive(){ return playing||(typeof follow!=="undefined"&&follow&&vi
    same one, told what "sounding" actually means. */
 let sinkHoldUntil=0, sinkHoldT=null;
 const SINK_HOLD=5;                 // seconds; a pan sample rings about 4.5
-function sinkHold(){
-  sinkHoldUntil=Date.now()+SINK_HOLD*1000;
+/* A HOLD IS AS LONG AS THE SOUND, AND ONLY EVER GROWS (22 Sep). David, on his
+   iPhone, the full-screen pan's triangle: "after three or four seconds or so the
+   phone mutes while the scale is playing; then when I manually play the handpan
+   the audio comes back on and the rest of the scale run plays." The scale
+   previewer woke the route but never held it, so it stayed open only until the
+   hold left over from the last tap ran out, and sinkSync closed the element in
+   the middle of the run; a tap asked for a fresh hold and the rest came through.
+   A 22-note scale is a 3.5 s run plus the last note's ring. So a caller may ask
+   for longer than one note (panPreview asks for its whole run), and a hold is
+   never SHORTENED by a later, shorter one — a tap during the run cannot cut it. */
+function sinkHold(sec){
+  const until=Date.now()+(sec==null?SINK_HOLD:sec)*1000;
+  if(until<=sinkHoldUntil) return;              // a longer hold already stands
+  sinkHoldUntil=until;
   clearTimeout(sinkHoldT);
-  sinkHoldT=setTimeout(()=>{ sinkHoldT=null; sinkSync(); },SINK_HOLD*1000+80);
+  sinkHoldT=setTimeout(()=>{ sinkHoldT=null; sinkSync(); },until-Date.now()+80);
 }
 function sinkSync(){
   if(!iosSink||iosSink==="failed") return;
@@ -33190,7 +33202,7 @@ function ppBuildsOf(scale){
 /* the whole scale of a set of notes, played low to high, from the bank */
 let panPreviewGen=0;
 function panPreview(p){
-  ensureCtx(); ensureSink(); ctx.resume().catch(()=>{});
+  wakeAudio();              // every sounding control wakes the path — and holds it, lengthened below to the whole run
   const ms=[midiOf(p.ding),...p.fields.map(midiOf),...(p.bottom||[]).map(midiOf)]
     .filter(m=>m!=null).sort((a,b)=>a-b);
   /* WAIT FOR THE SAMPLES BEFORE PLAYING. `bankDecode` is asynchronous and
@@ -33205,6 +33217,7 @@ function panPreview(p){
     if(gen!==panPreviewGen) return;    // a newer preview has been asked for
     const t0=ctx.currentTime+0.08;
     ms.forEach((m,i)=>fire(bankBuf("o"+m)||synthBuf(m,"open"),t0+i*0.16,0.9));
+    try{ sinkHold(0.08+(ms.length-1)*0.16+SINK_HOLD); }catch(e){}   // the whole run, and the last note's ring
   });
 }
 function ppRow(p,scaleKey){
