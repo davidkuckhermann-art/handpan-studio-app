@@ -1660,8 +1660,8 @@ body.fs #scoreheadL #panSel{max-width:230px; flex:0 1 auto}
 #prSheet #score .nrow:nth-child(odd of .nrow){background:none}
 /* THE FLOW'S LINES WEAR THE TABLE'S BAND (David, 22 Sep 2026: "instead of separator lines between the rows, let's use the
    colored bands" - both styles): every other line, counted within its parent as the table counts its rows */
-#score .fsys:nth-child(odd of .fsys){background:color-mix(in srgb, color-mix(in srgb, var(--sc-edge), var(--dixie)) 3%, transparent)}
-#prSheet #score .fsys:nth-child(odd of .fsys){background:none}
+#score .fsys.fband{background:color-mix(in srgb, color-mix(in srgb, var(--sc-edge), var(--dixie)) 3%, transparent)}
+#prSheet #score .fsys.fband{background:none}   /* every other line of the PAGE, counted by flowBands() (22 Sep 2026) */
 /* THE SLOT IS THE UNIT (David, 29 Aug — mockups-notation-space.html, A).
    A slot is a share of the cell, but ink was sized to itself: a two-digit
    number outgrew its share and landed against its neighbour, so "12 6" read
@@ -4193,6 +4193,12 @@ body.mkline .flow .mkbox{top:auto; bottom:.06em; height:2px}
 .fchn.inf{opacity:.85}
 .fbnfloat{position:absolute; top:-1.15em; left:.12em; font-size:.42em; line-height:1;
   font-weight:800; color:var(--sc-bn)}
+/* THE NUMBER STANDS ON ITS BAR LINE (David, 22 Sep 2026: "Can the bar number sit right above the bar line?"). The line
+   is the previous cell's ::after, 2px at its right edge, so its middle is 1px left of this cell; the chord name keeps
+   clear of the number's right half, which grows with its digits (--bnd). */
+.fchs>.fbn.onbar{position:absolute; left:-1px; transform:translateX(-50%)}
+.fbnfloat.onbar{left:-1px; transform:translateX(-50%)}
+.fchs.hasbn{padding-left:calc(var(--bnd,1) * .3em - .08em)}
 /* the section name sits closer now that nothing hangs beneath it. SCOPED: the
    Table and Tab skins wear .secrow too, and their spacing is not in question. */
 body.design-flow #score .secrow{margin:6px 0 1px}
@@ -4324,6 +4330,8 @@ body.design-flow #score{overflow-y:auto; overflow-x:hidden; -webkit-overflow-scr
 body:not(.phone):not(.tablet).design-flow #score{border:1px solid var(--rule2);
   border-radius:10px; padding:6px 8px}
 body:not(.phone):not(.tablet).design-flow #scorefoot{border-top:0}
+/* the frame as wide as its widest line, centred (22 Sep 2026) - set by flowNarrow() */
+body:not(.phone):not(.tablet).design-flow #score.fnarrow{max-width:var(--fnW); margin-left:auto; margin-right:auto}
 body.phone.design-flow #scorewrap{overflow:visible}
 /* THE STREAM STARTS NEARER THE TOP OF ITS WINDOW (David, 30 Aug: "in flow,
    the notations should start further up inside its window"). Measured, the
@@ -4361,6 +4369,17 @@ dialog{border:1px solid var(--rule); border-radius:14px; padding:18px; backgroun
 dialog::backdrop{background:rgba(var(--scrim),.35)}
 dialog.flat[open]{position:fixed; top:9vh; left:50%; transform:translateX(-50%);
   z-index:60; margin:0; max-height:78vh; overflow:auto}
+/* ONE HEIGHT RULE FOR THE DIALOGS THAT HOLD A LIST (David, 22 Sep 2026: "I
+   wanted them to be larger vertically"). Each of these asked for 78-80vh and
+   was then cut off by a fixed 640px ceiling, so on any window taller than about
+   800px they stopped well short of the room they had. They now take the window
+   they are given, up to 1040px -- about twenty-two rows -- and the 1040 is there
+   only so a very tall screen does not produce a dialog the eye cannot scan.
+   These five are centred by the browser (none carries .flat), so a taller box
+   stays clear of both edges. The phone's own heights win on specificity, and
+   this rule sits after every id rule above so it wins on order. WIDTH IS NOT
+   TOUCHED: making them wider was the wrong guess, reverted before this. */
+#libDlg,#panPickDlg,#grooveDlg,#grooveLoadDlg,#jamLibDlg{max-height:min(90vh,1040px)}
 #dlgShade{position:fixed; inset:0; background:rgba(var(--scrim),.35); z-index:55}
 dialog h3{margin:0 0 10px; font-size:16px}
 /* the two halves of a share sheet: what stays on the device, what leaves it */
@@ -6236,6 +6255,10 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
   <button class="re" id="railGrv" type="button" title="Write or change a groove">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h2l2-6 3 12 3-9 2 5 2-2h4"/></svg>
     <span class="rl">Groove<br>Editor</span></button>
+  <!-- Learn is a room: the lowest above the line (David, 22 Sep 2026) -->
+  <button class="re" id="railLearn" type="button" title="Quiz yourself on chords and rhythm">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg>
+    <span class="rl">Learn</span></button>
   <div class="rdiv" role="separator"></div>
   <button class="re" id="railLib" type="button" title="Your library — open, save, share">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h4v15H4zM10 5h4v15h-4zM16.5 6.2l3.6-.9 3 14.4-3.6.9z"/></svg>
@@ -6243,9 +6266,6 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
   <button class="re" id="railInst" type="button" title="The pan you are playing on, and whether the piece adapts to it">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.6"/><circle cx="12" cy="5.6" r="1.1"/><circle cx="17.6" cy="8.8" r="1.1"/><circle cx="17.6" cy="15.2" r="1.1"/><circle cx="12" cy="18.4" r="1.1"/><circle cx="6.4" cy="15.2" r="1.1"/><circle cx="6.4" cy="8.8" r="1.1"/></svg>
     <span class="rl">Instruments</span><span class="rsub" id="railInstSub"></span></button>
-  <button class="re" id="railLearn" type="button" title="Quiz yourself on chords and rhythm">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg>
-    <span class="rl">Learn</span></button>
   <button class="re" id="railChords" type="button" title="Every chord on the pan you are holding">
     <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="10" cy="18" rx="3" ry="2.1" fill="currentColor" transform="rotate(-18 10 18)"/><ellipse cx="10" cy="13.5" rx="3" ry="2.1" fill="currentColor" transform="rotate(-18 10 13.5)"/><ellipse cx="10" cy="9" rx="3" ry="2.1" fill="currentColor" transform="rotate(-18 10 9)"/><path d="M12.8 17.4V3" stroke-width="1.5"/></svg>
     <span class="rl">Chord<br>overview</span></button>
@@ -7579,9 +7599,17 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
   <div class="drow"><span>Hands</span>
     <select class="ctl" id="flowLaneSel" title="Which hand reads on the lower line in the Flow notation">
       <option value="rl">Right low</option><option value="lr">Left low</option></select></div>
-  <div class="drow"><span>Counts</span>
-    <select class="ctl" id="flowCountSel" title="The counting numbers above the notes">
-      <option value="1">On</option><option value="0">Off</option></select></div>
+  <!-- NUMBERS IS ONE THREE-WAY CHOICE; THE CHORD NAMES ARE OPTIONAL (David, 22 Sep 2026: "The bar numbers, the count
+       numbers, and no numbers should be a three-way selector in the flow settings menu") -->
+  <div class="drow"><span>Numbers</span>
+    <span class="pills" role="group" aria-label="Numbers above the notation">
+      <button id="flowNumCounts" title="The counting numbers above the notes">Counts</button>
+      <button id="flowNumBars" title="Each bar's number, over its bar line">Bars</button>
+      <button id="flowNumNone" title="No numbers above the notation">None</button></span></div>
+  <div class="drow"><span>Chords</span>
+    <span class="pills" role="group" aria-label="Chord names">
+      <button id="flowChordOn" title="The chord names above the bars">On</button>
+      <button id="flowChordOff" title="No chord names">Off</button></span></div>
   <!-- the Window row (Fit the screen / Full page) stood here until 2 Sep;
        David: "we are now working on one solution that works optimally
        everywhere, so let's get rid of that window row". The window fits. -->
@@ -7884,7 +7912,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
        handler and every stored key keeps working untouched. Still .flowonly:
        the door only appears while Flow is the skin on screen. -->
   <div class="drow flowonly"><span>Flow notation</span>
-    <button class="ctl" id="flowMenuBtn" title="Hands, counts, window and page — the Flow skin's settings">Flow settings…</button></div>
+    <button class="ctl" id="flowMenuBtn" title="Hands, numbers, chords and page — the Flow skin's settings">Flow settings…</button></div>
   <div class="drow"><span>Pan orientation</span>
     <span class="pills" id="orientPills" role="group" aria-label="Pan orientation">
       <button id="orient1" title="The lowest field nearest you, dead centre">1 centred</button>
@@ -19879,7 +19907,13 @@ let flowSize=parseInt(localStorage.getItem("hps.flowsize"),10)||24;
 if(!(flowSize>=14&&flowSize<=44)) flowSize=24;
 let flowLanes=localStorage.getItem("hps.flowlanes")||"rl";
 if(!["rl","lr"].includes(flowLanes)) flowLanes="rl";
-let flowCount=(localStorage.getItem("hps.flowcount")||(document.body.classList.contains("light")?"0":"1"))==="1";   // off by default under the light style (David, 22 Sep)
+/* Numbers: counts | bars | none (David, 22 Sep 2026). A stored hps.flowcount carries over ("1" counts, "0" bars);
+   with nothing stored the light style starts on Bars, the framed on Counts. flowCount stays: it is "counts". */
+let flowNums=(()=>{ try{ const v=localStorage.getItem("hps.flownums"); if(v==="counts"||v==="bars"||v==="none") return v;
+  const c=localStorage.getItem("hps.flowcount"); if(c==="1"||c==="0") return c==="1"?"counts":"bars"; }catch(e){}
+  return document.body.classList.contains("light")?"bars":"counts"; })();
+let flowCount=flowNums==="counts";
+let flowChords=(()=>{ try{ return localStorage.getItem("hps.flowchords")!=="0"; }catch(e){ return true; } })();   // the chord names (22 Sep 2026)
 let flowAll=(localStorage.getItem("hps.flowall")||"0")==="1";
 /* THE WINDOW, not the glyphs (David, 30 Aug: "I mean window size"). A whole
    piece printed down the page makes the card thousands of pixels tall and
@@ -19965,12 +19999,17 @@ function renderFlowView(sc){
       renderFlowSection(sc,nm,ai,acc);
       acc+=piece.sections[nm].bars.length*SM(piece,nm).bp;
     });
-    flowW=(sc.clientWidth||9999)-2;
+    flowW=(flowRoom(sc)||9999)-2;
+    flowBands(sc); flowNarrow(sc);
     return;
   }
   renderFlowSection(sc,viewSec,null,null);
-  flowW=(sc.clientWidth||9999)-2;
+  flowW=(flowRoom(sc)||9999)-2;
+  flowBands(sc); flowNarrow(sc);
 }
+/* every other line of the page wears the band - counted over the whole page, not within a section, or a section of
+   one line would always be banded (David, 22 Sep 2026: "every second row a colored band, not every row") */
+function flowBands(sc){ sc.querySelectorAll(".fsys").forEach((s,i)=>s.classList.toggle("fband",i%2===0)); }
 function renderFlowSection(sc,nm,ai,absStart){
   const sec=piece.sections[nm], m=SM(piece,nm);
   /* on the whole-piece page each table is a PARAGRAPH: its own box, so the
@@ -19985,17 +20024,18 @@ function renderFlowSection(sc,nm,ai,absStart){
   if(ai!=null) root.dataset.ai=ai;
   root.style.fontSize=flowSize+"px";
   host.appendChild(root);
-  const W=(sc.clientWidth||9999)-2;
+  const W=(flowRoom(sc)||9999)-2;
   // what this section asks of the template
   let r4=false, strip=false;
   const labels=[];
   sec.bars.forEach((bar,bi)=>{
-    const bc=barChordLabel(bar,m); labels[bi]=bc; if(bc) strip=true;
+    const bc=flowChords?barChordLabel(bar,m):null; labels[bi]=bc; if(bc) strip=true;
     const byT=new Map();
     for(const ev of bar){ if(!byT.has(ev.t)) byT.set(ev.t,[]); byT.get(ev.t).push(ev); }
     for(const evs of byT.values())
       if(flowHand(evs,true).length>1||flowHand(evs,false).length>1) r4=true;
   });
+  if(flowNums==="bars"&&sec.bars.length>1) strip=true;   // the row over the bar lines holds the bar numbers, chords or none
   root.classList.toggle("strip",strip);
   root.classList.toggle("r4",r4);
   root.classList.toggle("nocount",!flowCount);
@@ -20163,7 +20203,7 @@ function renderFlowSection(sc,nm,ai,absStart){
        is a redundancy going away, not a trade, and the room it was living in
        goes with it (see .flow's padding-top). Every later system keeps its
        number exactly as before. */
-    if(li>0){
+    if(li>0&&flowCount){
       if(strip) lead.el.querySelector(".fchs")
         .insertAdjacentHTML("afterbegin",'<span class="fbn">'+(lead.bar+1)+'</span>');
       else lead.el.insertAdjacentHTML("afterbegin",
@@ -20172,7 +20212,46 @@ function renderFlowSection(sc,nm,ai,absStart){
     ln.forEach(x=>sys.appendChild(x.c.el));
     root.appendChild(sys);
   });
+  /* WITH THE COUNTS OFF, EVERY BAR CARRIES ITS NUMBER (David, 22 Sep 2026: "when the count numbers are deactivated,
+     there should be bar numbers … left of the chord displays, right above the bar separator lines, in small") - the
+     line-start number's own place and style, on each bar's first cell; bar 1 of a section stays bare (30 Aug) */
+  if(flowNums==="bars"){ let pb=-1;
+    lines.forEach(ln=>ln.forEach((x,k)=>{ const c=x.c; if(c.bar===pb) return; pb=c.bar; if(!(c.bar>0)) return;
+      const on=k>0?" onbar":"";   // not the line's first cell: its bar line stands at its left edge (22 Sep 2026)
+      const chs=strip&&c.el.querySelector(".fchs");
+      if(chs){ chs.insertAdjacentHTML("afterbegin",'<span class="fbn'+on+'">'+(c.bar+1)+'</span>');
+        if(on){ chs.classList.add("hasbn"); chs.style.setProperty("--bnd",String(c.bar+1).length); } }
+      else c.el.insertAdjacentHTML("afterbegin",'<span class="fbnfloat'+on+'">'+(c.bar+1)+'</span>'); })); }
   flowW=W;
+}
+/* THE FLOW'S FRAME IS AS WIDE AS ITS WIDEST LINE (David, 22 Sep 2026: "align it to the center and actually decrease
+   the size of the flow box of the frame around it, and then it can grow with the notation when the user increases
+   the size"). On the desktop the frame (#score) shrinks to its widest line and sits centred in the card, never wider
+   than the card. A paragraph's non-last line is justified to the full width, so only short paragraphs narrow it.
+   The lines are always set for flowRoom - the width the frame has when it is NOT narrowed - or each render would wrap
+   into what the last one left; so A+ lays them out wider and the frame grows back with them. */
+function flowNarrowed(sc){
+  return sc.classList.contains("fnarrow")&&!PHONE&&!prOn&&document.body.classList.contains("design-flow")&&
+    !document.body.classList.contains("phone")&&!document.body.classList.contains("tablet");
+}
+function flowRoom(sc){
+  if(!flowNarrowed(sc)) return sc.clientWidth||0;
+  const p=sc.parentElement, pc=getComputedStyle(p);
+  return p.clientWidth-parseFloat(pc.paddingLeft)-parseFloat(pc.paddingRight)-(sc.offsetWidth-sc.clientWidth);
+}
+function flowNarrow(sc){
+  const off=()=>{ sc.classList.remove("fnarrow"); sc.style.removeProperty("--fnW"); };
+  if(PHONE||prOn||sc.closest("#prSheet")||document.body.classList.contains("tablet")) return off();
+  const sys=sc.querySelectorAll(".fsys"); if(!sys.length) return off();
+  if([...sys].some(s=>!s.classList.contains("flast"))) return off();   // a justified line: the full width
+  const r=sc.getBoundingClientRect();
+  let lo=Infinity, hi=-Infinity;
+  sys.forEach(s=>{ const q=s.getBoundingClientRect(); lo=Math.min(lo,q.left); hi=Math.max(hi,q.right); });
+  const gutter=sc.offsetWidth-sc.clientWidth-2*sc.clientLeft;           // a scrollbar's reserved lane, if any
+  const want=Math.ceil((hi-r.left)+(lo-r.left)+gutter);                 // the same air right of the lines as left
+  const room=flowRoom(sc)+(sc.offsetWidth-sc.clientWidth);
+  if(want>=room-24) return off();
+  sc.style.setProperty("--fnW",want+"px"); sc.classList.add("fnarrow");
 }
 /* re-set the stream when its room truly changed (fullscreen, a resize, the
    phone) — a no-op at the same width, so observers cannot loop through it */
@@ -20184,7 +20263,7 @@ function flowFit(){
      change the width that asked for it (a scrollbar appearing, a line
      breaking differently), and at a 4px threshold the two chased each other
      until the tab died. Nothing under 16px is worth a re-set. */
-  if(Math.abs((sc.clientWidth||0)-flowW)<16) return;
+  if(Math.abs(flowRoom(sc)-flowW)<16) return;
   flowFitting=true;
   try{ render(); } finally{ flowFitting=false; }
 }
@@ -20261,10 +20340,17 @@ function flowBump(d){
   fls.addEventListener("change",()=>{ flowLanes=fls.value;
     try{localStorage.setItem("hps.flowlanes",flowLanes)}catch(e){}
     if(view==="flow") render(); }); }
-  const fcs=$("flowCountSel"); if(fcs){ fcs.value=flowCount?"1":"0";
-    fcs.addEventListener("change",()=>{ flowCount=fcs.value==="1";
-      try{localStorage.setItem("hps.flowcount",flowCount?"1":"0")}catch(e){}
-      if(view==="flow") render(); }); }
+  { const NUMS=[["flowNumCounts","counts"],["flowNumBars","bars"],["flowNumNone","none"]],
+          CHS=[["flowChordOn",true],["flowChordOff",false]];
+    const paint=()=>{ NUMS.forEach(([id,v])=>{ const b=$(id); if(b) b.setAttribute("aria-pressed",String(flowNums===v)); });
+      CHS.forEach(([id,v])=>{ const b=$(id); if(b) b.setAttribute("aria-pressed",String(flowChords===v)); }); };
+    paint();
+    NUMS.forEach(([id,v])=>{ const b=$(id); if(b) b.addEventListener("click",()=>{
+      flowNums=v; flowCount=v==="counts"; try{localStorage.setItem("hps.flownums",v)}catch(e){}
+      paint(); if(view==="flow") render(); }); });
+    CHS.forEach(([id,v])=>{ const b=$(id); if(b) b.addEventListener("click",()=>{
+      flowChords=v; try{localStorage.setItem("hps.flowchords",v?"1":"0")}catch(e){}
+      paint(); if(view==="flow") render(); }); }); }
   const fas=$("flowAllSel"); if(fas){ fas.value=flowAll?"1":"0";
     fas.addEventListener("change",()=>{ flowAll=fas.value==="1";
       try{localStorage.setItem("hps.flowall",flowAll?"1":"0")}catch(e){}
@@ -23953,7 +24039,11 @@ function jamChordDefs(){
           m7=(r+10)%12, M7=(r+11)%12, N9=(r+2)%12;
     for(const [q,t3,t5] of [["maj",M3,P5],["min",m3,P5],["dim",m3,d5]]){
       const h3=pcs.has(t3), h5=pcs.has(t5);
-      if(!h3&&!h5) continue;
+      /* A CHORD WITHOUT ITS DEFINING NOTE IS NOT OFFERED (David, 22 Sep 2026:
+         "A chord without its defining note should not be offered"). The 3rd is
+         what says major or minor, so a triad without it is a bare fifth, not a
+         chord of that name. Only the 5th may be absent. */
+      if(!h3) continue;
       // …and the same for a diminished triad: without its ♭5 it is not one
       if(q==="dim"&&!h5) continue;
       // `lt` = "nice, but less obvious" (David, 26 Aug): the pan's obvious
@@ -23991,6 +24081,11 @@ function jamChordDefs(){
                                ["min7",m3,P5,m7],["min7♭5",m3,d5,m7]]){
       const gone=[["3rd",t3],["5th",t5],["7th",t7]].filter(([,p])=>!pcs.has(p));
       if(gone.length>1) continue;
+      /* The 7th is the whole point of a 7th chord and the 3rd says which one
+         it is (7, min7, maj7), so both must be on the pan -- an E7 whose 7th
+         is missing is a plain E major triad and was offered as an E7 until
+         22 Sep 2026. The 5th may still be absent, captioned as before. */
+      if(!pcs.has(t3)||!pcs.has(t7)) continue;
       if(q==="min7♭5"&&!pcs.has(t5)) continue;
       out.push({name:spellPc(r)+q,group:"7th chords",root:r,
         under:needsUnder(r,t3,t5,t7),
@@ -24002,6 +24097,13 @@ function jamChordDefs(){
     for(const [q,t3,t5,t7] of [["maj9",M3,P5,M7],["9",M3,P5,m7],["min9",m3,P5,m7]]){
       const gone=[["3rd",t3],["5th",t5],["7th",t7],["9th",N9]].filter(([,p])=>!pcs.has(p));
       if(gone.length>1) continue;
+      /* The 9th names it and the 3rd says which 9th chord it is. The 7th may
+         be absent -- David: "E9 ... could be offered again because the 9 is
+         available. That one would then be available without the 7" -- EXCEPT
+         in maj9, where the word "maj" names the major 7th itself, and without
+         it the chord is an add9 under a false name. */
+      if(!pcs.has(t3)||!pcs.has(N9)) continue;
+      if(q==="maj9"&&!pcs.has(t7)) continue;
       out.push({name:spellPc(r)+q,group:"9th chords",root:r,
         under:needsUnder(r,t3,t5,t7,N9),
         degs:{"1":r,"3":pcs.has(t3)?t3:r,
