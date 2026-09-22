@@ -34505,18 +34505,30 @@ function boot(){
          undo this toggle. Let go of it first. */
       if(tag==="BUTTON") try{ tg.blur(); }catch(x){}
       e.preventDefault(); togglePlay(); return; }
-    /* ← → STEP THROUGH THE TABLES (David, 22 Sep: "let's simply use left and right for previous and next table" -
-       keys only, no new pills). Reading and playing only: the editor, the full-screen pan, the chord overview and the
-       sync map's marker all own the arrows in their own moments (their own handlers run first or return here), and
-       a dialog or a text field keeps them. It goes there like a second click on the pill: the playhead moves to the
-       table's first beat and the music, if playing, carries on from there. */
-    if((e.key==="ArrowLeft"||e.key==="ArrowRight")&&!typing&&!editing&&!document.querySelector("dialog[open]")
-       &&!$("panZoom").classList.contains("on")&&!(typeof quizOn!=="undefined"&&quizOn)&&!(typeof lsOn!=="undefined"&&lsOn)
-       &&!(typeof jamOn!=="undefined"&&jamOn)&&!(typeof cpOn!=="undefined"&&cpOn)&&piece&&piece.arrangement&&piece.arrangement.length>1
-       &&!(e.metaKey||e.ctrlKey||e.altKey)&&!(typeof mapSel!=="undefined"&&mapSel!=null&&!$("mapbar").classList.contains("hidden"))){
-      const ai=Math.max(0,Math.min(piece.arrangement.length-1,selAi+(e.key==="ArrowRight"?1:-1)));
-      if(ai!==selAi){ e.preventDefault(); const en=arrEntries()[ai]; pinView(ai,piece.arrangement[ai]); render(); goTo(en.from,en.to); mapShowSpan(en.from,en.to); }
-      return; }
+    /* , AND . STEP THROUGH THE TABLES, ← AND → THROUGH THE BARS (David, 22 Sep: "let's simply use left and right for
+       previous and next table" - then, once Wistia proved to own the arrows on a lesson page: "comma and full stop,
+       everywhere. The arrow keys: let's make them navigate by bar, but not in the embed player"). Reading and playing
+       only: the editor, the full-screen pan, the chord overview and the sync map's marker own keys in their own moments,
+       a dialog or a text field keeps them. Both land like a click in the notation: the playhead moves there and the music,
+       if playing, carries on from there. */
+    { const tableKey=e.key===","?-1:e.key==="."?1:0, barKey=(e.key==="ArrowLeft"?-1:e.key==="ArrowRight"?1:0);
+      const free=!typing&&!editing&&!document.querySelector("dialog[open]")&&!$("panZoom").classList.contains("on")
+        &&!(typeof quizOn!=="undefined"&&quizOn)&&!(typeof lsOn!=="undefined"&&lsOn)&&!(typeof jamOn!=="undefined"&&jamOn)
+        &&!(typeof cpOn!=="undefined"&&cpOn)&&piece&&piece.arrangement&&piece.arrangement.length&&!(e.metaKey||e.ctrlKey||e.altKey)
+        &&!(typeof mapSel!=="undefined"&&mapSel!=null&&!$("mapbar").classList.contains("hidden"));
+      if(free&&tableKey){
+        const ai=Math.max(0,Math.min(piece.arrangement.length-1,selAi+tableKey));
+        if(ai!==selAi){ e.preventDefault(); const en=arrEntries()[ai]; pinView(ai,piece.arrangement[ai]); render(); goTo(en.from,en.to); }
+        return; }
+      /* the bars: from the playhead's own bar to the one before or after, across the tables, never past the ends -
+         not under a lesson, where the video player hears the arrows wherever they are pressed */
+      if(free&&barKey&&!document.documentElement.classList.contains("player")){
+        if(!C) C=compile(piece);
+        const p0=nowPulse(), sec=secOfPulse(p0), m=SM(piece,sec.name), bar=Math.floor((p0-sec.pulse)/m.bp);
+        let target=sec.pulse+(bar+barKey)*m.bp;
+        if(barKey<0&&p0-(sec.pulse+bar*m.bp)>m.bp*0.25) target=sec.pulse+bar*m.bp;   // well into a bar, ← goes to its own start first
+        if(target>=0&&target<C.total){ e.preventDefault(); const s2=secOfPulse(target); pinView(s2.ai,s2.name); render(); goTo(target,null); }
+        return; } }
     if((e.key==="t"||e.key==="T")&&!typing&&!editing&&videoSeen){
       e.preventDefault(); $("tapBtn").click(); return; }
     if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="z"&&!typing&&!editing&&videoSeen){
