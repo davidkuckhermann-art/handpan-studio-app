@@ -183,6 +183,8 @@
   .sym.bt{background:var(--sc-under); border-radius:4px; padding:0 3px; display:inline-flex; justify-content:center}
   .sym.mu{position:relative}   /* a mute is a bar over the note, as in the app (6 Sep) — an element, so it paints above the badge */
   .sym.mu>.mb{position:absolute; top:0; left:var(--muc,50%); width:var(--muw,66%); height:.09em; background:currentColor; transform:translateX(-50%); pointer-events:none}
+  /* a muted bottom note's badge rises .1em to hold the bar, as in the app (19 Sep) — the badge here is the box's own background, so it grows by a shadow of its own colour: no layout */
+  .sym.bt.mu{box-shadow:0 -.1em 0 var(--sc-under)}
   #sum{display:flex; align-items:center; gap:10px; margin:0 0 12px}
 
   
@@ -351,7 +353,7 @@ let fontReady=(async()=>{
    PIXEL CLASSES
    ═══════════════════════════════════════════════════════════════════════ */
 const BG=0, INK=1, GREEN=2, GREY=3, FRAME=4, MARK=5, OTHER=6, ORANGE=7, BLUE=8, FAINT=9;
-function classify(d,w,h){
+function classify(d,w,h,inner){
   const cls=new Uint8Array(w*h);
   for(let i=0,p=0;i<w*h;i++,p+=4){
     const r=d[p],g=d[p+1],b=d[p+2];
@@ -370,6 +372,27 @@ function classify(d,w,h){
     else c=OTHER;
     cls[i]=c;
   }
+  /* THE MARKER BOX IS UN-TINTED (Level 1, 22 Sep: under the amber box the gap between a stack's 3 and 1
+     is anti-aliased against amber, reads as ink, joins them, and the 1 read as T). Each box - a MARK
+     region of 400 px or more - is divided by its own mean colour, which makes amber white and a stroke
+     on amber the same stroke on white, and what lies inside it is classified again by these rules. */
+  if(!inner){ const seen=new Uint8Array(w*h), st=[];
+    for(let s0=0;s0<w*h;s0++){ if(cls[s0]!==MARK||seen[s0]) continue; let n=0,x0=w,x1=0,y0=h,y1=0,sr=0,sg=0,sb=0; st.push(s0); seen[s0]=1;
+      while(st.length){ const i=st.pop(), x=i%w, y=(i-x)/w; n++; if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; sr+=d[i*4]; sg+=d[i*4+1]; sb+=d[i*4+2];
+        for(const j of [x>0?i-1:-1,x<w-1?i+1:-1,y>0?i-w:-1,y<h-1?i+w:-1]) if(j>=0&&!seen[j]&&cls[j]===MARK){ seen[j]=1; st.push(j); } }
+      if(n<400) continue;
+      const ar=sr/n, ag=sg/n, ab=sb/n, bw=x1-x0+1, bh=y1-y0+1, sub=new Uint8ClampedArray(bw*bh*4);
+      for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){ const p=(y*w+x)*4, q=((y-y0)*bw+(x-x0))*4; sub[q]=d[p]*255/ar; sub[q+1]=d[p+1]*255/ag; sub[q+2]=d[p+2]*255/ab; sub[q+3]=255; }
+      const sc=classify(sub,bw,bh,true);
+      for(let y=y0;y<=y1;y++){ let a=-1,b=-1; for(let x=x0;x<=x1;x++) if(cls[y*w+x]===MARK){ if(a<0)a=x; b=x; } if(a<0) continue;   // the box's own span in this row: its rounded corners stay as they were
+        for(let x=a;x<=b;x++) cls[y*w+x]=sc[(y-y0)*bw+(x-x0)]; } } }
+  /* A 1 PX GREY LINE ACROSS TWO PIXEL ROWS (David's Level 1 frames, 22 Sep: 217 over 210 where the other rows
+     read 183) is two pale pixels, each FAINT - so the row lost its underline and merged with the next, and a
+     one-row table passed for Flow. Two neutral pixels, one above the other, whose darkness together is a grey
+     line's are GREY; the warm faint lines (the app's, the badge's ground) are not neutral and stay FAINT. */
+  const pale=p=>d[p]<242&&Math.max(d[p],d[p+1],d[p+2])-Math.min(d[p],d[p+1],d[p+2])<=8;
+  for(let i=0;i+w<w*h;i++){ if(cls[i]!==FAINT&&cls[i+w]!==FAINT) continue; const p=i*4,q=(i+w)*4; if(!pale(p)||!pale(q)) continue;
+    const dk=510-d[p]-d[q]; if(dk>=30&&dk<=130){ if(cls[i]===FAINT) cls[i]=GREY; if(cls[i+w]===FAINT) cls[i+w]=GREY; } }
   return cls;
 }
 
@@ -910,7 +933,10 @@ function analyze(item){
   const Hall=rows.length?median(rows.map(R=>R.H)):Hguess;
   /* the header: grey labels above the frame */
   const hdrRect={x0:frame.x0,y0:Math.max(0,Math.floor(frame.y0-Hall*2.6)),x1:frame.x1,y1:frame.y0-1};
-  let hdr=headerComps(item,hdrRect).filter(c=>c.h>=Hall*0.08&&c.h<=Hall*1.6).sort((a,b)=>a.cx-b.cx);   // 0.08: the header's own dots (a tenth of a glyph on David's older tables) are labels too
+  /* NO ROOM, NO HEADER (Level 1's End, 22 Sep): with the frame 5 px under the picture's top edge, the previous
+     table's bottom edge was all there was above it, and it read as the labels "3 4 +7". A count is at least a
+     third of a glyph tall, so a strip thinner than that holds none. */
+  let hdr=hdrRect.y1-hdrRect.y0<Hall*0.35?[]:headerComps(item,hdrRect).filter(c=>c.h>=Hall*0.08&&c.h<=Hall*1.6).sort((a,b)=>a.cx-b.cx);   // 0.08: the header's own dots (a tenth of a glyph on David's older tables) are labels too
   const labels=[];
   /* THE TWO DIGITS OF A COUNT (10, 11, 12) stand closer than any two counts: a gap under half the header's own
      typical gap joins them, whatever the glyph height says — 0.25 of the glyph height split the 1 of a 10 from its
@@ -943,7 +969,7 @@ function analyze(item){
        returns; the groups only place the slots. */
     const allGaps=[]; for(let i=1;i<L;i++) allGaps.push(labels[i].cx-labels[i-1].cx);
     const pitch=median(allGaps.filter(g=>g<=median(allGaps)*1.2));
-    const gruns=[]; let g0=0; for(let i=1;i<L;i++){ if(labels[i].cx-labels[i-1].cx>pitch*1.2||labels[i].text==="1"){ gruns.push([g0,i]); g0=i; } } gruns.push([g0,L]);
+    const gruns=[]; let g0=0; for(let i=1;i<L;i++){ if(labels[i].cx-labels[i-1].cx>pitch*1.1||labels[i].text==="1"){ gruns.push([g0,i]); g0=i; } } gruns.push([g0,L]);
     for(let k=1;k<=8;k++){ const sw=pitch/k; let s0=0;
       const bs=gruns.map(([r0,r1])=>{ const n=r1-r0; const c0=median(labels.slice(r0,r1).map((Lb,i)=>Lb.cx-i*pitch)); const x0=c0-sw/2; const bar={x0,x1:x0+n*k*sw,spb:n*k,s0}; s0+=n*k; return bar; });
       let e=0; for(const cx of anchors){ const bar=bs.find(B=>cx<B.x1)||bs[bs.length-1]; const u=(cx-bar.x0)/sw; e+=Math.abs(u-Math.floor(u)-0.5); }
@@ -962,7 +988,7 @@ function analyze(item){
     const a0=inBar(barsOf[0]); const c0=a0.length?Math.min(...a0):ext(barsOf[0])[0], c1=a0.length?Math.max(...a0):ext(barsOf[0])[1];
     for(let N0=2;N0<=32;N0++){ const sw=(c1-c0)/Math.max(1,N0-1); let s0=0, e=0;
       const bs=barsOf.map((b,bi)=>{ const ab=inBar(b); const [x0e,x1e]=ext(b); const first=ab.length?Math.min(...ab):x0e; const last=ab.length?Math.max(...ab):x1e;
-        const n=bi===0?N0:Math.max(1,Math.round((last-first)/sw)+1); const x0=first-sw/2; const bar={x0,x1:x0+n*sw,spb:n,s0,segs:b.map(sg=>Math.max(1,Math.round((sg.x1-sg.x0)/sw)))}; s0+=n; return bar; });
+        const x0=first-sw/2; const n=Math.max(bi===0?N0:Math.max(1,Math.round((last-first)/sw)+1),Math.round((x1e-x0)/sw)) /* empty beats at the end are underlined too (Level 1's End, 22 Sep) */; const bar={x0,x1:x0+n*sw,spb:n,s0,segs:b.map(sg=>Math.max(1,Math.round((sg.x1-sg.x0)/sw)))}; s0+=n; return bar; });
       for(const cx of anchors){ const bar=bs.find(B=>cx<B.x1)||bs[bs.length-1]; const u=(cx-bar.x0)/sw; e+=Math.abs(u-Math.floor(u)-0.5); }
       fits.push({N:s0,e:anchors.length?e/anchors.length:1,sw,bars:bs,segBars:true}); }
   }else{
@@ -970,7 +996,11 @@ function analyze(item){
       fits.push({N,e:anchors.length?e/anchors.length:1,sw,bars:[{x0:tx0,x1:tx1,spb:N,s0:0}]}); }
   }
   const minE=Math.min(...fits.map(f=>f.e));
-  const pick=fits.find(f=>f.e<=Math.min(0.05,minE+0.03))||fits.reduce((a,b)=>b.e<a.e?b:a);   // the coarsest grid that really fits
+  /* …AND ITS WORST NOTE FITS (Level 1, 22 Sep: a sixteenth on the last sixteenth of a beat sat exactly between
+     two eighth slots, and the average hid it). Full-size glyphs only - dots and a stack's parts wander more. */
+  const big=comps.filter(c=>c.area>=6&&c.h>=Hall*0.6);
+  for(const f of fits){ let m=0; for(const c of big){ const bar=f.bars.find(B=>c.cx<B.x1)||f.bars[f.bars.length-1]; const u=(c.cx-bar.x0)/f.sw; m=Math.max(m,Math.abs(u-Math.floor(u)-0.5)); } f.m=m; }
+  const pick=fits.find(f=>f.e<=Math.min(0.05,minE+0.03)&&f.m<=0.3)||fits.find(f=>f.e<=Math.min(0.05,minE+0.03))||fits.reduce((a,b)=>b.e<a.e?b:a);   // the coarsest grid that really fits
   const bestN=pick.N, best=pick.e, sw=pick.sw; bars=pick.bars; tx0=bars[0].x0; tx1=bars[bars.length-1].x1;
   /* counts per bar from the labels of one bar; bars per row from the runs */
   let beats=null,bpr=1;
@@ -1313,7 +1343,12 @@ async function addFiles(files){
 }
 async function prepare(it){
   await buildAtlasOnce();
-  const c=document.createElement("canvas"); c.width=it.w; c.height=it.h; const x=c.getContext("2d",{willReadFrequently:true}); x.drawImage(it.img,0,0);
+  /* A SMALL PICTURE IS READ AT TWICE ITS SIZE (David's Level 1 frames, 22 Sep: ~500 px wide, where every bench
+     table is 678 or more). At that size a 1 px line and a glyph's edge are one pixel apart, and a third of the
+     tables fell over or passed for Tab; at twice the size all of them read. Every coordinate is then in the
+     doubled picture, as it.w and it.h say - the way the score reader's small print is (14 Sep). */
+  if(!it.up&&it.w<640){ it.w*=2; it.h*=2; it.up=2; }
+  const c=document.createElement("canvas"); c.width=it.w; c.height=it.h; const x=c.getContext("2d",{willReadFrequently:true}); x.imageSmoothingQuality="high"; x.drawImage(it.img,0,0,it.w,it.h);
   it.canvas=c; it.data=x.getImageData(0,0,it.w,it.h).data; it.cls=classify(it.data,it.w,it.h); it.frame=null;
   if(!(it.forceTable||scoreAnalyze(it))) analyze(it);       // a printed score is the fourth kind of picture; five staff lines say so
   it.status="found"; paintQueue();
