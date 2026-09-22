@@ -40,7 +40,11 @@ const G={gClef:"",gClef8vb:"",gClef15mb:"",fClef:"",black:"",half
   restW:"",restH:"",restQ:"",rest8:"",rest16:"",rest32:"",
   flat:"",natural:"",sharp:"",dot:"",trem2:"",ts:d=>String(d).split("").map(c=>String.fromCharCode(0xE080+ +c)).join("")};
 const E={staffLine:.11,stem:.10,beam:.5,beamGap:.25,ledger:.16,ledgerExt:.33,thin:.18,thick:.55,headW:1.3,
-  stemUpSE:[1.3,.16],stemDownNW:[0,-.168],xUpSE:[1.3,.424],xDownNW:[0,-.424],accW:.81,clefW:2.56,tsW:1.77};
+  stemUpSE:[1.3,.16],stemDownNW:[0,-.168],xUpSE:[1.3,.424],xDownNW:[0,-.424],accW:.81,clefW:2.56,tsW:1.77,
+  /* how far a note's ink reaches past its head: the stem's flag, and the
+     right-pointing stub of a broken beam. The bar line is kept clear of it
+     (23 Sep 2026). */
+  flagReach:1.0};
 const CLEFS={g:{bottom:30,glyph:G.gClef,glyphStep:32,shift:0,keyOff:0},g8vb:{bottom:30,glyph:G.gClef8vb,glyphStep:32,shift:7,keyOff:0},
   g15mb:{bottom:30,glyph:G.gClef15mb,glyphStep:32,shift:14,keyOff:0},f:{bottom:18,glyph:G.fClef,glyphStep:24,shift:0,keyOff:-14}};
 const KEYPOS={flats:{B:34,E:37,A:33,D:36,G:32,C:35,F:31},sharps:{F:37,C:34,G:38,D:35,A:32,E:36,B:33}};
@@ -123,7 +127,15 @@ function barItems(bar,bi,ctx,keep){
   const byT=new Map();
   for(const e of bar||[]){if(!e||e.v==="ghost")continue;if(keep&&e.v!=="perc"&&!keep(e))continue;if(!byT.has(e.t))byT.set(e.t,[]);byT.get(e.t).push(e)}
   let ranges=(tup||[]).filter(r=>r&&r.bar===bi&&r.n>1).map(r=>{const step=sub/(r.per||1);return{a:r.from*step,e:(r.from+r.len)*step,n:r.n}});
-  if(!ranges.length&&near(pulse32)==null){for(let c=0;c<beats;c++)ranges.push({a:c*sub,e:(c+1)*sub,n:sub})}   // a triplet grid: every count a tuplet
+  /* A TUPLET IS A NON-BINARY DIVISION (23 Sep 2026). A pulse that cannot be
+     written as a plain value means one of two very different things: the count
+     is divided in three, five, seven… -- a tuplet, which is what this line is
+     for -- or the grid is simply finer than a 32nd, which a binary sub in an
+     eighth-note meter is (sub 8 in x/8 is a 64th). The second used to be read
+     as a tuplet too, so every beat wore a bracket and an italic number. A
+     power-of-two sub is a plain grid, however fine; only the rest are tuplets. */
+  const binaryGrid=sub>0&&(sub&(sub-1))===0;
+  if(!ranges.length&&near(pulse32)==null&&!binaryGrid){for(let c=0;c<beats;c++)ranges.push({a:c*sub,e:(c+1)*sub,n:sub})}   // a triplet grid: every count a tuplet
   ranges.sort((x,y)=>x.a-y.a);ranges.forEach((r,i)=>r.id=bi*100+i);
   const inRange=t=>ranges.find(r=>t>=r.a-1e-6&&t<r.e-1e-6);
   const items=[];
@@ -164,7 +176,16 @@ function staff(bars,ctx,o){
   bars.forEach((bar,bi)=>{const B=barItems(bar,bi,ctx,keep);const L={bar,items:B.items,ranges:B.ranges,empty:B.empty};laid.push(L);
     if(mode==="flow"){let w=1.2;B.items.forEach(it=>{w+=flowW(it.den,it.dot)*(it.tup?.85:1);if(!it.rest&&it.notes.some(n=>n.f!=null&&accidentalFor(nameOf(names,n.f),key)))w+=.8});w+=.5;L.w=w;totalFlow+=w}});
   let W;
-  if(mode==="grid"){W=left+preludeW+bars.length*ppb*pw+(o.right||0);let bx=left+preludeW;laid.forEach(L=>{L.x0=bx;L.x1=bx+ppb*pw;L.items.forEach(it=>{const cell=Math.min(pw,(it.len32/pulse32)*pw);it.x=bx+it.p*pw+cell/2-E.headW*sp/2});bx=L.x1})}
+  /* THE BAR LINE GETS ITS OWN ROOM (David, 23 Sep 2026: "the flags of the
+     eighth notes actually hang over the bar lines"). A note is centred in its
+     cell and the last cell ended exactly on the line, so the flag -- about one
+     staff space past the head -- was drawn across it, and nothing clips: the
+     lines are painted before the notes. Every position in the bar is squeezed
+     by the same factor, so the spacing stays even, the bar keeps its width and
+     its line does not move; only the last note steps back from it. */
+  if(mode==="grid"){W=left+preludeW+bars.length*ppb*pw+(o.right||0);let bx=left+preludeW;
+    const gut=Math.min(E.flagReach*sp,pw*.9),squeeze=(ppb*pw-gut)/(ppb*pw);
+    laid.forEach(L=>{L.x0=bx;L.x1=bx+ppb*pw;L.items.forEach(it=>{const cell=Math.min(pw,(it.len32/pulse32)*pw);it.x=bx+(it.p*pw+cell/2)*squeeze-E.headW*sp/2});bx=L.x1})}
   else{W=width;const k=(width-left-(o.right||0)-preludeW)/(totalFlow*sp);let bx=left+preludeW;laid.forEach(L=>{L.x0=bx;let cx=bx+1.2*sp*k;L.items.forEach(it=>{if(!it.rest&&it.notes.some(n=>n.f!=null&&accidentalFor(nameOf(names,n.f),key)))cx+=.8*sp*k;it.x=cx;cx+=flowW(it.den,it.dot)*(it.tup?.85:1)*sp*k});L.x1=bx+L.w*sp*k;bx=L.x1})}
   let bands="";
   if(mode==="grid"&&o.bands!==false){laid.forEach((L,bi)=>{for(let b=0;b<beats;b++){const bx=L.x0+b*sub*pw;bands+=`<rect class="sv-band${band&&band.bar===firstBar+bi&&band.beat===b?" on":""}" data-bar="${firstBar+bi}" data-beat="${b}" x="${bx.toFixed(1)}" y="${(topY-3.2*sp).toFixed(1)}" width="${(sub*pw).toFixed(1)}" height="${(10.4*sp).toFixed(1)}" rx="${(sp*.6).toFixed(1)}" fill="${COL.band}"/>`}})}
@@ -189,7 +210,19 @@ function staff(bars,ctx,o){
       it.heads=it.notes.map(n=>n.v==="perc"?{step:mid-C.shift,perc:true,hand:n.hand,acc:"",ev:n}:{step:stepOf(nameOf(names,n.f)),acc:accidentalInBar(nameOf(names,n.f),key,accState),hand:n.hand,f:n.f,ev:n}).filter(h=>h.step!=null).sort((a,b)=>a.step-b.step);
       if(!it.heads.length){it.rest=true;return}
       const w0=it.heads[0].step+C.shift,w1=it.heads[it.heads.length-1].step+C.shift;it.up=(mid-w0)>=(w1-mid);lowest=Math.min(lowest,w0);highest=Math.max(highest,w1)});
-    const groups=new Map();L.items.forEach(it=>{if(it.rest||it.den<8)return;const k=it.tup?"T"+it.tup.id:"C"+groupOf(Math.floor(it.p/sub));if(!groups.has(k))groups.set(k,[]);groups.get(k).push(it)});
+    /* A BEAM JOINS NOTES THAT ARE NEXT TO EACH OTHER (23 Sep 2026). The run
+       was keyed by the count alone and rests were merely skipped, so two notes
+       in one count with a rest between them shared a group and the beam was
+       drawn straight over the rest. A rest now ends the run: the key carries a
+       serial that steps whenever the stream is interrupted, by a rest or by a
+       note too long to beam. */
+    const groups=new Map();let runK=null,runN=0;
+    L.items.forEach(it=>{
+      if(it.rest||it.den<8){runK=null;return}                       // the stream is broken here
+      const base=it.tup?"T"+it.tup.id:"C"+groupOf(Math.floor(it.p/sub));
+      if(base!==runK){runK=base;runN++}                             // a new count, or a fresh run after a break
+      const k=base+"#"+runN;
+      if(!groups.has(k))groups.set(k,[]);groups.get(k).push(it)});
     for(const grp of groups.values()){if(grp.length<2)continue;let glo=99,ghi=-99;grp.forEach(d=>{glo=Math.min(glo,d.heads[0].step+C.shift);ghi=Math.max(ghi,d.heads[d.heads.length-1].step+C.shift)});const up=(mid-glo)>=(ghi-mid);grp.forEach(d=>{d.up=up;d.beamed=true});
       const sx=d=>up?d.x+E.stemUpSE[0]*sp-E.stem*sp/2:d.x+E.stem*sp/2;const hy=d=>up?y(d.heads[d.heads.length-1].step):y(d.heads[0].step);
       const f=grp[0],l=grp[grp.length-1];const dx=sx(l)-sx(f)||1;let slope=(hy(l)-hy(f))/dx;const maxRise=(grp.length===2?.5:1)*sp;slope=Math.max(-maxRise/dx,Math.min(maxRise/dx,slope));
@@ -241,7 +274,21 @@ function makeCtx(input,opts){
   const beats=input.beats||(input.meter||[4,4])[0],den=input.den||(input.meter||[4,4])[1]||4,sub=input.sub||4,ppb=sub*beats;
   const beat32=32/den,pulse32=beat32/sub;
   let groups=Array.isArray(input.groups)&&input.groups.length>1&&input.groups.reduce((a,b)=>a+b,0)===beats?input.groups:null;
-  if(!groups&&den===8&&beats%3===0&&beats>3)groups=Array.from({length:beats/3},()=>3);   // 6/8, 9/8, 12/8 beam in threes
+  /* AN EIGHTH-NOTE METER GROUPS ITS EIGHTHS (David, 23 Sep 2026, of a jam in
+     7/8: "Why are the eighth notes not connected here?"). A count in x/8 IS an
+     eighth, and beams group by count, so without this every group held one
+     note and every eighth wore a lone flag. Threes where the count divides by
+     three (6/8, 9/8, 12/8, as before); otherwise twos with a three at the end
+     for the remainder: 5/8 = 2+3, 7/8 = 2+2+3, 8/8 = 3+2+3, 11/8 = 2+2+2+2+3
+     (checked for every meter from 4/8 to 13/8; each sums to its own bar).
+     A section that carries its own `groups` never reaches this line. */
+  if(!groups&&den===8&&beats>3){
+    if(beats%3===0)groups=Array.from({length:beats/3},()=>3);
+    else{const g=[];let left=beats;
+      while(left>4){g.push(beats%2===0&&left>4&&(left-3)%2!==0?3:2);left-=g[g.length-1]}
+      if(left===4)g.push(2,2);else if(left)g.push(left);
+      groups=g}
+  }
   const gi=[];if(groups){let c=0;groups.forEach((n,i)=>{for(let k=0;k<n;k++)gi[c++]=i})}
   const groupOf=c=>groups?(gi[c]!=null?gi[c]:c):c;
   return{names,key,sub,beats,den,ppb,beat32,pulse32,groupOf,tup:input.tup||[]};
