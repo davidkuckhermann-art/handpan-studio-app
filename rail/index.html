@@ -4624,6 +4624,7 @@ body.rail.fs #scorehead{display:grid}
 body.rail #scorefoot{margin:26px auto 0; padding:6px 10px 6px 12px; border:1px solid var(--rule);
   border-radius:999px; background:var(--card); box-shadow:0 1px 2px rgba(var(--sh),.06), 0 6px 16px -8px rgba(var(--sh),.14);
   width:fit-content; max-width:100%; column-gap:4px; row-gap:6px; flex-wrap:wrap; justify-content:center}
+body.rail.barunder:not(.fs) #staffrow, body.rail.barunder:not(.fs) #belowrow{margin-top:30px}
 body.rail.fs #scorefoot{position:fixed; left:50%; bottom:14px; transform:translateX(-50%); z-index:85; margin:0}
 body.rail #scorefoot #footL{gap:2px}
 body.rail #scorefoot #sctools{display:flex; align-items:center; gap:4px; margin:0 2px 0 4px; padding-left:8px; border-left:1px solid var(--rule)}
@@ -7802,6 +7803,14 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
   <!-- VIDEO SYNC moved out of the header into Advanced settings (David, 22 Sep 2026:
        "we will keep it for the Notation Lab, but let's put it into advanced
        settings for now"); the button itself is moved in at boot, ids unchanged -->
+  <!-- THE BAR'S PLACE (David, 22 Sep 2026: "a switch in the app so I can try both versions"): below
+       everything the card shows, or directly under the table with the staff and the tabs beneath it.
+       Rail only; hps.barpos; railFurnish places the bar. -->
+  <div class="drow" id="barposRow"><span>Transport bar</span>
+    <span class="pills" id="barposPills" role="group" aria-label="Transport bar">
+      <button data-barpos="below" aria-pressed="true" title="Under the staff and the tabs">Below the tabs</button>
+      <button data-barpos="under" aria-pressed="false" title="Directly under the table; the staff and the tabs follow">Under the table</button>
+    </span></div>
   <div class="drow" id="syncRow"><span>Video sync</span><span id="syncHost"></span></div>
   <div class="drow darkonly"><span>Score</span>
     <select class="ctl" id="sheetSel" title="What the notation's paper does in the dark theme">
@@ -24111,6 +24120,7 @@ function jamHome(){
    He named the future himself: extended scales and bottom notes will make
    this richer — this is the agreed starting point. */
 const JV_TOK=["1","3","5","7","9","11","13","15"];
+const JV_BASS_TOP=57;         // midi A3 — "below A3" is bass (David); the voicer's one line for it
 /* MELODY DECIDES (David, 27 Aug, after hearing it): a wide voicing that
    forces the top voice to leap out and back is worse than a narrow one that
    walks. "If a wide voicing would lead to large melody jumps before and
@@ -24568,7 +24578,18 @@ function jvChordPool(name,V){
   let imp;                    // the chord's pcs by importance: root, 3rd, the
   if(def){                    // characteristic upper voice, then the shed tail
     imp=[...new Set([def.degs["1"],def.degs["3"],def.degs["5"]])];
-    for(const p of (def.pcs||[])) if(!imp.includes(p)) imp.push(p);
+    /* THE FIFTH COMES LAST IN THE TAIL (David, 22 Sep: "let's keep the seventh
+       and lose the fifth there"). A ninth's upper voice is its ninth, so its tail
+       was the fifth and then the seventh, in the order the chord is stacked —
+       and a four-voice groove, with room for one more tone, took the fifth: Fmaj9
+       came out A·C·F·G, which is an F add9, the seventh gone. The fifth is the one
+       tone a voicing may go without (the rule below, 30 Aug), so it is the one
+       that waits. A triad has no tail and a seventh chord's tail IS its fifth, so
+       both are unchanged; only chords with two tones in the tail are reordered. */
+    const r0=def.degs["1"], fifth=[7,6,8].map(i=>(r0+i)%12).find(pc=>(def.pcs||[]).includes(pc));
+    const tail=(def.pcs||[]).filter(p=>!imp.includes(p));
+    tail.sort((a,b)=>(a===fifth)-(b===fifth));       // stable: every other tone keeps its order
+    imp.push(...tail);
   } else {
     const t=chordPCs(name); if(!t) return null;   // legacy stored name
     imp=[...new Set(t)];
@@ -24583,7 +24604,29 @@ function jvChordPool(name,V){
   const pool=panPositions().filter(p=>kept.includes(jpc(myPan.posMidi(p))));
   pool.sort((a,b)=>myPan.posMidi(a)-myPan.posMidi(b));
   if(!kept.length||!pool.length) return null;
-  return {def,imp,kept,pool,Vp:Math.min(V,pool.length)};
+  /* HOW MANY DIFFERENT NOTES THE VOICING MAY SPREAD OVER (David, 22 Sep: "sharing a
+     note is a good option if there's no additional notes available. But of course,
+     all bottom notes should be checked first", with his 28 Aug rule that "the lower
+     bottom notes should be used only for bass notes"). Every place on the pan that
+     sounds a chord tone is in the pool already, the underside included — the high
+     underside notes are ordinary voices. What changes is the LOW ones: below A3 only
+     one note may stand, the bass, so the notes a groove can spread across are the
+     ones from A3 up plus one bass. A groove with more positions than that SHARES,
+     rather than pulling a second low note under the chord — which it used to do,
+     by falling through the "only one note down there" rule to a laxer level. Never
+     fewer than the chord's own tones, though: sharing thins a doubling, it never
+     costs the chord a tone it could otherwise sound.
+     AND THAT ONE BASS MUST BE THE ROOT (David, 22 Sep: "if there are only bass notes
+     available that put the seventh or the ninth or the third in the bass, we don't
+     want that. Then it's better actually to share a note … the high notes of the
+     groove pattern should stay high"). A low note that is not the root cannot be the
+     bass, so it cannot widen the spread either: it would only ever be reached by
+     the escape from the bass rule, and that escape is what put a third under the
+     chord to spare a groove its sharing. Only a low ROOT counts. Sharing keeps the
+     ends pinned (jvMap), so the groove's top position keeps the top note. */
+  const low=p=>myPan.posMidi(p)<JV_BASS_TOP;
+  const spread=pool.filter(p=>!low(p)).length+(pool.some(p=>low(p)&&jpc(myPan.posMidi(p))===imp[0])?1:0);
+  return {def,imp,kept,pool,Vp:Math.min(V,pool.length,Math.max(spread,kept.length))};
 }
 /* every legal voicing of one chord, ranked by his per-chord rules —
    bass legality, then the close root at the bottom, then lowest register.
@@ -24594,7 +24637,7 @@ function jvCandidates(name,V,narrow){
   const rootPc=imp[0];
   const isTriad=!!def&&def.group==="Triads"&&!def.miss;
   const thirdPc=def?def.degs["3"]:null, fifthPc=def?def.degs["5"]:null;
-  const BASS_TOP=57;          // midi A3 — "below A3" is bass (David)
+  const BASS_TOP=JV_BASS_TOP; // midi A3 — "below A3" is bass (David)
   const ROOT_CLOSE=3;         // a minor third — "close-by" (David)
   /* THE FIFTH IS THE ONE TONE A VOICING MAY GO WITHOUT (David, 30 Aug) — the
      root anchors the chord and the third colours it, so those two stay. */
@@ -24670,11 +24713,28 @@ function jvCandidates(name,V,narrow){
   /* strictest first, then give up one rule at a time — a semitone low down is
      the worse sound of the two, so `clean` outranks `oneLow` when the pan
      cannot honour both; each level asks for the colour tone off the bottom
-     before it settles for it there */
+     before it settles for it there.
+     AND WHEN THE BASS CANNOT BE THE ROOT AT ALL, THE LADDER GOES ON (22 Sep). A chord
+     whose tone this pan has ONLY below A3 — A7 on a B2 Amara 17, whose one G is the
+     bottom note G3 — fails `bassOk` in every voicing, and the ladder used to stop at
+     its last rung and hand back EVERYTHING: "keep the bottom low" then pushed a
+     second low note under the G, C♯3·G3·E4·A4, a third lower still, where G3·C♯4·E4·A4
+     was on offer. David, the same day: a third, seventh or ninth in the bass is what
+     "we don't want". So the rules below the bass rule are given up one at a time
+     here too: one note down there, then nothing muddy, before anything goes.
+     WHAT IS LEFT IS NOT A BUG, IT IS THE PAN (David, 22 Sep, choosing it: "let's try
+     one"). Across all 47 pans with an underside, the only voicings with a non-root
+     note below A3 are 14 on the B2 Amara 17, and every one is forced: its only G is
+     G3. It happens because "low" has two lines here — the chord vocabulary counts a
+     note as low below the circle's lowest note (F♯3 on this pan, 30 Aug), the voicer
+     below A3 (absolute) — so G3 may BUILD A7 and E minor but can only be voiced at
+     the bottom: A7 over its seventh (A7/G), E minor as E3·G3. Using A3 for both would
+     take E minor, the pan's iv, out of its vocabulary; the pan has one G and plays it. */
   let use=out;
   for(const g of [c=>c.bassOk&&clean(c)&&oneLow(c)&&noMud3(c),
                   c=>c.bassOk&&clean(c)&&oneLow(c), c=>c.bassOk&&clean(c),
-                  c=>c.bassOk&&oneLow(c), c=>c.bassOk]){
+                  c=>c.bassOk&&oneLow(c), c=>c.bassOk,
+                  c=>clean(c)&&oneLow(c), c=>oneLow(c)]){
     const s=out.filter(g); if(!s.length) continue;
     const up=s.filter(noColourLow); use=up.length?up:s; break;
   }
@@ -24727,6 +24787,25 @@ function jvCandidates(name,V,narrow){
      solvers all draw from this list. */
   const grounded=use.filter(c=>c.rootBottom&&c.ms[0]<BASS_TOP);
   if(grounded.length) use=grounded;
+  /* THE UPPER VOICES STAY WITHIN AN OCTAVE OF EACH OTHER; ONLY THE BASS MAY STAND
+     APART (David, 22 Sep, of four-note grooves: "the three lower notes … build a
+     coherent chord. But then the fourth note that is further up … is assigned a note
+     of very, very high register, far away from the other three"). Measured on a
+     D Kurd 17, Wide, Dmin · B♭maj · Fmaj · Cmaj in four voices: D3·A3·D4 under an
+     F5, B♭2·B♭3·D4 under an F5, F3·A3·C4 under an F5 — the top 15 to 17 semitones
+     above the note beneath it. Every rule above looks at a voicing from the BOTTOM
+     up, and the only thing that looks at the top note is the melody's stillness,
+     so the solver bought a still top line (F5 F5 F5 E5 costs 2, F4 F4 F4 G4 costs
+     8) by throwing the top voice an octave away. Nothing priced how far it sat from
+     its own chord. This is the old voice-leading rule, open below and close above,
+     and it is a RULE, not a price, like the bass and the mud rules — a price is what
+     the melody outbid. It sits under the sound rules and the bass root: it chooses
+     among the voicings they allow, and gives way only when the pan leaves nothing
+     else. Every mode draws from this list, Motion included, so a travelling melody
+     never leaves the chord beneath it behind. */
+  const closeAbove=c=>{ for(let i=2;i<c.ms.length;i++) if(c.ms[i]-c.ms[i-1]>12) return false; return true; };
+  const close=use.filter(closeAbove);
+  if(close.length) use=close;
   use.sort((a,b)=>(a.pen-b.pen)||reg(a,b));
   const CAP=14;               // plenty for the DP, and it stays instant
   return use.slice(0,CAP);
@@ -34226,6 +34305,11 @@ function wireRail(){
     try{ localStorage.setItem("hps.nstyle",on?"light":"framed"); }catch(e){}
     lightApply(on); paintNstylePills();
   }));
+  /* Settings: the bar's place — Below the tabs | Under the table (22 Sep) */
+  document.querySelectorAll("#barposPills [data-barpos]").forEach(b=>b.addEventListener("click",()=>{
+    try{ localStorage.setItem("hps.barpos",b.dataset.barpos==="under"?"under":"below"); }catch(e){}
+    railFurnish(document.body.classList.contains("rail")); paintBarposPills();
+  }));
   /* the bar's ⋯ */
   { const mb=$("moreBtn"), mp=$("morePop");
     if(mb&&mp){
@@ -34247,7 +34331,7 @@ function paintLayoutPills(){
   document.querySelectorAll("#layoutPills [data-layout]").forEach(b=>
     b.setAttribute("aria-pressed",String((b.dataset.layout==="rail")===on)));
   const row=$("layoutRow"); if(row) row.classList.toggle("hidden",!railAllowed());
-  paintNstylePills();
+  paintNstylePills(); paintBarposPills();
 }
 /* ==== THE LIGHT NOTATION STYLE (David, 22 Sep 2026) — see the CSS block of the same name ==== */
 function lightPref(){
@@ -34258,6 +34342,13 @@ function lightApply(on){
   const was=document.body.classList.contains("light");
   document.body.classList.toggle("light",on);
   if(was!==on){ try{ window.dispatchEvent(new Event("resize")); }catch(e){} try{ paintLoopFrame(); }catch(e){} }
+}
+function barPosPref(){ try{ return localStorage.getItem("hps.barpos")==="under"?"under":"below"; }catch(e){ return "below"; } }
+function paintBarposPills(){
+  const under=barPosPref()==="under";
+  document.querySelectorAll("#barposPills [data-barpos]").forEach(b=>
+    b.setAttribute("aria-pressed",String((b.dataset.barpos==="under")===under)));
+  const row=$("barposRow"); if(row) row.classList.toggle("hidden",!document.body.classList.contains("rail"));
 }
 function paintNstylePills(){
   const on=document.body.classList.contains("light");
@@ -34298,9 +34389,13 @@ function railFurnish(on){
      for the place under everything the card shows (in fullscreen: the foot of
      the fullscreen element) */
   const foot=$("scorefoot"), sct=$("sctools"), fl=$("footL"), below=$("belowrow"), wrap=$("scorewrap");
+  const under=barPosPref()==="under";
+  document.body.classList.toggle("barunder",on&&under);
   if(on&&foot){
     railPlace(sct,foot,fl?fl.nextSibling:null);
-    if(fs&&wrap) railPlace(foot,wrap,null); else if(below) railPlace(foot,below.parentNode,below.nextSibling);
+    if(fs&&wrap) railPlace(foot,wrap,null);
+    else if(under&&wrap) railPlace(foot,wrap.parentNode,wrap.nextSibling);   // directly under the table (David, 22 Sep)
+    else if(below) railPlace(foot,below.parentNode,below.nextSibling);
   }else{ railHome(sct); railHome(foot); }
   try{ if(!PHONE) fitFooter(); }catch(e){}
 }
