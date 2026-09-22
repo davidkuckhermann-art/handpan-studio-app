@@ -837,6 +837,13 @@ body:not(.editing):not(.gedit):not(.quiz):not(.rquiz):not(.learn):not(.cpsetup) 
 body:not(.phone):not(.tablet) #sctools{position:relative}
 body:not(.phone):not(.tablet) #jamVoices{position:absolute; left:100%; top:50%;
   transform:translateY(-50%); margin-left:10px; white-space:nowrap}
+/* …EXCEPT IN THE RAIL'S BAR (David, 22 Sep, a screenshot of the bass clef and the drum drawn
+   over the section pills). Absolute means the group takes no room, and the classic layout can
+   afford that because nothing stands right of the play button; the rail's bar packs its groups
+   side by side, so the pills are exactly there - and fitFooter leaves the group out of its
+   width for the same reason, so the bar never made room. In the rail it is an ordinary part of
+   the bar and takes its own place. */
+body.rail:not(.phone):not(.tablet) #jamVoices{position:static; transform:none; margin-left:0}
 /* the phone's tabs row is short of room: smaller faces, and the group at the
    row's right end where the section chip stood */
 /* landscape: in the bottom bar right after the BPM selector, a little air on
@@ -2341,6 +2348,11 @@ body:not(.phone) .chordrow{gap:calc(17px*var(--cfit,1))}
 body:not(.phone):not(.editing) #chordbox .chordrow,
 body:not(.phone) #belowrow>#cpband .chordrow{flex-wrap:nowrap; justify-content:safe center;
   overflow-x:auto; overflow-y:hidden; scrollbar-width:none}
+/* …AND A ROW WITH NOTHING TO SCROLL DOES NOT CLIP (22 Sep). The names are wider than their
+   boxes and italic ink leans past its own edge, so the end names lost 2-4 px to this scroll
+   box although nothing was hidden. `noclip` is set by stripFade, which already knows. */
+body:not(.phone):not(.editing) #chordbox .chordrow.noclip,
+body:not(.phone) #belowrow>#cpband .chordrow.noclip{overflow:visible}
 body:not(.phone) .chordrow::-webkit-scrollbar{display:none}
 body:not(.phone) .chordrow.fadeR{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);
                         mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent)}
@@ -4671,6 +4683,12 @@ body.rail:not(.fs) header #viewDoor{display:inline-flex}
 :root{--lt-sub:var(--rule2); --lt-beat:#DDD5C7; --lt-bar:#D3CABB; --lt-row:#EFE9E0}
 /* Studio Dark: the lines a step above the paper, not below it (rule2 is darker than the paper there) */
 html[data-theme="zones-dark"]{--lt-beat:#463D33; --lt-bar:#584D40; --lt-row:#352E26}
+/* THE PHONE STAYS FRAMED (David, 22 Sep 2026: "the framed notation clearly works better on the phone, so let's not
+   even give this option"). The light style and the bar belong to the rail, which the phone and the tablet never get;
+   their Settings rows are hidden wherever the rail is off. The phone moves every Settings row into its own sheet and
+   the painters that hide these run on the desktop only, so the rule is CSS, and holds in every host. */
+body:not(.rail) #nstyleRow, body:not(.rail) #barposRow,
+body.phone #layoutRow, body.tablet #layoutRow{display:none !important}
 body.light #scorecard{background:transparent; border-color:transparent; box-shadow:none; padding-left:0; padding-right:0}
 body.light.editing #scorecard{border-color:var(--steel); box-shadow:none}
 body.light #scorecard .beat{border-color:var(--lt-row); border-left-color:var(--lt-beat); border-right-color:transparent}
@@ -22315,7 +22333,13 @@ function paintEditDeck(){
       const evs=byT.get(t)||[];
       const symEl=ev=>{ const g=glyphFor(ev,true), el=document.createElement("span");
         el.className=g.cls+(handOf(ev)==="L"?" l":" r"); el.innerHTML=g.t; if(g.st) el.style.cssText=g.st; return el; };
-      const byF=(a,c)=>(a.v==="field"?a.f:-1)-(c.v==="field"?c.f:-1);
+      /* THE EDITOR ORDERS A STACK EXACTLY AS THE SCORE DOES (David, 22 Sep, of the groove
+         editor on his phone: "why is the 13 below the 1?"). This comparator subtracted field
+         numbers, which is NaN for a bottom note ("b4"), so a stack holding one kept whatever
+         order it was stored in - which is why 6 over the bottom note 4 looked right and 13
+         over 1 did not. stackField is the score's rule: fields by number, the underside just
+         under the dome, percussion below that. */
+      const byF=(a,c)=>stackField(a)-stackField(c);
       let lanes=null;
       if(view==="tab"){
         /* THE TAB'S CELL IS TWO LANES, LIKE THE NOTATION'S (David, 3 Sep, two
@@ -22337,7 +22361,9 @@ function paintEditDeck(){
         }
       } else {
         if(evs.length) sl.classList.add(evs.length===1?"n1":evs.length===2?"n2":evs.length===3?"n3":"n4");
-        for(const ev of evs.slice(0,4).sort((a,c)=>graceLast(c,a)||byF(a,c))) sl.appendChild(symEl(ev));   // a plain column: the grace first is the grace on top
+        /* the score's cells are column-reverse and this one is a plain column, so the score's
+           order is REVERSED here: highest field on top, the grace above the note it leads into. */
+        for(const ev of sortStack(evs.slice(0,4),false).reverse()) sl.appendChild(symEl(ev));
         capUnderside(sl);
       }
       if(rel===cursor){ sl.classList.add("cur");
@@ -29998,6 +30024,7 @@ function chordRowFollow(row,el){
 function stripFade(row){
   if(!row) return;
   const over=row.scrollWidth>row.clientWidth+1;
+  row.classList.toggle("noclip",!over);      // nothing hidden, so nothing to cut off
   row.classList.toggle("fadeL",over&&row.scrollLeft>1);
   row.classList.toggle("fadeR",over&&row.scrollLeft+row.clientWidth<row.scrollWidth-1);
 }
@@ -35276,22 +35303,30 @@ function boot(){
          undo this toggle. Let go of it first. */
       if(tag==="BUTTON") try{ tg.blur(); }catch(x){}
       e.preventDefault(); togglePlay(); return; }
-    /* ← → STEP THROUGH THE TABLES (David, 22 Sep: "let's simply use left and right for previous and next table" -
-       keys only, no new pills). Reading and playing only: the editor, the full-screen pan, the chord overview and the
-       sync map's marker all own the arrows in their own moments (their own handlers run first or return here), and
-       a dialog or a text field keeps them. It goes there like a second click on the pill: the playhead moves to the
-       table's first beat and the music, if playing, carries on from there. */
-    /* …BUT NOT UNDER A LESSON (David, 22 Sep: "the embedded video already owns the arrows and goes 5 seconds forward or
-       backwards with them" - Wistia hears the keys wherever they are pressed on its page, so the player must not answer
-       them too). The full app and the phone keep them. */
-    if((e.key==="ArrowLeft"||e.key==="ArrowRight")&&!typing&&!editing&&!document.querySelector("dialog[open]")
-       &&!document.documentElement.classList.contains("player")
-       &&!$("panZoom").classList.contains("on")&&!(typeof quizOn!=="undefined"&&quizOn)&&!(typeof lsOn!=="undefined"&&lsOn)
-       &&!(typeof jamOn!=="undefined"&&jamOn)&&!(typeof cpOn!=="undefined"&&cpOn)&&piece&&piece.arrangement&&piece.arrangement.length>1
-       &&!(e.metaKey||e.ctrlKey||e.altKey)&&!(typeof mapSel!=="undefined"&&mapSel!=null&&!$("mapbar").classList.contains("hidden"))){
-      const ai=Math.max(0,Math.min(piece.arrangement.length-1,selAi+(e.key==="ArrowRight"?1:-1)));
-      if(ai!==selAi){ e.preventDefault(); const en=arrEntries()[ai]; pinView(ai,piece.arrangement[ai]); render(); goTo(en.from,en.to); mapShowSpan(en.from,en.to); }
-      return; }
+    /* , AND . STEP THROUGH THE TABLES, ← AND → THROUGH THE BARS (David, 22 Sep: "let's simply use left and right for
+       previous and next table" - then, once Wistia proved to own the arrows on a lesson page: "comma and full stop,
+       everywhere. The arrow keys: let's make them navigate by bar, but not in the embed player"). Reading and playing
+       only: the editor, the full-screen pan, the chord overview and the sync map's marker own keys in their own moments,
+       a dialog or a text field keeps them. Both land like a click in the notation: the playhead moves there and the music,
+       if playing, carries on from there. */
+    { const tableKey=e.key===","?-1:e.key==="."?1:0, barKey=(e.key==="ArrowLeft"?-1:e.key==="ArrowRight"?1:0);
+      const free=!typing&&!editing&&!document.querySelector("dialog[open]")&&!$("panZoom").classList.contains("on")
+        &&!(typeof quizOn!=="undefined"&&quizOn)&&!(typeof lsOn!=="undefined"&&lsOn)&&!(typeof jamOn!=="undefined"&&jamOn)
+        &&!(typeof cpOn!=="undefined"&&cpOn)&&piece&&piece.arrangement&&piece.arrangement.length&&!(e.metaKey||e.ctrlKey||e.altKey)
+        &&!(typeof mapSel!=="undefined"&&mapSel!=null&&!$("mapbar").classList.contains("hidden"));
+      if(free&&tableKey){
+        const ai=Math.max(0,Math.min(piece.arrangement.length-1,selAi+tableKey));
+        if(ai!==selAi){ e.preventDefault(); const en=arrEntries()[ai]; pinView(ai,piece.arrangement[ai]); render(); goTo(en.from,en.to); }
+        return; }
+      /* the bars: from the playhead's own bar to the one before or after, across the tables, never past the ends -
+         not under a lesson, where the video player hears the arrows wherever they are pressed */
+      if(free&&barKey&&!document.documentElement.classList.contains("player")){
+        if(!C) C=compile(piece);
+        const p0=nowPulse(), sec=secOfPulse(p0), m=SM(piece,sec.name), bar=Math.floor((p0-sec.pulse)/m.bp);
+        let target=sec.pulse+(bar+barKey)*m.bp;
+        if(barKey<0&&p0-(sec.pulse+bar*m.bp)>m.bp*0.25) target=sec.pulse+bar*m.bp;   // well into a bar, ← goes to its own start first
+        if(target>=0&&target<C.total){ e.preventDefault(); const s2=secOfPulse(target); pinView(s2.ai,s2.name); render(); goTo(target,null); }
+        return; } }
     if((e.key==="t"||e.key==="T")&&!typing&&!editing&&videoSeen){
       e.preventDefault(); $("tapBtn").click(); return; }
     if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="z"&&!typing&&!editing&&videoSeen){
