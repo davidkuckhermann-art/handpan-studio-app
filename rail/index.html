@@ -4716,6 +4716,7 @@ body.rail #viewPop{position:fixed}
    fullscreen element and the way out must stay reachable. */
 body.rail #scorehead{display:none}
 body.rail.fs #scorehead{display:grid}
+body.rail.fs #scoreheadR{grid-column:3}   /* the corner is the corner: exit, and Flow's A- A+, top right (22 Sep 2026) */
 body.rail #scorefoot{margin:26px auto 0; padding:6px 10px 6px 12px; border:1px solid var(--rule);
   border-radius:999px; background:var(--card); box-shadow:0 1px 2px rgba(var(--sh),.06), 0 6px 16px -8px rgba(var(--sh),.14);
   width:fit-content; max-width:100%; column-gap:4px; row-gap:6px; flex-wrap:wrap; justify-content:center}
@@ -20319,7 +20320,7 @@ function renderFlowSection(sc,nm,ai,absStart,run){
   // the full width and every cell would read as "too wide for any line"
   root.classList.add("measure");
   cells.forEach(c=>root.appendChild(c.el));
-  const ws=cells.map(c=>c.el.offsetWidth||40);
+  const ws=cells.map(c=>(c.el.offsetWidth||40)+.5);   // offsetWidth is rounded: count the most it can hide (22 Sep 2026)
   root.textContent="";
   root.classList.remove("measure");
   /* THE LINES ARE SET FOR THE FRAME'S CONTENT WIDTH (22 Sep 2026): W is its client width, padding included, and a tight
@@ -20358,7 +20359,7 @@ function renderFlowSection(sc,nm,ai,absStart,run){
     if(run){ const joins=li===0&&cont;
       if(joins) sys.classList.add("fcont"); else run.row++;
       sys.dataset.row=run.row; if(run.row===0) sys.classList.add("frow0");
-      if(!joins&&li===0&&run.row>0) root.appendChild(Object.assign(document.createElement("i"),{className:"fbrk"})); }
+      if(!joins&&run.row>0) root.appendChild(Object.assign(document.createElement("i"),{className:"fbrk"})); }
     // the system announces the bar it begins in (mid-bar starts carry theirs)
     /* NO BAR NUMBER WHERE A SECTION STARTS (David, 30 Aug). The first system of
        a section always reads "1" — bars are numbered WITHIN the section — so
@@ -21229,9 +21230,26 @@ function navNum(ai){ const r=passOf(ai); if(!r||r.ais.length<2) return ""; retur
    earlier pass of its letter - one ' per distinct earlier set, so a third kind is B''. Set by itself, and switched off
    per pass by hand ("at least I need an option to deactivate it for a section"): `piece.noVar` lists the arrangement
    index where such a pass begins. Optional, absent from every piece so far - an older app simply never reads it. */
+/* what a table IS, for comparing one pass with another: its bars as the piece
+   stores them. Cheap enough to do on the fly -- a run has a handful of tables
+   and a table a handful of bars -- and deliberately uncached, because a cache
+   here would answer with yesterday's bars the moment a table is edited. */
+function secShape(nm){
+  const s=piece&&piece.sections&&piece.sections[nm];
+  if(!s) return "\u0000"+nm;                 // a name with no table: itself, so it matches only itself
+  try{ return JSON.stringify(s.bars); }catch(e){ return "\u0000"+nm; }
+}
 function passMark(r){
   if(!r||(piece.noVar||[]).includes(r.ais[0])) return "";
-  const key=x=>x.ais.map(ai=>piece.arrangement[ai]).join("\u0001"), mine=key(r), kinds=[];
+  /* A KIND IS WHAT ITS TABLES CONTAIN, NOT WHAT THEY ARE CALLED (David,
+     22 Sep 2026, of Improvisation 2: "the first beat table, the second beat
+     table, and the third beat table are actually exactly the same. Why are
+     these showing up as variations?"). Keying by section name made B1, B2 and
+     B3 three kinds because the import numbered every table it found; keyed by
+     their bars they are one, and only the pass that really differs earns a '.
+     secShape is the piece's own words for a table -- the same bars, in the
+     same order, as everything else reads. */
+  const key=x=>x.ais.map(ai=>secShape(piece.arrangement[ai])).join("\u0001"), mine=key(r), kinds=[];
   for(const x of arrRuns()){ if(x.ais[0]>=r.ais[0]) break; if(x.base!==r.base) continue; const k=key(x); if(!kinds.includes(k)) kinds.push(k); }
   const i=kinds.indexOf(mine);            // the earlier kinds of this letter, in order of first appearance
   return "'".repeat(i>=0?i:kinds.length);  // the same as an earlier kind: that kind's mark; new: one more
