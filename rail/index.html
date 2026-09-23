@@ -3740,6 +3740,17 @@ body.haspan:not(.phone):not(.editing) #panwrap{flex:0 0 auto; max-width:100%; mi
 /* the staff row (22 Sep 2026): the width of the notation card, no frame; desktop only in this round, never while editing */
 #staffrow{width:100%; max-width:var(--pagecap); margin:2px auto 0; padding:0 14px 4px}
 #staffrow #staffbox{width:100%}
+/* THE STAFF'S PAGES (David, 23 Sep 2026: "rather have two pages, but keep it to one line"): a small pager in the gap
+   above the staff, right-aligned, shown only when the table has more than one page. A tablet has no gap there, so it
+   stands in the row. [hidden] is restated because the display rule would otherwise outrank it. */
+#staffrow{position:relative}
+#staffPager{position:absolute; right:14px; top:-29px; display:flex; align-items:center; gap:6px}
+#staffPager[hidden]{display:none}
+body.phone #staffPager{position:static; justify-content:flex-end; margin:0 0 4px}
+#staffPager .ib{width:26px; height:26px; border-radius:8px}
+#staffPager .ib svg{width:14px; height:14px}
+#staffPager .ib:disabled{opacity:.35; cursor:default}
+#staffPageNo{font-family:Inter,sans-serif; font-size:12px; font-weight:700; color:var(--ink2); min-width:38px; text-align:center; font-variant-numeric:tabular-nums}
 /* air around the staff (David, 22 Sep 2026: "more space between the main notation table and the staff notation, and
    then the pan and chord tabs") - the bar-under layout's 30 px, on desktop and tablet */
 body:not(.phone) #staffrow{margin-top:30px}
@@ -6955,7 +6966,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
 
 <!-- THE STAFF VIEW (22 Sep 2026): the shown table as classical notation, its own full-width row on the paper
      with no card (David: the frameless version). staff.js draws it; renderStaff() below decides when. -->
-<div id="staffrow" class="hidden"><div id="staffbox"></div></div>
+<div id="staffrow" class="hidden"><div id="staffPager" hidden><button type="button" class="ib" id="staffPrev" aria-label="Previous page"><svg viewBox="0 0 16 16"><path d="M10.25 3.5 5.75 8l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span id="staffPageNo" aria-live="polite">1 / 2</span><button type="button" class="ib" id="staffNext" aria-label="Next page"><svg viewBox="0 0 16 16"><path d="M5.75 3.5 10.25 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div><div id="staffbox"></div></div>   <!-- the pager: only when the table needs pages (23 Sep 2026); the chevrons are centred by construction, their ink 5.75-10.25 in a 16 box -->
 
 <div id="belowrow">
   <div class="score chordframe" id="arrbox">
@@ -8548,7 +8559,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
 <div id="toast" role="status"></div>
 <script src="../bank.js?v=2"></script>
 <script src="../sync-map.js?v=2"></script>
-<script src="staff.js?v=5"></script>   <!-- THE STAFF VIEW (22 Sep 2026): classical notation beneath the table, drawn from the score by window.StaffView — STAFF-VIEW.md; bump ?v= when it changes; the phone and player builds rewrite the path -->
+<script src="staff.js?v=11"></script>   <!-- THE STAFF VIEW (22 Sep 2026): classical notation beneath the table, drawn from the score by window.StaffView — STAFF-VIEW.md; bump ?v= when it changes; the phone and player builds rewrite the path -->
 <script src="../clicks.js?v=1"></script>   <!-- THE CLICK EAR (20 Sep 2026): snaps and claps for table practice — four even clicks are a count-in with its tempo, two quick ones a stop. Judged by bench/clicks/run.js; bump ?v= when it changes -->   <!-- THE TEMPO-MAP ENGINE (SUITE.md phase 1, 14 Sep 2026): moved out of this file; the Lab loads the same one. Bump ?v= when it changes — a ?v= on the page does not bust a script. -->
 <script>
 "use strict";
@@ -8804,6 +8815,36 @@ function sheetSwipe(dlg,handle){
 function dlgFocus(d){
   try{ d.setAttribute("tabindex","-1"); d.focus({preventScroll:true}); }catch(e){}
 }
+/* WHILE A MENU IS OPEN, THE WHEEL MOVES ONLY THE MENU (David, 23 Sep 2026: "once a menu is opened (or any of the
+   cards, like the library, the scale selector, and so on), mouse wheel inputs, mouse gesture inputs, or any kind of
+   these comparable inputs only affect the menu and not the app that is grayed out behind the menu"). A modal dialog
+   makes the page inert to clicks, not to scrolling: a wheel over the grey scrolled the page, and so did a wheel that
+   ran off the end of the menu's own list. One rule, at the window, first in line: with a dialog open, a wheel may move
+   something only if a scroller INSIDE that dialog, between the pointer and the dialog, can still move that way; else
+   it stops here -- the page's default and every handler behind. Mouse wheel, trackpad, Magic Mouse and pinch (a wheel
+   with ctrlKey, which would zoom the page behind) all arrive as this one event. */
+function dlgCanScroll(el,dx,dy,dlg){
+  for(let n=el;n&&n.nodeType===1;n=n.parentElement){
+    const cs=getComputedStyle(n);
+    if(dy&&/(auto|scroll)/.test(cs.overflowY)&&n.scrollHeight>n.clientHeight+1
+       &&(dy<0?n.scrollTop>0:n.scrollTop+n.clientHeight<n.scrollHeight-1)) return true;
+    if(dx&&/(auto|scroll)/.test(cs.overflowX)&&n.scrollWidth>n.clientWidth+1
+       &&(dx<0?n.scrollLeft>0:n.scrollLeft+n.clientWidth<n.scrollWidth-1)) return true;
+    if(n===dlg) break;
+  }
+  return false;
+}
+window.addEventListener("wheel",e=>{
+  if(!document.querySelector("dialog[open]")) return;
+  const t=e.target&&e.target.nodeType===1?e.target:null;
+  const dlg=t&&t.closest("dialog[open]");
+  let inside=!!dlg;
+  if(dlg&&t===dlg){   // the native backdrop reports the dialog itself: inside only if the pointer is over its box
+    const r=dlg.getBoundingClientRect();
+    inside=e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom; }
+  if(inside&&!e.ctrlKey&&dlgCanScroll(t,e.deltaX,e.deltaY,dlg)) return;   // the menu scrolls itself
+  e.preventDefault(); e.stopPropagation();
+},{capture:true,passive:false});
 document.addEventListener("DOMContentLoaded",()=>{
   for(const d of document.querySelectorAll("dialog")){
     d.addEventListener("close",()=>$("dlgShade").classList.add("hidden"));
@@ -11127,6 +11168,13 @@ function clickAccent(m,rel){ const rb=((rel%m.bp)+m.bp)%m.bp; return rb===0||(!!
    means whole counts (per 1). The loop that sets one snaps by SLOT in edit
    mode only (cellAtPoint), and its ends must be on the table's grid. */
 function tupsOf(sec){ return (sec&&Array.isArray(sec.tup))?sec.tup:[]; }
+/* THE FIELDS A PIECE PLAYS, every section of it (23 Sep 2026): the staff's clef is chosen from these, so one piece
+   keeps one clef ("let the piece decide", David). Ghosts and slaps have no pitch. */
+function pieceFields(p){
+  const s=new Set();
+  for(const sec of Object.values((p&&p.sections)||{})) for(const bar of (sec&&sec.bars)||[]) for(const e of bar||[])
+    if(e&&e.f!=null&&e.v!=="ghost"&&e.v!=="perc") s.add(e.f);
+  return [...s]; }
 function tupBar(sec,bar){ return tupsOf(sec).filter(r=>r.bar===bar); }     // the ranges of one bar
 function tupSpan(r,m){ const step=m.sub/(r.per||1); return {a:r.from*step,e:(r.from+r.len)*step}; }   // bar-relative pulses
 function tupTouching(tp,m,b){ if(!tp||!tp.length) return null;              // the ranges reaching into count b
@@ -13598,7 +13646,7 @@ function prStaffInto(host,nm,colW){
   const per=Math.max(1,Math.ceil(sec.bars.length/sys));
   try{
     StaffView.render(host,{bars:sec.bars,pan:myPan,beats:m.beats,den:m.den,sub:m.sub,groups:m.groups,tup:tupsOf(sec)},
-      {numbers:!!staffOpts.numbers,grand:!!staffOpts.grand,heads:false,chords:!!prChords,
+      {numbers:!!staffOpts.numbers,grand:!!staffOpts.grand,heads:false,chords:!!prChords,clefFrom:pieceFields(piece),
        band:null,bands:false,fixed:true,perSystem:sec.bars.length>per?per:0,
        width:colW,sp:8,
        fontUrl:(/\/phone\//.test(location.pathname)||/\/player\//.test(location.pathname))?"../fonts/Leland.otf":"fonts/Leland.otf"});
@@ -21129,19 +21177,58 @@ function staffPlace(){
   if(grooveEdit||jamOn||quizOn||rqOn||(typeof cpOn!=="undefined"&&cpOn)) return null;
   return "phone";
 }
+/* ONE LINE, TURNED LIKE PAGES (David, 23 Sep 2026: "Instead of creating two lines, let's rather have two pages, but
+   keep it to one line"; four bars always on one page, and a break only as the last resort). StaffView.plan() decides
+   how many bars a page holds and at what size, from the room the staff actually has; this side keeps the page, the
+   pager and the turn. The phone keeps its stacked rows -- it shows one side at a time and has the height (his word). */
+let staffPage=0, staffPlan=null;
 function renderStaff(){
   const row=$("staffrow"), box=$("staffbox"); if(!row||!box) return;
   const sec=piece&&viewSec?piece.sections[viewSec]:null;
   const place=staffPlace();
   const show=staffOn&&!!place&&!!sec;
   row.classList.toggle("hidden",!show);
-  if(!show){ box.innerHTML=""; return; }
+  if(!show){ box.innerHTML=""; staffPlan=null; paintStaffPager(); return; }
   const m=SM(piece,viewSec), phone=place==="phone";
-  try{ StaffView.render(box,{bars:sec.bars,pan:myPan,beats:m.beats,den:m.den,sub:m.sub,groups:m.groups,tup:tupsOf(sec)},
-       {numbers:!!staffOpts.numbers,grand:!!staffOpts.grand,heads:false,band:staffBand,fontUrl:(/\/phone\//.test(location.pathname)||/\/player\//.test(location.pathname))?"../fonts/Leland.otf":"fonts/Leland.otf",   // the phone and player builds live one level down; heads:false = every notehead in ink, the numbers keep the hands' colours (David, 22 Sep)
-        sp:phone?6:8,perSystem:phone?2:0}); }
-  catch(e){ box.innerHTML=""; console.warn("staff view:",e); } }
-function paintStaff(bar,beat){ staffBand={bar,beat}; if(staffOn&&staffPlace()) StaffView.paint($("staffbox"),bar,beat); }
+  const input={bars:sec.bars,pan:myPan,beats:m.beats,den:m.den,sub:m.sub,groups:m.groups,tup:tupsOf(sec)};
+  const opts={numbers:!!staffOpts.numbers,grand:!!staffOpts.grand,heads:false,band:staffBand,clefFrom:pieceFields(piece),fontUrl:(/\/phone\//.test(location.pathname)||/\/player\//.test(location.pathname))?"../fonts/Leland.otf":"fonts/Leland.otf"};   // the phone and player builds live one level down; heads:false = every notehead in ink, the numbers keep the hands' colours (David, 22 Sep)
+  try{
+    if(phone){ staffPlan=null; StaffView.render(box,input,{...opts,sp:6,perSystem:2}); }
+    else{
+      const P=StaffView.plan(input,{width:box.clientWidth||row.clientWidth||900,grand:!!staffOpts.grand,sp:8,minSp:6});
+      if(!staffPlan||staffPlan.sec!==viewSec||staffPlan.piece!==piece) staffPage=0;   // another table starts on its first page
+      staffPlan={...P,n:sec.bars.length,sec:viewSec,piece};
+      staffPage=Math.max(0,Math.min(staffPage,P.pages-1));
+      const a=staffPage*P.per;
+      StaffView.render(box,StaffView.slice(input,a,a+P.per),{...opts,sp:P.sp,firstBar:a});
+    } }
+  catch(e){ box.innerHTML=""; staffPlan=null; console.warn("staff view:",e); }
+  paintStaffPager(); }
+function paintStaffPager(){
+  const pg=$("staffPager"); if(!pg) return;
+  const P=staffPlan, on=!!P&&P.pages>1;
+  pg.hidden=!on; if(!on) return;
+  $("staffPageNo").textContent=(staffPage+1)+" / "+P.pages;
+  $("staffPrev").disabled=staffPage<=0; $("staffNext").disabled=staffPage>=P.pages-1; }
+function turnStaffPage(d){
+  if(!staffPlan) return;
+  const p=Math.max(0,Math.min(staffPlan.pages-1,staffPage+d));
+  if(p!==staffPage){ staffPage=p; renderStaff(); } }
+$("staffPrev").addEventListener("click",()=>turnStaffPage(-1));
+$("staffNext").addEventListener("click",()=>turnStaffPage(1));
+/* THE PAGE TURNS ONE BEAT EARLY (David, 23 Sep 2026): on the last beat of a page the next one is already in view, as a
+   page-turner does for a pianist. The beat AFTER this one decides the page; past the table's end that is its first bar. */
+function paintStaff(bar,beat){ staffBand={bar,beat}; if(!(staffOn&&staffPlace())) return;
+  const P=staffPlan;
+  if(P&&P.pages>1){
+    const beats=SM(piece,viewSec).beats;let nb=bar,nt=beat+1;if(nt>=beats){nb++;nt=0}if(nb>=P.n)nb=0;
+    const want=Math.floor(nb/P.per);
+    if(want!==staffPage){ staffPage=want; renderStaff(); return; } }
+  StaffView.paint($("staffbox"),bar,beat); }
+/* the plan is made for the width the staff has, so a new width re-plans it (once a frame at most) */
+let staffFitRaf=0;
+addEventListener("resize",()=>{ if(!staffOn||staffPlace()!=="desk"||staffFitRaf) return;
+  staffFitRaf=requestAnimationFrame(()=>{ staffFitRaf=0; renderStaff(); }); });
 /* Notation is a panel toggle now (David, 26 Aug): Notation · Chords · Pan.
    It hides the MUSIC and keeps the frame's head and footer — hiding the whole
    card would take the play button and the tempo with it. */

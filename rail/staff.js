@@ -8,7 +8,8 @@
    Decisions (David, 22 Sep 2026, mockups-staff*.html, STAFF-VIEW.md):
    - Glyphs from Leland (MuseScore's SMuFL font, SIL OFL, fonts/Leland.otf); measures from its metadata.
    - One treble staff per pan, at sounding pitch unless a note would need more than four ledger lines;
-     then the octave that needs the fewest (8vb or 15mb). The pan decides, never the piece.
+     then the octave that needs the fewest (8vb or 15mb). The PIECE decides, over the notes it plays in every
+     section (opts.clefFrom; David, 23 Sep 2026 -- the pan decided until then, and a wide pan tied at sounding pitch).
    - The grand staff (treble + bass, split at middle C, sounding pitch) is an option, off by default.
    - The pan's numbers on the notes are an option, off by default; when on, one line above the staff
      ("placement B"). A numbers row under the staff exists for the printed sheet only.
@@ -23,7 +24,7 @@
               (meter:[b,d] is accepted in place of beats/den)
      paint(el, bar, beat)                                    lights the band for that count; paint(el,-1) clears
      keyFor(pan) -> {flats, sharps, k}                       the key signature with the fewest accidentals
-     clefFor(pan) -> {clef:"g"|"g8vb"|"g15mb", shift}        the octave rule
+     clefFor(pan, fields) -> {clef:"g"|"g8vb"|"g15mb", shift}  the octave rule, over the piece's fields (the pan's without them)
      opts: sp (staff space px, 8), pw (px per pulse; default fits the container), mode "grid"|"flow", width (flow),
            colour (true; the numbers' hand colours), heads (true; false = every notehead in ink, David 22 Sep), numbers (false), numbersRow (false), grand (false), barNumbers (true), chords (false),
            timeSig (true), band {bar,beat}|null, fontUrl, label, finalBar, left, right,
@@ -41,10 +42,9 @@ const G={gClef:"",gClef8vb:"",gClef15mb:"",fClef:"",black:"",half
   flat:"",natural:"",sharp:"",dot:"",trem2:"",ts:d=>String(d).split("").map(c=>String.fromCharCode(0xE080+ +c)).join("")};
 const E={staffLine:.11,stem:.10,beam:.5,beamGap:.25,ledger:.16,ledgerExt:.33,thin:.18,thick:.55,headW:1.3,
   stemUpSE:[1.3,.16],stemDownNW:[0,-.168],xUpSE:[1.3,.424],xDownNW:[0,-.424],accW:.81,clefW:2.56,tsW:1.77,
-  /* how far a note's ink reaches past its head: the stem's flag, and the
-     right-pointing stub of a broken beam. The bar line is kept clear of it
-     (23 Sep 2026). */
-  flagReach:1.0};
+  /* the widest flag's ink, from its stem (Leland: 8th up 1.16, 16th up 1.12,
+     down 1.24 staff spaces) -- what spacing() reserves after an unbeamed note */
+  flagW:1.24};
 const CLEFS={g:{bottom:30,glyph:G.gClef,glyphStep:32,shift:0,keyOff:0},g8vb:{bottom:30,glyph:G.gClef8vb,glyphStep:32,shift:7,keyOff:0},
   g15mb:{bottom:30,glyph:G.gClef15mb,glyphStep:32,shift:14,keyOff:0},f:{bottom:18,glyph:G.fClef,glyphStep:24,shift:0,keyOff:-14}};
 const KEYPOS={flats:{B:34,E:37,A:33,D:36,G:32,C:35,F:31},sharps:{F:37,C:34,G:38,D:35,A:32,E:36,B:33}};
@@ -89,8 +89,14 @@ function accidentalFor(name,key){const p=parse(name);if(!p)return "";const inF=k
 function accidentalInBar(name,key,state){const p=parse(name);if(!p)return "";const k=p.letter+p.oct;const keyAcc=key.flats.includes(p.letter)?"♭":key.sharps.includes(p.letter)?"♯":"";
   const cur=state.has(k)?state.get(k):keyAcc;if(cur===p.acc)return "";state.set(k,p.acc);return p.acc==="♭"?G.flat:p.acc==="♯"?G.sharp:G.natural}
 const ledgerBelow=s=>s>=30?0:Math.ceil((30-s)/2), ledgerAbove=s=>s<=38?0:Math.ceil((s-38)/2);
-function clefFor(pan){
-  const names=panNames(pan);const steps=[names.ding,...names.fields,...names.bottom].map(stepOf).filter(s=>s!=null);
+/* THE PIECE DECIDES (David, 23 Sep 2026: "let the piece decide"). The octave rule runs over the notes the piece plays,
+   every section of it, so one piece keeps one clef. Over the pan's whole range the E Kurd 21 (B2-A5) tied 5 ledger
+   lines to 5 and stayed at sounding pitch, so Canon in D -- B2-E5, 3 at most an octave up -- hung 5 under the staff.
+   Without the piece's fields, or with no pitched note among them, the pan's range decides as it did. */
+function clefFor(pan,fields){
+  const names=panNames(pan);const whole=[names.ding,...names.fields,...names.bottom].map(stepOf).filter(s=>s!=null);
+  const played=Array.isArray(fields)?fields.map(f=>stepOf(nameOf(names,f))).filter(s=>s!=null):[];
+  const steps=played.length?played:whole;
   if(!steps.length)return{clef:"g",shift:0};
   const lo=Math.min(...steps),hi=Math.max(...steps);
   const worst=sh=>Math.max(ledgerBelow(lo+sh),ledgerAbove(hi+sh));
@@ -125,7 +131,7 @@ const flowW=(den,dot)=>(FLOWW[den]||3)*(dot?1.2:1);
 function barItems(bar,bi,ctx,keep){
   const {sub,beats,ppb,pulse32,beat32,tup}=ctx;
   const byT=new Map();
-  for(const e of bar||[]){if(!e||e.v==="ghost")continue;if(keep&&e.v!=="perc"&&!keep(e))continue;if(!byT.has(e.t))byT.set(e.t,[]);byT.get(e.t).push(e)}
+  for(const e of bar||[]){if(!e||e.v==="ghost")continue;if(keep&&!keep(e))continue;if(!byT.has(e.t))byT.set(e.t,[]);byT.get(e.t).push(e)}   // a slap goes where the staff's filter says (build)
   let ranges=(tup||[]).filter(r=>r&&r.bar===bi&&r.n>1).map(r=>{const step=sub/(r.per||1);return{a:r.from*step,e:(r.from+r.len)*step,n:r.n}});
   /* A TUPLET IS A NON-BINARY DIVISION (23 Sep 2026). A pulse that cannot be
      written as a plain value means one of two very different things: the count
@@ -159,6 +165,90 @@ function barItems(bar,bi,ctx,keep){
   return{items,ranges,empty:!byT.size};
 }
 
+/* ---------- spacing: where each moment of the bar sits ---------- */
+/* ROOM BY NEED, NOT BY THE CLOCK (David, 23 Sep 2026: "the sixteenth note flags
+   still touch the next symbol or sometimes the bar line", and four bars of
+   sixteenths must fit one line). The grid gave every pulse the same width, so a
+   quarter took four times a sixteenth's room while the sixteenths were crushed:
+   an unbeamed flag reaches about 2.4 staff spaces from its head's left edge, and a
+   pulse at the desktop width is about 2. Engraved music spaces by need, and so
+   does this -- one rule for the whole line:
+     · every moment at which something starts, in EITHER staff, is a column, so
+       the two staves of the grand staff stand on one x for one moment;
+     · a column is never narrower than its ink -- the head, a second's shifted
+       head, a dot, an unbeamed flag, a rest -- with the next column's accidental
+       or grace note in front of it and a clear gap between;
+     · what is left over is shared by LENGTH, by its square root, so a quarter
+       gets about twice a sixteenth's room rather than four times;
+     · the line keeps its total width; only the room inside it moves. Bars and
+       beats become as wide as their music, and the beat bands follow them.
+   When even the ink will not fit, every column shrinks alike and `fits` is
+   false; what to do about that (pages) is the caller's decision. */
+const SPACE={gap:.35,padL:1.0,restW:{32:1.6,16:1.45,8:1.15,4:1.0,2:1.25,1:1.25},durW:d32=>1.9*Math.sqrt(Math.max(d32,.25)/2)};
+/* A BEAM JOINS NOTES THAT ARE NEXT TO EACH OTHER (23 Sep 2026). The run was
+   keyed by the count alone and rests were merely skipped, so two notes in one
+   count with a rest between them shared a group and the beam was drawn straight
+   over the rest. A rest now ends the run: the key carries a serial that steps
+   whenever the stream is interrupted, by a rest or by a note too long to beam.
+   One function, used by the staff to draw beams and by spacing() to know which
+   notes will wear a flag. */
+function beamRuns(items,sub,groupOf){
+  const runs=new Map();let runK=null,runN=0;
+  items.forEach(it=>{
+    if(it.rest||it.den<8){runK=null;return}                       // the stream is broken here
+    const base=it.tup?"T"+it.tup.id:"C"+groupOf(Math.floor(it.p/sub));
+    if(base!==runK){runK=base;runN++}                             // a new count, or a fresh run after a break
+    const k=base+"#"+runN;
+    if(!runs.has(k))runs.set(k,[]);runs.get(k).push(it)});
+  return runs;
+}
+function spacing(bars,ctx,keeps,avail,sp){
+  const {names,key,sub,beats,ppb,pulse32,groupOf}=ctx;
+  const per=bars.map((bar,bi)=>{
+    const cols=new Map();const col=p=>{const k=p.toFixed(4);if(!cols.has(k))cols.set(k,{p,L:0,R:0});return cols.get(k)};
+    for(const keep of keeps){
+      const B=barItems(bar,bi,ctx,keep);if(B.empty)continue;
+      /* a note the pan cannot name is drawn as a rest by the staff (no head, no
+         step); it is one here too, or a beam would be counted that the staff breaks */
+      const items=B.items.map(it=>it.rest||it.notes.some(n=>n.v==="perc"||stepOf(nameOf(names,n.f))!=null)?it:{...it,rest:true});
+      const beamed=new Set();for(const run of beamRuns(items,sub,groupOf).values())if(run.length>1)run.forEach(it=>beamed.add(it));
+      for(const it of items){const c=col(it.p);let L=0,R;
+        if(it.rest){R=SPACE.restW[it.den]||1.25;if(it.dot)R=Math.max(R,1.65)}
+        else{
+          const steps=it.notes.filter(n=>n.v!=="perc").map(n=>stepOf(nameOf(names,n.f))).filter(s=>s!=null).sort((a,b)=>a-b);
+          const shift=steps.some((s,i)=>i>0&&s-steps[i-1]===1)?E.headW-E.stem:0;    // a second: one head stands beside the stem
+          R=E.headW+shift;
+          if(it.dot)R=Math.max(R,E.headW+shift+.35+.4);
+          if(it.den>=8&&!beamed.has(it))R=Math.max(R,E.stemUpSE[0]-E.stem+E.flagW);   // an unbeamed flag, reckoned stem-up (the wider reach)
+          if(!it.tie&&it.notes.some(n=>n.v!=="perc"&&n.f!=null&&accidentalFor(nameOf(names,n.f),key)))L=E.accW+.25;
+          if(!it.tie&&it.notes.some(n=>n.flam))L=Math.max(L,1.9)}
+        c.L=Math.max(c.L,L);c.R=Math.max(c.R,R)}
+    }
+    const list=[...cols.values()].sort((a,b)=>a.p-b.p);
+    list.forEach((c,i)=>{const nx=list[i+1];c.d32=((nx?nx.p:ppb)-c.p)*pulse32;c.need=c.L+c.R+SPACE.gap});
+    return{list};
+  });
+  const wholeW=k=>Math.max(3*sp,k*SPACE.durW(ppb*pulse32)*sp);
+  const colW=(c,k)=>Math.max(c.need*sp,k*SPACE.durW(c.d32)*sp);
+  const widthAt=k=>{let t=0;for(const B of per){t+=SPACE.padL*sp;if(!B.list.length)t+=wholeW(k);else for(const c of B.list)t+=colW(c,k)}return t};
+  const floor=widthAt(0),fits=floor<=avail+1e-6;let k=0,s=1;
+  if(fits){let lo=0,hi=1;while(widthAt(hi)<avail&&hi<1e6)hi*=2;for(let i=0;i<48;i++){const m=(lo+hi)/2;if(widthAt(m)<avail)lo=m;else hi=m}k=lo}
+  else s=avail/floor;
+  let start=0;
+  const out=per.map(B=>{
+    let x=SPACE.padL*sp*s;const at=new Map();
+    if(!B.list.length)x+=wholeW(k)*s;
+    else for(const c of B.list){c.x=x;at.set(c.p.toFixed(4),{x,L:c.L*sp*s});x+=colW(c,k)*s}
+    const w=x;
+    /* a beat's band starts just before the first thing in it; a beat with nothing
+       starting in it (inside a long note) is placed by its time between its neighbours */
+    const xAt=p=>{const hit=B.list.find(c=>Math.abs(c.p-p)<1e-6);if(hit)return Math.max(0,hit.x-SPACE.gap*sp*s/2);
+      let a={p:0,x:0},b={p:ppb,x:w};for(const c of B.list){if(c.p<p)a=c;else{b=c;break}}return a.x+(p-a.p)/((b.p-a.p)||1)*(b.x-a.x)};
+    const edges=[0];for(let b=1;b<beats;b++)edges.push(xAt(b*sub));edges.push(w);
+    const r={start,w,edges,at:p=>at.get(p.toFixed(4))||null};start+=w;return r});
+  return{fits,floor,bars:out};   // floor: the width the ink alone needs, in px -- what a caller shrinks the staff against
+}
+
 /* ---------- one staff ---------- */
 function staff(bars,ctx,o){
   const {sp,pw,left,top,clef,keep,numbers,numbersRow,collect,band,barNumbers,timeSig,firstBar,prelude,colour,heads,chords,mode,width}=o;
@@ -176,19 +266,17 @@ function staff(bars,ctx,o){
   bars.forEach((bar,bi)=>{const B=barItems(bar,bi,ctx,keep);const L={bar,items:B.items,ranges:B.ranges,empty:B.empty};laid.push(L);
     if(mode==="flow"){let w=1.2;B.items.forEach(it=>{w+=flowW(it.den,it.dot)*(it.tup?.85:1);if(!it.rest&&it.notes.some(n=>n.f!=null&&accidentalFor(nameOf(names,n.f),key)))w+=.8});w+=.5;L.w=w;totalFlow+=w}});
   let W;
-  /* THE BAR LINE GETS ITS OWN ROOM (David, 23 Sep 2026: "the flags of the
-     eighth notes actually hang over the bar lines"). A note is centred in its
-     cell and the last cell ended exactly on the line, so the flag -- about one
-     staff space past the head -- was drawn across it, and nothing clips: the
-     lines are painted before the notes. Every position in the bar is squeezed
-     by the same factor, so the spacing stays even, the bar keeps its width and
-     its line does not move; only the last note steps back from it. */
-  if(mode==="grid"){W=left+preludeW+bars.length*ppb*pw+(o.right||0);let bx=left+preludeW;
-    const gut=Math.min(E.flagReach*sp,pw*.9),squeeze=(ppb*pw-gut)/(ppb*pw);
-    laid.forEach(L=>{L.x0=bx;L.x1=bx+ppb*pw;L.items.forEach(it=>{const cell=Math.min(pw,(it.len32/pulse32)*pw);it.x=bx+(it.p*pw+cell/2)*squeeze-E.headW*sp/2});bx=L.x1})}
+  /* THE GRID IS LAID BY NEED (23 Sep 2026; spacing() above). build() works the
+     columns out once for every staff of the system and hands them in, so the
+     treble and the bass stand on the same x for the same moment. The bar line's
+     room -- the old gutter -- is simply the last column's own gap. */
+  if(mode==="grid"){let bx=left+preludeW;const S=o.cols;
+    laid.forEach((L,bi)=>{const B=S.bars[bi];L.x0=bx;L.x1=bx+B.w;L.edges=B.edges.map(e=>bx+e);
+      L.items.forEach(it=>{const c=B.at(it.p);it.x=bx+(c?c.x+c.L:0)});bx=L.x1});
+    W=bx+(o.right||0)}
   else{W=width;const k=(width-left-(o.right||0)-preludeW)/(totalFlow*sp);let bx=left+preludeW;laid.forEach(L=>{L.x0=bx;let cx=bx+1.2*sp*k;L.items.forEach(it=>{if(!it.rest&&it.notes.some(n=>n.f!=null&&accidentalFor(nameOf(names,n.f),key)))cx+=.8*sp*k;it.x=cx;cx+=flowW(it.den,it.dot)*(it.tup?.85:1)*sp*k});L.x1=bx+L.w*sp*k;bx=L.x1})}
   let bands="";
-  if(mode==="grid"&&o.bands!==false){laid.forEach((L,bi)=>{for(let b=0;b<beats;b++){const bx=L.x0+b*sub*pw;bands+=`<rect class="sv-band${band&&band.bar===firstBar+bi&&band.beat===b?" on":""}" data-bar="${firstBar+bi}" data-beat="${b}" x="${bx.toFixed(1)}" y="${(topY-3.2*sp).toFixed(1)}" width="${(sub*pw).toFixed(1)}" height="${(10.4*sp).toFixed(1)}" rx="${(sp*.6).toFixed(1)}" fill="${COL.band}"/>`}})}
+  if(mode==="grid"&&o.bands!==false){laid.forEach((L,bi)=>{for(let b=0;b<beats;b++){const bx=L.edges[b];bands+=`<rect class="sv-band${band&&band.bar===firstBar+bi&&band.beat===b?" on":""}" data-bar="${firstBar+bi}" data-beat="${b}" x="${bx.toFixed(1)}" y="${(topY-3.2*sp).toFixed(1)}" width="${(L.edges[b+1]-L.edges[b]).toFixed(1)}" height="${(10.4*sp).toFixed(1)}" rx="${(sp*.6).toFixed(1)}" fill="${COL.band}"/>`}})}
   for(let i=0;i<5;i++){const yy=yW(bottom+2*i);g+=rect(left,yy-E.staffLine*sp/2,W-left-(o.right||0),E.staffLine*sp,COL.line)}
   if(prelude){let cx=left+.4*sp;g+=glyph(C.glyph,cx,yW(C.glyphStep));cx+=(E.clefW+.6)*sp;
     for(const l of key.flats){g+=glyph(G.flat,cx,yW(KEYPOS.flats[l]+C.keyOff));cx+=.9*sp}
@@ -210,19 +298,7 @@ function staff(bars,ctx,o){
       it.heads=it.notes.map(n=>n.v==="perc"?{step:mid-C.shift,perc:true,hand:n.hand,acc:"",ev:n}:{step:stepOf(nameOf(names,n.f)),acc:accidentalInBar(nameOf(names,n.f),key,accState),hand:n.hand,f:n.f,ev:n}).filter(h=>h.step!=null).sort((a,b)=>a.step-b.step);
       if(!it.heads.length){it.rest=true;return}
       const w0=it.heads[0].step+C.shift,w1=it.heads[it.heads.length-1].step+C.shift;it.up=(mid-w0)>=(w1-mid);lowest=Math.min(lowest,w0);highest=Math.max(highest,w1)});
-    /* A BEAM JOINS NOTES THAT ARE NEXT TO EACH OTHER (23 Sep 2026). The run
-       was keyed by the count alone and rests were merely skipped, so two notes
-       in one count with a rest between them shared a group and the beam was
-       drawn straight over the rest. A rest now ends the run: the key carries a
-       serial that steps whenever the stream is interrupted, by a rest or by a
-       note too long to beam. */
-    const groups=new Map();let runK=null,runN=0;
-    L.items.forEach(it=>{
-      if(it.rest||it.den<8){runK=null;return}                       // the stream is broken here
-      const base=it.tup?"T"+it.tup.id:"C"+groupOf(Math.floor(it.p/sub));
-      if(base!==runK){runK=base;runN++}                             // a new count, or a fresh run after a break
-      const k=base+"#"+runN;
-      if(!groups.has(k))groups.set(k,[]);groups.get(k).push(it)});
+    const groups=beamRuns(L.items,sub,groupOf);   // one rule for beams and for spacing()
     for(const grp of groups.values()){if(grp.length<2)continue;let glo=99,ghi=-99;grp.forEach(d=>{glo=Math.min(glo,d.heads[0].step+C.shift);ghi=Math.max(ghi,d.heads[d.heads.length-1].step+C.shift)});const up=(mid-glo)>=(ghi-mid);grp.forEach(d=>{d.up=up;d.beamed=true});
       const sx=d=>up?d.x+E.stemUpSE[0]*sp-E.stem*sp/2:d.x+E.stem*sp/2;const hy=d=>up?y(d.heads[d.heads.length-1].step):y(d.heads[0].step);
       const f=grp[0],l=grp[grp.length-1];const dx=sx(l)-sx(f)||1;let slope=(hy(l)-hy(f))/dx;const maxRise=(grp.length===2?.5:1)*sp;slope=Math.max(-maxRise/dx,Math.min(maxRise/dx,slope));
@@ -242,7 +318,7 @@ function staff(bars,ctx,o){
         if(it.dot){const dy=((hd.step+C.shift)%2===0)?cy-sp/2:cy;g+=glyph(G.dot,hx+(E.headW+.35)*sp,dy)}
         if(hd.ev&&hd.ev.flam&&!it.tie){const gx=hx-1.7*sp,gy=cy+(up?-sp/2:sp/2);g+=glyph(G.black,gx,gy,fill,fs*.62);g+=rect(gx+E.headW*sp*.62-E.stem*sp/2,gy-2.2*sp,E.stem*sp,2.1*sp);g+=`<path d="M${(gx+.2*sp).toFixed(1)} ${(gy-1.2*sp).toFixed(1)}L${(gx+1.4*sp).toFixed(1)} ${(gy-2*sp).toFixed(1)}" stroke="${COL.ink}" stroke-width="${(.12*sp).toFixed(2)}"/>`}});
       if(numbers||numbersRow||collect){const rows=[...hs].reverse().map(hd=>({label:hd.perc?"×":labelOf(hd.f),bot:isBot(hd.f),fill:colour?(COL[hd.hand]||COL.ink):COL.ink}));it.rows=rows;if(!it.tie)over.push({x:it.x+E.headW*sp/2,rows})}
-      if(it.den>1){const aTop=hs[hs.length-1],aBot=hs[0];const anchorFar=up?y(aBot.step)-(aBot.perc?E.xUpSE[1]:E.stemUpSE[1])*sp:y(aTop.step)-(aTop.perc?E.xDownNW[1]:E.stemDownNW[1])*sp;const tip=it.tipY!=null?it.tipY:(up?Math.min(y(hi)-3.5*sp,midY):Math.max(y(lo)+3.5*sp,midY));it.tipY=tip;const y1=Math.min(tip,anchorFar),y2=Math.max(tip,anchorFar);g+=rect(stemX-E.stem*sp/2,y1,E.stem*sp,y2-y1);
+      if(it.den>1){const aTop=hs[hs.length-1],aBot=hs[0];const anchorFar=up?y(aBot.step)-(aBot.perc?E.xUpSE[1]:E.stemUpSE[1])*sp:y(aTop.step)-(aTop.perc?E.xDownNW[1]:E.stemDownNW[1])*sp;const tip=it.tipY!=null?it.tipY:(up?Math.min(y(hi)-(it.dot&&it.den>=8?4.25:3.5)*sp,midY):Math.max(y(lo)+3.5*sp,midY));   /* a flag's tail hangs 3.27 spaces below its tip, onto the dot of a dotted note on a 3.5 stem; the stem grows, the dot stays by its head (23 Sep 2026) */it.tipY=tip;const y1=Math.min(tip,anchorFar),y2=Math.max(tip,anchorFar);g+=rect(stemX-E.stem*sp/2,y1,E.stem*sp,y2-y1);
         if(!it.beamed&&it.den>=8){const fl=it.den>=32?(up?G.flag32U:G.flag32D):it.den===16?(up?G.flag16U:G.flag16D):(up?G.flag8U:G.flag8D);g+=glyph(fl,stemX-E.stem*sp/2,tip)}
         if(hs.some(h=>h.ev&&h.ev.roll)&&!it.tie){const my=(anchorFar+tip)/2;g+=glyph(G.trem2,stemX-.6*sp,my+.6*sp)}}
       if(it.tie&&i>0){const p=L.items.slice(0,i).reverse().find(q=>!q.rest);if(p){hs.forEach((hd,k)=>{const ph=p.heads[k]||p.heads[0];const yy=y(hd.step)+(up?.8:-.8)*sp;let xa=ph.x+E.headW*sp+.15*sp,xb=hd.x-.15*sp;if(xb-xa<1.2*sp){xa=ph.x+E.headW*sp*.5;xb=hd.x+E.headW*sp*.5}const mx=(xa+xb)/2,bul=(up?1:-1)*Math.max(.85*sp,Math.min(1.1*sp,(xb-xa)*.28));g+=`<path d="M${xa.toFixed(2)} ${yy.toFixed(2)}Q${mx.toFixed(2)} ${(yy+bul).toFixed(2)} ${xb.toFixed(2)} ${yy.toFixed(2)}Q${mx.toFixed(2)} ${(yy+bul+.22*sp*(up?1:-1)).toFixed(2)} ${xa.toFixed(2)} ${yy.toFixed(2)}Z" fill="${COL.ink}"/>`})}}
@@ -265,7 +341,7 @@ function staff(bars,ctx,o){
   const extentTop=Math.min(topY-3.5*sp,yW(highest)-3.5*sp,attMin-.3*sp,o.label?topY-5.8*sp:Infinity), extentBotRaw=Math.max(botY+3*sp,yW(lowest)+1.5*sp,attMax+.3*sp);
   let extentBot=extentBotRaw;
   if(numbersRow&&!collect){const ny=extentBotRaw+2*sp;let maxRows=1;over.forEach(oo=>{maxRows=Math.max(maxRows,oo.rows.length);oo.rows.forEach((r,k)=>{const yy=ny+k*1.45*sp;g+=text(r.label,oo.x,yy,sp*1.5,r.fill,'text-anchor="middle"');if(r.bot)g+=rect(oo.x-.6*sp,yy+.35*sp,1.2*sp,.16*sp,r.fill)})});extentBot=ny+(maxRows-1)*1.45*sp+1.2*sp}
-  return{inner:g,bands,W,topY,botY,extentTop,extentBot,preludeW,over};
+  return{inner:g,bands,W,topY,botY,extentTop,extentBot,preludeW,over,laid};
 }
 
 /* ---------- the context of a section ---------- */
@@ -294,6 +370,52 @@ function makeCtx(input,opts){
   return{names,key,sub,beats,den,ppb,beat32,pulse32,groupOf,tup:input.tup||[]};
 }
 
+/* ---------- the staves' filters, a table's slice, and the plan of a line ---------- */
+/* the grand staff's two filters: split at middle C.
+   A SLAP IS WRITTEN ONCE, ON THE TREBLE (David, 23 Sep 2026: "the slap ...
+   should always be displayed in the violin clef"). It has no pitch, so the
+   split decides: the treble takes it, the bass declines it. */
+function keepsFor(grand,names){
+  return grand?[e=>e.v==="perc"||stepOf(nameOf(names,e.f))>=MIDDLE_C,e=>e.v!=="perc"&&stepOf(nameOf(names,e.f))<MIDDLE_C]:[null];
+}
+/* bars a..b of a table, with its tuplet ranges renumbered to match -- a range
+   is keyed by its bar's index, so a cut that keeps the old numbers misreads it */
+function slice(input,a,b){
+  const bars=(input.bars||[]).slice(a,b),n=bars.length;
+  const tup=(input.tup||[]).filter(r=>r&&r.bar>=a&&r.bar<a+n).map(r=>({...r,bar:r.bar-a}));
+  return{...input,bars,tup};
+}
+/* ONE LINE, AND PAGES ONLY AS A LAST RESORT (David, 23 Sep 2026: "Instead of
+   creating two lines, let's rather have two pages, but keep it to one line";
+   "we need to find a way to make 4 bars always work on one page"). In order:
+     1. the whole table on one line at the normal size, if its ink fits;
+     2. otherwise pages, split evenly (8 bars: 4 + 4, never 5 + 3), as few as
+        fit -- never fewer than four bars to a page while the table has four;
+     3. pages of four that still do not fit are drawn smaller, down to minSp,
+        rather than cut again;
+     4. only a table whose four bars fit at no size is cut below four.
+   The ink's floor is spacing()'s, which is linear in the staff space. */
+function plan(input,opts){
+  opts=opts||{};const n=(input.bars||[]).length,sp=opts.sp||8,minSp=Math.min(opts.minSp||sp,sp);
+  const width=opts.width||900,side=(opts.left||0)+(opts.right||0),least=Math.min(n,opts.least||4);
+  if(!n)return{per:0,sp,pages:1};
+  const key=opts.key||keyFor(input.pan),nKey=key.flats.length+key.sharps.length;
+  const prelude=s=>(.4+E.clefW+.6+nKey*.9+(opts.timeSig!==false?.4+E.tsW:0)+.9)*s;
+  const floors=new Map();   // the ink's width at a staff space of 1, per page
+  const floorOf=(a,b)=>{const k=a+":"+b;if(!floors.has(k)){const part=slice(input,a,b);const ctx=makeCtx(part,{key});floors.set(k,spacing(part.bars,ctx,keepsFor(!!opts.grand,ctx.names),1,1).floor)}return floors.get(k)};
+  const fits=(per,s)=>{for(let a=0;a<n;a+=per)if(floorOf(a,Math.min(n,a+per))*s>width-prelude(s)-side+1e-6)return false;return true};
+  const most=Math.max(1,Math.ceil(n/least));                  // the most pages: never fewer than `least` bars to one
+  for(let pages=1;pages<=most;pages++){const per=Math.ceil(n/pages);if(fits(per,sp))return{per,sp,pages:Math.ceil(n/per)}}
+  const per=Math.ceil(n/most);
+  for(let s=sp-.25;s>=minSp-1e-9;s-=.25)if(fits(per,s))return{per,sp:s,pages:Math.ceil(n/per)};
+  /* 4. the last resort, for a table whose four bars will not fit even small
+     (Handpan tune 8, every sextuplet position printed): fewer bars to a page,
+     the fewest pages first, each at the largest size that fits */
+  for(let pages=most+1;pages<=n;pages++){const q=Math.ceil(n/pages);if(q===Math.ceil(n/(pages-1)))continue;
+    for(let s=sp;s>=minSp-1e-9;s-=.25)if(fits(q,s))return{per:q,sp:s,pages:Math.ceil(n/q)}}
+  return{per:1,sp:minSp,pages:n,squeezed:true};   // not even one bar fits the smallest staff: drawn, and said
+}
+
 /* ---------- the system: one staff, or the grand staff ---------- */
 function build(input,opts){
   const ctx=makeCtx(input,opts);const {names}=ctx;
@@ -301,28 +423,31 @@ function build(input,opts){
   const base={sp,left:opts.left||0,right:opts.right||0,keep:null,numbers:!!opts.numbers,numbersRow:!!opts.numbersRow,collect:false,band:opts.band||null,barNumbers:opts.barNumbers!==false&&!opts.numbers,timeSig:opts.timeSig!==false,firstBar:opts.firstBar||0,prelude:opts.prelude!==false,colour:opts.colour!==false,heads:opts.heads!==false,chords:!!opts.chords,mode,width:opts.width,pw:opts.pw||13.5,finalBar:!!opts.finalBar,label:opts.label||null,bands:opts.bands};
   const bars=input.bars||[];
   let parts=[],W;
+  /* the staves' filters, said once (keepsFor): spacing() and plan() read the same bars the staves draw */
+  const keeps=keepsFor(opts.grand,names);
+  const cols=mode==="grid"?spacing(bars,ctx,keeps,bars.length*ctx.ppb*base.pw,sp):null;
   if(opts.grand){
     const gap=3.5*sp;
-    const t=staff(bars,ctx,{...base,top:200,clef:"g",keep:e=>stepOf(nameOf(names,e.f))>=MIDDLE_C,numbersRow:false,collect:!!opts.numbersRow});
-    const b=staff(bars,ctx,{...base,top:t.extentBot+gap,clef:"f",keep:e=>stepOf(nameOf(names,e.f))<MIDDLE_C,barNumbers:false,numbersRow:false,collect:!!opts.numbersRow});
+    const t=staff(bars,ctx,{...base,top:200,clef:"g",keep:keeps[0],cols,numbersRow:false,collect:!!opts.numbersRow});
+    const b=staff(bars,ctx,{...base,top:t.extentBot+gap,clef:"f",keep:keeps[1],cols,barNumbers:false,numbersRow:false,collect:!!opts.numbersRow});
     W=t.W;
     const x=base.left,y1=t.topY,y2=b.botY,ym=(y1+y2)/2;
     let brace=`<rect x="${x}" y="${y1.toFixed(1)}" width="${(E.thin*sp).toFixed(2)}" height="${(y2-y1).toFixed(1)}" fill="${COL.ink}"/>`;
     brace+=`<path d="M${(x-.5*sp).toFixed(1)} ${y1.toFixed(1)} Q${(x-2.3*sp).toFixed(1)} ${(y1+(y2-y1)*.28).toFixed(1)} ${(x-1.1*sp).toFixed(1)} ${ym.toFixed(1)} Q${(x-2.3*sp).toFixed(1)} ${(y1+(y2-y1)*.72).toFixed(1)} ${(x-.5*sp).toFixed(1)} ${y2.toFixed(1)}" fill="none" stroke="${COL.ink}" stroke-width="${(.26*sp).toFixed(2)}" stroke-linecap="round"/>`;
     let bands="";const bandTop=t.extentTop,bandH=b.extentBot-t.extentTop;
-    if(mode==="grid"&&opts.bands!==false){for(let bi=0;bi<bars.length;bi++)for(let be=0;be<ctx.beats;be++){const bx=base.left+t.preludeW+bi*ctx.ppb*base.pw+be*ctx.sub*base.pw;bands+=`<rect class="sv-band${opts.band&&opts.band.bar===base.firstBar+bi&&opts.band.beat===be?" on":""}" data-bar="${base.firstBar+bi}" data-beat="${be}" x="${bx.toFixed(1)}" y="${bandTop.toFixed(1)}" width="${(ctx.sub*base.pw).toFixed(1)}" height="${bandH.toFixed(1)}" rx="${(sp*.6).toFixed(1)}" fill="${COL.band}"/>`}}
+    if(mode==="grid"&&opts.bands!==false){for(let bi=0;bi<bars.length;bi++)for(let be=0;be<ctx.beats;be++){const ed=t.laid[bi].edges,bx=ed[be];bands+=`<rect class="sv-band${opts.band&&opts.band.bar===base.firstBar+bi&&opts.band.beat===be?" on":""}" data-bar="${base.firstBar+bi}" data-beat="${be}" x="${bx.toFixed(1)}" y="${bandTop.toFixed(1)}" width="${(ed[be+1]-ed[be]).toFixed(1)}" height="${bandH.toFixed(1)}" rx="${(sp*.6).toFixed(1)}" fill="${COL.band}"/>`}}
     let extentBot=b.extentBot,rows="";
     if(opts.numbersRow){const byX=new Map();[...t.over,...b.over].forEach(oo=>{const k=oo.x.toFixed(1);if(!byX.has(k))byX.set(k,{x:oo.x,rows:[]});byX.get(k).rows.push(...oo.rows)});const ny=b.extentBot+2*sp;let maxRows=1;for(const oo of byX.values()){maxRows=Math.max(maxRows,oo.rows.length);oo.rows.forEach((r,k)=>{const yy=ny+k*1.45*sp;rows+=`<text x="${oo.x.toFixed(2)}" y="${yy.toFixed(2)}" text-anchor="middle" font-family="${FONT}" font-weight="700" font-size="${sp*1.5}" fill="${r.fill}">${r.label}</text>`;if(r.bot)rows+=`<rect x="${(oo.x-.6*sp).toFixed(2)}" y="${(yy+.35*sp).toFixed(2)}" width="${1.2*sp}" height="${.16*sp}" fill="${r.fill}"/>`})}extentBot=ny+(maxRows-1)*1.45*sp+1.2*sp}
     parts=[{inner:bands+t.inner+b.inner+brace+rows,extentTop:t.extentTop,extentBot}];
   }else{
-    const cf=opts.clef?{clef:opts.clef}:clefFor(input.pan);
-    const s=staff(bars,ctx,{...base,top:200,clef:cf.clef});W=s.W;
+    const cf=opts.clef?{clef:opts.clef}:clefFor(input.pan,opts.clefFrom);
+    const s=staff(bars,ctx,{...base,top:200,clef:cf.clef,cols});W=s.W;
     parts=[{inner:s.bands+s.inner,extentTop:s.extentTop,extentBot:s.extentBot}];
   }
   const top=Math.min(...parts.map(p=>p.extentTop)),bot=Math.max(...parts.map(p=>p.extentBot));
   const H=bot-top;
   const svg=`<svg class="sv" viewBox="0 ${top.toFixed(1)} ${W.toFixed(1)} ${H.toFixed(1)}" ${opts.fixed?`width="${W.toFixed(0)}" height="${H.toFixed(0)}"`:""} xmlns="http://www.w3.org/2000/svg">${parts.map(p=>p.inner).join("")}</svg>`;
-  return{svg,W,H,key:ctx.key,clef:opts.grand?"grand":(opts.clef||clefFor(input.pan).clef)};
+  return{svg,W,H,key:ctx.key,clef:opts.grand?"grand":(opts.clef||clefFor(input.pan,opts.clefFrom).clef),fits:cols?cols.fits:true,need:cols?cols.floor:0,room:cols?bars.length*ctx.ppb*base.pw:0};
 }
 
 /* ---------- font and style ---------- */
@@ -350,7 +475,7 @@ function render(el,input,opts){
   }
   if(per&&bars.length>per){   // systems of `per` bars, stacked
     const parts=[];let H=0,W=0,key=null,clef=null;
-    for(let i=0;i<bars.length;i+=per){const r=build({...input,bars:bars.slice(i,i+per)},{...opts,pw,firstBar:i,timeSig:i===0&&opts.timeSig!==false});parts.push(r.svg);H+=r.H;W=Math.max(W,r.W);key=r.key;clef=r.clef}
+    for(let i=0;i<bars.length;i+=per){const r=build(slice(input,i,i+per),{...opts,pw,firstBar:i,timeSig:i===0&&opts.timeSig!==false});parts.push(r.svg);H+=r.H;W=Math.max(W,r.W);key=r.key;clef=r.clef}
     const svg=parts.join("");if(el){el.innerHTML=svg}return{svg,W,H,key,clef,systems:parts.length};
   }
   const r=build(input,{...opts,pw});
@@ -363,5 +488,5 @@ function paint(el,bar,beat){
   el.querySelectorAll(".sv-band").forEach(b=>{const on=+b.dataset.bar===bar&&+b.dataset.beat===beat;if(on){b.classList.add("on");lit=b}else b.classList.remove("on")});
   if(lit&&el.scrollHeight>el.clientHeight+4){const svg=lit.closest("svg");if(svg){const top=svg.offsetTop-el.offsetTop;if(top<el.scrollTop||top+svg.offsetHeight>el.scrollTop+el.clientHeight)el.scrollTop=Math.max(0,top-4)}}
 }
-window.StaffView={version:3,render,paint,keyFor,clefFor,panNames,stepOf,LEDGER_GUARD,G,E};
+window.StaffView={version:3,render,paint,plan,slice,keyFor,clefFor,panNames,stepOf,LEDGER_GUARD,G,E};
 })();
