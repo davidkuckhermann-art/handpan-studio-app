@@ -256,7 +256,7 @@ function spacing(bars,ctx,keeps,avail,sp){
     const xAt=p=>{const hit=B.list.find(c=>Math.abs(c.p-p)<1e-6);if(hit)return Math.max(0,hit.x-SPACE.gap*sp*s/2);
       let a={p:0,x:0},b={p:ppb,x:w};for(const c of B.list){if(c.p<p)a=c;else{b=c;break}}return a.x+(p-a.p)/((b.p-a.p)||1)*(b.x-a.x)};
     const edges=[0];for(let b=1;b<beats;b++)edges.push(xAt(b*sub));edges.push(w);
-    const r={start,w,edges,at:p=>at.get(p.toFixed(4))||null};start+=w;return r});
+    const r={start,w,edges,xAt,at:p=>at.get(p.toFixed(4))||null};start+=w;return r});
   return{fits,floor,bars:out};   // floor: the width the ink alone needs, in px -- what a caller shrinks the staff against
 }
 
@@ -272,7 +272,11 @@ function staff(bars,ctx,o){
   const rect=(x,yy,w,h,fill)=>`<rect x="${x.toFixed(2)}" y="${yy.toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" fill="${fill||COL.ink}"/>`;
   const text=(s,x,yy,size,fill,extra)=>`<text x="${x.toFixed(2)}" y="${yy.toFixed(2)}" font-family="${FONT}" font-weight="700" font-size="${size}" fill="${fill||COL.ink}" ${extra||""}>${s}</text>`;
   const nKey=key.flats.length+key.sharps.length;
-  const preludeW=(prelude?(.4+E.clefW+.6+nKey*.9+(timeSig?.4+E.tsW*(beats>9?1.6:1):0)+.9):.6)*sp;
+  /* REPEAT BARLINES (David, 24 Sep 2026: an exercise's own loop, "at the beginning and at the end of the sequence";
+     the staff stops at the end, as the table does): o.repeats {start:{bar,p}, end:{bar,p}} in the section's bars */
+  const rp=o.repeats||null, rS=rp&&rp.start?{bi:rp.start.bar-firstBar,p:rp.start.p}:null, rE=rp&&rp.end?{bi:rp.end.bar-firstBar,p:rp.end.p}:null;
+  const repRoom=rS&&rS.bi===0&&rS.p<=0?2*sp:0;
+  const preludeW=(prelude?(.4+E.clefW+.6+nKey*.9+(timeSig?.4+E.tsW*(beats>9?1.6:1):0)+.9):.6)*sp+repRoom;
   const laid=[];let totalFlow=0;
   bars.forEach((bar,bi)=>{const B=barItems(bar,bi,ctx,keep);const L={bar,items:B.items,ranges:B.ranges,empty:B.empty};laid.push(L);
     if(mode==="flow"){let w=1.2;B.items.forEach(it=>{w+=flowW(it.den,it.dot)*(it.tup?.85:1);if(!it.rest&&it.notes.some(n=>n.f!=null&&accidentalFor(nameOf(names,n.f),key)))w+=.8});w+=.5;L.w=w;totalFlow+=w}});
@@ -289,7 +293,12 @@ function staff(bars,ctx,o){
   let bands="";
   /* the band is built at the end of this function, once the ink has been
      measured -- see THE BAND COVERS THE NOTES below (David, 24 Sep 2026) */
-  for(let i=0;i<5;i++){const yy=yW(bottom+2*i);g+=rect(left,yy-E.staffLine*sp/2,W-left-(o.right||0),E.staffLine*sp,COL.line)}
+  const xOf=(bi,p)=>{const L=laid[bi];if(!L)return null;if(p<=0)return L.x0;if(p>=ppb)return L.x1;
+    if(mode==="grid"&&o.cols&&o.cols.bars[bi]&&o.cols.bars[bi].xAt)return Math.min(L.x1,L.x0+o.cols.bars[bi].xAt(p)+1.5*sp);
+    const nx=L.items.find(it=>it.p>=p-1e-6);return nx?nx.x+sp:L.x1};
+  const xS=rS&&rS.bi>=0&&rS.bi<laid.length?(repRoom?laid[0].x0-repRoom+.2*sp:xOf(rS.bi,rS.p)):null;
+  const xE=rE&&rE.bi>=0&&rE.bi<laid.length?xOf(rE.bi,rE.p):null;
+  for(let i=0;i<5;i++){const yy=yW(bottom+2*i);g+=rect(left,yy-E.staffLine*sp/2,(xE!=null?xE:W-(o.right||0))-left,E.staffLine*sp,COL.line)}
   if(prelude){let cx=left+.4*sp;g+=glyph(C.glyph,cx,yW(C.glyphStep));cx+=(E.clefW+.6)*sp;
     for(const l of key.flats){g+=glyph(G.flat,cx,yW(KEYPOS.flats[l]+C.keyOff));cx+=.9*sp}
     for(const l of key.sharps){g+=glyph(G.sharp,cx,yW(KEYPOS.sharps[l]+C.keyOff));cx+=.9*sp}
@@ -298,8 +307,12 @@ function staff(bars,ctx,o){
     if(barNumbers)g+=`<text x="${(L.x0+2).toFixed(1)}" y="${(topY-1.7*sp).toFixed(1)}" font-family="${FONT}" font-weight="600" font-size="${sp*1.1}" fill="${COL.count}">${firstBar+i+1}</text>`;
     });
   const xL=laid[laid.length-1].x1;
-  if(o.finalBar)g+=rect(xL-E.thick*sp-E.thin*sp-.37*sp,topY,E.thin*sp,4*sp)+rect(xL-E.thick*sp,topY,E.thick*sp,4*sp);
+  if(xE!=null){}                                                         // the end repeat stands for the bar line
+  else if(o.finalBar)g+=rect(xL-E.thick*sp-E.thin*sp-.37*sp,topY,E.thin*sp,4*sp)+rect(xL-E.thick*sp,topY,E.thick*sp,4*sp);
   else g+=rect(xL-E.thin*sp,topY,E.thin*sp,4*sp);
+  { const dots=x=>{for(const s of [bottom+3,bottom+5])g+=`<circle cx="${x.toFixed(2)}" cy="${yW(s).toFixed(2)}" r="${(.24*sp).toFixed(2)}" fill="${COL.ink}"/>`};
+    if(xS!=null){g+=rect(xS,topY,E.thick*sp,4*sp)+rect(xS+(E.thick+.37)*sp,topY,E.thin*sp,4*sp);dots(xS+(E.thick+.37+E.thin+.45)*sp)}
+    if(xE!=null){g+=rect(xE-E.thick*sp,topY,E.thick*sp,4*sp)+rect(xE-(E.thick+.37+E.thin)*sp,topY,E.thin*sp,4*sp);dots(xE-(E.thick+.37+E.thin+.45)*sp)} }
   if(o.label){const bw=sp*3.4,bh=sp*2.3,bx=left,by=topY-5.4*sp;g+=`<rect x="${bx}" y="${by.toFixed(1)}" width="${bw}" height="${bh}" rx="1.5" fill="none" stroke="${COL.ink}" stroke-width="${(sp*.14).toFixed(2)}"/>`+text(o.label,bx+bw/2,by+bh*.73,sp*1.55,COL.ink,'text-anchor="middle" font-weight="800"')}
   let lowest=bottom,highest=topS,over=[],attMin=Infinity,attMax=-Infinity;
   laid.forEach(L=>{
@@ -319,6 +332,7 @@ function staff(bars,ctx,o){
       beam(sx(f)-E.stem*sp/2,sx(l)+E.stem*sp/2,0);
       for(const level of [16,32]){let i=0;const off=(E.beam+E.beamGap)*sp*(level===16?1:2),stub=1.1*sp;while(i<grp.length){if(grp[i].den<level){i++;continue}let j=i;while(j+1<grp.length&&grp[j+1].den>=level)j++;if(j>i)beam(sx(grp[i])-E.stem*sp/2,sx(grp[j])+E.stem*sp/2,off);else if(i>0)beam(sx(grp[i])-stub,sx(grp[i])+E.stem*sp/2,off);else beam(sx(grp[i])-E.stem*sp/2,sx(grp[i])+stub,off);i=j+1}}}
     L.items.forEach((it,i)=>{
+      if(rE&&L===laid[rE.bi]&&it.p>=rE.p-1e-6)return;   // past the end repeat: the staff stops there (C)
       if(it.rest){g+=glyph(restGlyph(it.den),it.x,it.den===1?yW(topS-2):midY);if(it.dot)g+=glyph(G.dot,it.x+1.2*sp,midY-sp/2);return}
       const hs=it.heads,lo=hs[0].step,hi=hs[hs.length-1].step,up=it.up;const stemX=up?it.x+E.stemUpSE[0]*sp-E.stem*sp/2:it.x+E.stem*sp/2;
       const lx=it.x-E.ledgerExt*sp,lw=(E.headW+2*E.ledgerExt)*sp;
@@ -478,7 +492,7 @@ function plan(input,opts){
 function build(input,opts){
   const ctx=makeCtx(input,opts);const {names}=ctx;
   const sp=opts.sp||8,mode=opts.mode||"grid";
-  const base={sp,left:opts.left||0,right:opts.right||0,keep:null,numbers:!!opts.numbers,numbersRow:!!opts.numbersRow,collect:false,band:opts.band||null,barNumbers:opts.barNumbers!==false&&!opts.numbers,timeSig:opts.timeSig!==false,firstBar:opts.firstBar||0,prelude:opts.prelude!==false,colour:opts.colour!==false,heads:opts.heads!==false,chords:!!opts.chords,mode,width:opts.width,pw:opts.pw||13.5,finalBar:!!opts.finalBar,label:opts.label||null,bands:opts.bands};
+  const base={sp,left:opts.left||0,right:opts.right||0,keep:null,numbers:!!opts.numbers,numbersRow:!!opts.numbersRow,collect:false,band:opts.band||null,barNumbers:opts.barNumbers!==false&&!opts.numbers,timeSig:opts.timeSig!==false,firstBar:opts.firstBar||0,repeats:opts.repeats||null,prelude:opts.prelude!==false,colour:opts.colour!==false,heads:opts.heads!==false,chords:!!opts.chords,mode,width:opts.width,pw:opts.pw||13.5,finalBar:!!opts.finalBar,label:opts.label||null,bands:opts.bands};
   const bars=input.bars||[];
   let parts=[],W;
   /* the staves' filters, said once (keepsFor): spacing() and plan() read the same bars the staves draw */
