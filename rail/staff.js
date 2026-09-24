@@ -39,7 +39,7 @@
 const G={gClef:"",gClef8vb:"",gClef15mb:"",fClef:"",black:"",half:"",whole:"",x:"",
   flag8U:"",flag8D:"",flag16U:"",flag16D:"",flag32U:"",flag32D:"",
   restW:"",restH:"",restQ:"",rest8:"",rest16:"",rest32:"",
-  flat:"",natural:"",sharp:"",dot:"",trem2:"",ts:d=>String(d).split("").map(c=>String.fromCharCode(0xE080+ +c)).join("")};
+  flat:"",natural:"",sharp:"",dot:"",trem2:"",accA:"\uE4A0",accB:"\uE4A1",ts:d=>String(d).split("").map(c=>String.fromCharCode(0xE080+ +c)).join("")};
 const E={staffLine:.11,stem:.10,beam:.5,beamGap:.25,ledger:.16,ledgerExt:.33,thin:.18,thick:.55,headW:1.3,
   stemUpSE:[1.3,.16],stemDownNW:[0,-.168],xUpSE:[1.3,.424],xDownNW:[0,-.424],accW:.81,clefW:2.56,tsW:1.77,
   /* the widest flag's ink, from its stem (Leland: 8th up 1.16, 16th up 1.12,
@@ -132,16 +132,27 @@ function barItems(bar,bi,ctx,keep){
   const {sub,beats,ppb,pulse32,beat32,tup}=ctx;
   const byT=new Map();
   for(const e of bar||[]){if(!e||e.v==="ghost")continue;if(keep&&!keep(e))continue;if(!byT.has(e.t))byT.set(e.t,[]);byT.get(e.t).push(e)}   // a slap goes where the staff's filter says (build)
-  let ranges=(tup||[]).filter(r=>r&&r.bar===bi&&r.n>1).map(r=>{const step=sub/(r.per||1);return{a:r.from*step,e:(r.from+r.len)*step,n:r.n}});
-  /* A TUPLET IS A NON-BINARY DIVISION (23 Sep 2026). A pulse that cannot be
-     written as a plain value means one of two very different things: the count
-     is divided in three, five, seven… -- a tuplet, which is what this line is
-     for -- or the grid is simply finer than a 32nd, which a binary sub in an
-     eighth-note meter is (sub 8 in x/8 is a 64th). The second used to be read
-     as a tuplet too, so every beat wore a bracket and an italic number. A
-     power-of-two sub is a plain grid, however fine; only the rest are tuplets. */
-  const binaryGrid=sub>0&&(sub&(sub-1))===0;
-  if(!ranges.length&&near(pulse32)==null&&!binaryGrid){for(let c=0;c<beats;c++)ranges.push({a:c*sub,e:(c+1)*sub,n:sub})}   // a triplet grid: every count a tuplet
+  /* THE STROKES DECIDE THE DIVISION (David, 24 Sep 2026: "yes, build the robust staff rule", after his Let It Be drew a
+     6-bracket of rests around two plain sixteenths and garbled a triplet whose range was never stored). ONE RULE: a
+     stored range is kept only where its strokes need it (off the 32nd grid, and on the range's own equal positions);
+     every other count is written at the plainest division that holds its strokes - halves first when they are simpler,
+     a tuplet only where three, five, six, seven… are needed, a plain division finer than a 32nd without a figure. A
+     whole-table triplet grid needs no rule of its own: its strokes ask for their triplets. */
+  const strokeTs=[...byT.keys()].sort((a,b)=>a-b), on32=t=>near(t*pulse32)!=null, pow2=d=>d>0&&(d&(d-1))===0;
+  const inSpan=(a,e)=>strokeTs.filter(t=>t>=a-1e-6&&t<e-1e-6);
+  let ranges=(tup||[]).filter(r=>r&&r.bar===bi&&r.n>1).map(r=>{const step=sub/(r.per||1);return{a:r.from*step,e:(r.from+r.len)*step,n:r.n}})
+    .filter(r=>{const S=inSpan(r.a,r.e);if(!S.length||S.every(on32))return false;const u=(r.e-r.a)/r.n;return S.every(t=>near((t-r.a)/u)!=null)});
+  const minDiv=(a,e,S)=>{for(let d=1;d<=96;d++)if(S.every(t=>near((t-a)*d/(e-a))!=null))return d;return 0};
+  const need=(a,e)=>{const S=inSpan(a,e);return(!S.length||S.every(on32))?1:minDiv(a,e,S)};
+  const plan=(a,e)=>{
+    const L=e-a;
+    if(ranges.some(r=>r.a<e-1e-6&&r.e>a+1e-6)){if(ranges.some(r=>r.a<=a+1e-6&&r.e>=e-1e-6))return;if(L%2===0&&L>=2){plan(a,a+L/2);plan(a+L/2,e)}return}
+    const d=need(a,e);if(d===1)return;
+    const ok=d>0&&((pow2(d)&&d<=16)||(!pow2(d)&&d<=12));
+    if(L%2===0&&L>=2){const h=L/2,d1=need(a,a+h),d2=need(a+h,e);if(!ok||(d1>0&&d2>0&&Math.max(d1,d2)<d)){plan(a,a+h);plan(a+h,e);return}}
+    if(d>1)ranges.push({a,e,n:d});
+  };
+  for(let c=0;c<beats;c++)plan(c*sub,(c+1)*sub);
   ranges.sort((x,y)=>x.a-y.a);ranges.forEach((r,i)=>r.id=bi*100+i);
   const inRange=t=>ranges.find(r=>t>=r.a-1e-6&&t<r.e-1e-6);
   const items=[];
@@ -155,7 +166,7 @@ function barItems(bar,bi,ctx,keep){
   if(first>1e-6)pushRest(0,first*pulse32,null);
   outside.forEach(t=>{const nxt=Math.min(ppb,...outside.filter(u=>u>t),...ranges.map(r=>r.a).filter(a=>a>t));pushNotes(t,(nxt-t)*pulse32,byT.get(t),null)});
   for(const r of ranges){
-    const S=(r.e-r.a)*pulse32,unit=S/r.n;let v=1;while(v<unit-1e-6)v*=2;   // the written unit: the smallest plain value not shorter than the real one
+    const S=(r.e-r.a)*pulse32,unit=S/r.n;let v=1;while(v<unit-1e-6)v*=2;while(v/2>=unit-1e-6)v/=2;   // the written unit: the smallest plain value not shorter than the real one - below a 32nd too (a 64th is plain, 24 Sep)
     const m=S/v,plain=near(m)!=null&&Math.abs(v-unit)<1e-6;
     const info={id:r.id,n:r.n,m:near(m)!=null?near(m):Math.round(m),den:32/v,plain};
     for(let k=0;k<r.n;k++){const p=r.a+k*(r.e-r.a)/r.n;let ev=byT.get(p);if(!ev){const key=[...byT.keys()].find(t=>Math.abs(t-p)<.26);if(key!=null)ev=byT.get(key)}
@@ -318,6 +329,9 @@ function staff(bars,ctx,o){
         if(hd.acc)g+=glyph(hd.acc,hx-(E.accW+.25)*sp,cy);
         if(it.dot){const dy=((hd.step+C.shift)%2===0)?cy-sp/2:cy;g+=glyph(G.dot,hx+(E.headW+.35)*sp,dy)}
         if(hd.ev&&hd.ev.flam&&!it.tie){const gx=hx-1.7*sp,gy=cy+(up?-sp/2:sp/2);g+=glyph(G.black,gx,gy,fill,fs*.62);g+=rect(gx+E.headW*sp*.62-E.stem*sp/2,gy-2.2*sp,E.stem*sp,2.1*sp);g+=`<path d="M${(gx+.2*sp).toFixed(1)} ${(gy-1.2*sp).toFixed(1)}L${(gx+1.4*sp).toFixed(1)} ${(gy-2*sp).toFixed(1)}" stroke="${COL.ink}" stroke-width="${(.12*sp).toFixed(2)}"/>`}});
+      /* AN ACCENT (David, 24 Sep 2026, scale exercises): once per chord, beside the head furthest from the stem; the
+         picture's bounds take it in */
+      if(!it.tie&&hs.some(h=>h.ev&&h.ev.accent)){const far=up?hs[0]:hs[hs.length-1],ay=y(far.step)+(up?1.8:-1.8)*sp;g+=glyph(up?G.accB:G.accA,it.x,ay);if(up)attMax=Math.max(attMax,ay+.8*sp);else attMin=Math.min(attMin,ay-.8*sp)}
       if(numbers||numbersRow||collect){const rows=[...hs].reverse().map(hd=>({label:hd.perc?"×":labelOf(hd.f),bot:isBot(hd.f),fill:colour?(COL[hd.hand]||COL.ink):COL.ink}));it.rows=rows;if(!it.tie)over.push({x:it.x+E.headW*sp/2,rows})}
       if(it.den>1){const aTop=hs[hs.length-1],aBot=hs[0];const anchorFar=up?y(aBot.step)-(aBot.perc?E.xUpSE[1]:E.stemUpSE[1])*sp:y(aTop.step)-(aTop.perc?E.xDownNW[1]:E.stemDownNW[1])*sp;const tip=it.tipY!=null?it.tipY:(up?Math.min(y(hi)-(it.dot&&it.den>=8?4.25:3.5)*sp,midY):Math.max(y(lo)+3.5*sp,midY));   /* a flag's tail hangs 3.27 spaces below its tip, onto the dot of a dotted note on a 3.5 stem; the stem grows, the dot stays by its head (23 Sep 2026) */it.tipY=tip;const y1=Math.min(tip,anchorFar),y2=Math.max(tip,anchorFar);g+=rect(stemX-E.stem*sp/2,y1,E.stem*sp,y2-y1);
         /* THE PICTURE HOLDS EVERY STEM (David, 23 Sep 2026: "The notation is cut off at the bottom"): its ends set the
@@ -515,7 +529,10 @@ function render(el,input,opts){
     const beats=input.beats||(input.meter||[4,4])[0],sub=input.sub||4;
     const preludeW=(.4+E.clefW+.6+nKey*.9+(opts.timeSig!==false?.4+E.tsW:0)+.9)*sp;
     const w=(el&&el.getBoundingClientRect().width)||opts.width||900;const ppb=sub*beats;
-    pw=Math.max(4,(w-preludeW-(opts.left||0)-(opts.right||0))/(Math.max(1,per||bars.length)*ppb));
+    /* THE WIDTH IS THE WIDTH (David, 24 Sep 2026: "the staff notation is so small"): a floor of 4 px per grid
+       position made a raised grid (48 to the count in Let It Be's A2) draw 3132 px wide and shrink to 29 %; plan()
+       never knew of it. The position's share of the real width, whatever it is - spacing() shrinks the ink itself. */
+    pw=Math.max(1e-3,(w-preludeW-(opts.left||0)-(opts.right||0))/(Math.max(1,per||bars.length)*ppb));
   }
   if(per&&bars.length>per){   // systems of `per` bars, stacked
     const parts=[];let H=0,W=0,key=null,clef=null;
