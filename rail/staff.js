@@ -49,7 +49,7 @@ const CLEFS={g:{bottom:30,glyph:G.gClef,glyphStep:32,shift:0,keyOff:0},g8vb:{bot
   g15mb:{bottom:30,glyph:G.gClef15mb,glyphStep:32,shift:14,keyOff:0},f:{bottom:18,glyph:G.fClef,glyphStep:24,shift:0,keyOff:-14}};
 const KEYPOS={flats:{B:34,E:37,A:33,D:36,G:32,C:35,F:31},sharps:{F:37,C:34,G:38,D:35,A:32,E:36,B:33}};
 const ORDER={sharps:["F","C","G","D","A","E","B"],flats:["B","E","A","D","G","C","F"]};
-const COL={ink:"var(--sc-ink,#17150F)",line:"var(--st-line,#2A2620)",band:"var(--sc-band,#FBE7C6)",count:"var(--sc-count,#C6BEB1)",
+const COL={ink:"var(--sc-ink,#17150F)",line:"var(--st-line,#2A2620)",band:"var(--sc-band,#FBE7C6)",count:"var(--sc-count,#C6BEB1)",ink3:"var(--ink3,#8D8578)",
   R:"var(--hand-r,#17150F)",L:"var(--hand-l,#469957)",S:"var(--hand-s,#A21AF1)"};
 const LEDGER_GUARD=4;      // more than this many ledger lines at sounding pitch → written in another octave
 const MIDDLE_C=28;         // the grand staff's split (step of C4)
@@ -276,7 +276,8 @@ function staff(bars,ctx,o){
     W=bx+(o.right||0)}
   else{W=width;const k=(width-left-(o.right||0)-preludeW)/(totalFlow*sp);let bx=left+preludeW;laid.forEach(L=>{L.x0=bx;let cx=bx+1.2*sp*k;L.items.forEach(it=>{if(!it.rest&&it.notes.some(n=>n.f!=null&&accidentalFor(nameOf(names,n.f),key)))cx+=.8*sp*k;it.x=cx;cx+=flowW(it.den,it.dot)*(it.tup?.85:1)*sp*k});L.x1=bx+L.w*sp*k;bx=L.x1})}
   let bands="";
-  if(mode==="grid"&&o.bands!==false){laid.forEach((L,bi)=>{for(let b=0;b<beats;b++){const bx=L.edges[b];bands+=`<rect class="sv-band${band&&band.bar===firstBar+bi&&band.beat===b?" on":""}" data-bar="${firstBar+bi}" data-beat="${b}" x="${bx.toFixed(1)}" y="${(topY-3.2*sp).toFixed(1)}" width="${(L.edges[b+1]-L.edges[b]).toFixed(1)}" height="${(10.4*sp).toFixed(1)}" rx="${(sp*.6).toFixed(1)}" fill="${COL.band}"/>`}})}
+  /* the band is built at the end of this function, once the ink has been
+     measured -- see THE BAND COVERS THE NOTES below (David, 24 Sep 2026) */
   for(let i=0;i<5;i++){const yy=yW(bottom+2*i);g+=rect(left,yy-E.staffLine*sp/2,W-left-(o.right||0),E.staffLine*sp,COL.line)}
   if(prelude){let cx=left+.4*sp;g+=glyph(C.glyph,cx,yW(C.glyphStep));cx+=(E.clefW+.6)*sp;
     for(const l of key.flats){g+=glyph(G.flat,cx,yW(KEYPOS.flats[l]+C.keyOff));cx+=.9*sp}
@@ -284,7 +285,7 @@ function staff(bars,ctx,o){
     if(timeSig){cx+=.4*sp;const wide=beats>9;g+=glyph(G.ts(beats),cx,yW(topS-2));g+=glyph(G.ts(den),cx+(wide?E.tsW*sp*.45:0),yW(bottom+2))}}
   laid.forEach((L,i)=>{if(i>0)g+=rect(L.x0-E.thin*sp/2,topY,E.thin*sp,4*sp);
     if(barNumbers)g+=`<text x="${(L.x0+2).toFixed(1)}" y="${(topY-1.7*sp).toFixed(1)}" font-family="${FONT}" font-weight="600" font-size="${sp*1.1}" fill="${COL.count}">${firstBar+i+1}</text>`;
-    if(chords){const ch=(L.bar||[]).map(e=>e&&e.chord).find(Boolean);if(ch){const first=L.items.find(it=>!it.rest);const cx=first?first.x:L.x0+sp;const parts=String(ch).split("♭");let t=`<text x="${cx.toFixed(1)}" y="${(topY-2.7*sp).toFixed(1)}" font-family="${FONT}" font-weight="700" font-size="${sp*1.45}" fill="${COL.ink}">${parts[0]}`;if(parts.length>1)t+=`<tspan font-family="Leland" font-size="${sp*1.4}" dy="-.32em">${G.flat}</tspan><tspan dy=".32em" font-size="${sp*1.45}">${parts[1]}</tspan>`;g+=t+`</text>`}}});
+    });
   const xL=laid[laid.length-1].x1;
   if(o.finalBar)g+=rect(xL-E.thick*sp-E.thin*sp-.37*sp,topY,E.thin*sp,4*sp)+rect(xL-E.thick*sp,topY,E.thick*sp,4*sp);
   else g+=rect(xL-E.thin*sp,topY,E.thin*sp,4*sp);
@@ -342,10 +343,49 @@ function staff(bars,ctx,o){
       g+=text(String(its[0].tup.n),cx,ny+(up?.45*sp:1.0*sp),sp*1.3,COL.ink,'text-anchor="middle" font-style="italic"');
       if(up)attMin=Math.min(attMin,ny-1.2*sp);else attMax=Math.max(attMax,ny+1.2*sp)}
   });
-  const extentTop=Math.min(topY-3.5*sp,yW(highest)-3.5*sp,attMin-.3*sp,o.label?topY-5.8*sp:Infinity), extentBotRaw=Math.max(botY+3*sp,yW(lowest)+1.5*sp,attMax+.3*sp);
+  /* THE BAND IS THE INK PLUS ONE PADDING (David, 24 Sep 2026: "bring them a bit closer
+     to the notation"). The top used to allow a whole stem's length above the highest head,
+     3.5 spaces, whether or not anything was drawn up there -- 13.9 units of air above the
+     topmost beam on his own piece -- and the chord line, which must clear the band, sat on
+     top of all of it. One number now governs both edges: the ink, plus PAD, and never less
+     than the staff itself. attMin and attMax carry the stems, beams, flags, tuplet figures
+     and number rows; the head terms carry a note with no stem. */
+  const PAD=.6*sp;
+  const noteTop=Math.min(topY-PAD,yW(highest)-.5*sp-PAD,attMin-PAD), noteBot=Math.max(botY+PAD,yW(lowest)+.5*sp+PAD,attMax+PAD);
+  /* THE BAND COVERS THE NOTES (David, 24 Sep 2026: "no notes reach out of it",
+     and "keep the chord names outside the amber"). Built here, after the ink has
+     been measured, and spanning the note ink alone -- heads, ledger lines, stems,
+     beams, tuplet figures -- so what is a label rather than music stays outside
+     it: the section label above, the numbers row below. It used to be a fixed box
+     3.2 spaces above the top line and 10.4 tall, which a low piece fell out of. */
+  /* THE CHORD ROW SITS ABOVE THE BAND (David, 24 Sep 2026: "move the chord row up",
+     after "keep the chord names outside the amber"). Drawn here, not in the bar loop,
+     because its line is measured from the note ink: one line 0.7 of a space above the
+     band's top edge, so the amber stops below it whatever the notes do. It used to sit
+     2.7 spaces above the top line, which the band now covers. */
+  let chordTop=Infinity;
+  if(chords){const cy=noteTop-.35*sp,fsz=sp*1.45,raise=.36*.68*fsz;
+    laid.forEach(L=>{const evs=(L.bar||[]).filter(e=>e&&e.chord).sort((a,b)=>(a.t||0)-(b.t||0));if(!evs.length)return;
+      const done=new Set();
+      /* EVERY CHORD OF THE BAR, EACH OVER ITS OWN NOTE (David, 24 Sep 2026: "give the staff
+         the spans so both chords show"). A bar that changes at the half carries two names,
+         as the chord row has since 12 Sep; each sits above the first note at or after its
+         position, and a name already written at that place is not written twice. */
+      evs.forEach(ev=>{
+        const at=L.items.find(it=>!it.rest&&it.p>=(ev.t||0))||L.items.find(it=>!it.rest);
+        const cx=at?at.x:L.x0+sp,key=cx.toFixed(1)+"|"+ev.chord;if(done.has(key))return;done.add(key);
+        const inf=!!ev.chordInf,parts=String(ev.chord).split("♭");
+        /* THE CHORD TAB'S OWN HAND (.cname / .cname.inf, and .fl for the flat): a name the piece
+           carries is ink and heavy, a name the app worked out is lighter and italic, and the flat
+           is a small raised b in the page's own font, not the music font. */
+        let t=`<text x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" font-family="${FONT}" font-weight="${inf?700:800}" font-size="${fsz}"${inf?' font-style="italic"':''} fill="${inf?COL.ink3:COL.ink}">${parts[0]}`;
+        if(parts.length>1)t+=`<tspan font-size="${(fsz*.68).toFixed(2)}" dy="${(-raise).toFixed(2)}">b</tspan><tspan font-size="${fsz}" dy="${raise.toFixed(2)}">${parts[1]}</tspan>`;
+        g+=t+`</text>`;chordTop=Math.min(chordTop,cy-1.5*sp)})})}
+  if(mode==="grid"&&o.bands!==false){laid.forEach((L,bi)=>{for(let b=0;b<beats;b++){const bx=L.edges[b];bands+=`<rect class="sv-band${band&&band.bar===firstBar+bi&&band.beat===b?" on":""}" data-bar="${firstBar+bi}" data-beat="${b}" x="${bx.toFixed(1)}" y="${noteTop.toFixed(1)}" width="${(L.edges[b+1]-L.edges[b]).toFixed(1)}" height="${(noteBot-noteTop).toFixed(1)}" rx="${(sp*.6).toFixed(1)}" fill="${COL.band}"/>`}})}
+  const extentTop=Math.min(noteTop,chordTop,o.label?topY-5.8*sp:Infinity), extentBotRaw=noteBot;
   let extentBot=extentBotRaw;
   if(numbersRow&&!collect){const ny=extentBotRaw+2*sp;let maxRows=1;over.forEach(oo=>{maxRows=Math.max(maxRows,oo.rows.length);oo.rows.forEach((r,k)=>{const yy=ny+k*1.45*sp;g+=text(r.label,oo.x,yy,sp*1.5,r.fill,'text-anchor="middle"');if(r.bot)g+=rect(oo.x-.6*sp,yy+.35*sp,1.2*sp,.16*sp,r.fill)})});extentBot=ny+(maxRows-1)*1.45*sp+1.2*sp}
-  return{inner:g,bands,W,topY,botY,extentTop,extentBot,preludeW,over,laid};
+  return{inner:g,bands,W,topY,botY,extentTop,extentBot,noteTop,noteBot,preludeW,over,laid};
 }
 
 /* ---------- the context of a section ---------- */
@@ -438,7 +478,7 @@ function build(input,opts){
     const x=base.left,y1=t.topY,y2=b.botY,ym=(y1+y2)/2;
     let brace=`<rect x="${x}" y="${y1.toFixed(1)}" width="${(E.thin*sp).toFixed(2)}" height="${(y2-y1).toFixed(1)}" fill="${COL.ink}"/>`;
     brace+=`<path d="M${(x-.5*sp).toFixed(1)} ${y1.toFixed(1)} Q${(x-2.3*sp).toFixed(1)} ${(y1+(y2-y1)*.28).toFixed(1)} ${(x-1.1*sp).toFixed(1)} ${ym.toFixed(1)} Q${(x-2.3*sp).toFixed(1)} ${(y1+(y2-y1)*.72).toFixed(1)} ${(x-.5*sp).toFixed(1)} ${y2.toFixed(1)}" fill="none" stroke="${COL.ink}" stroke-width="${(.26*sp).toFixed(2)}" stroke-linecap="round"/>`;
-    let bands="";const bandTop=t.extentTop,bandH=b.extentBot-t.extentTop;
+    let bands="";const bandTop=t.noteTop,bandH=b.noteBot-t.noteTop;   // the notes' own reach, not the picture's (David, 24 Sep 2026)
     if(mode==="grid"&&opts.bands!==false){for(let bi=0;bi<bars.length;bi++)for(let be=0;be<ctx.beats;be++){const ed=t.laid[bi].edges,bx=ed[be];bands+=`<rect class="sv-band${opts.band&&opts.band.bar===base.firstBar+bi&&opts.band.beat===be?" on":""}" data-bar="${base.firstBar+bi}" data-beat="${be}" x="${bx.toFixed(1)}" y="${bandTop.toFixed(1)}" width="${(ed[be+1]-ed[be]).toFixed(1)}" height="${bandH.toFixed(1)}" rx="${(sp*.6).toFixed(1)}" fill="${COL.band}"/>`}}
     let extentBot=b.extentBot,rows="";
     if(opts.numbersRow){const byX=new Map();[...t.over,...b.over].forEach(oo=>{const k=oo.x.toFixed(1);if(!byX.has(k))byX.set(k,{x:oo.x,rows:[]});byX.get(k).rows.push(...oo.rows)});const ny=b.extentBot+2*sp;let maxRows=1;for(const oo of byX.values()){maxRows=Math.max(maxRows,oo.rows.length);oo.rows.forEach((r,k)=>{const yy=ny+k*1.45*sp;rows+=`<text x="${oo.x.toFixed(2)}" y="${yy.toFixed(2)}" text-anchor="middle" font-family="${FONT}" font-weight="700" font-size="${sp*1.5}" fill="${r.fill}">${r.label}</text>`;if(r.bot)rows+=`<rect x="${(oo.x-.6*sp).toFixed(2)}" y="${(yy+.35*sp).toFixed(2)}" width="${1.2*sp}" height="${.16*sp}" fill="${r.fill}"/>`})}extentBot=ny+(maxRows-1)*1.45*sp+1.2*sp}
