@@ -6261,9 +6261,25 @@ const slotStep=(res,base)=>(base&&res%base===0)?res/base:1;
 
 
 
+ 
+const GROUPINGS={"5/8":["3-2","2-3"],"6/8":["3-3"],"7/8":["3-4","4-3","3-2-2","2-2-3","2-3-2"],
+  "9/8":["3-3-3","2-2-2-3","2-2-3-2","2-3-2-2","3-2-2-2"],"10/8":["3-3-2-2","2-2-3-3","3-2-2-3","2-3-3-2"],"12/8":["3-3-3-3"]};
 
+
+const GROUP_DEFAULTS={"6/8":[3,3],"7/8":[3,4]};
 function groupsOf(m){ const g=m.groups;
-  return (Array.isArray(g)&&g.length>1&&g.every(n=>Number.isInteger(n)&&n>0)&&g.reduce((a,b)=>a+b,0)===m.beats)?g:null; }
+  if(Array.isArray(g)&&g.length>1&&g.every(n=>Number.isInteger(n)&&n>0)&&g.reduce((a,b)=>a+b,0)===m.beats) return g;
+  if(m.den!==8||!GROUPINGS[m.beats+"/8"]) return null;
+  if(Array.isArray(g)&&!g.length) return [m.beats];
+  return GROUP_DEFAULTS[m.beats+"/8"]||[m.beats];
+}
+
+
+
+
+
+ 
+function staffGroups(m){ const g=groupsOf(m); return g&&g.length>1?g:null; }
 function cellsOf(m){  
   const g=groupsOf(m)||Array.from({length:m.beats},()=>1); let q=0,c=0;
   return g.map((n,i)=>{ const cell={i,start:q,len:n*m.sub,counts:n,c0:c}; q+=n*m.sub; c+=n; return cell; });
@@ -11986,7 +12002,7 @@ function renderStaff(){
   row.classList.toggle("hidden",!show);
   if(!show){ box.innerHTML=""; staffPlan=null; paintStaffPager(); return; }
   const m=SM(piece,viewSec), phone=place==="phone";
-  const input={bars:staffChorded(sec.bars,staffBars(sec.bars),m),pan:myPan,beats:m.beats,den:m.den,sub:m.sub,groups:m.groups,tup:tupsOf(sec)};
+  const input={bars:staffChorded(sec.bars,staffBars(sec.bars),m),pan:myPan,beats:m.beats,den:m.den,sub:m.sub,groups:staffGroups(m),tup:tupsOf(sec)};
   const opts={numbers:!!staffOpts.numbers,grand:!!staffOpts.grand,chords:!!staffOpts.chords,heads:false,band:staffBand,clefFrom:staffFields(piece),barNumbers:false,fontUrl:(/\/phone\//.test(location.pathname)||/\/player\//.test(location.pathname))?"../fonts/Leland.otf":"fonts/Leland.otf"};    
   opts.repeats=typeof scStaffRepeats==="function"?scStaffRepeats(m):null;    
   try{
@@ -13819,7 +13835,7 @@ const JAMPATS=[
    [0,"5","L"],[0,"3","R"],[0,"1","R"],[2,"g","L"],[3,"3","R"],[3,"1","R"],[4,"5","L"],[6,"3","R"],[6,"1","R"],[8,"5","L"],[9,"3","R"],[9,"1","R"]]},
  {id:"mg3",name:"5 vs 4",cats:["odd"],meter:[5,4],sub:4,bpr:1,ev:[
    [0,"5","L"],[0,"1","R"],[2,"g","R"],[3,"g","L"],[4,"3","R"],[5,"5","L"],[6,"g","R"],[7,"g","L"],[8,"1","R"],[10,"5","L"],[12,"3","R"],[14,"g","R"],[15,"7","L"],[16,"1","R"],[18,"9","L"]]},
- {id:"mg4",name:"7 flow",cats:["odd"],meter:[7,8],sub:1,unit:16,bpr:2,ev:[
+ {id:"mg4",name:"7 flow",cats:["odd"],meter:[7,8],sub:1,unit:16,bpr:2,groups:[4,3],ev:[
    [0,"5","L"],[0,"3","R"],[1,"g","L"],[2,"1","R"],[3,"g","R"],[4,"5","L"],[5,"3","R"],[6,"g","L"]]},
  {id:"mg5",name:"7/8 arpeggio",cats:["odd","arp"],meter:[7,8],sub:1,unit:16,bpr:2,groups:[3,2,2],ev:[
    [0,"1","R"],[1,"3","R"],[2,"5","L"],[3,"1","R"],[4,"g","L"],[5,"3","R"],[6,"5","L"]]},
@@ -13827,7 +13843,7 @@ const JAMPATS=[
    [0,"5","L"],[0,"3","R"],[2,"5","L"],[3,"1","R"],[4,"1","R"],[5,"5","L"],[7,"5","L"],[7,"3","R"],[8,"3","R"],[9,"5","L"],[11,"1","R"],[12,"5","L"],[12,"1","R"],[14,"5","L"]]},
  {id:"mg7",name:"Bossa 2",cats:["world"],coll:"Bossa",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"5","L"],[0,"3","R"],[0,"1","R"],[2,"5","L"],[3,"3","R"],[3,"1","R"],[4,"3","R"],[4,"1","R"],[5,"5","L"],[7,"5","L"],[7,"3","R"],[7,"1","R"],[8,"3","R"],[8,"1","R"],[9,"5","L"],[10,"g","L"],[11,"3","R"],[11,"1","R"],[12,"5","L"],[12,"3","R"],[12,"1","R"],[14,"5","L"]]},
- {id:"mg8",name:"Curcuna 10/8",cats:["odd","world"],meter:[10,8],sub:1,unit:16,bpr:1,ev:[
+ {id:"mg8",name:"Curcuna 10/8",cats:["odd","world"],meter:[10,8],sub:1,unit:16,bpr:1,groups:[3,2,2,3],ev:[
    [0,"1","R"],[2,"g","R"],[3,"5","L"],[5,"3","R"],[7,"5","L"],[9,"g","L"]]},
  {id:"mg9",name:"Malfuf",cats:["world"],meter:[4,4],sub:4,bpr:1,ev:[
    [0,"3","R"],[1,"g","L"],[2,"g","R"],[3,"5","L"],[4,"g","R"],[5,"g","L"],[6,"7","R"],[7,"g","L"],[8,"1","R"],[9,"g","L"],[10,"g","R"],[11,"3","L"],[12,"g","R"],[13,"g","L"],[14,"5","R"],[15,"g","L"]]},
@@ -13837,7 +13853,7 @@ const JAMPATS=[
    [0,"5","L"],[0,"3","R"],[0,"1","R"],[2,"5","L"],[2,"3","R"],[2,"1","R"],[4,"^","R"],[5,"g","L"],[6,"g","R"],[7,"5","L"],[8,"g","R"],[9,"3","L"],[10,"1","R"],[12,"^","R"],[14,"g","R"]]},
  {id:"mg12",name:"Another backbeat 3",cats:["back"],coll:"Another backbeat",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"5","L"],[0,"3","R"],[0,"1","R"],[2,"g","R"],[3,"1","L"],[4,"^","R"],[5,"g","L"],[6,"g","R"],[7,"5","L"],[8,"g","R"],[9,"3","L"],[10,"1","R"],[12,"^","R"],[14,"g","R"]]},
- {id:"mg13",name:"Arpeggio in 5",cats:["odd","arp"],meter:[5,8],sub:1,unit:16,bpr:2,ev:[
+ {id:"mg13",name:"Arpeggio in 5",cats:["odd","arp"],meter:[5,8],sub:1,unit:16,bpr:2,groups:[3,2],ev:[
    [0,"1","R"],[1,"3","R"],[2,"5","L"],[3,"3","R"],[4,"5","L"]]},
  {id:"mg14",name:"Backbeat arpeggio 2",cats:["back","arp"],coll:"Backbeat arpeggio",meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","R"],[1,"3","R"],[2,"5","L"],[3,"1","R"],[4,"^","L"],[5,"g","L"],[6,"1","R"],[7,"5","L"],[8,"g","L"],[9,"3","R"],[10,"g","L"],[11,"1","R"],[12,"7","L"],[13,"1","R"],[14,"3","R"],[15,"9","L"]]},
