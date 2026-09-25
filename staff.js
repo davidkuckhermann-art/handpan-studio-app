@@ -7,8 +7,9 @@
 
    Decisions (David, 22 Sep 2026, mockups-staff*.html, STAFF-VIEW.md):
    - Glyphs from Leland (MuseScore's SMuFL font, SIL OFL, fonts/Leland.otf); measures from its metadata.
-   - One treble staff per pan, at sounding pitch unless a note would need more than four ledger lines;
-     then the octave that needs the fewest (8vb or 15mb). The PIECE decides, over the notes it plays in every
+   - One treble staff per pan, in the octave - sounding, 8vb or 15mb - whose ledger lines beyond the first, added up
+     over every stroke as often as it is played, are fewest; a tie stays lower (David, 26 Sep 2026 - patches/staff-best-octave.py; the guard of
+     four that kept D Kurd at sounding pitch is gone). The PIECE decides, over the notes it plays in every
      section (opts.clefFrom; David, 23 Sep 2026 -- the pan decided until then, and a wide pan tied at sounding pitch).
    - The grand staff (treble + bass, split at middle C, sounding pitch) is an option, off by default.
    - The pan's numbers on the notes are an option, off by default; when on, one line above the staff
@@ -98,11 +99,16 @@ function clefFor(pan,fields){
   const played=Array.isArray(fields)?fields.map(f=>stepOf(nameOf(names,f))).filter(s=>s!=null):[];
   const steps=played.length?played:whole;
   if(!steps.length)return{clef:"g",shift:0};
-  const lo=Math.min(...steps),hi=Math.max(...steps);
-  const worst=sh=>Math.max(ledgerBelow(lo+sh),ledgerAbove(hi+sh));
-  if(worst(0)<=LEDGER_GUARD)return{clef:"g",shift:0};
-  let best={clef:"g",shift:0,w:worst(0)};
-  for(const [clef,sh] of [["g8vb",7],["g15mb",14]]){const w=worst(sh);if(w<best.w)best={clef,shift:sh,w}}
+  /* EVERY STROKE COUNTS, AS OFTEN AS IT IS PLAYED (David, 26 Sep 2026: "choose the best octave" of 22 Sep, and "it
+     should also be related to how much each note is used"): the octave whose ledger lines, added up over every
+     stroke the piece plays, are fewest; a tie stays at the lower shift. The guard of four is gone (it kept D Kurd at
+     sounding pitch); LEDGER_GUARD stays exported and no longer decides. With the pan's range alone, each note once. */
+  /* …and the FIRST ledger line either side is free (David, 26 Sep: "count how many ledger lines beyond the first
+     are used above and below") - middle C and the A above the staff are read at a glance */
+  const beyond=n=>Math.max(0,n-1);
+  const cost=sh=>steps.reduce((n,s)=>n+beyond(ledgerBelow(s+sh))+beyond(ledgerAbove(s+sh)),0);
+  let best={clef:"g",shift:0,w:cost(0)};
+  for(const [clef,sh] of [["g8vb",7],["g15mb",14]]){const w=cost(sh);if(w<best.w)best={clef,shift:sh,w}}
   return{clef:best.clef,shift:best.shift};
 }
 

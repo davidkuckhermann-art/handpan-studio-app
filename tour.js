@@ -1,5 +1,5 @@
 /* Handpan Studio — THE TOUR (David, 21 Sep 2026).
-   A guided walk through the practice page, on the real app: a spotlight on the real control, one card, and
+   A guided walk through the Play page, on the real app: a spotlight on the real control, one card, and
    the student DOES each thing before moving on (David: "For each thing that is explained, ask the user to
    actually operate that thing and try out the settings, the buttons, all of that"). The demonstration piece
    is Composition 1 Advanced from the Handpan Cookbook (his choice). It replaced the tutorial notes the same
@@ -47,7 +47,7 @@ const TEXT={
     body:"Hi, this is David. I'd love to show you around and show you the main functionalities of the app. It takes about a minute, and you'll be playing along the whole time.",
     foot:"You can take the tour any time: Settings, then Help.", phoneFoot:"You can take the tour any time from the menu."},
   "sheet.menu": {title:"The tour", body:"Six short chapters. Take them in order, or just the one you need."},
-  "sheet.finish": {title:"That's the tour 🙏", body:"You've seen everything the practice page can do. Now comes the best part: playing. Have great practice!"},
+  "sheet.finish": {title:"That's the tour 🙏", body:"You've seen everything the Play page can do. Now comes the best part: playing. Have great practice!"},
 
   /* 1 · The page */
   "page.piece":    {title:"Our piece for the tour", body:"I've opened Composition 1 Advanced from the Handpan Cookbook for you. We'll use it all the way through, so you can try everything right away."},
