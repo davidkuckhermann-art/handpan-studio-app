@@ -3352,6 +3352,11 @@ html.player #playerPanels{ display:inline-flex; gap:6px }
 
 :where(html.player, html.player *){ touch-action:manipulation }
 
+@media (max-width:479.98px){
+  html.player .beat .chordlab{display:none}                 
+  html.player .beat>.slot.haschord{padding-top:1px}         
+}
+
 html.player #playerPanels.iconic .vico{ display:block }
 html.player #playerPanels.iconic .w{ display:none }
 html.player #playerPanels.iconic .ctl{ justify-content:center; padding-left:8px; padding-right:8px }
@@ -9826,6 +9831,24 @@ function buildCountRow(m,cls,bres){
 
 const BEATGAP=0, LIFT=.4, FLOORG=.42;
 function fitBeatGlyphs(root){
+  
+
+  let G=1;
+  {
+    for(const q of root.querySelectorAll(".sym")){ q.style.fontSize=""; q.style.top=""; q.style.position=""; }
+    
+
+    for(const be of root.querySelectorAll(".beat")){
+      const ch=[...be.children], bcs=getComputedStyle(be);
+      const padL=parseFloat(bcs.paddingLeft)||0, padR=parseFloat(bcs.paddingRight)||0;
+      ch.forEach((sl,i)=>{
+        const f=+sl.dataset.frac; if(f>0&&f<1) return;
+        const w=sl.getBoundingClientRect().width+(i===0?padL:0)+(i===ch.length-1?padR:0); if(!(w>0)) return;
+        for(const q of sl.querySelectorAll(".sym")){ const sw=q.getBoundingClientRect().width; if(sw>w) G=Math.min(G,w/sw); }
+      });
+    }
+  }
+   
   for(const be of root.querySelectorAll(".beat")){
     
 
@@ -9841,7 +9864,7 @@ function fitBeatGlyphs(root){
         const r=q.getBoundingClientRect();
         if(r.width>w){ w=r.width; c=(r.left+r.right)/2; el=q; }
       }
-      if(w>0) ink.push({el:el,sl:sl,c:c,h:w/2,slot:sl.getBoundingClientRect().width,g:1});
+      if(w>0) ink.push({el:el,sl:sl,c:c,h:w/2,slot:sl.getBoundingClientRect().width,g:G});
     }
     if(!ink.length) continue;
     const br=be.getBoundingClientRect(), cs=getComputedStyle(be);
@@ -9856,14 +9879,14 @@ function fitBeatGlyphs(root){
 
     
 
-    for(const q of ink){ const f=+q.sl.dataset.frac; if(f>0&&f<1) q.g=Math.min(q.g,Math.sqrt(f)); }
+    for(const q of ink){ const f=+q.sl.dataset.frac; if(f>0&&f<1) q.g=Math.min(q.g,G*Math.sqrt(f)); }
       for(let pass=0;pass<2;pass++)
         for(let i=1;i<ink.length;i++){
           const A=ink[i-1], B=ink[i], d=B.c-A.c;
           if(d-(A.g*A.h+B.g*B.h)>=BEATGAP-0.01) continue;
           const give=(A.slot<=B.slot)?A:B, keep=(give===A)?B:A;
           if(give.h<=0) continue;
-          give.g=Math.max(FLOORG,Math.min(give.g,(d-BEATGAP-keep.g*keep.h)/give.h));
+          give.g=Math.max(FLOORG*G,Math.min(give.g,(d-BEATGAP-keep.g*keep.h)/give.h));
         }
       { const wide=Math.max.apply(null,ink.map(q=>q.slot));
         let i=0;
@@ -9885,7 +9908,7 @@ function fitBeatGlyphs(root){
         const fs=base*q.g;
         el.style.fontSize=fs.toFixed(2)+"px";
         el.style.position="relative";
-        el.style.top=(-(LIFT*(base-fs))).toFixed(2)+"px";
+        el.style.top=(-(LIFT*(base*G-fs))).toFixed(2)+"px";    
         if(el.classList.contains("bt")) el.style.setProperty("--btdy",badgeInkDy(el)+"em");
       }
     }
