@@ -799,10 +799,17 @@ body:not(.phone) #grooveHost .ctl{white-space:nowrap}
 body:not(.phone) #scoreheadL{flex-wrap:nowrap}
 #scorehead.packed{grid-template-columns:auto auto 1fr}
 #scorehead.packed #sctools{margin-right:var(--vw,0px)}
+/* the lesson player: play leaves the centre for the right, against the pan selector (patches/player-head-play-right.py) */
+#scorehead.packed.playright{grid-template-columns:auto 1fr auto}
+#scorehead.packed.playright #sctools{justify-self:end}
+/* …and the pair keeps the 6px it had beside play: at the cell's own 10px the row was 2px over at 375 (inline gap, hence important) */
+#scoreheadL.pairleft{gap:6px !important}
 body:not(.phone) #scorehead.wrapped{display:flex; flex-wrap:wrap; gap:8px 10px}
 body:not(.phone) #scorehead.wrapped #scoreheadR{margin-left:auto}
 .vico{display:none; width:17px; height:17px}
 #viewPills.iconic .vico{display:block}
+#viewPills.single>button[aria-pressed="true"]{display:none}   /* one button for two views: the one left is where a tap goes (patches/viewpills-single.py) */
+#viewPills.single{padding-left:0; padding-right:0}   /* …and no rim round one button: at 375 the 3px each side was the row's 2px too many */
 #viewPills.iconic .w{display:none}
 #viewPills.iconic button{display:inline-grid; place-items:center; padding-left:8px; padding-right:8px}   /* an icon needs less air than a word */
 #myPanBtn.wordless .w{display:none}
@@ -9332,7 +9339,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
 <div id="toast" role="status"></div>
 <script src="bank.js?v=2"></script>
 <script src="sync-map.js?v=2"></script>
-<script src="staff.js?v=20"></script>   <!-- THE STAFF VIEW (22 Sep 2026): classical notation beneath the table, drawn from the score by window.StaffView — STAFF-VIEW.md; bump ?v= when it changes; the phone and player builds rewrite the path -->
+<script src="staff.js?v=21"></script>   <!-- THE STAFF VIEW (22 Sep 2026): classical notation beneath the table, drawn from the score by window.StaffView — STAFF-VIEW.md; bump ?v= when it changes; the phone and player builds rewrite the path -->
 <script src="clicks.js?v=1"></script>   <!-- THE CLICK EAR (20 Sep 2026): snaps and claps for table practice — four even clicks are a count-in with its tempo, two quick ones a stop. Judged by bench/clicks/run.js; bump ?v= when it changes -->   <!-- THE TEMPO-MAP ENGINE (SUITE.md phase 1, 14 Sep 2026): moved out of this file; the Lab loads the same one. Bump ?v= when it changes — a ?v= on the page does not bust a script. -->
 <script>
 "use strict";
@@ -38982,12 +38989,17 @@ function fitScoreHead(){
   const L=$("scoreheadL"), Cc=$("sctools"), R=$("scoreheadR"), V=$("jamVoices"), g=$("headMode"),
         vp=$("viewPills"), fb=$("followBtn"), mp=$("myPanBtn");
   const jam=typeof jamOn!=="undefined"&&jamOn;
-  hd.classList.remove("packed","wrapped"); hd.style.removeProperty("--vw");
+  hd.classList.remove("packed","wrapped","playright"); hd.style.removeProperty("--vw");
+  /* the lesson player's pair goes home before each measure (patches/player-head-play-right.py) */
+  { const pb=$("playBtn"), fm=$("folMute"), jv=$("jamVoices"); if(L) L.classList.remove("pairleft");
+    if(fb&&fb.dataset.headLeft&&Cc&&pb&&pb.parentElement===Cc){ Cc.insertBefore(fb,pb); delete fb.dataset.headLeft; }
+    if(fm&&fm.dataset.headLeft&&Cc&&pb&&pb.parentElement===Cc){ (jv&&jv.parentElement===Cc?jv:pb).after(fm); delete fm.dataset.headLeft; } }
   if(g&&!g.classList.contains("hidden")) panModeFace(false,g);
   if(jam) jamHeadFaces(false);
   if(fb) fb.classList.remove("wordless");
   if(mp) mp.classList.remove("wordless");
   if(vp) vp.classList.remove("iconic");
+  if(vp) vp.classList.remove("single");   // patches/viewpills-single.py
   { const sl=$("secLabel"); if(sl) sl.classList.remove("shed"); }
   if(g) g.classList.remove("shed");
   if(!hd.offsetWidth) return;
@@ -39010,7 +39022,17 @@ function fitScoreHead(){
   if(fits()) return;
   for(const st of steps){ st(); if(fits()) return; }
   /* play leaves the centre, and the voices get their room in the row */
+  /* THE LESSON PLAYER'S PAIR STEPS LEFT (David, 26 Sep 2026: "centered when there is enough space, otherwise it
+     should sit next to the pan selector. Both the mute and video-follow button would go to the left, next to the
+     notation table/tab button" - embed only; patches/player-head-play-right.py): Follow video and Sound join the view
+     button, and play stays centred alone. Where even that cannot hold, play leaves the centre for the RIGHT, beside
+     the pan selector (.playright), not the left as in the full app. */
+  const lesson=document.documentElement.classList.contains("player");
+  if(lesson&&L&&vp&&vp.parentElement===L){ const fm=$("folMute");
+    vp.after(...[fb,fm].filter(Boolean)); [fb,fm].forEach(b=>{ if(b) b.dataset.headLeft="1"; }); L.classList.add("pairleft");
+    if(fits()) return; }
   const v=vw(); hd.style.setProperty("--vw",v+"px"); hd.classList.add("packed");
+  if(lesson) hd.classList.add("playright");
   if(fitsPacked()) return;
   /* THE ICONS ARE THE LAST WORD TO GO (David, 21 Sep: "exchange the table tab
      flow for icons only in the last moment when it's really necessary … there
@@ -39028,6 +39050,10 @@ function fitScoreHead(){
   if(fitsPacked()) return;
   if(g&&vis(g)) g.classList.add("shed");
   if(fitsPacked()) return;
+  /* ONE BUTTON FOR TWO VIEWS (David, 26 Sep 2026: "turn the table/tab selector into a single button when space is
+     tight" - "show what you're switching to" - patches/viewpills-single.py): where the head shows exactly two views (the lesson
+     player's Table and Tab) the view you are in steps out, and the button left is the one a tap goes to */
+  if(vis(vp)&&[...vp.children].filter(vis).length===2){ vp.classList.add("single"); if(fitsPacked()) return; }
   /* …and only where even that cannot hold does the row wrap, which still
      beats buttons standing outside the card */
   hd.classList.add("wrapped");

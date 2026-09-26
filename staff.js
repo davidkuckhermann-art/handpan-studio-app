@@ -45,7 +45,11 @@ const E={staffLine:.11,stem:.10,beam:.5,beamGap:.25,ledger:.16,ledgerExt:.33,thi
   stemUpSE:[1.3,.16],stemDownNW:[0,-.168],xUpSE:[1.3,.424],xDownNW:[0,-.424],accW:.81,clefW:2.56,tsW:1.77,
   /* the widest flag's ink, from its stem (Leland: 8th up 1.16, 16th up 1.12,
      down 1.24 staff spaces) -- what spacing() reserves after an unbeamed note */
-  flagW:1.24};
+  flagW:1.24,
+  /* THE CLEFS' OWN INK (David, 26 Sep 2026: "the clef in the notation is cut off" - patches/staff-clef-in-crop.py),
+     above and below the glyph's line, in spaces: Leland measured in the page (canvas actualBoundingBox, 4 spaces to
+     the em). The 8 under the 8vb clef is what reached past the note ink's crop. */
+  clefInk:{g:[4.448,2.664],g8vb:[4.448,3.592],g15mb:[4.448,3.592],f:[1.004,2.468]}};
 const CLEFS={g:{bottom:30,glyph:G.gClef,glyphStep:32,shift:0,keyOff:0},g8vb:{bottom:30,glyph:G.gClef8vb,glyphStep:32,shift:7,keyOff:0},
   g15mb:{bottom:30,glyph:G.gClef15mb,glyphStep:32,shift:14,keyOff:0},f:{bottom:18,glyph:G.fClef,glyphStep:24,shift:0,keyOff:-14}};
 const KEYPOS={flats:{B:34,E:37,A:33,D:36,G:32,C:35,F:31},sharps:{F:37,C:34,G:38,D:35,A:32,E:36,B:33}};
@@ -417,9 +421,13 @@ function staff(bars,ctx,o){
         g+=t+`</text>`;chordTop=Math.min(chordTop,cy-1.5*sp)})})}
   if(mode==="grid"&&o.bands!==false){laid.forEach((L,bi)=>{for(let b=0;b<beats;b++){const bx=L.edges[b];bands+=`<rect class="sv-band${band&&band.bar===firstBar+bi&&band.beat===b?" on":""}" data-bar="${firstBar+bi}" data-beat="${b}" x="${bx.toFixed(1)}" y="${noteTop.toFixed(1)}" width="${(L.edges[b+1]-L.edges[b]).toFixed(1)}" height="${(noteBot-noteTop).toFixed(1)}" rx="${(sp*.6).toFixed(1)}" fill="${COL.band}"/>`}})}
   const extentTop=Math.min(noteTop,chordTop,o.label?topY-5.8*sp:Infinity), extentBotRaw=noteBot;
+  /* …AND THE PICTURE HOLDS ITS CLEF (patches/staff-clef-in-crop.py): the crop is the note ink, and the clef is not note ink.
+     Returned apart, so only the picture widens - the band, the chords and the numbers row keep measuring the notes. */
+  const clefInk=prelude&&E.clefInk[clef], clefY=yW(C.glyphStep);
+  const clefTop=clefInk?clefY-(clefInk[0]+.2)*sp:Infinity, clefBot=clefInk?clefY+(clefInk[1]+.2)*sp:-Infinity;
   let extentBot=extentBotRaw;
   if(numbersRow&&!collect){const ny=extentBotRaw+2*sp;let maxRows=1;over.forEach(oo=>{maxRows=Math.max(maxRows,oo.rows.length);oo.rows.forEach((r,k)=>{const yy=ny+k*1.45*sp;g+=text(r.label,oo.x,yy,sp*1.5,r.fill,'text-anchor="middle"');if(r.bot)g+=rect(oo.x-.6*sp,yy+.35*sp,1.2*sp,.16*sp,r.fill)})});extentBot=ny+(maxRows-1)*1.45*sp+1.2*sp}
-  return{inner:g,bands,W,topY,botY,extentTop,extentBot,noteTop,noteBot,preludeW,over,laid};
+  return{inner:g,bands,W,topY,botY,extentTop,extentBot,clefTop,clefBot,noteTop,noteBot,preludeW,over,laid};
 }
 
 /* ---------- the context of a section ---------- */
@@ -516,11 +524,11 @@ function build(input,opts){
     if(mode==="grid"&&opts.bands!==false){for(let bi=0;bi<bars.length;bi++)for(let be=0;be<ctx.beats;be++){const ed=t.laid[bi].edges,bx=ed[be];bands+=`<rect class="sv-band${opts.band&&opts.band.bar===base.firstBar+bi&&opts.band.beat===be?" on":""}" data-bar="${base.firstBar+bi}" data-beat="${be}" x="${bx.toFixed(1)}" y="${bandTop.toFixed(1)}" width="${(ed[be+1]-ed[be]).toFixed(1)}" height="${bandH.toFixed(1)}" rx="${(sp*.6).toFixed(1)}" fill="${COL.band}"/>`}}
     let extentBot=b.extentBot,rows="";
     if(opts.numbersRow){const byX=new Map();[...t.over,...b.over].forEach(oo=>{const k=oo.x.toFixed(1);if(!byX.has(k))byX.set(k,{x:oo.x,rows:[]});byX.get(k).rows.push(...oo.rows)});const ny=b.extentBot+2*sp;let maxRows=1;for(const oo of byX.values()){maxRows=Math.max(maxRows,oo.rows.length);oo.rows.forEach((r,k)=>{const yy=ny+k*1.45*sp;rows+=`<text x="${oo.x.toFixed(2)}" y="${yy.toFixed(2)}" text-anchor="middle" font-family="${FONT}" font-weight="700" font-size="${sp*1.5}" fill="${r.fill}">${r.label}</text>`;if(r.bot)rows+=`<rect x="${(oo.x-.6*sp).toFixed(2)}" y="${(yy+.35*sp).toFixed(2)}" width="${1.2*sp}" height="${.16*sp}" fill="${r.fill}"/>`})}extentBot=ny+(maxRows-1)*1.45*sp+1.2*sp}
-    parts=[{inner:bands+t.inner+b.inner+brace+rows,extentTop:t.extentTop,extentBot}];
+    parts=[{inner:bands+t.inner+b.inner+brace+rows,extentTop:Math.min(t.extentTop,t.clefTop),extentBot:Math.max(extentBot,b.clefBot)}];
   }else{
     const cf=opts.clef?{clef:opts.clef}:clefFor(input.pan,opts.clefFrom);
     const s=staff(bars,ctx,{...base,top:200,clef:cf.clef,cols});W=s.W;
-    parts=[{inner:s.bands+s.inner,extentTop:s.extentTop,extentBot:s.extentBot}];
+    parts=[{inner:s.bands+s.inner,extentTop:Math.min(s.extentTop,s.clefTop),extentBot:Math.max(s.extentBot,s.clefBot)}];
   }
   const top=Math.min(...parts.map(p=>p.extentTop)),bot=Math.max(...parts.map(p=>p.extentBot));
   const H=bot-top;
