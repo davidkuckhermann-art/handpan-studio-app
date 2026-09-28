@@ -3662,6 +3662,15 @@ body.phone #navLog,body.tablet #navLog{display:none}
 #plStrip .plsdone{border:0; border-radius:10px; background:var(--dixie); color:#fff; font:800 13.5px Figtree,sans-serif;
   padding:7px 12px; cursor:pointer; white-space:nowrap}
 body.phone #plStrip{margin:0 0 6px; padding:4px 6px 4px 10px; gap:8px}
+/* the strip's Record (27-28 Sep 2026): the jam's button, in the strip of a room opened from the plan */
+#plStrip .plsrec{display:inline-flex; align-items:center; justify-content:center; gap:7px; height:31px; padding:0 11px 0 10px;
+  border:1px solid var(--rule); border-radius:10px; background:var(--card); font:700 13px Figtree,sans-serif; color:var(--ink);
+  cursor:pointer; white-space:nowrap; font-variant-numeric:tabular-nums}
+#plStrip .plsrec[hidden]{display:none}
+#plStrip .plsrec i{width:11px; height:11px; border-radius:50%; background:var(--ink); display:block; flex:none}
+#plStrip .plsrec .jrl:empty::before{content:"Record"}
+#plStrip .plsrec.live{border-color:var(--dixie); background:var(--dixie-soft)}
+#plStrip .plsrec.live i{background:var(--dixie); animation:jrpulse 1.6s ease-out infinite}
 /* on the phone a plan row's tempo sits under its name, which keeps the whole width (27 Sep 2026) */
 body.phone #plogwrap .plrow{grid-template-columns:28px minmax(0,1fr) 44px; row-gap:4px}
 body.phone #plogwrap .plrow .plm{grid-column:3; grid-row:1}
@@ -32581,14 +32590,16 @@ function plStripEl(){
   const h=document.querySelector("header"); if(!h) return null;
   s=document.createElement("div"); s.id="plStrip"; s.hidden=true; s.setAttribute("role","region"); s.setAttribute("aria-label","Your practice plan");
   s.innerHTML='<button type="button" class="plsback" data-s="back">‹ Plan</button><span class="plswhere"></span>'
-    +'<span class="plstime"></span><button type="button" class="plsdone" data-s="done">Done ✓</button>';
-  s.addEventListener("click",e=>{ const b=e.target.closest("[data-s]"); if(!b) return; b.dataset.s==="done"?plStripDone():plStripBack(); });
+    +'<span class="plstime"></span><button type="button" class="plsrec" id="plsRec" data-s="rec" title="Record" aria-label="Record" hidden><i></i><span class="jrl"></span></button>'
+    +'<button type="button" class="plsdone" data-s="done">Done ✓</button>';
+  s.addEventListener("contextmenu",e=>{ const b=e.target.closest("#plsRec"); if(!b) return; e.preventDefault(); if(!JR) jsPop(b,"record"); });   // the setup, as on the jam's button
+  s.addEventListener("click",e=>{ const b=e.target.closest("[data-s]"); if(!b) return; const k=b.dataset.s; k==="rec"?jrClick():k==="done"?plStripDone():plStripBack(); });
   h.insertAdjacentElement("afterend",s);
   return s;
 }
 function plStripSync(){
   const s=$("plStrip");
-  if(PLS&&!(PL_ROOMIN[PLS.room]&&PL_ROOMIN[PLS.room]())) PLS=null;   // left the room another way
+  if(PLS&&!(PL_ROOMIN[PLS.room]&&PL_ROOMIN[PLS.room]())){ PLS=null; if(JR&&JR.room!=="jam") jrAbort(); }   // left the room another way
   if(!PLS){ if(s) s.hidden=true; document.body.classList.remove("plstrip"); if(PLS_T){ clearInterval(PLS_T); PLS_T=0; } return; }
   const el=plStripEl(); if(!el) return;
   el.hidden=false; document.body.classList.add("plstrip");
@@ -32602,9 +32613,12 @@ function plStripPaint(){
   const sec=Math.floor((performance.now()-PLS.t0)/1000);
   s.querySelector(".plswhere").innerHTML=it?'<b>'+plEsc(it.b.name)+'</b> · '+(i+1)+' of '+L.length:'';
   s.querySelector(".plstime").textContent=Math.floor(sec/60)+":"+String(sec%60).padStart(2,"0");
+  { const rb=$("plsRec"); if(rb){ const k=JR?JR.room:jrRoomNow(); rb.hidden=!(jrRecOk()&&(k==="scale"||k==="chord"));
+      if(!JR){ rb.classList.remove("live"); const l=rb.querySelector(".jrl"); if(l) l.textContent=""; } } }   // no take: an idle button
 }
 function plStripBack(){
   const S=PLS; if(!S) return;
+  if(JR){ toast(JR.state==="review"?"Keep or discard your take first":"Stop the recording first"); return; }
   PLS=null; plStripSync(); enterPlog();
   if(plOn){ plFocus(S.id); PL.t0=S.t0; plPaintTimer(); }
 }
@@ -32627,6 +32641,7 @@ function plStripQuizEnd(){
 }
 function plStripDone(){
   const S=PLS; if(!S) return;
+  if(JR){ toast(JR.state==="review"?"Keep or discard your take first":"Stop the recording first"); return; }
   const d=plData(), T=plToday(), ex=d.ex[S.id]; let msg=ex?ex.name:"";
   if(S.quiz){
     if(!S.recorded){ const r=plStripQuizRec(false); if(r&&r.counts.asked) plQuizRec(S.id,r); else plTick(S.id,true); }
@@ -33136,6 +33151,10 @@ function plWire(){
   $("plogwrap").addEventListener("click",plAct);
   $("plTabs").addEventListener("click",plAct);
   $("plogwrap").addEventListener("change",plChange);
+  $("plogwrap").addEventListener("click",e=>{ const row=e.target.closest(".jrrow"), a=e.target.closest("[data-ra]"); if(!row||!a) return;   // a two-track take in the list (27-28 Sep 2026)
+    const t=(PLR.list||[]).find(x=>x.id===row.dataset.id); if(!t) return;
+    if(a.dataset.ra==="play") jrLibPlay(t); else if(a.dataset.ra==="ren") jrRename(row,t);
+    else if(a.dataset.ra==="del"&&confirm(plMac()?"Move this recording to the Trash?":"Delete this recording? This cannot be undone.")) jrDelete(t).then(()=>plPaint()); });
   $("plogwrap").addEventListener("pointerdown",plDragStart);   // BPM by sliding (24 Sep)
   $("plogwrap").addEventListener("input",e=>{ const el=e.target; if(el&&el.dataset&&el.dataset.act==="rgvol"){ plRecCfgSet("gvol",+el.value); if((PL.met||PL.rec)&&window.HPSWGG) HPSWGG.setVolume(+el.value); } });
   $("plExTempo").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b) plExTempo(b.dataset.v==="1"); });
@@ -33517,7 +33536,7 @@ function plTakesHTML(exId){
   if(!PLR.list){ plTakesKick(); return '<div class="plmuted">Looking for your recordings…</div>'; }
   const L=PLR.list.filter(t=>t.ex===exId);
   if(!L.length) return '<div class="plmuted">No recordings of this exercise yet.</div>';
-  return '<span class="pllbl">Your recordings · '+L.length+'</span>'+L.map(t=>'<div class="pltake"><div><b style="font-size:13.5px">'
+  return '<span class="pllbl">Your recordings · '+L.length+'</span>'+L.map(t=>jrTwo(t)?jrTakeRow(t,false):'<div class="pltake"><div><b style="font-size:13.5px">'
     +plEsc(new Date(t.at).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}))+'</b> <span class="plmuted">'
     +plEsc(new Date(t.at).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}))+' · '+plDur(t.dur)+(t.bpm?' · '+t.bpm+' BPM':' · no click')+'</span>'+(t.mic?'<div class="plmuted">'+plMicTxt(t.mic)+(t.sound==="fuller"?' · Fuller':t.gain?' · level '+(t.gain>0?'+':'')+t.gain+' dB':'')+'</div>':'')+'</div>'
     +'<span class="plact">'+(t.b1!=null?'<button type="button" class="plic'+(PLR.tt===t.id?' on':'')+'" data-act="rectim" data-id="'+t.id+'" title="Line this recording up with its click">Timing</button>':'')+(plMac()?'<button type="button" class="plic" data-act="recshow" data-id="'+t.id+'" title="Show in Finder">Show</button>'
@@ -33624,16 +33643,17 @@ function jrClick(){
   const R=JR; jrPromote(R);
   if(!R){ jrStart(); return; }
   if(R.state==="prep"||R.state==="arm"){ jrAbort(); return; }
-  if(R.state==="rec"&&!R.ending&&playing){ jrEnding(R); return; }   // the ending; a second press ends at once (26 Sep 2026)
+  if(R.state==="rec"&&!R.ending&&playing&&JR_ROOMS[R.room].ending){ jrEnding(R); return; }   // the ending; a second press ends at once (26 Sep 2026)
   if(R.state==="count"||R.state==="rec"){ if(playing) stop(); else jrFinish(R); return; }
   toast(R.state==="review"?"Keep or discard your take first":"Finishing the take…");
 }
 async function jrStart(){
-  if(JR||!jamOn||PHONE||!listenEnabled()) return;
+  const room=jrRoomNow();
+  if(JR||!room||PHONE||!listenEnabled()) return;   // the jam, or a room opened from the plan (27-28 Sep 2026)
   if(editing){ toast("Leave the editor to record"); return; }
   if(typeof AudioWorkletNode==="undefined"){ toast("This browser cannot record: try Chrome, Safari or the Mac app"); return; }
   if(playing) stop();
-  const at=Date.now(), R=JR={state:"prep",at,title:jamTitle(),bpm:bpm,half:!!halfSpeed,shown:Math.round(effBpm()),seeds:[(jam&&jam.mseed)||1],snap:jrSnap()};
+  const at=Date.now(), R=JR={state:"prep",room,ex:PLS&&PLS.room===room?PLS.id:null,at,title:JR_ROOMS[room].title(),bpm:bpm,half:!!halfSpeed,shown:Math.round(effBpm()),seeds:[(typeof jam!=="undefined"&&jam&&jam.mseed)||1],snap:JR_ROOMS[room].snap()};
   R.defName=R.title+" · "+jrStamp(at);
   jrTlStart(R);   // the timing log, a diagnostic (26 Sep 2026)
   jrPaint();
@@ -33825,13 +33845,15 @@ async function jrKeep(){
   const fail=m=>{ if(JR===R){ R.state="review"; jrPaint(); } toast(m); };
   if(plMac()&&!plRecDir()&&!(await plRecPickDir())){ fail("Not kept yet: choose a folder for your recordings"); return; }
   if(JR!==R) return;
-  jamSaveToRepertoire();   // the jam into the Library, as Cmd-S does; its id is jamSavedId
+  if(R.room==="jam") jamSaveToRepertoire();   // the jam into the Library, as Cmd-S does; its id is jamSavedId
   const r1=x=>x==null?null:Math.round(x*10)/10, r3=x=>x==null?null:Math.round(x*1000)/1000;
   const base=plFileName(R.title,R.shown,R.at).replace(/\.mp3$/,"");
   const meta={id:plId("r"),v:1,kind:"jam",file:base+" · you.mp3",jfile:base+" · jam.mp3",name,title:R.title,piece:jamSavedId||null,at:R.at,
     dur:Math.round(R.dur*100)/100,bpm:R.bpm,half:R.half,shown:R.shown,b1:r3(R.b1),b1src:R.b1src,jb1:r3(R.jb1),kbps:JR_KBPS,jkbps:JR_JKBPS,
     mic:R.mic||null,setup:jsTakeSetup(),cal:R.cal||null,calPrev:null,lastBeat:(R.ending&&R.ending.done&&R.ending.endT!=null)?Math.round((R.jb1+(R.ending.endT-R.b1Ctx))*1000)/1000:null,gain:R.M.gain,rms:{you:r1(R.M.rms),jam:r1(R.J.rms)},bal:null,nudge:0,cap:"worklet",jam:R.snap,seeds:R.seeds};
   if(R.tl) meta.tlog=base+" · timing.json";   // the timing log, a diagnostic (26 Sep 2026)
+  if(R.room!=="jam"){ meta.kind="room"; meta.room=R.room; meta.piece=null; meta.snap=meta.jam; delete meta.jam; }   // a room's take (27-28 Sep 2026)
+  if(R.ex) meta.ex=R.ex;   // opened from the plan: filed under its exercise too
   if(plMac()){ const w=await plMacCall("write",{dir:plRecDir(),name:meta.jfile,b64:await plB64(R.J.blob)});
     if(!w.ok){ fail("The jam's track could not be saved: "+(w.res||"unknown error")); return; }
     if(R.tl){ try{ await plMacCall("write",{dir:plRecDir(),name:meta.tlog,text:JSON.stringify(jrTlOut(R))}); }catch(e){} } }
@@ -33845,7 +33867,7 @@ async function jrKeep(){
 }
 /* ---- painting: the button, the count over the notation, the card ---- */
 function jrPaint(){
-  const R=JR, b=$("jamRecBtn"), live=jrLive(R);
+  const R=JR, b=jrBtn(), live=jrLive(R);
   document.body.classList.toggle("jrrec",!!R);
   if(b){ const was=b.classList.contains("live"); b.classList.toggle("live",live); b.setAttribute("aria-pressed",String(live));
     b.title=live?"Stop recording":"Record"; b.setAttribute("aria-label",b.title);
@@ -33855,7 +33877,7 @@ function jrPaint(){
 }
 function jrLeft(R){ const now=performance.now(), L=R.ciOff||[]; let h=0; for(const o of L) if(plPerfOf(ctx,R.b1Ctx-o)<=now) h++; return h?L.length-h+1:L.length; }
 function jrLabel(){
-  const R=JR, b=$("jamRecBtn"), l=b&&b.querySelector(".jrl");
+  const R=JR, b=jrBtn(), l=b&&b.querySelector(".jrl");
   let s="";
   if(R&&(R.state==="prep"||R.state==="arm")) s=R.getReady?"Getting ready…":"Record";
   else if(R&&R.state==="count") s="Record "+jrLeft(R);
@@ -33900,7 +33922,7 @@ function jrCard(){
         +'<div class="jrk-btns"><button type="button" class="jrk-btn" data-jr="listen"'+(busy||R.loadingBufs?' disabled':'')+'>'+(R.listen?'■ Stop':R.loadingBufs?'Loading…':'▶ Listen')+'</button>'
         +'<span class="jrk-grow"></span><button type="button" class="jrk-btn del" data-jr="drop"'+(busy?' disabled':'')+'>Discard</button>'
         +'<button type="button" class="jrk-btn pri" data-jr="keep"'+(busy?' disabled':'')+'>'+(R.state==="saving"?'Saving…':'Keep')+'</button></div>'
-        +'<div class="jrk-note">Keep saves “'+jrEsc(R.title)+'” to your Library, with this take in Recordings.</div>';
+        +'<div class="jrk-note">'+jrEsc(JR_ROOMS[R.room].note(R))+'</div>';
     }
   }
   let c=$("jrCount");
@@ -33920,6 +33942,22 @@ var JT=null, JLP=null;
 const JBUF=new Map();
 const jrRecOk=()=>!PHONE&&listenEnabled();
 const jrIsJam=t=>!!t&&t.kind==="jam";
+/* ONE RECORDER, ANY ROOM THAT PLAYS (27-28 Sep 2026, patches/recorder-any-room.py). The transport's start() arms the
+   take at bar 1 and stop() ends it; a room supplies only what differs. The jam's entry returns what the code returned. */
+const JR_ROOMS={
+  jam:{here:()=>!!jamOn,title:()=>jamTitle(),snap:()=>jrSnap(),ending:true,btn:()=>$("jamRecBtn"),
+    note:R=>"Keep saves “"+R.title+"” to your Library, with this take in Recordings."},
+  scale:{here:()=>!!(PLS&&PLS.room==="scale"&&PL_ROOMIN.scale()&&cpStage),title:()=>jrExName("Scale exercise"),
+    snap:()=>({scale:JSON.parse(JSON.stringify(scfg)),bpm}),ending:false,btn:()=>$("plsRec"),
+    note:R=>"Keep files this take under “"+R.title+"” in your practice log, and in Recordings."},
+  chord:{here:()=>!!(PLS&&PLS.room==="chord"&&PL_ROOMIN.chord()&&cpStage),title:()=>jrExName("Chord practice"),
+    snap:()=>{ let seq=null; try{ seq=JSON.parse(JSON.stringify(cpSeq)); }catch(e){} return {cp:JSON.parse(JSON.stringify(cpcfg)),seq,bpm}; },
+    ending:false,btn:()=>$("plsRec"),note:R=>"Keep files this take under “"+R.title+"” in your practice log, and in Recordings."}};
+function jrExName(fb){ try{ const e=PLS&&plData().ex[PLS.id]; return e&&e.name||fb; }catch(e){ return fb; } }
+function jrRoomNow(){ for(const k in JR_ROOMS) if(JR_ROOMS[k].here()) return k; return null; }
+function jrBtn(){ const k=JR&&JR.room||jrRoomNow(), r=k&&JR_ROOMS[k]; return r?r.btn():null; }
+/* a take with two tracks - you and the music: the jam's, and a room's */
+const jrTwo=t=>!!t&&(t.kind==="jam"||t.kind==="room");
 const jrBal=t=>t.bal==null?JR_BAL:t.bal;
 function jrTakesNeed(){
   if(PLR.list||PLR.loading) return;
@@ -33930,7 +33968,8 @@ function jrTakesNeed(){
 function jrTakeName(t){ return t.label||(jrIsJam(t)?t.name:(t.name||"Exercise")+" · "+jrStamp(t.at)); }
 function jrTakeMeta(t){
   const w=[plDur(t.dur||0)];
-  if(jrIsJam(t)){ if(t.shown||t.bpm) w.push((t.shown||t.bpm)+" BPM"); const g=jrGroove({snap:t.jam||{}}); if(g) w.push(g); }
+  if(t.kind==="room"){ if(t.shown||t.bpm) w.push((t.shown||t.bpm)+" BPM"); w.push(PL_DOORS[t.room]||"Practice"); }
+  else if(jrIsJam(t)){ if(t.shown||t.bpm) w.push((t.shown||t.bpm)+" BPM"); const g=jrGroove({snap:t.jam||{}}); if(g) w.push(g); }
   else { w.push(t.bpm?t.bpm+" BPM":"no click"); if(t.bpm&&t.click==="sv") w.push("with the click"); }
   return w.join(" · ");
 }
@@ -33947,7 +33986,7 @@ async function jrBufs(t){
     if(!plMac()){ const b=w==="jam"?t.jblob:t.blob; if(!b) throw new Error("the recording is missing"); return ctx.decodeAudioData(await b.arrayBuffer()); }
     const r=await fetch("/media?p="+encodeURIComponent(plRecDir()+"/"+(w==="jam"?t.jfile:t.file)),{cache:"no-store"});
     if(!r.ok) throw new Error("the file is missing from the recordings folder"); return ctx.decodeAudioData(await r.arrayBuffer()); };
-  const out=jrIsJam(t)?await Promise.all([get("you"),get("jam")]):[await get("you")];
+  const out=jrTwo(t)?await Promise.all([get("you"),get("jam")]):[await get("you")];
   JBUF.set(t.id,out); while(JBUF.size>3) JBUF.delete(JBUF.keys().next().value);
   return out;
 }
@@ -33957,7 +33996,7 @@ function jrStartMix(t,bufs,pos){
   const now=ctx.currentTime+0.05, L=[];
   const src=(buf,gain,off)=>{ const s=ctx.createBufferSource(), g=ctx.createGain(); s.buffer=buf; g.gain.value=gain; s.connect(g); g.connect(master);
     if(off>=0){ if(off<buf.duration) s.start(now,off); } else s.start(now-off,0); L.push({s,g}); };
-  if(jrIsJam(t)){ const m=jrMix(t.rms&&t.rms.you,t.rms&&t.rms.jam,jrBal(t));
+  if(jrTwo(t)){ const m=jrMix(t.rms&&t.rms.you,t.rms&&t.rms.jam,jrBal(t));
     src(bufs[1],m.jam,pos);
     src(bufs[0],m.you,pos-t.jb1+t.b1+jrCalOff(t)/1000-(t.nudge||0)/1000); L[L.length-1].you=true; }   // one offset: the count-in's (27 Sep 2026)
   else src(bufs[0],1,pos);
@@ -33975,7 +34014,7 @@ async function jrTakeUpdate(t,patch){
 async function jrDelete(t){
   if(JT&&JT.t.id===t.id) jtClose(false,false);
   if(JLP&&JLP.id===t.id) jrLibStop();
-  if(jrIsJam(t)&&plMac()&&t.jfile){ const r=await plMacCall("trash",{dir:plRecDir(),name:t.jfile});
+  if(jrTwo(t)&&plMac()&&t.jfile){ const r=await plMacCall("trash",{dir:plRecDir(),name:t.jfile});
     if(!r.ok){ toast("The file could not be moved to the Trash: "+(r.res||"")); return; } }
   if(plMac()&&t.tlog){ try{ await plMacCall("trash",{dir:plRecDir(),name:t.tlog}); }catch(e){} }
   await plDelTake(t); JBUF.delete(t.id);
@@ -34055,7 +34094,7 @@ async function jrLibPlay(t){
   me.timer=setTimeout(()=>{ if(JLP===me) jrLibStop(); },(end+0.3)*1000);
 }
 function jrLibStop(){ if(!JLP) return; clearTimeout(JLP.timer); jrStopMix(JLP.P); JLP=null; jrLibPaint(); }
-function jrLibPaint(){ document.querySelectorAll("#libList .jrlp").forEach(b=>{ const on=!!(JLP&&b.dataset.id===JLP.id);
+function jrLibPaint(){ document.querySelectorAll("#libList .jrlp,#plogwrap .jrlp").forEach(b=>{ const on=!!(JLP&&b.dataset.id===JLP.id);
   b.classList.toggle("on",on); b.innerHTML=on?"<b></b>":"<i></i>"; b.setAttribute("aria-label",on?"Stop":"Play this recording"); }); }
 /* ---- B: a take, opened with its jam ---- */
 async function jtOpen(t){
@@ -36235,6 +36274,7 @@ async function cpPlayWithCount(){
    with four clicks") */
 function cpNext(){
   if(!cpOn||!cpStage||cpWalking()) return;
+  if(JR&&JR.room==='chord'&&(JR.state==='count'||JR.state==='rec')&&playing) stop();   // Next ends a take (David, 28 Sep 2026: ok)
   const seq=cpMakeSeq(); if(!seq) return;
   cpSeq=seq; cpSeqN++;
   cpApply(seq,{announce:true,autoplay:true});
@@ -36859,7 +36899,9 @@ function scRenderBand(b){
 function scPaintRamp(){ const r=$("scRamp"); if(!r) return;
   r.innerHTML="Tempo ramp · <b>"+bpm+"</b> bpm"+(bpm>=scfg.top?" · holding":" → "+scfg.top); }
 /* the die: the next exercise at this level, drawn at once, faded in after four clicks — chord practice's Next */
-function scNew(){ if(!cpOn||!cpStage) return; scfg.pick++; scApplyPreset(); scSaveCfg(); scApply(true); }
+function scNew(){ if(!cpOn||!cpStage) return;
+  if(JR&&JR.room==='scale'&&(JR.state==='count'||JR.state==='rec')&&playing) stop();   // a new exercise ends a take (David, 28 Sep 2026: ok)
+  scfg.pick++; scApplyPreset(); scSaveCfg(); scApply(true); }
 /* AN EXERCISE IS REPLACED ONE WAY (David, 24 Sep 2026: "With a fade and a restart from the beginning, like jam mode,
    there are no four clicks here"): playing, the old fades and the new starts from its top at once; stopped, it is
    loaded. The die, a pan change and every setting of the side-by-side card come through here. */
@@ -36885,7 +36927,7 @@ function scApply(autoplay,quiet){
 function scPanMove(){ if(cpOn&&cpStage) scApply(false); }
 /* the ramp: its step each time the loop comes round to the top, up to the ceiling, then it holds */
 function scRound(){
-  if(!scfg.ramp||bpm>=scfg.top) return;
+  if(!scfg.ramp||bpm>=scfg.top||(JR&&JR.room==="scale")) return;   // not during a take (David, 28 Sep 2026: "off")
   bpm=Math.min(scfg.top,bpm+scfg.step); $("bpm").value=bpm; piece.tempo=bpm; scPaintRamp();
 }
 /* SCALE EXERCISES' FAVOURITES (David, 24 Sep 2026 — the rules are in patches/scale-exercises-favourites.py): a named
