@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Synth pads</title>
+<!-- Listening page for a synth voice (David, 29 Sep 2026: "Can you prepare a synth instrument? With pad sounds? Please
+     create a preview listening page with a variety of sound options"). No samples and no library: every sound is built
+     from the browser's own Web Audio nodes - oscillators, filters, envelopes, LFOs - so it costs nothing to load and has
+     no licence. Every sound is levelled to one loudness when the page starts (rendered offline, measured, scaled), so
+     switching compares the sound, not the volume. The handpan is the app's own bank.js; the music is Composition 1
+     Advanced, A1, as on the piano's page. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#FBF9F6;--dust:#F1EDE6;--card:#FFFFFF;--ink:#1E1B16;--ink2:#5E5749;--ink3:#8D8578;--rule:#E4DCD0;--rule2:#EFE9E0;
+  --dixie:#E59315;--amber-ink:#A9660A;--play-ink:#231703;--sh:70,52,28}
+*{box-sizing:border-box;margin:0}
+body{background:var(--dust);color:var(--ink);font:15px/1.45 Inter,sans-serif;padding:32px 16px 60px}
+.wrap{max-width:780px;margin:0 auto}
+h1{font:800 26px Figtree,sans-serif}
+p.sub{color:var(--ink2);margin:6px 0 20px}
+.card{background:var(--card);border:1px solid var(--rule);border-radius:16px;padding:20px 22px;box-shadow:0 1px 2px rgba(var(--sh),.05),0 14px 34px -16px rgba(var(--sh),.2)}
+.row{display:grid;grid-template-columns:110px 1fr;gap:12px;align-items:center;margin:12px 0}
+.lab{font:700 11px Inter,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3)}
+.seg{display:flex;background:var(--rule2);border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}
+.seg button{flex:1;font:600 13px Figtree,sans-serif;color:var(--ink2);padding:7px 10px;border:none;border-radius:8px;background:none;cursor:pointer;white-space:nowrap}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(var(--sh),.18)}
+/* the primary choice: the sound, a grid of four across, full width */
+.seg.grid{display:grid;grid-template-columns:repeat(4,1fr)}
+.desc{grid-column:2;font-size:13px;color:var(--ink2);margin-top:-4px;min-height:1.45em}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.pair .row{grid-template-columns:110px 1fr}
+.sl{display:flex;align-items:center;gap:10px}
+.sl b{font:600 13px Figtree,sans-serif;min-width:42px;text-align:right;font-variant-numeric:tabular-nums}
+.play{display:flex;align-items:center;gap:16px;margin-top:18px;padding-top:16px;border-top:1px solid var(--rule2)}
+.pp{width:52px;height:52px;border-radius:50%;background:var(--dixie);border:none;display:grid;place-items:center;cursor:pointer;flex:none}
+.pp i{width:0;height:0;border-left:15px solid var(--play-ink);border-top:9px solid transparent;border-bottom:9px solid transparent;margin-left:4px}
+.pp.on i{border:none;width:14px;height:14px;background:var(--play-ink);margin:0;border-radius:2px}
+.now{font:600 14px Figtree,sans-serif;color:var(--ink2)}
+.now b{color:var(--ink)}
+input[type=range]{accent-color:var(--dixie);width:100%}
+.note{font-size:12.5px;color:var(--ink3);margin-top:16px}
+.status{font-size:13px;color:var(--amber-ink);margin-top:8px}
+@media (max-width:640px){
+  body{padding:20px 12px 40px}
+  .card{padding:16px 14px}
+  .row,.pair .row{grid-template-columns:1fr;gap:6px}
+  .desc{grid-column:1}
+  .pair{grid-template-columns:1fr;gap:0}
+  .seg.grid{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Synth pads: which sound?</h1>
+  <p class="sub">Composition 1 Advanced, A1 (F · B♭ · C · C) at 95, with your handpan. Change anything while it plays.</p>
+  <div class="card">
+    <div class="row"><span class="lab">Sound</span><div class="seg grid" id="sSound"></div></div>
+    <div class="row"><span></span><div class="desc" id="desc"></div></div>
+    <div class="row"><span class="lab">Style</span><div class="seg" id="sStyle"><button data-v="held" class="on">Held</button><button data-v="swell">Swell</button><button data-v="pulse">Pulse</button></div></div>
+    <div class="row"><span class="lab">Register</span><div class="seg" id="sReg"><button data-v="below">Below the pan</button><button data-v="around" class="on">Around it</button><button data-v="above">Above the pan</button></div></div>
+    <div class="pair">
+      <div class="row"><span class="lab">Voicing</span><div class="seg" id="sVoice"><button data-v="close" class="on">Close</button><button data-v="open">Open</button></div></div>
+      <div class="row"><span class="lab">Handpan</span><div class="seg" id="sPan"><button data-v="on" class="on">On</button><button data-v="off">Off</button></div></div>
+    </div>
+    <div class="row"><span class="lab">Brightness</span><div class="sl"><input type="range" id="bright" min="40" max="250" step="5" value="100" aria-label="Brightness"><b id="brightV">100%</b></div></div>
+    <div class="row"><span class="lab">Space</span><div class="sl"><input type="range" id="space" min="0" max="100" step="5" value="35" aria-label="Space"><b id="spaceV">35%</b></div></div>
+    <div class="row"><span class="lab">Pad volume</span><div class="sl"><input type="range" id="vol" min="0" max="150" step="5" value="100" aria-label="Pad volume"><b id="volV">100%</b></div></div>
+    <div class="play"><button class="pp" id="pp" aria-label="Play"><i></i></button><span class="now" id="now">Press play</span></div>
+    <div class="status" id="status"></div>
+  </div>
+  <p class="note">Every sound here is synthesised in the browser - no samples, nothing to download, no licence. Each is levelled
+    to the same loudness when you first press play, so switching compares the sound, not the volume.
+    <b>Held</b>: one chord a bar. <b>Swell</b>: each chord fades in over half a bar. <b>Pulse</b>: the chord gated in eighths.
+    <b>Open</b> voicing: root, fifth, then the third and the fifth an octave up.</p>
+</div>
+<script src="bank.js"></script>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+let ctx=null, out=null, room=null, hall=null, hallWet=null, padBus=null;
+const S={sound:"warm",style:"held",reg:"around",voicing:"close",pan:"on",bright:1,space:0.35,vol:1};
+/* ---- the music: Composition 1 Advanced, A1 (pan numbers on D Kurd 10), as on the piano's page ---- */
+const PANMIDI={D:50,1:57,2:58,3:60,4:62,5:64,6:65,7:67,8:69,9:72};
+const BARS=[
+  {chord:[5,9,0],name:"F",   n:{0:[6,1],3:[3],4:[6],6:[1],8:[6,1],11:[3],12:[8],14:[1]}},
+  {chord:[10,2,5],name:"B♭", n:{0:[6,2],3:[4],4:[6],6:[2],8:[8,2],11:[4],12:[9],14:[2]}},
+  {chord:[0,4,7],name:"C",   n:{0:[7,3],3:[5],4:[7],6:[3],8:[7,3],11:[5],12:[7],14:[3]}},
+  {chord:[0,4,7],name:"C",   n:{0:[7,3],3:[5],4:[7],6:[3],8:[9,3],11:[5],12:[8],14:[3]}}];
+const BPM=95, SIX=60/BPM/4, BAR=SIX*16;
+const REG={below:[48,62],around:[55,69],above:[74,88]};   // the piano's windows (PNO_WIN)
+
+/* ---- THE SOUNDS. Each is data: oscillators (type, octave, detune in cents, pan, level; FM or tuned noise where named),
+   a filter (low-pass cut-off and resonance, a slow LFO on it, or a sweep across the chord; vowel formants instead for
+   the choir), vibrato, tremolo, and an envelope (attack, decay to a sustain, release, in seconds). ---- */
+const PRE=[
+ {id:"warm",name:"Warm analog",d:"Three detuned saws and a sub-octave sine under a soft low-pass that breathes slowly - the classic pad.",
+  osc:[{t:"sawtooth",det:-8,pan:-.5},{t:"sawtooth",det:8,pan:.5},{t:"sawtooth"},{t:"sine",oct:-12,g:.6}],lp:1500,q:.9,a:.7,r:1.6,lfo:{rate:.12,filt:.3}},
+ {id:"soft",name:"Soft sine",d:"Two sines and a quiet triangle an octave up, with a gentle tremble - round and pure, almost a flute choir.",
+  osc:[{t:"sine",det:-4,pan:-.3},{t:"sine",det:4,pan:.3},{t:"triangle",oct:12,g:.25}],lp:5000,a:.9,r:1.8,trem:{rate:4.5,depth:.06}},
+ {id:"strings",name:"String ensemble",d:"Five saws spread across the stereo field with a vibrato that arrives late - a synth string section.",
+  osc:[-14,-7,0,7,14].map((c,i)=>({t:"sawtooth",det:c,pan:(i-2)/2.5,g:.8})),lp:2600,q:.5,hp:180,a:.5,r:1.2,vib:{rate:5.2,depth:9,delay:.8}},
+ {id:"choir",name:"Choir “aah”",d:"Saws through the three formants of an “ah” vowel, with vibrato - a synthetic choir.",
+  osc:[{t:"sawtooth",det:-6,pan:-.4},{t:"sawtooth",det:6,pan:.4}],formants:[[730,8,1],[1090,10,.55],[2440,12,.3]],a:.8,r:1.6,vib:{rate:5,depth:12,delay:.5}},
+ {id:"glass",name:"Glass",d:"FM bells whose brightness melts away into a sustained tone - a glassy attack, a soft tail.",
+  osc:[{t:"sine",det:-3,pan:-.35,fm:{ratio:3.5,i0:2.5,i1:.4,tau:.6}},{t:"sine",det:3,pan:.35,fm:{ratio:2,i0:1.5,i1:.3,tau:.9}}],lp:9000,a:.02,dec:1.2,sus:.55,r:2},
+ {id:"air",name:"Air",d:"Noise tuned to each note, over a quiet sine - breath, or wind through the chord.",
+  osc:[{t:"noise",mul:1,q:40,g:3,pan:-.3},{t:"noise",mul:2,q:40,g:1.5,pan:.3},{t:"sine",g:.25}],lp:7000,a:1.1,r:2},
+ {id:"hollow",name:"Hollow square",d:"Two detuned square waves, filtered - woody and hollow, a clarinet-like pad.",
+  osc:[{t:"square",det:-6,pan:-.5},{t:"square",det:6,pan:.5}],lp:1300,q:1.2,a:.4,r:1.2,lfo:{rate:.2,filt:.2}},
+ {id:"sweep",name:"Sweep",d:"A resonant filter that opens across each chord - a pad that grows as it holds.",
+  osc:[{t:"sawtooth",det:-10,pan:-.5},{t:"sawtooth",det:10,pan:.5},{t:"sawtooth",oct:-12,g:.5}],sweep:[250,5000],q:4,a:.3,r:1.2},
+ {id:"dark",name:"Dark",d:"Low, closed and slow - a warm bed that stays under the pan.",
+  osc:[{t:"sawtooth",det:-5,pan:-.4},{t:"sawtooth",det:5,pan:.4},{t:"triangle",oct:-12,g:.8}],lp:650,q:.7,a:1.2,r:2},
+ {id:"shimmer",name:"Shimmer",d:"Sines with the octave, the twelfth and two octaves above, trembling - light and airy, high over the chord.",
+  osc:[{t:"sine"},{t:"sine",oct:12,g:.35,pan:-.5,det:4},{t:"sine",oct:19,g:.18,pan:.5,det:-4},{t:"triangle",oct:24,g:.08}],lp:12000,a:1,r:2.5,trem:{rate:6,depth:.15}},
+ {id:"organ",name:"Drawbar organ",d:"Sine drawbars (16', 8', 4', 2 2/3') with a slow rotary sway - quick to speak, quick to stop.",
+  osc:[{t:"sine",oct:-12,g:.5},{t:"sine"},{t:"sine",oct:12,g:.5},{t:"sine",oct:19,g:.3}],lp:8000,a:.06,r:.25,trem:{rate:.8,depth:.2},vib:{rate:6.5,depth:5,delay:0}},
+ {id:"poly",name:"80s poly",d:"Saw and pulse waves chorused wide - the bright pad of 1980s pop.",
+  osc:[{t:"sawtooth",det:-12,pan:-.7},{t:"square",det:12,pan:.7,g:.6},{t:"sawtooth",g:.8}],lp:3200,q:1.5,a:.15,r:.9,vib:{rate:.6,depth:7,delay:0}},
+];
+const NORM={};   // each sound's level, measured (calibrate)
+
+const NOISE=new WeakMap();
+function noiseBuf(ac){ if(NOISE.has(ac)) return NOISE.get(ac);
+  const n=ac.sampleRate*2, b=ac.createBuffer(1,n,ac.sampleRate), d=b.getChannelData(0); for(let i=0;i<n;i++) d[i]=Math.random()*2-1;
+  NOISE.set(ac,b); return b; }
+
+/* ---- ONE VOICE: one note of one sound, from t for len seconds, then its release. gate(g) may shape a gain node (Pulse). ---- */
+function voice(ac,P,midi,t,len,dest,atk,vel,gate){
+  const f0=440*Math.pow(2,(midi-69)/12), end=t+len, stopAt=end+P.r*3+0.1, lfos=[];
+  const amp=ac.createGain(); amp.gain.value=0; amp.connect(dest);
+  const gt=ac.createGain(); gt.gain.value=1; gt.connect(amp); if(gate) gate(gt);
+  const trem=ac.createGain(); trem.gain.value=1; trem.connect(gt);
+  if(P.trem){ trem.gain.value=1-P.trem.depth; const l=ac.createOscillator(); l.frequency.value=P.trem.rate; const lg=ac.createGain(); lg.gain.value=P.trem.depth; l.connect(lg); lg.connect(trem.gain); lfos.push(l); }
+  let tail=trem;
+  if(P.hp){ const h=ac.createBiquadFilter(); h.type="highpass"; h.frequency.value=P.hp; h.connect(tail); tail=h; }
+  let into;
+  if(P.formants){ into=ac.createGain();
+    for(const [f,q,g] of P.formants){ const bp=ac.createBiquadFilter(); bp.type="bandpass"; bp.frequency.value=f*Math.sqrt(S.bright); bp.Q.value=q;
+      const gg=ac.createGain(); gg.gain.value=g; into.connect(bp); bp.connect(gg); gg.connect(tail); } }
+  else { const lp=ac.createBiquadFilter(); lp.type="lowpass"; lp.Q.value=P.q||.7; const cut=f=>Math.min(18000,f*S.bright);
+    if(P.sweep){ lp.frequency.setValueAtTime(cut(P.sweep[0]),t); lp.frequency.exponentialRampToValueAtTime(cut(P.sweep[1]),t+Math.max(.5,len)); }
+    else lp.frequency.value=cut(P.lp);
+    if(P.lfo){ const l=ac.createOscillator(); l.frequency.value=P.lfo.rate; const lg=ac.createGain(); lg.gain.value=cut(P.lp)*P.lfo.filt; l.connect(lg); lg.connect(lp.frequency); lfos.push(l); }
+    lp.connect(tail); into=lp; }
+  for(const o of P.osc){
+    const g=ac.createGain(); g.gain.value=o.g==null?1:o.g; const pn=ac.createStereoPanner(); pn.pan.value=o.pan||0; g.connect(pn); pn.connect(into);
+    const fr=f0*Math.pow(2,(o.oct||0)/12);
+    if(o.t==="noise"){ const s=ac.createBufferSource(); s.buffer=noiseBuf(ac); s.loop=true; const bp=ac.createBiquadFilter(); bp.type="bandpass";
+      bp.frequency.value=fr*(o.mul||1); bp.Q.value=o.q||30; s.connect(bp); bp.connect(g); s.start(t,Math.random()*1.5); s.stop(stopAt); continue; }
+    const osc=ac.createOscillator(); osc.type=o.t; osc.frequency.value=fr; osc.detune.value=(o.det||0)+(Math.random()-.5)*2;
+    if(o.fm){ const m=ac.createOscillator(); m.frequency.value=fr*o.fm.ratio; const mg=ac.createGain();
+      mg.gain.setValueAtTime(fr*o.fm.i0,t); mg.gain.setTargetAtTime(fr*o.fm.i1,t+.01,o.fm.tau); m.connect(mg); mg.connect(osc.frequency); m.start(t); m.stop(stopAt); }
+    if(P.vib){ const l=ac.createOscillator(); l.frequency.value=P.vib.rate*(.95+Math.random()*.1); const lg=ac.createGain();
+      lg.gain.setValueAtTime(0,t); lg.gain.linearRampToValueAtTime(P.vib.depth,t+(P.vib.delay||0)+.01); l.connect(lg); lg.connect(osc.detune); l.start(t); l.stop(stopAt); }
+    osc.connect(g); osc.start(t); osc.stop(stopAt);
+  }
+  for(const l of lfos){ l.start(t); l.stop(stopAt); }
+  const pk=vel*(NORM[P.id]||1), A=Math.min(atk,len*.9);
+  amp.gain.setValueAtTime(0,t); amp.gain.linearRampToValueAtTime(pk,t+A);
+  if(P.dec) amp.gain.setTargetAtTime(pk*P.sus,t+A,P.dec/3);
+  amp.gain.setTargetAtTime(0,end,P.r/4);   // the release
+}
+
+/* ---- EVERY SOUND AT ONE LOUDNESS: a C major triad rendered offline for three seconds, its level measured over the
+   held part (1.5-2.5 s), and the sound scaled to one level ---- */
+async function calibrate(){
+  const b0=S.bright; S.bright=1;
+  for(const P of PRE){ NORM[P.id]=1;
+    const sr=22050, oc=new OfflineAudioContext(2,sr*3,sr), d=oc.createGain(); d.connect(oc.destination);
+    for(const m of [60,64,67]) voice(oc,P,m,0,2.6,d,P.a,1,null);
+    const b=await oc.startRendering(); let s=0,n=0;
+    for(let c=0;c<2;c++){ const x=b.getChannelData(c); for(let i=Math.floor(sr*1.5);i<sr*2.5;i++){ s+=x[i]*x[i]; n++; } }
+    NORM[P.id]=0.09/Math.max(1e-4,Math.sqrt(s/n)); }
+  S.bright=b0;
+}
+
+/* ---- the handpan: the app's own samples ---- */
+const PANBUF=new Map();
+async function panBuf(midi){
+  if(PANBUF.has(midi)) return PANBUF.get(midi);
+  const B=window.HPS_BANK; if(!B) return null;
+  let key="o"+midi, rate=1;
+  if(!B.samples[key]){ for(let d=1;d<12;d++){ if(B.samples["o"+(midi-d)]){ key="o"+(midi-d); rate=Math.pow(2,d/12); break; } if(B.samples["o"+(midi+d)]){ key="o"+(midi+d); rate=Math.pow(2,-d/12); break; } } }
+  const r=await fetch("data:audio/mp4;base64,"+B.samples[key]); const b=await ctx.decodeAudioData(await r.arrayBuffer());
+  const o={b,rate}; PANBUF.set(midi,o); return o;
+}
+
+/* ---- the rooms: the handpan's small one (as the app), a longer hall for the pad (Space) ---- */
+function makeIR(sec,dec){ const n=Math.floor(ctx.sampleRate*sec), b=ctx.createBuffer(2,n,ctx.sampleRate);
+  for(let c=0;c<2;c++){ const d=b.getChannelData(c); for(let i=0;i<n;i++){ const t=i/n; d[i]=(Math.random()*2-1)*Math.pow(1-t,dec)*(1-Math.exp(-i/400)); } } return b; }
+function graph(){
+  ctx=new (window.AudioContext||window.webkitAudioContext)();
+  const comp=ctx.createDynamicsCompressor(); comp.threshold.value=-10; comp.ratio.value=4; comp.connect(ctx.destination);
+  out=ctx.createGain(); out.gain.value=.9; out.connect(comp);
+  const cv=ctx.createConvolver(); cv.buffer=makeIR(1.4,2.4); const wet=ctx.createGain(); wet.gain.value=.18; cv.connect(wet); wet.connect(out); room=cv;
+  const hv=ctx.createConvolver(); hv.buffer=makeIR(3.6,2.2); hallWet=ctx.createGain(); hallWet.gain.value=S.space; hv.connect(hallWet); hallWet.connect(out); hall=hv;
+}
+function newPadBus(){   // one bus per run, so Stop can fade everything that is still sounding
+  padBus=ctx.createGain(); padBus.gain.value=S.vol; padBus.connect(out); padBus.connect(hall); }
+
+/* ---- the chord in the register ---- */
+function closeV(pcs,lo,hi){ const a=[]; for(let m=lo;m<=hi+12&&a.length<3;m++) if(pcs.includes(m%12)) a.push(m); a.push(a[0]+12); return a; }
+function openV(pcs,lo){ let r=lo; while(r%12!==pcs[0]) r++; const third=(pcs[1]-pcs[0]+12)%12; return [r,r+7,r+12+third,r+19]; }
+
+function playBar(bi,t0){
+  const B=BARS[bi], P=PRE.find(p=>p.id===S.sound), [lo,hi]=REG[S.reg];
+  const notes=S.voicing==="open"?openV(B.chord,lo):closeV(B.chord,lo,hi);
+  if(S.style==="held") notes.forEach(m=>voice(ctx,P,m,t0,BAR+.05,padBus,P.a,.8,null));
+  else if(S.style==="swell") notes.forEach(m=>voice(ctx,P,m,t0,BAR*.92,padBus,Math.max(P.a,BAR*.5),.85,null));
+  else notes.forEach(m=>voice(ctx,P,m,t0,BAR,padBus,Math.min(P.a,.03),.8,g=>{
+    for(let k=0;k<8;k++){ const tk=t0+k*2*SIX; g.gain.setValueAtTime(1,tk); g.gain.setTargetAtTime(.08,tk+2*SIX*.4,2*SIX*.12); } }));
+  if(S.pan==="on") for(const [slot,nums] of Object.entries(B.n)) for(const n of nums){
+    const midi=PANMIDI[n]; panBuf(midi).then(o=>{ if(!o) return; const s=ctx.createBufferSource(); s.buffer=o.b; s.playbackRate.value=o.rate;
+      const g=ctx.createGain(); g.gain.value=.8; s.connect(g); g.connect(out); g.connect(room); s.start(Math.max(ctx.currentTime,t0+(+slot)*SIX)); }); }
+  $("now").innerHTML="Bar "+(bi+1)+" · <b>"+B.name+"</b> · "+P.name+" · "+({held:"held",swell:"swell",pulse:"pulse"})[S.style];
+}
+let playing=false, nextBar=0, nextT=0, timer=null, ready=false;
+function tick(){ while(nextT<ctx.currentTime+.3){ playBar(nextBar,nextT); nextBar=(nextBar+1)%BARS.length; nextT+=BAR; } }
+async function start(){
+  if(!ctx){ graph(); $("status").textContent="Levelling the sounds…"; await calibrate();
+    for(const b of BARS) for(const nums of Object.values(b.n)) for(const n of nums) await panBuf(PANMIDI[n]); ready=true; }
+  if(ctx.state!=="running") await ctx.resume();
+  $("status").textContent=window.HPS_BANK?"":"The handpan bank did not load (open this page from the app's folder) - the pads play alone.";
+  newPadBus(); playing=true; nextBar=0; nextT=ctx.currentTime+.15; tick(); timer=setInterval(tick,60); $("pp").classList.add("on");
+}
+function stop(){ playing=false; clearInterval(timer); if(padBus){ const g=padBus.gain; g.cancelScheduledValues(ctx.currentTime); g.setTargetAtTime(0,ctx.currentTime,.15); }
+  $("pp").classList.remove("on"); $("now").textContent="Stopped"; }
+$("pp").addEventListener("click",()=>playing?stop():start());
+
+$("sSound").innerHTML=PRE.map(p=>'<button data-v="'+p.id+'"'+(p.id===S.sound?' class="on"':'')+'>'+p.name+'</button>').join("");
+const paintDesc=()=>{ $("desc").textContent=PRE.find(p=>p.id===S.sound).d; }; paintDesc();
+for(const [id,key] of [["sSound","sound"],["sStyle","style"],["sReg","reg"],["sVoice","voicing"],["sPan","pan"]]){
+  $(id).addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; S[key]=b.dataset.v;
+    $(id).querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b)); if(key==="sound") paintDesc(); }); }
+$("bright").addEventListener("input",()=>{ S.bright=+$("bright").value/100; $("brightV").textContent=$("bright").value+"%"; });
+$("space").addEventListener("input",()=>{ S.space=+$("space").value/100; $("spaceV").textContent=$("space").value+"%"; if(hallWet) hallWet.gain.value=S.space; });
+$("vol").addEventListener("input",()=>{ S.vol=+$("vol").value/100; $("volV").textContent=$("vol").value+"%"; if(padBus&&playing) padBus.gain.value=S.vol; });
+$("status").textContent=window.HPS_BANK?"Ready - press play.":"The handpan bank did not load (open this page from the app's folder) - the pads can still play alone.";
+</script>
+</body>
+</html>
