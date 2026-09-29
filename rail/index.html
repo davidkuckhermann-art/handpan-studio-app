@@ -888,6 +888,12 @@ body.phone:not(.tablet) #prow1 #jamVoices{margin:0 2px}
    group does */
 #dsVoices{display:none}
 body.phone:not(.tablet):not(.quiz):not(.rquiz):not(.learn):not(.cpsetup) #dsVoices{display:block}   /* the editors too (23 Sep 2026) */
+/* IN A JAM ON AN UPRIGHT PHONE, UNDER THE TABLE (David, 29 Sep 2026: "placed outside the drawer, right below the
+   notation table"; patches/jam-voices-under-table.py): the group's own centred row; the drawer's heading and its row
+   step aside while the group is out */
+#jvRow{display:none}
+body.phone.jam:not(.tablet) #jvRow:not(:empty){display:flex; justify-content:center; margin:8px 0 2px}
+body.phone.jam:not(.tablet):not(.quiz):not(.rquiz):not(.learn):not(.cpsetup) #dsVoices, #dwVoices:empty{display:none}   /* outranks the heading's rule above */
 /* WHITE SOUNDS, GREY IS SILENT (David, 9 Sep: "the handpan button should be
    white by default, and the other two buttons should be grayed out. Only the
    handpan button plays, and when you click the other buttons, they will also
@@ -27717,7 +27723,7 @@ function loadPiece(p){
   if(jamOn&&p&&p.id!=="jam"){
     saveJamLS(); jamPreviewStop();
     jamOn=false; jamEditSlot=-1; jamPrev=null;
-    document.body.classList.remove("jam");
+    document.body.classList.remove("jam"); try{ placeJamVoices(); }catch(e){}   // …back to the drawer (29 Sep 2026)
     updatePracticeBtn(); if(!PHONE) $("jampanel").classList.add("hidden");
     $("grooveHost").innerHTML="";
     document.querySelectorAll(".jdeep").forEach(el=>el.remove());
@@ -31077,7 +31083,7 @@ function enterJam(){
   jamVoicingMigrate(jam);             // …and one from before Motion had its own switch
   if(jam.bpm) bpm=jam.bpm;
   navPush("jam","Play",()=>leaveJam());
-  jamOn=true; document.body.classList.add("jam");
+  jamOn=true; document.body.classList.add("jam"); try{ placeJamVoices(); }catch(e){}   // the voices under the table on the phone (29 Sep 2026)
   /* the furniture follows the room: the groove selector comes down into the
      jam's GROOVE row (23 Sep 2026) */
   try{ railFurnish(document.body.classList.contains("rail")); }catch(e){}
@@ -31130,7 +31136,7 @@ function leaveJam(){
   jamPreviewStop();
   try{ $("grooveDlg").close(); }catch(e){}
   saveJamLS();
-  jamOn=false; jamEditSlot=-1; document.body.classList.remove("jam");
+  jamOn=false; jamEditSlot=-1; document.body.classList.remove("jam"); try{ placeJamVoices(); }catch(e){}   // …back to the drawer (29 Sep 2026)
   try{ railFurnish(document.body.classList.contains("rail")); }catch(e){}   // …and back to the title line
   paintModePills();          // …and the piece's own face comes back with the piece
   /* THE FOUR GIVES THE TAB BACK ON THE WAY OUT (9 Sep). Dropping the memory
@@ -46536,6 +46542,16 @@ function placeTabletControls(){
   setDrawer(false);                          // a tablet has no drawer
   fitTabletChip(); fitTabletArrLabel();      // …after every move above
 }
+/* IN A JAM, UNDER THE TABLE (David, 29 Sep 2026: "in jam mode ... the instrument buttons ... should be placed outside the
+   drawer, right below the notation table"; patches/jam-voices-under-table.py): on an upright phone the group sits in its
+   own row right under the notation table while a jam is on, and in the drawer in every other room. Called by
+   placePhoneControls and wherever a jam starts or ends (enterJam, leaveJam, a piece loaded over a jam). A tablet standing
+   up and any landscape are placed elsewhere and left alone. */
+function jvRow(){ let r=$("jvRow"); if(!r){ r=document.createElement("div"); r.id="jvRow"; const sw=$("scorewrap"); if(sw) sw.after(r); } return r; }
+function placeJamVoices(){
+  if(!document.body.classList.contains("phone")||matchMedia("(orientation:landscape)").matches) return;
+  const jv=$("jamVoices"), home=jamOn?jvRow():$("dwVoices");
+  if(jv&&home&&jv.parentElement!==home) home.appendChild(jv); }
 function placePhoneControls(){
   if(!PHONE) return;
   /* PORTRAIT ON A TABLET IS ITS OWN PLACEMENT, and it returns before the two
@@ -46555,7 +46571,7 @@ function placePhoneControls(){
        there): the group rides the bottom bar beside the BPM selector (David,
        9 Sep — a float beside the play button over the notation was tried
        first and "doesn't work well in landscape mode") */
-    if(jv&&!land&&$("dwVoices")&&jv.parentElement!==$("dwVoices")) $("dwVoices").appendChild(jv); }
+    if(jv&&!land) placeJamVoices(); }   // in a jam under the table, elsewhere the drawer (29 Sep 2026, patches/jam-voices-under-table.py)
   if(matchMedia("(orientation:landscape)").matches){
     // desktop order: Follow video · play · sound · loop (David, 28 Aug)
     $("sctools").append($("followBtn"),$("playBtn"),$("folMute"),$("loopBtn"));
