@@ -220,12 +220,27 @@ function playBar(bi,t0){
 }
 let playing=false, nextBar=0, nextT=0, timer=null, ready=false;
 function tick(){ while(nextT<ctx.currentTime+.3){ playBar(nextBar,nextT); nextBar=(nextBar+1)%BARS.length; nextT+=BAR; } }
+/* THE PHONE'S SOUND STARTS INSIDE THE TAP (David, 29 Sep 2026: "I don't hear anything on the synth page"): iOS lets a
+   page start its sound only within the tap itself, and plain Web Audio obeys the ringer switch. So, as the app does
+   (setAudioSession): the session is declared "playback" (the ringer switch no longer silences it), and the context is
+   resumed and one silent sample played at once - before the levelling and the handpan's samples, which take seconds. */
+function unlock(){
+  try{ if(navigator.audioSession) navigator.audioSession.type="playback"; }catch(e){}
+  if(!ctx) graph();
+  try{ ctx.resume(); const b=ctx.createBuffer(1,1,ctx.sampleRate), s=ctx.createBufferSource(); s.buffer=b; s.connect(ctx.destination); s.start(0); }catch(e){}
+}
+function soundState(){   // what the page's sound is doing, shown under the play button
+  let s="Sound: "+(ctx?({running:"on",suspended:"waiting (tap play again)",interrupted:"interrupted by the phone",closed:"closed"})[ctx.state]||ctx.state:"not started");
+  try{ if(navigator.audioSession) s+=" · session: "+navigator.audioSession.type+(navigator.audioSession.state?" ("+navigator.audioSession.state+")":""); }catch(e){}
+  return s+(window.HPS_BANK?"":" · the handpan's samples did not load, the pads play alone");
+}
 async function start(){
-  if(!ctx){ graph(); $("status").textContent="Levelling the sounds…"; await calibrate();
+  unlock();                                            // first, still inside the tap
+  if(!ready){ $("status").textContent="Levelling the sounds…"; await calibrate();
     for(const b of BARS) for(const nums of Object.values(b.n)) for(const n of nums) await panBuf(PANMIDI[n]); ready=true; }
-  if(ctx.state!=="running") await ctx.resume();
-  $("status").textContent=window.HPS_BANK?"":"The handpan bank did not load (open this page from the app's folder) - the pads play alone.";
+  if(ctx.state!=="running") try{ await ctx.resume(); }catch(e){}
   newPadBus(); playing=true; nextBar=0; nextT=ctx.currentTime+.15; tick(); timer=setInterval(tick,60); $("pp").classList.add("on");
+  $("status").textContent=soundState(); setTimeout(()=>{ $("status").textContent=soundState(); },1500);
 }
 function stop(){ playing=false; clearInterval(timer); if(padBus){ const g=padBus.gain; g.cancelScheduledValues(ctx.currentTime); g.setTargetAtTime(0,ctx.currentTime,.15); }
   $("pp").classList.remove("on"); $("now").textContent="Stopped"; }
