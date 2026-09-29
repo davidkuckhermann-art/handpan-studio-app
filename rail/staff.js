@@ -28,6 +28,8 @@
      clefFor(pan, fields) -> {clef:"g"|"g8vb"|"g15mb", shift}  the octave rule, over the piece's fields (the pan's without them)
      opts: sp (staff space px, 8), pw (px per pulse; default fits the container), mode "grid"|"flow", width (flow),
            colour (true; the numbers' hand colours), heads (true; false = every notehead in ink, David 22 Sep), numbers (false), numbersRow (false), grand (false), barNumbers (true), chords (false),
+           bass (false: an F-clef staff under the pan's, drawn from the events flagged `bass` - their f is "p:<pitch>",
+           v "rest" a rest, mute an x-head, stac a staccato dot; David, 28 Sep 2026), bassOnly (false: that staff alone),
            timeSig (true), band {bar,beat}|null, fontUrl, label, finalBar, left, right,
            perSystem (0: one line; n: the table breaks into systems of n bars, stacked — the phone's way; the time
            signature shows on the first system only, clef and key on every one)
@@ -73,8 +75,10 @@ function panNames(pan){
   const nm=x=>typeof x==="string"?x:(x&&x.label)||null;
   return{ding:nm(pan.ding),fields:(pan.fields||[]).map(nm),bottom:(pan.bottom||[]).map(nm)};
 }
-function nameOf(names,f){return f===0?names.ding:isBot(f)?names.bottom[+String(f).slice(1)-1]:names.fields[f-1]}
-function labelOf(f){return f===0?"D":isBot(f)?String(+String(f).slice(1)):String(f)}
+/* A NAMED PITCH ("p:F2", the bass line - 28 Sep 2026) stands for itself and carries no pan number */
+const isPitch=f=>typeof f==="string"&&f.charCodeAt(0)===112&&f.charCodeAt(1)===58;
+function nameOf(names,f){return isPitch(f)?f.slice(2):f===0?names.ding:isBot(f)?names.bottom[+String(f).slice(1)-1]:names.fields[f-1]}
+function labelOf(f){return isPitch(f)?"":f===0?"D":isBot(f)?String(+String(f).slice(1)):String(f)}
 function keyFor(pan){
   const names=panNames(pan);const notes=[names.ding,...names.fields,...names.bottom].map(parse).filter(Boolean);
   let best=null;
@@ -174,13 +178,15 @@ function barItems(bar,bi,ctx,keep){
   const starts=[...outside,...ranges.map(r=>r.a)].sort((a,b)=>a-b);
   const first=starts.length?starts[0]:ppb;
   if(first>1e-6)pushRest(0,first*pulse32,null);
-  outside.forEach(t=>{const nxt=Math.min(ppb,...outside.filter(u=>u>t),...ranges.map(r=>r.a).filter(a=>a>t));pushNotes(t,(nxt-t)*pulse32,byT.get(t),null)});
+  /* A REST ENTRY IS A REST (the bass line's, 28 Sep 2026): it ends the note before it and sounds nothing */
+  const restOnly=ev=>ev.every(e=>e.v==="rest");
+  outside.forEach(t=>{const nxt=Math.min(ppb,...outside.filter(u=>u>t),...ranges.map(r=>r.a).filter(a=>a>t));if(restOnly(byT.get(t)))pushRest(t,(nxt-t)*pulse32,null);else pushNotes(t,(nxt-t)*pulse32,byT.get(t),null)});
   for(const r of ranges){
     const S=(r.e-r.a)*pulse32,unit=S/r.n;let v=1;while(v<unit-1e-6)v*=2;while(v/2>=unit-1e-6)v/=2;   // the written unit: the smallest plain value not shorter than the real one - below a 32nd too (a 64th is plain, 24 Sep)
     const m=S/v,plain=near(m)!=null&&Math.abs(v-unit)<1e-6;
     const info={id:r.id,n:r.n,m:near(m)!=null?near(m):Math.round(m),den:32/v,plain};
     for(let k=0;k<r.n;k++){const p=r.a+k*(r.e-r.a)/r.n;let ev=byT.get(p);if(!ev){const key=[...byT.keys()].find(t=>Math.abs(t-p)<.26);if(key!=null)ev=byT.get(key)}
-      if(ev&&ev.length)pushNotes(p,v,ev,info);else pushRest(p,v,info)}
+      if(ev&&ev.length&&!restOnly(ev))pushNotes(p,v,ev,info);else pushRest(p,v,info)}
   }
   items.sort((x,y)=>x.p-y.p||(x.rest?1:0)-(y.rest?1:0));
   return{items,ranges,empty:!byT.size};
@@ -330,7 +336,7 @@ function staff(bars,ctx,o){
     const accState=new Map();
     L.items.forEach(it=>{
       if(it.rest)return;
-      it.heads=it.notes.map(n=>n.v==="perc"?{step:mid-C.shift,perc:true,hand:n.hand,acc:"",ev:n}:{step:stepOf(nameOf(names,n.f)),acc:accidentalInBar(nameOf(names,n.f),key,accState),hand:n.hand,f:n.f,ev:n}).filter(h=>h.step!=null).sort((a,b)=>a.step-b.step);
+      it.heads=it.notes.map(n=>n.v==="perc"?{step:mid-C.shift,perc:true,hand:n.hand,acc:"",ev:n}:{step:stepOf(nameOf(names,n.f)),acc:accidentalInBar(nameOf(names,n.f),key,accState),hand:n.hand,f:n.f,ev:n,xh:!!n.mute}).filter(h=>h.step!=null).sort((a,b)=>a.step-b.step);
       if(!it.heads.length){it.rest=true;return}
       const w0=it.heads[0].step+C.shift,w1=it.heads[it.heads.length-1].step+C.shift;it.up=(mid-w0)>=(w1-mid);lowest=Math.min(lowest,w0);highest=Math.max(highest,w1)});
     const groups=beamRuns(L.items,sub,groupOf);   // one rule for beams and for spacing()
@@ -349,12 +355,14 @@ function staff(bars,ctx,o){
       for(let s=bottom-2;s>=lo+C.shift;s-=2)g+=rect(lx,yW(s)-E.ledger*sp/2,lw,E.ledger*sp,COL.line);
       for(let s=topS+2;s<=hi+C.shift;s+=2)g+=rect(lx,yW(s)-E.ledger*sp/2,lw,E.ledger*sp,COL.line);
       hs.forEach((hd,k)=>{const cy=y(hd.step);const fill=(colour&&heads!==false)?(COL[hd.hand]||COL.ink):COL.ink;let hx=it.x;if(k>0&&hd.step-hs[k-1].step===1&&!hs[k-1].shifted){hx=up?it.x+(E.headW-E.stem)*sp:it.x-(E.headW-E.stem)*sp;hd.shifted=true}hd.x=hx;
-        const gl=hd.perc?G.x:it.den<=1?G.whole:it.den<=2?G.half:G.black;g+=glyph(gl,hx,cy,fill);
+        const gl=(hd.perc||hd.xh)?G.x:it.den<=1?G.whole:it.den<=2?G.half:G.black;g+=glyph(gl,hx,cy,fill);
         if(hd.acc)g+=glyph(hd.acc,hx-(E.accW+.25)*sp,cy);
         if(it.dot){const dy=((hd.step+C.shift)%2===0)?cy-sp/2:cy;g+=glyph(G.dot,hx+(E.headW+.35)*sp,dy)}
         if(hd.ev&&hd.ev.flam&&!it.tie){const gx=hx-1.7*sp,gy=cy+(up?-sp/2:sp/2);g+=glyph(G.black,gx,gy,fill,fs*.62);g+=rect(gx+E.headW*sp*.62-E.stem*sp/2,gy-2.2*sp,E.stem*sp,2.1*sp);g+=`<path d="M${(gx+.2*sp).toFixed(1)} ${(gy-1.2*sp).toFixed(1)}L${(gx+1.4*sp).toFixed(1)} ${(gy-2*sp).toFixed(1)}" stroke="${COL.ink}" stroke-width="${(.12*sp).toFixed(2)}"/>`}});
       /* AN ACCENT (David, 24 Sep 2026, scale exercises): once per chord, beside the head furthest from the stem; the
          picture's bounds take it in */
+      /* STACCATO (the bass line, 28 Sep 2026): a dot beyond the head furthest from the stem */
+      if(!it.tie&&hs.some(h=>h.ev&&h.ev.stac)){const far=up?hs[0]:hs[hs.length-1],sy=y(far.step)+(up?1.3:-1.3)*sp;g+=glyph(G.dot,it.x+(E.headW/2-.2)*sp,sy);if(up)attMax=Math.max(attMax,sy+.5*sp);else attMin=Math.min(attMin,sy-.5*sp)}
       if(!it.tie&&hs.some(h=>h.ev&&h.ev.accent)){const far=up?hs[0]:hs[hs.length-1],ay=y(far.step)+(up?1.8:-1.8)*sp;g+=glyph(up?G.accB:G.accA,it.x,ay);if(up)attMax=Math.max(attMax,ay+.8*sp);else attMin=Math.min(attMin,ay-.8*sp)}
       if(numbers||numbersRow||collect){const rows=[...hs].reverse().map(hd=>({label:hd.perc?"×":labelOf(hd.f),bot:isBot(hd.f),fill:colour?(COL[hd.hand]||COL.ink):COL.ink}));it.rows=rows;if(!it.tie)over.push({x:it.x+E.headW*sp/2,rows})}
       if(it.den>1){const aTop=hs[hs.length-1],aBot=hs[0];const anchorFar=up?y(aBot.step)-(aBot.perc?E.xUpSE[1]:E.stemUpSE[1])*sp:y(aTop.step)-(aTop.perc?E.xDownNW[1]:E.stemDownNW[1])*sp;const tip=it.tipY!=null?it.tipY:(up?Math.min(y(hi)-(it.dot&&it.den>=8?4.25:3.5)*sp,midY):Math.max(y(lo)+3.5*sp,midY));   /* a flag's tail hangs 3.27 spaces below its tip, onto the dot of a dotted note on a 3.5 stem; the stem grows, the dot stays by its head (23 Sep 2026) */it.tipY=tip;const y1=Math.min(tip,anchorFar),y2=Math.max(tip,anchorFar);g+=rect(stemX-E.stem*sp/2,y1,E.stem*sp,y2-y1);
@@ -461,8 +469,13 @@ function makeCtx(input,opts){
    A SLAP IS WRITTEN ONCE, ON THE TREBLE (David, 23 Sep 2026: "the slap ...
    should always be displayed in the violin clef"). It has no pitch, so the
    split decides: the treble takes it, the bass declines it. */
-function keepsFor(grand,names){
-  return grand?[e=>e.v==="perc"||stepOf(nameOf(names,e.f))>=MIDDLE_C,e=>e.v!=="perc"&&stepOf(nameOf(names,e.f))<MIDDLE_C]:[null];
+/* …AND THE BASS LINE HAS A STAFF OF ITS OWN (David, 28 Sep 2026): its events, flagged `bass`, go to that staff and no
+   other; o.bassOnly draws that staff alone. Without either, the filters are exactly what they were. */
+function keepsFor(grand,names,o){
+  if(o&&o.bassOnly)return[e=>!!e.bass];
+  const k=grand?[e=>!e.bass&&(e.v==="perc"||stepOf(nameOf(names,e.f))>=MIDDLE_C),e=>!e.bass&&e.v!=="perc"&&stepOf(nameOf(names,e.f))<MIDDLE_C]:[o&&o.bass?e=>!e.bass:null];
+  if(o&&o.bass)k.push(e=>!!e.bass);
+  return k;
 }
 /* bars a..b of a table, with its tuplet ranges renumbered to match -- a range
    is keyed by its bar's index, so a cut that keeps the old numbers misreads it */
@@ -488,7 +501,7 @@ function plan(input,opts){
   const key=opts.key||keyFor(input.pan),nKey=key.flats.length+key.sharps.length;
   const prelude=s=>(.4+E.clefW+.6+nKey*.9+(opts.timeSig!==false?.4+E.tsW:0)+.9)*s;
   const floors=new Map();   // the ink's width at a staff space of 1, per page
-  const floorOf=(a,b)=>{const k=a+":"+b;if(!floors.has(k)){const part=slice(input,a,b);const ctx=makeCtx(part,{key});floors.set(k,spacing(part.bars,ctx,keepsFor(!!opts.grand,ctx.names),1,1).floor)}return floors.get(k)};
+  const floorOf=(a,b)=>{const k=a+":"+b;if(!floors.has(k)){const part=slice(input,a,b);const ctx=makeCtx(part,{key});floors.set(k,spacing(part.bars,ctx,keepsFor(!!opts.grand,ctx.names,opts),1,1).floor)}return floors.get(k)};
   const fits=(per,s)=>{for(let a=0;a<n;a+=per)if(floorOf(a,Math.min(n,a+per))*s>width-prelude(s)-side+1e-6)return false;return true};
   const most=Math.max(1,Math.ceil(n/least));                  // the most pages: never fewer than `least` bars to one
   for(let pages=1;pages<=most;pages++){const per=Math.ceil(n/pages);if(fits(per,sp))return{per,sp,pages:Math.ceil(n/per)}}
@@ -510,9 +523,13 @@ function build(input,opts){
   const bars=input.bars||[];
   let parts=[],W;
   /* the staves' filters, said once (keepsFor): spacing() and plan() read the same bars the staves draw */
-  const keeps=keepsFor(opts.grand,names);
+  const keeps=keepsFor(opts.grand,names,opts);
+  const bassStaff=prev=>staff(bars,ctx,{...base,top:prev+3.5*sp,clef:"f",keep:keeps[keeps.length-1],cols,barNumbers:false,numbers:false,numbersRow:false,collect:false,chords:false});
   const cols=mode==="grid"?spacing(bars,ctx,keeps,bars.length*ctx.ppb*base.pw,sp):null;
-  if(opts.grand){
+  if(opts.bassOnly){
+    const s=staff(bars,ctx,{...base,top:200,clef:"f",keep:keeps[0],cols,numbers:false,numbersRow:false,collect:false});W=s.W;
+    parts=[{inner:s.bands+s.inner,extentTop:Math.min(s.extentTop,s.clefTop),extentBot:Math.max(s.extentBot,s.clefBot)}];
+  }else if(opts.grand){
     const gap=3.5*sp;
     const t=staff(bars,ctx,{...base,top:200,clef:"g",keep:keeps[0],cols,numbersRow:false,collect:!!opts.numbersRow});
     const b=staff(bars,ctx,{...base,top:t.extentBot+gap,clef:"f",keep:keeps[1],cols,barNumbers:false,numbersRow:false,collect:!!opts.numbersRow});
@@ -525,10 +542,12 @@ function build(input,opts){
     let extentBot=b.extentBot,rows="";
     if(opts.numbersRow){const byX=new Map();[...t.over,...b.over].forEach(oo=>{const k=oo.x.toFixed(1);if(!byX.has(k))byX.set(k,{x:oo.x,rows:[]});byX.get(k).rows.push(...oo.rows)});const ny=b.extentBot+2*sp;let maxRows=1;for(const oo of byX.values()){maxRows=Math.max(maxRows,oo.rows.length);oo.rows.forEach((r,k)=>{const yy=ny+k*1.45*sp;rows+=`<text x="${oo.x.toFixed(2)}" y="${yy.toFixed(2)}" text-anchor="middle" font-family="${FONT}" font-weight="700" font-size="${sp*1.5}" fill="${r.fill}">${r.label}</text>`;if(r.bot)rows+=`<rect x="${(oo.x-.6*sp).toFixed(2)}" y="${(yy+.35*sp).toFixed(2)}" width="${1.2*sp}" height="${.16*sp}" fill="${r.fill}"/>`})}extentBot=ny+(maxRows-1)*1.45*sp+1.2*sp}
     parts=[{inner:bands+t.inner+b.inner+brace+rows,extentTop:Math.min(t.extentTop,t.clefTop),extentBot:Math.max(extentBot,b.clefBot)}];
+    if(opts.bass){const bs=bassStaff(Math.max(extentBot,b.clefBot));parts.push({inner:bs.bands+bs.inner,extentTop:bs.extentTop,extentBot:Math.max(bs.extentBot,bs.clefBot)})}
   }else{
     const cf=opts.clef?{clef:opts.clef}:clefFor(input.pan,opts.clefFrom);
-    const s=staff(bars,ctx,{...base,top:200,clef:cf.clef,cols});W=s.W;
+    const s=staff(bars,ctx,{...base,top:200,clef:cf.clef,keep:keeps[0],cols});W=s.W;
     parts=[{inner:s.bands+s.inner,extentTop:Math.min(s.extentTop,s.clefTop),extentBot:Math.max(s.extentBot,s.clefBot)}];
+    if(opts.bass){const bs=bassStaff(Math.max(s.extentBot,s.clefBot));parts.push({inner:bs.bands+bs.inner,extentTop:bs.extentTop,extentBot:Math.max(bs.extentBot,bs.clefBot)})}
   }
   const top=Math.min(...parts.map(p=>p.extentTop)),bot=Math.max(...parts.map(p=>p.extentBot));
   const H=bot-top;
