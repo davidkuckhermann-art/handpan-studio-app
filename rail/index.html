@@ -892,8 +892,17 @@ body.phone:not(.tablet):not(.quiz):not(.rquiz):not(.learn):not(.cpsetup) #dsVoic
    notation table"; patches/jam-voices-under-table.py): the group's own centred row; the drawer's heading and its row
    step aside while the group is out */
 #jvRow{display:none}
-body.phone.jam:not(.tablet) #jvRow:not(:empty){display:flex; justify-content:center; margin:8px 0 2px}
-body.phone.jam:not(.tablet):not(.quiz):not(.rquiz):not(.learn):not(.cpsetup) #dsVoices, #dwVoices:empty{display:none}   /* outranks the heading's rule above */
+/* #jvRow shows by the jam and the orientation - placeJamVoices' own condition - never by :empty, which WebKit does not
+   re-check when a script moves the group in (David, 29 Sep 2026: the row vanished after Play -> Jam until he rotated the
+   phone; patches/jam-row-safari.py) */
+@media (orientation:portrait){
+  body.phone.jam:not(.tablet) #jvRow{display:flex; justify-content:center; margin:4px 0 10px}   /* the same space above and below: 10 px to the table, 10 px to what follows (29 Sep 2026, patches/jam-row-cards.py) */
+  body.phone.jam:not(.tablet) #jvRow #jamVoices{gap:8px; padding:4px}
+  body.phone.jam:not(.tablet) #jvRow #jamVoices .ib{width:40px; height:40px; border-radius:11px}
+  body.phone.jam:not(.tablet) #jvRow #jamVoices .ib svg{width:22px; height:22px}
+  body.phone.jam:not(.tablet):not(.quiz):not(.rquiz):not(.learn):not(.cpsetup) #dsVoices,   /* outranks the heading's rule above */
+  body.phone.jam:not(.tablet) #dwVoices{display:none}
+}
 /* WHITE SOUNDS, GREY IS SILENT (David, 9 Sep: "the handpan button should be
    white by default, and the other two buttons should be grayed out. Only the
    handpan button plays, and when you click the other buttons, they will also
@@ -1296,6 +1305,11 @@ body.editing #scorefoot #arrbox,#scorefoot.tight #arrbox{flex-wrap:wrap; justify
 /* a slider inside a popup — the bass's volume, and whatever wants one next */
 .pop .vol{display:flex; align-items:center; gap:9px; padding:3px 10px 8px}
 .pop .vol input[type=range]{width:130px; accent-color:var(--dixie)}
+/* THE INSTRUMENT MENUS ARE CARDS ON THE PHONE (David, 29 Sep 2026: "open as cards and take up more of the screen ...
+   center screen"; patches/jam-row-cards.py): openPop adds .card for a menu opened from #jamVoices and centres it */
+body.phone:not(.tablet) .pop.card{position:fixed; left:12px; right:12px; min-width:0; padding:8px 6px;
+  max-height:calc(100vh - 32px); max-height:calc(100dvh - 32px); overflow-y:auto; overscroll-behavior:contain}
+body.phone:not(.tablet) .pop.card .vol input[type=range]{flex:1 1 auto; width:auto; min-width:0}
 .pop .vol .val{font-size:12.5px; font-weight:600; font-variant-numeric:tabular-nums;
   color:var(--ink2); min-width:40px; text-align:right}
 .pop .note{font-size:11.5px; line-height:1.35; color:var(--ink3);
@@ -11807,7 +11821,7 @@ const GTR_OPEN=[40,45,50,55,59,64];            // string 6 (low E) … string 1 
 function gtrURL(n){ const b=document.querySelector('script[src*="bank.js"]'); const src=b?b.getAttribute("src"):"bank.js";
   return src.replace(/bank\.js(\?.*)?$/,"guitar/mf/"+n); }   // a file of MF's set (28 Sep 2026)
 const GTR_STYLES=[["strum","Strummed"],["block","Block"],["change","Chord change"],["arp","Arpeggio"],["arp1","Single arpeggio"],
-  ["offarp","Off-beat arpeggio"],["arpfl","Arpeggio first & last"],["pick","Picking"]];   // first & last (29 Sep 2026)   // three more (David, 28 Sep 2026, patches/guitar-styles-b.py)
+  ["offarp","Off-beat arpeggio"],["arpfl","Arpeggio first & last"],["pick","Picking"],["pan","Handpan"]];   // Handpan: doubles the pan (29 Sep 2026)   // first & last (29 Sep 2026)   // three more (David, 28 Sep 2026, patches/guitar-styles-b.py)
 /* THE PICKED STYLES ASK FOR A FULL VOICING: five or six strings, not held under the pan ("Arpeggios and picking patterns
    should use 5-6 notes, with guitar voicings") */
 const GTR_FULL=new Set(["arp","arp1","offarp","arpfl","pick"]);
@@ -11982,7 +11996,37 @@ function gtrNote(s,fret,t,vel){
 }
 /* where the next subdivision of the bar starts (the bar's end after the last), in pulses */
 function gtrNextCell(m,rb){ const n=cellsOf(m).map(c=>c.start).filter(x=>x>rb); return n.length?Math.min(...n):m.bp; }
+/* GUITAR AND PIANO FOLLOW THE HANDPAN (David, 29 Sep 2026; patches/follow-the-handpan.py): the style "Handpan" doubles
+   the pan's pitched strokes (panTones), the pattern moved by an octave step for the register; each note rings until the next
+   doubled note, a staccato one short. The guitar takes each note on the string nearest where its hand last was. */
+function gtrFollow(p2,at){
+  if(!gtrReady()) return;
+  if(GTR.ctx!==ctx||at<GTR.last-0.05||at-GTR.last>2.5){ GTR.chord=null; GTR.shape=null; GTR.ctx=ctx; GTR.fol=[]; GTR.fpos=null; }   // a fresh start
+  GTR.last=at; GTR.chord=null; GTR.shape=null;
+  const evs=panTones(p2); if(!evs.length) return;
+  const sh=GTR_FOLLOW_SHIFT[gtrReg]||0;
+  for(const s of (GTR.fol||[])) gtrChoke(s,at-0.004,0.03);   // the last doubled notes give way
+  GTR.fol=[]; const used=new Set();
+  for(const {midi,g,stac} of evs){ let m=midi+sh; while(m>GTR_REACH) m-=12; let best=null;
+    const home=GTR.fpos!=null?GTR.fpos:(gtrReg==="high"?7:3);
+    for(let s=0;s<6;s++){ if(used.has(s)) continue; const fr=m-GTR_OPEN[s]; if(fr<0||fr>15) continue;
+      const c=Math.abs(fr-home); if(!best||c<best.c) best={s,fr,c}; }
+    if(!best) continue;
+    used.add(best.s); GTR.fpos=best.fr; GTR.fol.push(best.s);
+    gtrNote(best.s,best.fr,at+Math.random()*0.004,Math.min(1,0.72*g));
+    if(stac) gtrChoke(best.s,at+0.11,0.02); }
+}
+function pnoFollow(p2,at){
+  if(!pnoReady()) return;
+  if(PNO.ctx!==ctx||at<PNO.last-0.05||at-PNO.last>2.5){ PNO.chord=null; PNO.held=[]; PNO.ctx=ctx; PNO.vc=null; }   // a fresh start
+  PNO.last=at; PNO.chord=null;
+  const evs=panTones(p2); if(!evs.length) return;
+  const sh=PNO_FOLLOW_SHIFT[pnoReg]!=null?PNO_FOLLOW_SHIFT[pnoReg]:12;
+  pnoRelease(at);                                             // the last doubled notes give way
+  for(const {midi,g,stac} of evs) pnoNote(midi+sh,at+Math.random()*0.004,Math.min(1,0.55*g),stac?0.12:undefined);
+}
 function gtrPulse(p2,rel,m,sec,at){
+  if(gtrStyle==="pan"){ gtrFollow(p2,at); return; }   // the handpan's notes instead of the chords (29 Sep 2026)
   const rb=((rel%m.bp)+m.bp)%m.bp, pos=rb%m.sub, half=(m.sub%2===0)?m.sub/2:-1;
   const onCount=pos===0, onHalf=pos===half;
   const on16=m.sub%4===0&&pos%(m.sub/4)===0;   // Funk strums sixteenths (29 Sep 2026)
@@ -12093,7 +12137,7 @@ function gtrPulse(p2,rel,m,sec,at){
 const PNO_SMP=["A1","C2","Ds2","Fs2","A2","C3","Ds3","Fs3","A3","C4","Ds4","Fs4","A4","C5","Ds5","Fs5","A5","C6","Ds6","Fs6","A6","C7"];
 const PNO_STYLES=[["held","Held"],["block","Block"],["ballad","Ballad"],["arp","Arpeggio"],["alberti","Broken chord"],["off","Off-beat"],
   ["pop8","Pop eighths"],["rolled","Rolled"],["stride","Stride"],["synco","Syncopated"],["montuno","Montuno"],["pad","Pad"],["332","3-3-2"],
-  ["arp1","Single arpeggio"],["offarp","Off-beat arpeggio"],["arpfl","Arpeggio first & last"]];   // as the guitar plays them; first & last (29 Sep 2026)   // six more, and 3-3-2 (28 Sep 2026, patches/piano-styles-b.py)
+  ["arp1","Single arpeggio"],["offarp","Off-beat arpeggio"],["arpfl","Arpeggio first & last"],["pan","Handpan"]];   // as the guitar plays them; first & last (29 Sep 2026)   // six more, and 3-3-2 (28 Sep 2026, patches/piano-styles-b.py)
 const PNO_REGS=[["below","Below the pan"],["around","Around it"],["above","Above the pan"]];
 const PNO_WIN={below:[48,62],around:[55,69],above:[74,88]};
 const PNO_PK=0.30;              // one note at full strength, volume 100 (every sample is levelled to a peak of 0.8)
@@ -12170,6 +12214,7 @@ function pnoVoicing(pcs,lo,hi,prev){
   return best;
 }
 function pnoPulse(p2,rel,m,sec,at){
+  if(pnoStyle==="pan"){ pnoFollow(p2,at); return; }   // the handpan's notes instead of the chords (29 Sep 2026)
   const rb=((rel%m.bp)+m.bp)%m.bp, pos=rb%m.sub, half=(m.sub%2===0)?m.sub/2:-1;
   const onCount=pos===0, onHalf=pos===half;
   if(!onCount&&!onHalf) return;
@@ -15130,6 +15175,30 @@ function graceLead(evs){
   return lead;
 }
 const otherHand=h=>h==="L"?"R":"L";
+/* A STROKE'S PITCH ON THIS PAN - the one reading, used by fireEvent and by guitar and piano when they follow the handpan
+   (29 Sep 2026, patches/follow-the-handpan.py): a foreign note's own pitch or place, the transposition's stand-in, the
+   pan's layout; null where the field is missing on this pan */
+function evPitch(ev){
+  let f=ev.f, midi=null;
+  { const fo=foreignOf(ev); if(fo){ if(fo.pos===null) midi=fo.midi; else f=fo.pos; }
+    else if(mode==="trans"&&MAP){ const back=standInPos(ev); if(back!=null) f=back; else { f=MAP[f]; if(f===null||f===undefined) return null; } } }
+  if(midi==null) midi=myPan.posMidi(f);
+  return midi==null?null:midi;
+}
+/* THE HANDPAN'S PITCHED STROKES ON A PULSE, for guitar and piano to double (David, 29 Sep 2026: "Guitar and piano should
+   double the Handpan notes (in their respective registers)"): open, staccato, overtone - not taks, slaps, muted or ghost
+   notes, not a flam's grace; each with its pitch and its stroke's strength */
+function panTones(p2){
+  const out=[];
+  for(const ev of (C&&C.byPulse.get(p2)||[])){
+    if(ev.v!=="field"||ev.flam||ev.bass) continue;
+    const art=ev.art||"open"; if(art==="mute"||art==="ghost") continue;
+    const midi=evPitch(ev); if(midi==null) continue;
+    out.push({midi,g:evGain(ev),stac:art==="stac"}); }
+  return out;
+}
+/* the pattern moved as one, so it keeps the pan's shape: an octave step per register */
+const PNO_FOLLOW_SHIFT={below:-12,around:0,above:12}, GTR_FOLLOW_SHIFT={normal:0,high:12}, GTR_REACH=79;   // G5, the top string's 15th fret
 function fireEvent(ev,at){
   if(ev.v==="ghost") return;   // ghosts are notated, not sounded (David, 26 Aug: silent for now)
   if(ev.v==="perc"){
@@ -15139,10 +15208,7 @@ function fireEvent(ev,at){
     if(ev.roll) fire(bankBuf("p_"+ev.s+otherHand(hand))||buf,at-0.045,evGain(ev)*0.45);   // grace before the accent
     fire(buf,at,evGain(ev)); return;
   }
-  let f=ev.f, midi=null;
-  { const fo=foreignOf(ev); if(fo){ if(fo.pos===null) midi=fo.midi; else f=fo.pos; }
-    else if(mode==="trans"&&MAP){ const back=standInPos(ev); if(back!=null) f=back; else { f=MAP[f]; if(f===null||f===undefined) return; } } }
-  if(midi==null) midi=myPan.posMidi(f);
+  const midi=evPitch(ev);   // the one reading of a stroke's pitch (29 Sep 2026, patches/follow-the-handpan.py)
   if(midi===null||midi===undefined) return;   // field missing on this pan
   const art=ev.art||"open";
   const buf=(art==="open"?bankBuf("o"+midi):art==="mute"?bankBuf("m"+midi):null)
@@ -17865,12 +17931,18 @@ function openPop(pop,anchor,align){
      setting") - so the popup steps inside it, as the dialogs do (openDlg) */
   const host=(typeof fsOn==="function"&&fsOn()&&$("scorewrap"))||document.body;
   host.appendChild(pop);
+  /* THE INSTRUMENT MENUS ARE CARDS ON THE PHONE (David, 29 Sep 2026; patches/jam-row-cards.py): opened from one of the
+     instrument buttons, centred on the screen, as wide as it allows */
+  const card=host===document.body&&document.body.classList.contains("phone")&&!document.body.classList.contains("tablet")
+    &&!!(anchor&&anchor.closest&&anchor.closest("#jamVoices"));
+  if(card) pop.classList.add("card");
   const a=anchor.getBoundingClientRect(), w=pop.offsetWidth, h=pop.offsetHeight;
   let left=align==="right"?(a.right-w):(a.left+a.width/2-w/2);
   left=Math.max(8,Math.min(left,window.innerWidth-w-8));
   let top=a.top-h-8;                              // above the button by default
   if(top<8) top=a.bottom+8;                       // …below when there is no room
-  if(host===document.body){
+  if(card) pop.style.top=Math.max(16,Math.round((window.innerHeight-h)/2))+"px";   // centred; the sides are the CSS's
+  else if(host===document.body){
     pop.style.left=Math.round(left+window.scrollX)+"px";
     pop.style.top=Math.round(top+window.scrollY)+"px";
   }else{ const hr=host.getBoundingClientRect();   // the wrap's own coordinates
