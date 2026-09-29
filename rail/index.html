@@ -1393,7 +1393,7 @@ input[type=range]{-webkit-tap-highlight-color:transparent}
    value is read here instead of from under the fingertip. Ported from World
    Groove Grid's #bigsl. Top, not bottom: the drawer these sliders live in
    comes up from the bottom, and the hand is already there. */
-#bigsl{display:none; position:fixed; left:10px; right:10px; top:14px; z-index:60;
+#bigsl{display:none; position:fixed; left:10px; right:10px; top:14px; z-index:130;   /* above the popups (29 Sep 2026) */
   background:var(--card); border:1px solid var(--rule); border-radius:14px;
   padding:13px 15px 16px; box-shadow:0 14px 46px rgba(var(--scrim),.28)}
 body.showbigsl #bigsl{display:block}
@@ -1410,6 +1410,7 @@ body.showbigsl #bigsl{display:block}
   margin-top:-17px; border-radius:50%; background:var(--dixie);
   border:3px solid var(--card); box-shadow:0 2px 10px rgba(var(--scrim),.3)}
 #bigsl .hint{margin:9px 0 0; font-size:11px; color:var(--ink3)}
+#bigsl .hint:empty{display:none}
 button{font:inherit; cursor:pointer}
 .ctlgroup{display:inline-flex; gap:6px; padding:4px 7px; border:1px solid var(--rule);
   border-radius:12px; background:var(--card)}                /* the three panel toggles live together */
@@ -11987,7 +11988,7 @@ function gtrPulse(p2,rel,m,sec,at){
   if(!name){ if(GTR.chord) gtrDampAll(at); return; }
   let fresh=false;
   if(name!==GTR.chord){
-    const sh=(gtrReg==="high"&&gtrHighShape(name,[2,3,4,5]))||gtrVoicing(name,GTR.shape,GTR_FULL.has(gtrStyle)); if(!sh) return;   // the register (29 Sep 2026)
+    const sh=(gtrReg==="high"&&gtrHighShape(name,[2,3,4,5]))||gtrVoicing(name,GTR.shape&&Array.isArray(GTR.shape.f)?GTR.shape:null,GTR_FULL.has(gtrStyle)); if(!sh) return;   // the register (29 Sep 2026); led only from an ordinary shape - a High one threw (29 Sep 2026, patches/guitar-register-switch.py)
     for(let s=0;s<6;s++) if(GTR.str[s]&&sh.f[s]!==GTR.str[s].fret) gtrChoke(s,at-0.005,0.025);   // the hand moves
     GTR.chord=name; GTR.shape=sh; GTR.seq=0; fresh=true;
   }
@@ -12055,7 +12056,7 @@ function gtrPulse(p2,rel,m,sec,at){
       L.forEach((s,k)=>gtrNote(s,F[s],t0+k*0.006,v)); L.forEach(s=>gtrChoke(s,t0+len,0.008)); };
     const e8=m.sub%2===0?m.sub/2:0, q16=m.sub%4===0?m.sub/4:0;
     if(/^funkhi/.test(pat)&&q16){   // the two high-chord funk patterns (29 Sep 2026)
-      const H=gtrHighShape(GTR.chord)||{s:S.slice(-3),f:F}, k=Math.round(rb/q16)%16, x=(pat==="funkhi1"?"xxAxxxAxxxAxxxAx":pat==="funkhi3"?"x.xx.x.xA.x.xx.x":pat==="funkhi4"?"....A..A.A..A...":"Ax.Ax.Axx.Ax.Ax.")[k];   /* funkhi3: HALFTIME (David, 29 Sep 2026: "a halftime funk chank") - one chank, on 3 */
+      const H=gtrHighShape(GTR.chord)||{s:S.slice(-3),f:F}, k=Math.round(rb/q16)%16, x=(pat==="funkhi1"?"xxAxxxAxxxAxxxAx":pat==="funkhi3"?"x.xxA.x.x.xxA.x.":pat==="funkhi4"?"....A..A.A..A...":"Ax.Ax.Axx.Ax.Ax.")[k];   /* funkhi3: HALFTIME (David, 29 Sep 2026: "a halftime funk chank"; "the strokes should fall on the backbeats") - the chank on 2 and 4 */
       const L=k%2?H.s.slice().reverse():H.s, t0=hum();
       if(x==="A"){ L.forEach((s,j)=>gtrNote(s,H.f[s],t0+j*0.007,(k===0?0.8:0.7)*lean)); L.forEach(s=>gtrChoke(s,t0+(pat==="funkhi1"?0.1:pat==="funkhi3"?0.13:0.16),0.02)); }
       else if(x==="x"){ L.forEach((s,j)=>gtrNote(s,H.f[s],t0+j*0.004,0.22)); L.forEach(s=>gtrChoke(s,t0+0.02,0.006)); } }
@@ -45518,13 +45519,27 @@ function mouseLoopNav(){
    the app will ever create. */
 const BIGSL={jamColourBar:["Chord suggestions","🍚 mild → fiery 🌶️"],
              swing:["Swing","straight → swung"]};
+/* EVERY SLIDER ON A TOUCH SCREEN (David, 29 Sep 2026; patches/big-slider-default.py): BIGSL now only NAMES the two it
+   always held; every range takes the panel, but these, which jump to where the finger lands */
+const SL_INPLACE=new Set(["jtPos","jxPos"]);
+function slName(el){   // [the name, the hint]: BIGSL's, else the aria-label, else its <label for>
+  const b=BIGSL[el.id]; if(b) return b;
+  const lf=el.id&&document.querySelector('label[for="'+el.id+'"]');
+  return [el.getAttribute("aria-label")||(lf?lf.textContent.trim():""),""]; }
+function slReadout(el){   // the value as the slider's own row writes it
+  for(let r=el.parentElement;r&&r!==document.body;r=r.parentElement){
+    if(r.querySelectorAll('input[type="range"]').length>1) break;   // the row is this slider's alone
+    const o=r.querySelector('.val,output,[id$="Val"]'); if(o&&o.textContent.trim()) return o.textContent.trim(); }
+  const v=+el.value, lo=+el.min, hi=+el.max;
+  return hi<=1&&lo>=0?Math.round(v*100)+"%":(lo===0&&hi>=100?v+"%":String(v)); }
 function iosSliders(){
   document.addEventListener("pointerdown",e=>{
     if(e.pointerType==="mouse") return;          // a mouse keeps the native drag
     const el=e.target;
     if(!el||el.tagName!=="INPUT"||el.type!=="range"||el.disabled) return;
-    const big=BIGSL[el.id];
-    if(big&&matchMedia("(pointer:coarse)").matches) bigSlider(e,el,big[0],big[1]);
+    /* EVERY SLIDER READS AT THE TOP on a touch screen (David, 29 Sep 2026: "This should be our default slider approach
+       on mobile"; patches/big-slider-default.py) - the recording's position sliders keep tap-to-jump */
+    if(matchMedia("(pointer:coarse)").matches&&!SL_INPLACE.has(el.id)){ const n=slName(el); bigSlider(e,el,n[0],n[1]); }
     else touchSlider(e,el);
   },{passive:false});
 }
@@ -45572,7 +45587,7 @@ function bigSlider(e,input,label,hint){
     const f=(+input.value-min)/(max-min);
     box.querySelector(".fill").style.width=(f*100)+"%";
     box.querySelector(".knob").style.left=(f*100)+"%";
-    box.querySelector(".val").textContent=(+input.value)+"%";
+    box.querySelector(".val").textContent=slReadout(input);   // as the row writes it (29 Sep 2026)
   };
   draw();
   // measured AFTER the panel is shown, or a display:none box reports zero
