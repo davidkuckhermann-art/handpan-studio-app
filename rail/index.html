@@ -11808,6 +11808,26 @@ const GTR_FULL=new Set(["arp","arp1","offarp","pick"]);
    the Fm7b5 at the first fret sat on the handpan) */
 const GTR_PICKS=[["travis","Travis"],["rolling","Rolling"],["pinch","Pinch"],["classical","Classical"],["bossa","Bossa"],["varied","Varied"]];
 const GTR_FLOOR=45;
+/* STRUMMED'S PATTERN (David, 29 Sep 2026; patches/strum-patterns-piano-rolls.py) - Varied turns four of them, four bars each */
+const GTR_STRUMS=[["straight","Straight"],["folk","Folk"],["pop","Pop chuck"],["reggae","Reggae"],["palm","Palm-muted"],["funk","Funk"],
+  ["funkhi1","Funk chank"],["funkhi2","Funk stabs"],["varied","Varied"]];
+/* A HIGH CHORD (David, 29 Sep 2026: "2 funk patterns with higher register chords" - and "a high register toggle for the
+   guitar, similar to piano"): the chord on upper strings (the funk patterns: G B E; the High register: D G B E) between
+   the 5th and the 12th fret - as many of its own notes as the strings hold, its third first, the root lowest where it
+   can (four strings), the tightest hand nearest the 8th fret */
+const GTR_HIGH={};
+function gtrHighShape(name,strs){
+  strs=strs||[3,4,5]; const key=name+"|"+strs.join(""); if(!name) return null; if(GTR_HIGH[key]!==undefined) return GTR_HIGH[key];
+  const pcs=chordPCs(name); let best=null;
+  const walk=(i,b,fr)=>{ if(i===strs.length){
+      const pc=fr.map((f,j)=>(GTR_OPEN[strs[j]]+f)%12), set=new Set(pc), span=Math.max(...fr)-Math.min(...fr), mid=fr.reduce((x,y)=>x+y,0)/fr.length;
+      const sc=set.size*10+(set.has(pcs[1])?4:0)+(strs.length>3&&pc[0]===pcs[0]?6:0)-span*2-Math.abs(mid-8);
+      if(!best||sc>best.sc){ const f={}; strs.forEach((s,j)=>f[s]=fr[j]); best={sc,s:strs.slice(),f}; } return; }
+    for(let f=b;f<=b+3;f++) if(pcs.includes((GTR_OPEN[strs[i]]+f)%12)) walk(i+1,b,fr.concat([f])); };
+  if(pcs) for(let b=5;b<=10;b++) walk(0,b,[]);
+  return GTR_HIGH[key]=best;
+}
+function gtrStrumNow(p2,m){ if(gtrStrum!=="varied") return gtrStrum; const v=["folk","pop","palm","funk"]; return v[Math.floor(Math.floor(p2/m.bp)/4)%4]; }
 function gtrPickNow(p2,m){ if(gtrPick!=="varied") return gtrPick; const v=["travis","rolling","pinch","classical"]; return v[Math.floor(Math.floor(p2/m.bp)/4)%4]; }
 const GTR_PK=0.30;          // one string at full strength, volume 100 - raised 6 dB from 0.15 (David, 28 Sep 2026: "the guitar is quite soft")
 /* …AND THE STYLES THAT SOUND THE WHOLE CHORD AT ONCE 3 dB UNDER THAT (David: "overall raise guitar by 6 dB, then decrease all
@@ -11958,7 +11978,8 @@ function gtrNextCell(m,rb){ const n=cellsOf(m).map(c=>c.start).filter(x=>x>rb); 
 function gtrPulse(p2,rel,m,sec,at){
   const rb=((rel%m.bp)+m.bp)%m.bp, pos=rb%m.sub, half=(m.sub%2===0)?m.sub/2:-1;
   const onCount=pos===0, onHalf=pos===half;
-  if(!onCount&&!onHalf) return;
+  const on16=m.sub%4===0&&pos%(m.sub/4)===0;   // Funk strums sixteenths (29 Sep 2026)
+  if(!onCount&&!onHalf&&!(on16&&gtrStyle==="strum"&&/^funk/.test(gtrStrumNow(p2,m)))) return;
   if(!gtrReady()) return;
   if(GTR.ctx!==ctx||at<GTR.last-0.05||at-GTR.last>2.5){ GTR.chord=null; GTR.shape=null; GTR.ctx=ctx; }   // a fresh start
   GTR.last=at;
@@ -11966,7 +11987,7 @@ function gtrPulse(p2,rel,m,sec,at){
   if(!name){ if(GTR.chord) gtrDampAll(at); return; }
   let fresh=false;
   if(name!==GTR.chord){
-    const sh=gtrVoicing(name,GTR.shape,GTR_FULL.has(gtrStyle)); if(!sh) return;
+    const sh=(gtrReg==="high"&&gtrHighShape(name,[2,3,4,5]))||gtrVoicing(name,GTR.shape,GTR_FULL.has(gtrStyle)); if(!sh) return;   // the register (29 Sep 2026)
     for(let s=0;s<6;s++) if(GTR.str[s]&&sh.f[s]!==GTR.str[s].fret) gtrChoke(s,at-0.005,0.025);   // the hand moves
     GTR.chord=name; GTR.shape=sh; GTR.seq=0; fresh=true;
   }
@@ -12017,8 +12038,30 @@ function gtrPulse(p2,rel,m,sec,at){
       if(rb===0) pluck(A,0.5);                                   // the pinch on the bar line
       else if(half<0&&cnt%2===1) pluck(path[GTR.seq++%path.length],0.46);   // a count that does not divide: the fingers on the off-counts
     } else pluck(path[GTR.seq++%path.length],0.46);
-  } else {                                                    // strummed: down on the count, up on its half
-    if(onCount) down(0.86*lean); else up(0.5);
+  } else {                                                    // strummed: down on the count, up on its half - or a pattern
+    /* THE STRUMMING PATTERNS (David, 29 Sep 2026: "more rhythmic strumming patterns ... incorporating upstrokes and mutes";
+       patches/strum-patterns-piano-rolls.py): a cycle of eighths (Funk: sixteenths) from the bar line, cut at the bar's
+       end. D down, U up; the mutes are the guitar's own notes cut short - X a chuck (every string, soft, 30 ms), P a palm
+       mute (the low strings, 120 ms), S a skank (the top strings, an upstroke, 90 ms), Funk's x (every string, very soft) */
+    const pat=gtrStrumNow(p2,m);
+    const shortly=(list,v,len,dir)=>{ const t0=hum(), L=dir<0?list.slice().reverse():list;
+      L.forEach((s,k)=>gtrNote(s,F[s],t0+k*0.006,v)); L.forEach(s=>gtrChoke(s,t0+len,0.008)); };
+    const e8=m.sub%2===0?m.sub/2:0, q16=m.sub%4===0?m.sub/4:0;
+    if(/^funkhi/.test(pat)&&q16){   // the two high-chord funk patterns (29 Sep 2026)
+      const H=gtrHighShape(GTR.chord)||{s:S.slice(-3),f:F}, k=Math.round(rb/q16)%16, x=(pat==="funkhi1"?"xxAxxxAxxxAxxxAx":"Ax.Ax.Axx.Ax.Ax.")[k];
+      const L=k%2?H.s.slice().reverse():H.s, t0=hum();
+      if(x==="A"){ L.forEach((s,j)=>gtrNote(s,H.f[s],t0+j*0.007,(k===0?0.8:0.7)*lean)); L.forEach(s=>gtrChoke(s,t0+(pat==="funkhi1"?0.1:0.16),0.02)); }
+      else if(x==="x"){ L.forEach((s,j)=>gtrNote(s,H.f[s],t0+j*0.004,0.22)); L.forEach(s=>gtrChoke(s,t0+0.02,0.006)); } }
+    else if(pat==="funk"&&q16){ const k=Math.round(rb/q16)%16;
+      if(k===0||k===6||k===11){ if(k%2===0) down(0.82*lean); else up(0.7); }
+      else shortly(S,0.26,0.022,k%2?-1:1); }
+    else if(pat==="straight"||/^funk/.test(pat)||!e8){ if(onCount) down(0.86*lean); else if(onHalf) up(0.5); }
+    else { const k=Math.round(rb/e8)%8, x=({folk:"D.DU.UDU",pop:"D.DUXUDU",reggae:"..S...S.",palm:"PPPPPPPP"})[pat][k];
+      if(x==="D") down((k===0?0.86:0.78)*lean);
+      else if(x==="U") up(0.52);
+      else if(x==="X") shortly(S,0.4,0.03,1);
+      else if(x==="P") shortly(S.slice(0,Math.min(4,S.length)),(k%4===0?0.72:0.56)*lean,0.12,1);
+      else if(x==="S") shortly(S.slice(-3),0.55,0.09,-1); }
   }
 }
 
@@ -12035,7 +12078,8 @@ function gtrPulse(p2,rel,m,sec,at){
    publishes (one per minor third, A1-C7); the credit stands in the piano's menu. Nothing is fetched until it is on. */
 const PNO_SMP=["A1","C2","Ds2","Fs2","A2","C3","Ds3","Fs3","A3","C4","Ds4","Fs4","A4","C5","Ds5","Fs5","A5","C6","Ds6","Fs6","A6","C7"];
 const PNO_STYLES=[["held","Held"],["block","Block"],["ballad","Ballad"],["arp","Arpeggio"],["alberti","Broken chord"],["off","Off-beat"],
-  ["pop8","Pop eighths"],["rolled","Rolled"],["stride","Stride"],["synco","Syncopated"],["montuno","Montuno"],["pad","Pad"],["332","3-3-2"]];   // six more, and 3-3-2 (28 Sep 2026, patches/piano-styles-b.py)
+  ["pop8","Pop eighths"],["rolled","Rolled"],["stride","Stride"],["synco","Syncopated"],["montuno","Montuno"],["pad","Pad"],["332","3-3-2"],
+  ["arp1","Single arpeggio"],["offarp","Off-beat arpeggio"]];   // as the guitar plays them (29 Sep 2026)   // six more, and 3-3-2 (28 Sep 2026, patches/piano-styles-b.py)
 const PNO_REGS=[["below","Below the pan"],["around","Around it"],["above","Above the pan"]];
 const PNO_WIN={below:[48,62],around:[55,69],above:[74,88]};
 const PNO_PK=0.30;              // one note at full strength, volume 100 (every sample is levelled to a peak of 0.8)
@@ -12095,6 +12139,7 @@ function pnoPulse(p2,rel,m,sec,at){
   const fresh=name!==PNO.chord; if(fresh){ PNO.chord=name; PNO.seq=0; }
   const [lo,hi]=PNO_WIN[pnoReg]||PNO_WIN.above, has=x=>pcs.includes(((x%12)+12)%12);
   const ch=[]; for(let x=lo;x<=hi&&ch.length<3;x++) if(has(x)) ch.push(x);
+  if(pnoWide&&ch.length>=3) ch.splice(0,3,ch[0],ch[2],ch[1]+12);   /* WIDE (David, 29 Sep 2026): the middle note an octave up */
   let low=lo-12; while(((low%12)+12)%12!==pcs[0]) low++;
   const beat=pulseDurOf(p2)*m.sub, cnt=Math.floor(rb/m.sub), ti=onCount?cnt*2:cnt*2+1, st=pnoStyle, start=rb===0||fresh;
   const hum=()=>at+Math.random()*0.006;
@@ -12111,7 +12156,7 @@ function pnoPulse(p2,rel,m,sec,at){
   else if(st==="off"){ if(onCount&&start) pnoRelease(at); if(onHalf||(half<0&&onCount)) chord(0.42,beat*0.45); }
   /* SIX MORE (David, 28 Sep 2026: "add all six extra styles to the piano") */
   else if(st==="pop8"){ if(onCount&&start) pnoRelease(at); chord(onCount?0.46:0.36,(half>0?beat/2:beat)*0.9); }
-  else if(st==="rolled"){ if(onCount&&start){ pnoRelease(at); const t0=hum(); [low].concat(ch,[ch[0]+12]).forEach((x,k)=>pnoNote(x,t0+k*0.055,0.5)); } }
+  else if(st==="rolled"){ if(onCount&&start){ pnoRelease(at); const t0=hum(); const s32=pulseDurOf(p2)*m.sub*((m.den||4)/32); [low].concat(ch,[ch[0]+12]).sort((x,y)=>x-y).forEach((x,k)=>pnoNote(x,t0+k*s32,0.5)); /* a 32nd note of the tempo apart (David, 29 Sep 2026: "rolling a little slower") */ } }
   else if(st==="stride"){ if(onCount){ const three=m.beats%3===0, strong=three?cnt%3===0:cnt%2===0;
       if(start) pnoRelease(at);
       if(strong) pnoNote((three?cnt===0:cnt%4===0)?low:low+(((pcs[2]-pcs[0])%12+12)%12),hum(),0.55,beat*0.9); else chord(0.42,beat*0.8); } }   // the chord's own fifth (29 Sep 2026)
@@ -12121,6 +12166,16 @@ function pnoPulse(p2,rel,m,sec,at){
     const ns=[[a,a+12],[b,c],null,[a+12],[b,c],null,[c],[b,c]][ti%8];
     if(ns){ const t0=hum(); ns.forEach(x=>pnoNote(x,t0,ti%2?0.4:0.5,(half>0?beat/2:beat)*0.8)); } }
   else if(st==="pad"){ if(onCount&&start){ pnoRelease(at); ch.concat([ch[0]+12]).forEach(x=>pnoNote(x,at,0.35,0,0.45)); } }
+  /* THE TWO ARPEGGIOS, as the guitar plays them (David, 29 Sep 2026: "for the piano incorporate the single arpeggio and
+     off-beat arpeggio"; patches/strum-patterns-piano-rolls.py) */
+  else if(st==="arp1"){ if(onCount&&start){ pnoRelease(at);   // from the chord change and the bar line, landing on the next subdivision
+      const ns=[low].concat(ch,[ch[0]+12]).sort((x,y)=>x-y), nx=cellsOf(m).map(c=>c.start).filter(x=>x>rb), span=((nx.length?Math.min(...nx):m.bp)-rb)*pulseDurOf(p2);
+      const t0=hum(); ns.forEach((x,k)=>pnoNote(x,t0+k*span/(ns.length-1),k?0.46:0.55)); } }
+  else if(st==="offarp"){ if(onCount&&start) pnoRelease(at);   // on the 2nd and 4th subdivision, the upper notes, ending before the next
+    if(onCount){ const cs=cellsOf(m), ci=cs.findIndex(c=>c.start===rb);
+      if(ci===1||ci===3){ const nx=cs[ci+1]?cs[ci+1].start:m.bp, pd=pulseDurOf(p2), s16=pd*m.sub*((m.den||4)/16), l16=(nx-rb)*16/(m.sub*(m.den||4));
+        const up=[...new Set(ch.concat([ch[0]+12,(ch[1]!=null?ch[1]:ch[0])+12]))].sort((x,y)=>x-y), n=Math.max(3,Math.min(5,Math.round(l16))), ns=up.slice(-n), sp=Math.min(s16,(nx-rb)*pd/n);
+        const t0=hum(); ns.forEach((x,k)=>pnoNote(x,t0+k*sp,0.4,(nx-rb)*pd*1.6)); } } }
   /* 3-3-2 (David, 28 Sep 2026: "can you add 3-3-2?"): the tresillo - the chord on eighths 1, 4 and 7, each ringing to the next */
   else if(st==="332"){ if(onCount&&start) pnoRelease(at); const k=ti%8;
     if(k===0||k===3||k===6) chord(k===0?0.55:0.47,(half>0?beat/2:beat)*(k===6?1.9:2.8)); }
@@ -13918,7 +13973,8 @@ function bassBarPlan(nm,bi,at){
 /* ---- THE BASS STYLES (step c, David 28 Sep 2026, patches/bass-styles-c.py): a table's style fills the bars that are not
    written. Each chord span, from its start, on the counts inside it; Root is the plan unchanged. */
 const BASS_STYLES=[["root","Root"],["r5","Root–5th"],["oct","Octaves"],["arp","Arpeggio"],["walk","Walking"],["kick","Follow kick"],
-  ["tumbao","Tumbao"],["332","3-3-2"]];   // two more (David, 29 Sep 2026: "a tumbao and a 3-3-2 figure")
+  ["tumbao","Tumbao"],["332","3-3-2"],   // two more (David, 29 Sep 2026: "a tumbao and a 3-3-2 figure")
+  ["332t","3-3-2 tumbao"],["332x2","3-3-2 double"],["332tx2","3-3-2 tumbao double"],["tumbaox2","Tumbao double"]];   // four more (29 Sep 2026, patches/bass-332-tumbao-double.py)
 function bassStyleName(k){ const s=BASS_STYLES.find(x=>x[0]===k); return s?s[1]:"Root"; }
 function bassNextChord(ent,bi,m){
   try{ const tot=(C&&C.total)||1, pe=(ent.pulse+(bi+1)*m.bp)%tot, e2=secOfPulse(pe); return voiceChordAt(pe,e2,SM(piece,e2.name)); }
@@ -13947,23 +14003,38 @@ function bassStyled(style,sp,m,ent,bi){
       if(notes.length>1&&nx){ const prev=notes[notes.length-2][1]; let t=bassMidi(nx);
         if(t!=null){ t+=12*Math.round((prev-t)/12); const up=t+2, a=scale.has(((up%12)+12)%12)?up:t-1;
           notes[notes.length-1][1]=a===prev?(a===up?t-1:up):a; } } }   // never the note it follows: that walks nowhere
-    else if(style==="tumbao"||style==="332"){
+    else if(/^(tumbao|332t?)(x2)?$/.test(style)){
       /* TUMBAO and 3-3-2 (David, 29 Sep 2026: "a tumbao and a 3-3-2 figure"; patches/bass-tumbao-332.py): hits at fixed
          places of the bar, in eighths where a count divides in two. 3-3-2: eighths 1, 4 and 7 - root, root, fifth. The
          tumbao: the and of 2 - the fifth - and the last count - the NEXT chord's root, ringing over the bar line into the
          next and-of-2; its downbeat belongs to that ringing note, except at a table's start. A span no hit reaches is
-         struck at its start with its root, so no chord goes unplayed. The fifth is the chord's own (bassIvs). */
+         struck at its start with its root, so no chord goes unplayed. The fifth is the chord's own (bassIvs).
+         AND (David, 29 Sep 2026: "another 3-3-2 baseline that uses the bass movement of the tumbao" - "also a double time
+         for both 3-3-2s and the tumbao"; patches/bass-332-tumbao-double.py): 3-3-2 TUMBAO strikes the 3-3-2's places with
+         the tumbao's notes - root, the fifth on the and of 2, the next chord's root on the last count; DOUBLE TIME plays
+         a figure in sixteenths, twice a bar, where the bar is counted in sixteenths. A figure's "next" is the chord at
+         the next figure's start - in the bar, or the next bar's. */
+      const base=style.replace(/x2$/,""), dbl=/x2$/.test(style)&&m.sub%4===0;
       const e8=m.sub%2===0?m.sub/2:m.sub, n8=Math.round(m.bp/e8), and2=m.sub+(m.sub%2===0?m.sub/2:0), last=(m.beats-1)*m.sub;
-      let hits;
-      if(style==="332") hits=[[0,1],[3*e8,1],[6*e8,5]].filter(h=>h[0]<n8*e8);
-      else { hits=[]; if(bi===0) hits.push([0,1]); if(and2<last) hits.push([and2,5]); if(last>0) hits.push([last,"next"]); }
+      const chordAt=q=>{ if(q<m.bp){ const x=sp.find(y=>q>=y.t&&q<y.t+y.len); if(x) return x.midi; }
+        const nx=bassNextChord(ent,bi,m), t=nx?bassMidi(nx):null; return t==null?root:t; };
+      let hits;   // [place, degree | "next", where "next" is read, how far past it the note rings]
+      if(dbl){ const u=m.sub/4, F=8*u; hits=[];
+        for(let o=0;o+F<=m.bp;o+=F){
+          if(base==="332") hits.push([o,1],[o+3*u,1],[o+6*u,5]);
+          else if(base==="332t") hits.push([o,1],[o+3*u,5],[o+6*u,"next",o+F,0]);
+          else { if(bi===0&&o===0) hits.push([0,1]); hits.push([o+3*u,5],[o+6*u,"next",o+F,3*u]); } } }
+      else if(base==="332") hits=[[0,1],[3*e8,1],[6*e8,5]].filter(h=>h[0]<n8*e8);
+      else if(base==="332t"){ hits=[[0,1],[3*e8,5]]; if(6*e8<m.bp) hits.push([6*e8,"next",m.bp,0]); hits=hits.filter(h=>h[0]<n8*e8); }
+      else { hits=[]; if(bi===0) hits.push([0,1]); if(and2<last) hits.push([and2,5]); if(last>0) hits.push([last,"next",m.bp,and2]); }
       const hs=hits.filter(h=>h[0]>=s.t&&h[0]<end);
-      notes=hs.map(([p,d])=>{
+      notes=hs.map(([p,d,q,over])=>{
         if(d!=="next") return [p,root+iv[d]];
-        const nx=bassNextChord(ent,bi,m); let t=nx?bassMidi(nx):null; if(t==null) t=root;
-        return [p,t,(end-p)+and2];                                    // it rings over the bar line to the next and-of-2
+        const t=chordAt(q);
+        return over?[p,t,(q-p)+over]:[p,t];                            // the tumbao's rings on to the figure's and-of-2
       });
-      if(!(style==="tumbao"&&s.t===0&&bi>0)&&(!notes.length||notes[0][0]>s.t)) notes.unshift([s.t,root]);
+      const fig=dbl?8*(m.sub/4):m.bp;   // the tumbao's downbeat belongs to the ringing note, except at a table's start
+      if(!(base==="tumbao"&&s.t%fig===0&&(bi>0||s.t>0))&&(!notes.length||notes[0][0]>s.t)) notes.unshift([s.t,root]);
     }
     else if(style==="kick"){ const ks=[s.t]; for(let q=s.t+1;q<end;q++) if(bassKickAt(bi*m.bp+q,m,ent&&ent.name)) ks.push(q); notes=ks.map(p=>[p,root]); }
     notes.forEach(([p,midi,ring],k)=>out.push({t:p,len:(k+1<notes.length?notes[k+1][0]:end)-p,ring,auto:true,style,chord:s.chord,midi}));
@@ -14479,6 +14550,8 @@ let rhyPick=localStorage.getItem("hps.jamrhypick")||"auto";
    reverb starts at 0, as it has always been dry; the guitar's at WGG's own 18. */
 let gtrOn=false;
 let gtrStyle=(()=>{ const s=localStorage.getItem("hps.gtrstyle"); return GTR_STYLES.some(x=>x[0]===s)?s:"strum"; })();
+let gtrStrum=(()=>{ let s=null; try{ s=localStorage.getItem("hps.gtrstrum"); }catch(e){} return GTR_STRUMS.some(x=>x[0]===s)?s:"straight"; })();   // Strummed's pattern (29 Sep 2026)
+let gtrReg=(()=>{ try{ return localStorage.getItem("hps.gtrreg")==="high"?"high":"normal"; }catch(e){ return "normal"; } })();   // the guitar's register (29 Sep 2026)
 let gtrPick=(()=>{ let s=null; try{ s=localStorage.getItem("hps.gtrpick"); }catch(e){} return GTR_PICKS.some(x=>x[0]===s)?s:"travis"; })();   // Picking's pattern (28 Sep 2026)
 let gtrVol=Math.max(0,Math.min(150,+(localStorage.getItem("hps.gtrvol")??100)));
 const mixGet=(k,d,lo,hi)=>{ const v=localStorage.getItem(k); return v==null||v===""||isNaN(+v)?d:Math.max(lo,Math.min(hi,+v)); };
@@ -14487,6 +14560,7 @@ let bassPan=mixGet("hps.basspan",0,-100,100), bassRev=mixGet("hps.bassrev",0,0,6
 /* THE PIANO'S SETTINGS (28 Sep 2026): its style, register, volume, pan and reverb one setting per device, as the guitar's */
 let pnoOn=false;
 let pnoStyle=(()=>{ let s=null; try{ s=localStorage.getItem("hps.pnostyle"); }catch(e){} return PNO_STYLES.some(x=>x[0]===s)?s:"ballad"; })();
+let pnoWide=(()=>{ try{ return localStorage.getItem("hps.pnowide")==="1"; }catch(e){ return false; } })();   // the piano's voicing: Close | Wide (29 Sep 2026)
 let pnoReg=(()=>{ let s=null; try{ s=localStorage.getItem("hps.pnoreg"); }catch(e){} return PNO_REGS.some(x=>x[0]===s)?s:"above"; })();
 let pnoVol=mixGet("hps.pnovol",100,0,150), pnoPan=mixGet("hps.pnopan",0,-100,100), pnoRev=mixGet("hps.pnorev",18,0,60);
 let handVol=mixGet("hps.handvol",100,0,150), handPan=mixGet("hps.handpan",0,-100,100), handRev=mixGet("hps.handrev",16,0,60);   // the handpan's own mix (28 Sep 2026)
@@ -43938,9 +44012,13 @@ function boot(){
         +GTR_STYLES.map(([k,l])=>'<button class="bwseg'+(k===gtrStyle?' on':'')+'" data-gs="'+k+'">'+l+'</button>').join("")+'</div>'
         +'<div id="gtrPickBox"'+(gtrStyle==="pick"?'':' hidden')+'><div class="ttl">Pattern</div><div class="pal bwsw gsty">'   // Picking's pattern (28 Sep 2026)
         +GTR_PICKS.map(([k,l])=>'<button class="bwseg'+(k===gtrPick?' on':'')+'" data-gp="'+k+'">'+l+'</button>').join("")+'</div></div>'
+        +'<div id="gtrStrumBox"'+(gtrStyle==="strum"?'':' hidden')+'><div class="ttl">Pattern</div><div class="pal bwsw gsty">'   // Strummed's pattern (29 Sep 2026)
+        +GTR_STRUMS.map(([k,l])=>'<button class="bwseg'+(k===gtrStrum?' on':'')+'" data-gt="'+k+'">'+l+'</button>').join("")+'</div></div>'
         +'<div class="ttl">Guitar volume</div>'
         +'<div class="vol"><input type="range" id="gtrVolR" min="0" max="150" step="5" '
         +'value="'+gtrVol+'" aria-label="Guitar volume"><span class="val" id="gtrVolV">'+gtrVol+'%</span></div>'
+        +'<div class="ttl">Register</div><div class="pal bwsw gsty">'   // the guitar's register (29 Sep 2026)
+        +[["normal","Normal"],["high","High"]].map(([k,l])=>'<button class="bwseg'+(k===gtrReg?' on':'')+'" data-gr="'+k+'">'+l+'</button>').join("")+'</div>'
         +mixRows("gtr")
         +(gtrOn?'':'<div class="note">The guitar is off — click the button to turn it on.</div>');
       const apply=()=>{ gtrVol=Math.max(0,Math.min(150,+$("gtrVolR").value||0));
@@ -43949,6 +44027,12 @@ function boot(){
         mixRead("gtr"); };
       pop.addEventListener("input",apply); pop.addEventListener("change",apply);
       pop.addEventListener("click",ev=>{
+        const gr=ev.target.closest("[data-gr]");
+        if(gr){ gtrReg=gr.dataset.gr; GTR.chord=null; try{ localStorage.setItem("hps.gtrreg",gtrReg); }catch(e){}   // the next count voices it anew
+          pop.querySelectorAll("[data-gr]").forEach(x=>x.classList.toggle("on",x.dataset.gr===gtrReg)); return; }
+        const gt=ev.target.closest("[data-gt]");
+        if(gt){ gtrStrum=gt.dataset.gt; try{ localStorage.setItem("hps.gtrstrum",gtrStrum); }catch(e){}
+          pop.querySelectorAll("[data-gt]").forEach(x=>x.classList.toggle("on",x.dataset.gt===gtrStrum)); return; }
         const g=ev.target.closest("[data-gp]");
         if(g){ gtrPick=g.dataset.gp; try{ localStorage.setItem("hps.gtrpick",gtrPick); }catch(e){}
           pop.querySelectorAll("[data-gp]").forEach(x=>x.classList.toggle("on",x.dataset.gp===gtrPick)); return; }
@@ -43957,6 +44041,7 @@ function boot(){
         try{ localStorage.setItem("hps.gtrstyle",gtrStyle); }catch(e){}
         pop.querySelectorAll("[data-gs]").forEach(x=>x.classList.toggle("on",x.dataset.gs===gtrStyle));
         { const pb=pop.querySelector("#gtrPickBox"); if(pb) pb.hidden=gtrStyle!=="pick"; }
+        { const sb=pop.querySelector("#gtrStrumBox"); if(sb) sb.hidden=gtrStyle!=="strum"; }
         paintGtr();
       });
       openPop(pop,gb);
@@ -43992,6 +44077,8 @@ function boot(){
         +PNO_STYLES.map(([k,l])=>'<button class="bwseg'+(k===pnoStyle?' on':'')+'" data-ps="'+k+'">'+l+'</button>').join("")+'</div>'
         +'<div class="ttl">Register</div><div class="pal bwsw gsty">'
         +PNO_REGS.map(([k,l])=>'<button class="bwseg'+(k===pnoReg?' on':'')+'" data-pr="'+k+'">'+l+'</button>').join("")+'</div>'
+        +'<div class="ttl">Voicing</div><div class="pal bwsw gsty">'   // Close | Wide (29 Sep 2026)
+        +[["0","Close"],["1","Wide"]].map(([k,l])=>'<button class="bwseg'+((k==="1")===pnoWide?' on':'')+'" data-pw="'+k+'">'+l+'</button>').join("")+'</div>'
         +'<div class="ttl">Piano volume</div>'
         +'<div class="vol"><input type="range" id="pnoVolR" min="0" max="150" step="5" '
         +'value="'+pnoVol+'" aria-label="Piano volume"><span class="val" id="pnoVolV">'+pnoVol+'%</span></div>'
@@ -44004,6 +44091,9 @@ function boot(){
         mixRead("pno"); };
       pop.addEventListener("input",apply); pop.addEventListener("change",apply);
       pop.addEventListener("click",ev=>{
+        const w=ev.target.closest("[data-pw]");
+        if(w){ pnoWide=w.dataset.pw==="1"; try{ localStorage.setItem("hps.pnowide",pnoWide?"1":"0"); }catch(e){}
+          pop.querySelectorAll("[data-pw]").forEach(x=>x.classList.toggle("on",x.dataset.pw===(pnoWide?"1":"0"))); PNO.chord=null; return; }
         const s=ev.target.closest("[data-ps]"), r=ev.target.closest("[data-pr]");
         if(s){ pnoStyle=s.dataset.ps; try{ localStorage.setItem("hps.pnostyle",pnoStyle); }catch(e){}
           pop.querySelectorAll("[data-ps]").forEach(x=>x.classList.toggle("on",x.dataset.ps===pnoStyle)); PNO.chord=null; paintPno(); }
