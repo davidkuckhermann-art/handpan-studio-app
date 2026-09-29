@@ -912,7 +912,9 @@ body.phone:not(.tablet):not(.quiz):not(.rquiz):not(.learn):not(.cpsetup) #dsVoic
 #jamVoices .ib{background:var(--dust); color:var(--ink3); border-color:var(--rule); box-shadow:none}
 #jamVoices .ib.on{background:var(--card); color:var(--ink); border-color:var(--rule-strong);
   box-shadow:0 1px 2px rgba(var(--sh),.06)}
-#drumBtn.wait,#gtrBtn.wait,#pnoBtn.wait{opacity:.45}
+#drumBtn.wait,#gtrBtn.wait,#pnoBtn.wait,#synBtn.wait{opacity:.45}
+.pop .pal.gsty.two{grid-template-columns:repeat(2,1fr)}   /* a two- or four-choice row, two to a line (the synth, 29 Sep 2026) */
+.pop #synDesc{max-width:none; padding-top:2px}   /* the sound's description takes the card's width */
 /* the guitar's style in its popup: one segmented control, the popup's full width (28 Sep 2026) */
 .pop .pal.gsty{display:grid; grid-template-columns:repeat(3,1fr); margin:2px 10px 8px; min-width:252px}   /* seven styles (28 Sep 2026); .pal.bwsw would win without the .pal */
 .pop .gsty .bwseg{padding:5px 6px; font-size:12px; line-height:1.2}
@@ -7689,6 +7691,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
        in the 24-box, so every coordinate carries +0.6, −0.86 and the glyph now
        leaves 4.85 either side and 3.71 above and below. -->
   <!-- the guitar (28 Sep 2026, patches/guitar-a.py): a nylon guitar upright, its ink centred in the box -->
+  <symbol id="is-syn" viewBox="0 0 24 24"><path d="M3 12C5 6 7 6 9 12S13 18 15 12S19 6 21 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
   <symbol id="is-pno" viewBox="0 0 24 24"><g transform="translate(12 12) scale(.8) translate(-12 -12)">
     <rect x="2.6" y="4.6" width="18.8" height="14.8" rx="2.2" fill="none" stroke="currentColor" stroke-width="2.2"/>
     <path d="M8.4 12.6V19M15.6 12.6V19" stroke="currentColor" stroke-width="1.8"/>
@@ -8221,6 +8224,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
       <button class="ib" id="drumBtn" title="Rhythm — a World Groove Grid groove under the music. Right-click for its volume and groove"><svg><use href="#is-drum"/></svg></button>
       <button class="ib" id="gtrBtn" title="Guitar — following the chords. Right-click for its style and mix" aria-pressed="false"><svg><use href="#is-gtr"/></svg></button>
       <button class="ib" id="pnoBtn" title="Piano — following the chords. Right-click for its style, register and mix" aria-pressed="false"><svg><use href="#is-pno"/></svg></button>
+      <button class="ib" id="synBtn" title="Synth — pads following the chords. Right-click for its sound, style and mix" aria-pressed="false"><svg><use href="#is-syn"/></svg></button>
       <!-- RECORDING YOURSELF IN THE JAM (26 Sep 2026, patches/jam-recording-a.py): the small circle; desktop only, behind Listening mode -->
       <span class="jrsep" aria-hidden="true"></span><button type="button" id="jamRecBtn" title="Record" aria-label="Record" aria-pressed="false"><i></i><span class="jrl"></span></button>
     </span>
@@ -11157,7 +11161,7 @@ function voiceBus(k){
   }
   return VBUS[k].inp;
 }
-function voiceMix(k){ return k==="hand"?{pan:handPan,rev:handRev}:k==="bass"?{pan:bassPan,rev:bassRev}:k==="pno"?{pan:pnoPan,rev:pnoRev}:{pan:gtrPan,rev:gtrRev}; }
+function voiceMix(k){ return k==="hand"?{pan:handPan,rev:handRev}:k==="bass"?{pan:bassPan,rev:bassRev}:k==="pno"?{pan:pnoPan,rev:pnoRev}:k==="syn"?{pan:synPan,rev:synRev}:{pan:gtrPan,rev:gtrRev}; }
 function voiceMixSet(k){
   const b=ctx&&VBUS.ctx===ctx&&VBUS[k]; if(!b) return;
   const x=voiceMix(k), w=x.rev/100;
@@ -11194,7 +11198,7 @@ function mixRows(k){ const x=voiceMix(k);
     +'<span class="val" id="'+k+'RevV">'+x.rev+'%</span></div>'; }
 function mixRead(k){
   const pan=Math.max(-100,Math.min(100,+$(k+"PanR").value||0)), rev=Math.max(0,Math.min(60,+$(k+"RevR").value||0));
-  if(k==="hand"){ handPan=pan; handRev=rev; } else if(k==="bass"){ bassPan=pan; bassRev=rev; } else if(k==="pno"){ pnoPan=pan; pnoRev=rev; } else { gtrPan=pan; gtrRev=rev; }
+  if(k==="hand"){ handPan=pan; handRev=rev; } else if(k==="bass"){ bassPan=pan; bassRev=rev; } else if(k==="pno"){ pnoPan=pan; pnoRev=rev; } else if(k==="syn"){ synPan=pan; synRev=rev; } else { gtrPan=pan; gtrRev=rev; }
   if(k==="hand") handMixSet();   // the handpan's own bus (28 Sep 2026)
   $(k+"PanV").textContent=panLabel(pan); $(k+"RevV").textContent=rev+"%";
   try{ localStorage.setItem("hps."+k+"pan",String(pan)); localStorage.setItem("hps."+k+"rev",String(rev)); }catch(e){}
@@ -12278,6 +12282,154 @@ function pnoPulse(p2,rel,m,sec,at){
   /* 3-3-2 (David, 28 Sep 2026: "can you add 3-3-2?"): the tresillo - the chord on eighths 1, 4 and 7, each ringing to the next */
   else if(st==="332"){ if(onCount&&start) pnoRelease(at); const k=ti%8;
     if(k===0||k===3||k===6) chord(k===0?0.55:0.47,(half>0?beat/2:beat)*(k===6?1.9:2.8)); }
+}
+
+/* ═══ THE SYNTH (David, 29 Sep 2026, patches/synth-a.py) ══════════════════════════════════════════════════════════
+   Twelve pad sounds from the listening page (_lab/synth-listen: "I like all of them"), built from Web Audio's own nodes -
+   no samples, nothing fetched, no licence. Each sound is data; ONE voice (synVoice) plays them all; each is levelled to
+   one loudness the first time the synth is switched on. The chord sits in the piano's registers; Close is the piano's
+   voicing (by function, led from the chord before), Open the root, fifth, and the third and fifth an octave up. */
+const SYN_PRE=[
+ {id:"warm",name:"Warm analog",d:"Three detuned saws and a sub-octave sine under a soft low-pass that breathes slowly - the classic pad.",
+  osc:[{t:"sawtooth",det:-8,pan:-.5},{t:"sawtooth",det:8,pan:.5},{t:"sawtooth"},{t:"sine",oct:-12,g:.6}],lp:1500,q:.9,a:.7,r:1.6,lfo:{rate:.12,filt:.3}},
+ {id:"soft",name:"Soft sine",d:"Two sines and a quiet triangle an octave up, with a gentle tremble - round and pure.",
+  osc:[{t:"sine",det:-4,pan:-.3},{t:"sine",det:4,pan:.3},{t:"triangle",oct:12,g:.25}],lp:5000,a:.9,r:1.8,trem:{rate:4.5,depth:.06}},
+ {id:"strings",name:"String ensemble",d:"Five saws spread wide with a vibrato that arrives late - a synth string section.",
+  osc:[-14,-7,0,7,14].map((c,i)=>({t:"sawtooth",det:c,pan:(i-2)/2.5,g:.8})),lp:2600,q:.5,hp:180,a:.5,r:1.2,vib:{rate:5.2,depth:9,delay:.8}},
+ {id:"choir",name:"Choir “aah”",d:"Saws through the formants of an “ah” vowel, with vibrato - a synthetic choir.",
+  osc:[{t:"sawtooth",det:-6,pan:-.4},{t:"sawtooth",det:6,pan:.4}],formants:[[730,8,1],[1090,10,.55],[2440,12,.3]],a:.8,r:1.6,vib:{rate:5,depth:12,delay:.5}},
+ {id:"glass",name:"Glass",d:"FM bells whose brightness melts into a sustained tone - a glassy attack, a soft tail.",
+  osc:[{t:"sine",det:-3,pan:-.35,fm:{ratio:3.5,i0:2.5,i1:.4,tau:.6}},{t:"sine",det:3,pan:.35,fm:{ratio:2,i0:1.5,i1:.3,tau:.9}}],lp:9000,a:.02,dec:1.2,sus:.55,r:2},
+ {id:"air",name:"Air",d:"Noise tuned to each note over a quiet sine - breath, or wind through the chord.",
+  osc:[{t:"noise",mul:1,q:40,g:3,pan:-.3},{t:"noise",mul:2,q:40,g:1.5,pan:.3},{t:"sine",g:.25}],lp:7000,a:1.1,r:2},
+ {id:"hollow",name:"Hollow square",d:"Two detuned square waves, filtered - woody and hollow.",
+  osc:[{t:"square",det:-6,pan:-.5},{t:"square",det:6,pan:.5}],lp:1300,q:1.2,a:.4,r:1.2,lfo:{rate:.2,filt:.2}},
+ {id:"sweep",name:"Sweep",d:"A resonant filter that opens across each chord - a pad that grows as it holds.",
+  osc:[{t:"sawtooth",det:-10,pan:-.5},{t:"sawtooth",det:10,pan:.5},{t:"sawtooth",oct:-12,g:.5}],sweep:[250,5000],q:4,a:.3,r:1.2},
+ {id:"dark",name:"Dark",d:"Low, closed and slow - a warm bed that stays under the pan.",
+  osc:[{t:"sawtooth",det:-5,pan:-.4},{t:"sawtooth",det:5,pan:.4},{t:"triangle",oct:-12,g:.8}],lp:650,q:.7,a:1.2,r:2},
+ {id:"shimmer",name:"Shimmer",d:"Sines with the octave, the twelfth and two octaves above, trembling - light and airy.",
+  osc:[{t:"sine"},{t:"sine",oct:12,g:.35,pan:-.5,det:4},{t:"sine",oct:19,g:.18,pan:.5,det:-4},{t:"triangle",oct:24,g:.08}],lp:12000,a:1,r:2.5,trem:{rate:6,depth:.15}},
+ {id:"organ",name:"Drawbar organ",d:"Sine drawbars (16', 8', 4', 2 2/3') with a slow rotary sway - quick to speak, quick to stop.",
+  osc:[{t:"sine",oct:-12,g:.5},{t:"sine"},{t:"sine",oct:12,g:.5},{t:"sine",oct:19,g:.3}],lp:8000,a:.06,r:.25,trem:{rate:.8,depth:.2},vib:{rate:6.5,depth:5,delay:0}},
+ {id:"poly",name:"80s poly",d:"Saw and pulse waves chorused wide - the bright pad of 1980s pop.",
+  osc:[{t:"sawtooth",det:-12,pan:-.7},{t:"square",det:12,pan:.7,g:.6},{t:"sawtooth",g:.8}],lp:3200,q:1.5,a:.15,r:.9,vib:{rate:.6,depth:7,delay:0}},
+];
+const SYN_STYLES=[["held","Held"],["swell","Swell"],["pulse","Pulse"],["pan","Handpan"]];
+const SYN_VOICINGS=[["close","Close"],["open","Open"]];
+const SYN_FOLLOW_SHIFT={below:-12,around:0,above:12};   // Handpan: the pattern moved as one, as guitar and piano
+const SYN_LVL=0.06;              // one chord's loudness (RMS) at volume 100 - every sound levelled to it
+const SYN_NORM={};
+let SYN_LEVELLING=null;
+function synSound(){ return SYN_PRE.find(p=>p.id===synSnd)||SYN_PRE[0]; }
+function synStyleName(k){ const s=SYN_STYLES.find(x=>x[0]===k); return s?s[1]:"Held"; }
+const SYN_NOISE=new WeakMap();
+function synNoise(ac){ if(SYN_NOISE.has(ac)) return SYN_NOISE.get(ac);
+  const n=ac.sampleRate*2, b=ac.createBuffer(1,n,ac.sampleRate), d=b.getChannelData(0); for(let i=0;i<n;i++) d[i]=Math.random()*2-1;
+  SYN_NOISE.set(ac,b); return b; }
+/* ONE VOICE: one note of one sound from t for len seconds, then its release; `gt` is a gain the Pulse style shapes.
+   Returns what an early release needs. */
+function synVoice(ac,P,midi,t,len,dest,atk,vel,bright,norm){
+  const f0=440*Math.pow(2,(midi-69)/12), end=t+len, stopAt=end+P.r*3+0.1, lfos=[], srcs=[];
+  const amp=ac.createGain(); amp.gain.value=0; amp.connect(dest);
+  const gt=ac.createGain(); gt.gain.value=1; gt.connect(amp);
+  const trem=ac.createGain(); trem.gain.value=1; trem.connect(gt);
+  if(P.trem){ trem.gain.value=1-P.trem.depth; const l=ac.createOscillator(); l.frequency.value=P.trem.rate; const lg=ac.createGain(); lg.gain.value=P.trem.depth; l.connect(lg); lg.connect(trem.gain); lfos.push(l); }
+  let tail=trem;
+  if(P.hp){ const h=ac.createBiquadFilter(); h.type="highpass"; h.frequency.value=P.hp; h.connect(tail); tail=h; }
+  let into;
+  if(P.formants){ into=ac.createGain();
+    for(const [f,q,g] of P.formants){ const bp=ac.createBiquadFilter(); bp.type="bandpass"; bp.frequency.value=f*Math.sqrt(bright); bp.Q.value=q;
+      const gg=ac.createGain(); gg.gain.value=g; into.connect(bp); bp.connect(gg); gg.connect(tail); } }
+  else { const lp=ac.createBiquadFilter(); lp.type="lowpass"; lp.Q.value=P.q||.7; const cut=f=>Math.min(18000,f*bright);
+    if(P.sweep){ lp.frequency.setValueAtTime(cut(P.sweep[0]),t); lp.frequency.exponentialRampToValueAtTime(cut(P.sweep[1]),t+Math.max(.5,len)); }
+    else lp.frequency.value=cut(P.lp);
+    if(P.lfo){ const l=ac.createOscillator(); l.frequency.value=P.lfo.rate; const lg=ac.createGain(); lg.gain.value=cut(P.lp)*P.lfo.filt; l.connect(lg); lg.connect(lp.frequency); lfos.push(l); }
+    lp.connect(tail); into=lp; }
+  for(const o of P.osc){
+    const g=ac.createGain(); g.gain.value=o.g==null?1:o.g; const pn=ac.createStereoPanner?ac.createStereoPanner():null;
+    if(pn){ pn.pan.value=o.pan||0; g.connect(pn); pn.connect(into); } else g.connect(into);
+    const fr=f0*Math.pow(2,(o.oct||0)/12);
+    if(o.t==="noise"){ const s=ac.createBufferSource(); s.buffer=synNoise(ac); s.loop=true; const bp=ac.createBiquadFilter(); bp.type="bandpass";
+      bp.frequency.value=fr*(o.mul||1); bp.Q.value=o.q||30; s.connect(bp); bp.connect(g); s.start(t,Math.random()*1.5); srcs.push(s); continue; }
+    const osc=ac.createOscillator(); osc.type=o.t; osc.frequency.value=fr; osc.detune.value=(o.det||0)+(Math.random()-.5)*2;
+    if(o.fm){ const m=ac.createOscillator(); m.frequency.value=fr*o.fm.ratio; const mg=ac.createGain();
+      mg.gain.setValueAtTime(fr*o.fm.i0,t); mg.gain.setTargetAtTime(fr*o.fm.i1,t+.01,o.fm.tau); m.connect(mg); mg.connect(osc.frequency); m.start(t); srcs.push(m); }
+    if(P.vib){ const l=ac.createOscillator(); l.frequency.value=P.vib.rate*(.95+Math.random()*.1); const lg=ac.createGain();
+      lg.gain.setValueAtTime(0,t); lg.gain.linearRampToValueAtTime(P.vib.depth,t+(P.vib.delay||0)+.01); l.connect(lg); lg.connect(osc.detune); l.start(t); srcs.push(l); }
+    osc.connect(g); osc.start(t); srcs.push(osc);
+  }
+  for(const l of lfos){ l.start(t); srcs.push(l); }
+  for(const s of srcs) s.stop(stopAt);
+  const pk=vel*norm, A=Math.min(atk,len*.9);
+  amp.gain.setValueAtTime(0,t); amp.gain.linearRampToValueAtTime(pk,t+A);
+  if(P.dec) amp.gain.setTargetAtTime(pk*P.sus,t+A,P.dec/3);
+  amp.gain.setTargetAtTime(0,end,P.r/4);   // the release
+  return {amp,gt,srcs,P,end};
+}
+/* EVERY SOUND AT ONE LOUDNESS: a C major triad rendered offline for three seconds, measured over its held part and
+   scaled to SYN_LVL - once, the first time the synth is switched on */
+function synLevel(){
+  if(SYN_LEVELLING) return SYN_LEVELLING;
+  SYN_LEVELLING=(async()=>{
+    for(const P of SYN_PRE){ if(SYN_NORM[P.id]) continue;
+      const sr=22050, oc=new OfflineAudioContext(2,sr*3,sr), d=oc.createGain(); d.connect(oc.destination);
+      for(const m of [60,64,67]) synVoice(oc,P,m,0,2.6,d,P.a,1,1,1);
+      const b=await oc.startRendering(); let s=0,n=0;
+      for(let c=0;c<2;c++){ const x=b.getChannelData(c); for(let i=Math.floor(sr*1.5);i<sr*2.5;i++){ s+=x[i]*x[i]; n++; } }
+      SYN_NORM[P.id]=SYN_LVL/Math.max(1e-4,Math.sqrt(s/n)); } })();
+  SYN_LEVELLING.catch(()=>{ SYN_LEVELLING=null; });
+  return SYN_LEVELLING;
+}
+function synReady(){ return !!SYN_NORM[synSound().id]; }
+let SYN={chord:null,held:[],last:-9,ctx:null,vc:null};
+function synRelease(t){ for(const h of SYN.held){ if(h.end<=t) continue;
+    try{ h.amp.gain.cancelScheduledValues(t); h.amp.gain.setTargetAtTime(0,t,h.P.r/4); }catch(e){}
+    for(const s of h.srcs){ try{ s.stop(t+h.P.r*3+0.1); }catch(e){} } h.end=t; }
+  SYN.held=[]; }
+function synNote(midi,t,vel,len,atk,gate){
+  if(!ctx) return; const P=synSound(); if(!SYN_NORM[P.id]) return;
+  const st=Math.max(t,ctx.currentTime);
+  const g=ctx.createGain(); g.gain.value=synVol/100; g.connect(voiceBus("syn"));   // `live`'s gain, as every voice keeps one
+  const h=synVoice(ctx,P,midi,st,len,g,atk==null?P.a:atk,vel,synBright/100,SYN_NORM[P.id]);
+  if(gate) gate(h.gt,st);
+  g.__at=st; live.push(g); if(live.length>120) live.splice(0,40);
+  h.srcs[h.srcs.length-1].onended=()=>{ const i=live.indexOf(g); if(i>=0) live.splice(i,1); };
+  SYN.held.push(h);
+}
+function synChord(pcs,name){
+  const [lo,hi]=PNO_WIN[synReg]||PNO_WIN.around;
+  if(synVc==="open"){ let r=lo; while(((r%12)+12)%12!==pcs[0]) r++; const th=((pcs[1]-pcs[0])%12+12)%12; return [r,r+7,r+12+th,r+19]; }
+  if(!SYN.vc||SYN.vc.name!==name||SYN.vc.lo!==lo) SYN.vc={name,lo,v:pnoVoicing(pcs,lo,hi,SYN.vc&&SYN.vc.v)};   // the piano's voice leading
+  return SYN.vc.v.slice();
+}
+function synPulse(p2,rel,m,sec,at){
+  if(synStyle==="pan"){ synFollow(p2,at); return; }
+  const rb=((rel%m.bp)+m.bp)%m.bp;
+  if(rb%m.sub!==0) return;                       // the synth moves on counts
+  if(!synReady()) return;
+  if(SYN.ctx!==ctx||at<SYN.last-0.05||at-SYN.last>2.5){ SYN.chord=null; SYN.held=[]; SYN.ctx=ctx; SYN.vc=null; }   // a fresh start
+  SYN.last=at;
+  const name=chordInForceAt(p2,sec,m);
+  if(!name){ if(SYN.chord){ synRelease(at); SYN.chord=null; } return; }
+  const pcs=chordPCs(name); if(!pcs) return;
+  const fresh=name!==SYN.chord; if(fresh) SYN.chord=name;
+  if(!(rb===0||fresh)) return;                   // the bar line, or a change
+  const ch=synChord(pcs,name), pd=pulseDurOf(p2), beat=pd*m.sub, rest=(m.bp-rb)*pd, P=synSound();
+  synRelease(at);
+  if(synStyle==="swell") ch.forEach(x=>synNote(x,at,.85,rest*.92,Math.max(P.a,rest*.5)));
+  else if(synStyle==="pulse"){ const tick=m.sub%2===0?beat/2:beat;
+    ch.forEach(x=>synNote(x,at,.8,rest,Math.min(P.a,.03),(g,st)=>{ for(let t=st;t<st+rest-0.001;t+=tick){ g.gain.setValueAtTime(1,t); g.gain.setTargetAtTime(.08,t+tick*.4,tick*.12); } })); }
+  else ch.forEach(x=>synNote(x,at,.8,rest+.05,P.a));
+}
+function synFollow(p2,at){   // the handpan's basic pattern (panTones), the pattern moved as one by register
+  if(!synReady()) return;
+  if(SYN.ctx!==ctx||at<SYN.last-0.05||at-SYN.last>2.5){ SYN.chord=null; SYN.held=[]; SYN.ctx=ctx; SYN.vc=null; }
+  SYN.last=at; SYN.chord=null;
+  const evs=panTones(p2); if(!evs.length) return;
+  const sh=SYN_FOLLOW_SHIFT[synReg]!=null?SYN_FOLLOW_SHIFT[synReg]:0, P=synSound();
+  synRelease(at);                                             // the last doubled notes give way
+  for(const {midi,g,stac} of evs) synNote(midi+sh,at,Math.min(1,.8*g),stac?.15:2.5,Math.min(P.a,.05));
 }
 
 /* ---------------- the jam's rhythm track (8 Sep 2026; WGG's core since 11 Sep)
@@ -14604,10 +14756,10 @@ let bassOn=false;
 function voiceRoom(){ return (typeof jamOn!=="undefined"&&jamOn)?"jam":(typeof cpOn!=="undefined"&&cpOn)?"cp":"practice"; }
 function voicesLoad(){
   let v=null; try{ v=JSON.parse(localStorage.getItem("hps.voices."+voiceRoom())||"null"); }catch(e){}
-  bassOn=!!(v&&v.bass); rhyOn=!!(v&&v.rhy); gtrOn=!!(v&&v.gtr); pnoOn=!!(v&&v.pno);
+  bassOn=!!(v&&v.bass); rhyOn=!!(v&&v.rhy); gtrOn=!!(v&&v.gtr); pnoOn=!!(v&&v.pno); synOn=!!(v&&v.syn);
   if(typeof paintVoices==="function") paintVoices();
 }
-function voicesSave(){ try{ localStorage.setItem("hps.voices."+voiceRoom(),JSON.stringify({bass:bassOn?1:0,rhy:rhyOn?1:0,gtr:gtrOn?1:0,pno:pnoOn?1:0})); }catch(e){} }
+function voicesSave(){ try{ localStorage.setItem("hps.voices."+voiceRoom(),JSON.stringify({bass:bassOn?1:0,rhy:rhyOn?1:0,gtr:gtrOn?1:0,pno:pnoOn?1:0,syn:synOn?1:0})); }catch(e){} }
 /* …and how loud it is, in per cent of its own full level (David, 9 Sep:
    "can you give me volume control on the bass when I right-click on the
    symbol?"). 100 is the level it shipped at; the range runs to 150 because a
@@ -14662,6 +14814,12 @@ let pnoStyle=(()=>{ let s=null; try{ s=localStorage.getItem("hps.pnostyle"); }ca
 let pnoWide=(()=>{ try{ return localStorage.getItem("hps.pnowide")==="1"; }catch(e){ return false; } })();   // the piano's voicing: Close | Wide (29 Sep 2026)
 let pnoReg=(()=>{ let s=null; try{ s=localStorage.getItem("hps.pnoreg"); }catch(e){} return PNO_REGS.some(x=>x[0]===s)?s:"above"; })();
 let pnoVol=mixGet("hps.pnovol",100,0,150), pnoPan=mixGet("hps.pnopan",0,-100,100), pnoRev=mixGet("hps.pnorev",18,0,60);
+/* THE SYNTH'S SETTINGS (29 Sep 2026, patches/synth-a.py): one setting per device, as the piano's */
+let synOn=false;
+const synPick=(k,list,d)=>{ let s=null; try{ s=localStorage.getItem(k); }catch(e){} return list.some(x=>(x.id||x[0])===s)?s:d; };
+let synSnd=synPick("hps.synsound",SYN_PRE,"warm"), synStyle=synPick("hps.synstyle",SYN_STYLES,"held"),
+    synReg=synPick("hps.synreg",PNO_REGS,"around"), synVc=synPick("hps.synvoicing",SYN_VOICINGS,"close");
+let synVol=mixGet("hps.synvol",100,0,150), synBright=mixGet("hps.synbright",100,40,250), synPan=mixGet("hps.synpan",0,-100,100), synRev=mixGet("hps.synrev",30,0,60);
 let handVol=mixGet("hps.handvol",100,0,150), handPan=mixGet("hps.handpan",0,-100,100), handRev=mixGet("hps.handrev",16,0,60);   // the handpan's own mix (28 Sep 2026)
 /* THE HANDPAN'S MUTE is the one switch here that is NOT remembered: it is
    for the moment — "so only bass and drums are playing" — and a student who
@@ -15191,9 +15349,9 @@ function evPitch(ev){
 function panTones(p2){
   const out=[];
   for(const ev of (C&&C.byPulse.get(p2)||[])){
-    if(ev.v!=="field"||ev.flam||ev.bass) continue;
+    if(ev.v!=="field"||ev.flam||ev.bass||ev.run) continue;   // a jam's transition run is not the pattern (29 Sep 2026)
     const art=ev.art||"open"; if(art==="mute"||art==="ghost") continue;
-    const midi=evPitch(ev); if(midi==null) continue;
+    const midi=evPitch(ev.base!=null?Object.assign({},ev,{f:ev.base}):ev); if(midi==null) continue;   // the pattern's own note under a melody (29 Sep 2026)
     out.push({midi,g:evGain(ev),stac:art==="stac"}); }
   return out;
 }
@@ -15482,6 +15640,7 @@ function sched(){
          they damp it, so it does not ring on through a groove preview or a break's silence */
       if(gtrOn){ if(!mutedByPreview&&!brkMuteV) gtrPulse(p2,rel,m,sec,at); else if(GTR.chord) gtrDampAll(at); }
       if(pnoOn){ if(!mutedByPreview&&!brkMuteV) pnoPulse(p2,rel,m,sec,at); else if(PNO.chord){ pnoRelease(at); PNO.chord=null; } }   // the piano (28 Sep 2026)
+      if(synOn){ if(!mutedByPreview&&!brkMuteV) synPulse(p2,rel,m,sec,at); else if(SYN.held.length){ synRelease(at); SYN.chord=null; } }   // the synth (29 Sep 2026)
       /* THE RHYTHM TRACK, under the same three mutes. The step is counted
          from the top of the current ROW — rel is the pulse within the
          section, a row is bpr bars — in WGG's sixteenths, so the rhythm
@@ -30740,6 +30899,10 @@ function buildJamPieceRaw(){
     const form=jamFormBars(passes);
     const mv=jamMotionVoices(form,VV), vm=mv.vm, mcands=mv.cands;
     const bars=[], gb=patBars(pat), bp=pat.meter[0]*pat.sub;
+    /* THE PLAIN VOICING OF EACH BAR - what the groove plays with Motion off - so every note can keep the pattern note
+       under it (29 Sep 2026, patches/follow-basic-pattern.py: the followers play the basic pattern) */
+    const vsB=jamProgVoices(jam.slots.map(s=>s.chord),VV,!!jam.narrow), slotOf=[];
+    for(let q=0;q<Math.max(1,passes);q++) jam.slots.forEach((sl,si)=>{ for(let b=0;b<Math.max(1,sl.bars||1);b++) slotOf.push(si); });
     /* the melody is the groove's HIGHEST voice; the ones under it keep the
        bar's own voicing, so the chord never flickers while the top moves */
     const topTok=JV_TOK[Math.max(0,VV-1)];
@@ -30831,12 +30994,13 @@ function buildJamPieceRaw(){
          run is the bar's whole texture while it lasts, which is what makes it
          read as a break from the groove rather than a decoration on top. */
       const from=run?bp-run.length:bp;
+      const vB=vsB[slotOf[i]], baseOf=(e,k)=>(e.v==="field"&&vB&&vB[k]!=null&&vB[k]!==e.f)?Object.assign(e,{base:vB[k]}):e;   // the pattern note under it
       const bar=evs.filter(([t])=>!(run&&(t-gi*bp)>=from))
         .map(([t,k,h])=>k===topTok
-          ? patEv(t-gi*bp,k,h,Object.assign({},v,{[k]:line[n++]}))
-          : patEv(t-gi*bp,k,h,v));
+          ? baseOf(patEv(t-gi*bp,k,h,Object.assign({},v,{[k]:line[n++]})),k)
+          : baseOf(patEv(t-gi*bp,k,h,v),k));
       if(run){
-        run.forEach((fl,x)=>bar.push(F(from+x,fl,x%2?"R":"L")));
+        run.forEach((fl,x)=>bar.push(F(from+x,fl,x%2?"R":"L",{run:true})));   // marked: the followers leave runs out (29 Sep 2026)
         bar.sort((a,b)=>a.t-b.t);
         /* AND THE RUN TAKES THE MELODY WITH IT (David, 29 Aug: "these runs can
            go out of the melody arc for sure, and they can be a good way to
@@ -35869,7 +36033,7 @@ function jrSnap(){
   const s={};
   try{ s.jam=JSON.parse(JSON.stringify({slots:jam.slots,patternId:jam.patternId,bpm:bpm,narrow:!!jam.narrow,motion:!!jam.motion,trans:!!jam.trans,
     mpasses:jamEndless()?"inf":jamPasses(),mseed:jam.mseed||1,brk:jam.brk,vv:2})); }catch(e){}
-  try{ s.half=!!halfSpeed; s.voices=JSON.parse(JSON.stringify({pan:!panMute,bass:!!bassOn,drums:!!rhyOn,drumPick:rhyPick,guitar:!!gtrOn,guitarStyle:gtrStyle,piano:!!pnoOn,pianoStyle:pnoStyle,pianoRegister:pnoReg})); s.swing=swing; s.feel=!!feelOn; s.pan=myPanId; }catch(e){}
+  try{ s.half=!!halfSpeed; s.voices=JSON.parse(JSON.stringify({pan:!panMute,bass:!!bassOn,drums:!!rhyOn,drumPick:rhyPick,guitar:!!gtrOn,guitarStyle:gtrStyle,piano:!!pnoOn,pianoStyle:pnoStyle,pianoRegister:pnoReg,synth:!!synOn,synthSound:synSnd,synthStyle:synStyle})); s.swing=swing; s.feel=!!feelOn; s.pan=myPanId; }catch(e){}
   return s;
 }
 function jrGroove(R){ try{ const p=allPats().find(x=>x.id===R.snap.jam.patternId); return p?p.name:""; }catch(e){ return ""; } }
@@ -44070,7 +44234,7 @@ function boot(){
     if(rhyOn) arm();
     /* one painter for the room loader: both faces, and the rhythm's fetch if
        the room wants it */
-    window.paintVoices=()=>{ if(window.paintBass) paintBass(); paintDrum(); arm(); if(window.paintGtr) paintGtr(); if(window.paintPno) paintPno(); };
+    window.paintVoices=()=>{ if(window.paintBass) paintBass(); paintDrum(); arm(); if(window.paintGtr) paintGtr(); if(window.paintPno) paintPno(); if(window.paintSyn) paintSyn(); };
     voicesLoad();                                   // the room the app opens in
     let longed=false, lt=null;
     const openRhy=()=>{
@@ -44238,6 +44402,60 @@ function boot(){
       paintPno();
       if(pnoOn){ arm(); toast("Piano on — "+pnoStyleName(pnoStyle).toLowerCase()+", following the chords"); }
       else { if(ctx){ pnoRelease(ctx.currentTime); PNO.chord=null; } toast("Piano off"); } },true); }
+  /* THE SYNTH BUTTON (29 Sep 2026, patches/synth-a.py): the piano's wiring - left-click on or off, remembered per room;
+     right-click or a long press for its card; the sounds levelled the first time (the button dimmed until then) */
+  { const sb=$("synBtn");
+    const paintSyn=()=>{ sb.classList.toggle("on",synOn);
+      sb.setAttribute("aria-pressed",synOn?"true":"false");
+      sb.title="Synth — "+synSound().name.toLowerCase()+", "+synStyleName(synStyle).toLowerCase()+". Right-click for its sound, style and mix"; };
+    const arm=()=>{ if(!synOn||(SYN_NORM[synSound().id]&&SYN_PRE.every(p=>SYN_NORM[p.id]))) return;
+      sb.classList.add("wait");
+      synLevel().then(()=>sb.classList.remove("wait"))
+        .catch(e=>{ sb.classList.remove("wait"); synOn=false; paintSyn(); toast("The synth could not start — "+(e&&e.message||"unknown")); }); };
+    window.paintSyn=()=>{ paintSyn(); arm(); };
+    paintSyn(); arm();
+    let longed=false, lt=null;
+    const seg=(list,key,cur,cls)=>'<div class="pal bwsw gsty'+(cls||"")+'">'+list.map(x=>{ const k=x.id||x[0], l=x.name||x[1];
+      return '<button class="bwseg'+(k===cur?' on':'')+'" data-'+key+'="'+k+'">'+l+'</button>'; }).join("")+'</div>';
+    const openSyn=()=>{
+      if(closePop()) return;
+      const pop=document.createElement("div"); pop.className="pop"; pop.id="synPop";
+      pop.innerHTML='<div class="ttl">Synth sound</div>'+seg(SYN_PRE,"ss",synSnd)
+        +'<div class="note" id="synDesc">'+synSound().d+'</div>'
+        +'<div class="ttl">Style</div>'+seg(SYN_STYLES,"sy",synStyle," two")
+        +'<div class="ttl">Register</div>'+seg(PNO_REGS,"sr",synReg)
+        +'<div class="ttl">Voicing</div>'+seg(SYN_VOICINGS,"sv",synVc," two")
+        +'<div class="ttl">Synth volume</div>'
+        +'<div class="vol"><input type="range" id="synVolR" min="0" max="150" step="5" value="'+synVol+'" aria-label="Synth volume"><span class="val" id="synVolV">'+synVol+'%</span></div>'
+        +'<div class="ttl">Brightness</div>'
+        +'<div class="vol"><input type="range" id="synBriR" min="40" max="250" step="5" value="'+synBright+'" aria-label="Brightness"><span class="val" id="synBriV">'+synBright+'%</span></div>'
+        +mixRows("syn")
+        +(synOn?'':'<div class="note">The synth is off — click the button to turn it on.</div>');
+      const apply=()=>{ synVol=Math.max(0,Math.min(150,+$("synVolR").value||0)); synBright=Math.max(40,Math.min(250,+$("synBriR").value||100));
+        $("synVolV").textContent=synVol+"%"; $("synBriV").textContent=synBright+"%";
+        try{ localStorage.setItem("hps.synvol",String(synVol)); localStorage.setItem("hps.synbright",String(synBright)); }catch(e){}
+        mixRead("syn"); };
+      pop.addEventListener("input",apply); pop.addEventListener("change",apply);
+      pop.addEventListener("click",ev=>{
+        const b=ev.target.closest("[data-ss],[data-sy],[data-sr],[data-sv]"); if(!b) return;
+        const [key,store,set]=b.dataset.ss!=null?["ss","hps.synsound",v=>{ synSnd=v; }]:b.dataset.sy!=null?["sy","hps.synstyle",v=>{ synStyle=v; }]
+          :b.dataset.sr!=null?["sr","hps.synreg",v=>{ synReg=v; }]:["sv","hps.synvoicing",v=>{ synVc=v; }];
+        const v=b.dataset[key]; set(v); try{ localStorage.setItem(store,v); }catch(e){}
+        pop.querySelectorAll("[data-"+key+"]").forEach(x=>x.classList.toggle("on",x.dataset[key]===v));
+        if(key==="ss") $("synDesc").textContent=synSound().d;
+        SYN.chord=null; SYN.vc=null; paintSyn(); });   // the next count sounds the new choice
+      openPop(pop,sb);
+    };
+    sb.addEventListener("contextmenu",e=>{ e.preventDefault(); e.stopPropagation(); clearTimeout(lt); openSyn(); });
+    sb.addEventListener("pointerdown",e=>{ if(e.button!==0) return;
+      longed=false; lt=setTimeout(()=>{ longed=true; openSyn(); },480); });
+    ["pointerup","pointerleave","pointercancel"].forEach(ev=>sb.addEventListener(ev,()=>clearTimeout(lt)));
+    sb.addEventListener("click",e=>{
+      if(longed){ e.stopImmediatePropagation(); longed=false; return; }
+      synOn=!synOn; voicesSave();                  // remembered for this room
+      paintSyn();
+      if(synOn){ arm(); toast("Synth on — "+synSound().name.toLowerCase()+", "+synStyleName(synStyle).toLowerCase()); }
+      else { if(ctx){ synRelease(ctx.currentTime); SYN.chord=null; } toast("Synth off"); } },true); }
   $("swing").value=swing; $("swingVal").textContent=swing+"%";
   $("swing").addEventListener("input",()=>{ swing=+$("swing").value;
     $("swingVal").textContent=swing+"%";
