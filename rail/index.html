@@ -4828,8 +4828,8 @@ body.phone .edhint{max-width:292px}
 .wlane{height:58px}
 .wlane g[data-hrel]{cursor:grab}
 .wlane.dragging, .wlane.dragging g[data-hrel]{cursor:grabbing}
-.edpals .bwsw.wg{display:grid; grid-template-columns:repeat(var(--n),1fr)}
-.edpals .bwsw.wg .bwseg{padding-left:2px; padding-right:2px; text-align:center}
+.edpals .bwsw.wg,.edpan .bwsw.wg{display:grid; grid-template-columns:repeat(var(--n),1fr)}
+.edpals .bwsw.wg .bwseg,.edpan .bwsw.wg .bwseg{padding-left:2px; padding-right:2px; text-align:center}
 .edpals .pal.bwsw.wsty{display:grid; grid-template-columns:repeat(4,minmax(0,1fr))}   /* the style row (30 Sep 2026) */
 .edpals .wsty .bwseg{padding:5px 3px; font-size:12px; line-height:1.2; text-align:center}
 .bcur{position:absolute; top:4px; bottom:4px; border-radius:6px; background:var(--dixie-soft); box-shadow:inset 0 0 0 1.5px var(--dixie); pointer-events:none}
@@ -12105,6 +12105,12 @@ function gtrNote(s,fret,t,vel){
   GTR.str[s]={src,env,fret};
 }
 /* where the next subdivision of the bar starts (the bar's end after the last), in pulses */
+/* A ROLL STEPS IN SIXTEENTHS AND STOPS WHERE ITS CHORD ENDS (David, 30 Sep 2026: "When the arpeggio holds more notes, those
+   should still play back as 16ths" - "drop the extra notes"; patches/arp-sixteenths.py): how many of a roll's notes, a
+   sixteenth apart from this pulse, sound before the next chord change or the bar line - the piano's and the guitar's */
+function arpFit(p2,rb,m,sec,s16,pd){ const name=chordInForceAt(p2,sec,m); let end=m.bp;
+  for(let q=rb+1;q<m.bp;q++) if(chordInForceAt(p2+(q-rb),sec,m)!==name){ end=q; break; }
+  return Math.max(1,Math.ceil((end-rb)*pd/s16-1e-6)); }
 function gtrNextCell(m,rb){ const n=cellsOf(m).map(c=>c.start).filter(x=>x>rb); return n.length?Math.min(...n):m.bp; }
 /* GUITAR AND PIANO FOLLOW THE HANDPAN (David, 29 Sep 2026; patches/follow-the-handpan.py): the style "Handpan" doubles
    the pan's pitched strokes (panTones), the pattern moved by an octave step for the register; each note rings until the next
@@ -12229,11 +12235,11 @@ function gtrPulse(p2,rel,m,sec,at,free){
     if(fresh){ const t0=hum(); S.forEach(s=>gtrNote(s,F[s],t0+Math.random()*0.005,0.8)); }
   } else if(st==="arp1"){   // from the chord change (and the bar line), low to high, LANDING on the next subdivision: five notes in 4/4
     if((onCount&&rb===0)||fresh){ const nx=gtrNextCell(m,rb), n=Math.min(S.length,Math.round((nx-rb)*16/(m.sub*(piece.unit||4)))+1);
-      rollOf(S.slice(0,n),0.72,n>1?(nx-rb)*pd/(n-1):s16); }
+      rollOf(S.slice(0,Math.min(n,arpFit(p2,rb,m,sec,s16,pd))),0.72,s16); }
   } else if(st==="offarp"){   // from the 2nd and the 4th subdivision, the top strings, 3 to 5 notes ENDING before the next one
     if(onCount){ const ci=cellsOf(m).findIndex(c=>c.start===rb);
       if(ci===1||ci===3){ const nx=gtrNextCell(m,rb), l16=(nx-rb)*16/(m.sub*(piece.unit||4)), n=Math.min(S.length,Math.max(3,Math.min(5,Math.round(l16))));
-        rollOf(S.slice(-n),0.62,Math.min(s16,(nx-rb)*pd/n)); } }
+        rollOf(S.slice(-n).slice(0,arpFit(p2,rb,m,sec,s16,pd)),0.62,s16); } }
   } else if(st==="arpfl"){   /* ARPEGGIO FIRST & LAST (David, 29 Sep 2026: "Also for guitar: Arpeggio beginning and end";
        patches/guitar-arp-first-last.py): the first count, the bass and the top strings rolled up in sixteenths; the last
        count, the top strings up to the highest; a chord arriving mid-bar is rolled where it arrives */
@@ -12419,7 +12425,7 @@ function pnoVoicing(pcs,lo,hi,prev){
    first note among the chord's notes; s "short". Its notes are the chord's where it stands, so it follows the chord. ═══ */
 const WTRACKS=["pno","syn","gtr"];   // the written instruments beside the bass (the synth and the guitar join later)
 function wtOf(sec,k){ return (sec&&Array.isArray(sec[k]))?sec[k]:[]; }
-function wtBare(x){ const n={}; for(const q of ["f","n","u","h","s","g","q","fr","d"]) if(x[q]!=null) n[q]=Array.isArray(x[q])?x[q].slice():x[q]; return n; }   // q: the guitar's strings (30 Sep 2026)   // g: the guitar's neck (30 Sep 2026)
+function wtBare(x){ const n={}; for(const q of ["f","n","u","h","s","g","q","fr","d","ps"]) if(x[q]!=null) n[q]=Array.isArray(x[q])?x[q].slice():x[q]; return n; }   // q: the guitar's strings (30 Sep 2026)   // g: the guitar's neck (30 Sep 2026)
 function wtSet(sec,k,bar,t,hit){
   const rest=wtOf(sec,k).filter(x=>!(x.bar===bar&&x.t===t));
   if(hit) rest.push(Object.assign({bar,t},wtBare(hit)));
@@ -12441,7 +12447,8 @@ function wtBar(k,sec,rel,m){ const s=piece&&sec&&piece.sections[sec.name]; if(!s
   const bi=Math.floor(Math.max(0,rel)/m.bp), w=s[k].filter(x=>x.bar===bi); return w.length?w:null; }
 /* the chord's notes a hit takes from: the low root, the chord as voiced, and its octave above - low to high */
 function pnoPool(ch,low){ return [...new Set([low].concat(ch,ch.map(x=>x+12)))].sort((a,b)=>a-b); }
-function pnoHitNotes(x,pool){ const n=Math.max(1,Math.min(8,x.n||4)), i0=Math.max(0,Math.min(pool.length-1,x.h||0));
+function pnoHitNotes(x,pool){ if(Array.isArray(x.ps)&&x.ps.length){ const s=x.ps.slice().sort((a,b)=>a-b); return x.f==="down"?s.reverse():s; }   /* its own notes (patches/snap-up-down.py) */
+  const n=Math.max(1,Math.min(8,x.n||4)), i0=Math.max(0,Math.min(pool.length-1,x.h||0));
   let ns=pool.slice(i0,i0+n); if(ns.length<n) ns=pool.slice(-n); return x.f==="down"?ns.slice().reverse():ns; }
 /* THE WRITTEN PIANO'S PLAYER: the hits standing on this pulse - each lifts the pedal, a block strikes its notes together, a
    roll one after another at its pace (a sixteenth, a 32nd or an eighth of the table's metre), a short one damped at half a
@@ -12501,13 +12508,13 @@ function pnoPulse(p2,rel,m,sec,at,free){
      off-beat arpeggio"; patches/strum-patterns-piano-rolls.py) */
   if(st==="arp1"){ if(onCount&&start){ pnoRelease(at);   // from the chord change and the bar line, landing on the next subdivision
       const ns=[low].concat(ch,[ch[0]+12]).sort((x,y)=>x-y), nx=cellsOf(m).map(c=>c.start).filter(x=>x>rb), span=((nx.length?Math.min(...nx):m.bp)-rb)*pd;
-      const t0=hum(); ns.forEach((x,k)=>pnoNote(x,t0+k*span/(ns.length-1),k?0.46:0.55)); } return; }
+      const t0=hum(), s16=pd*m.sub*((piece.unit||4)/16); ns.slice(0,arpFit(p2,rb,m,sec,s16,pd)).forEach((x,k)=>pnoNote(x,t0+k*s16,k?0.46:0.55)); } return; }
   /* ARPEGGIO ON THE 2ND BEAT (David, 30 Sep 2026: "like off-beat arpeggio, but only on the first off-beat";
      patches/piano-arp-2nd-beat.py): the same roll, on the second beat alone */
   if(st==="offarp"||st==="arp2"){ if(onCount&&start) pnoRelease(at);   // on the 2nd and 4th subdivision, the upper notes, ending before the next
     if(onCount){ const cs=cellsOf(m), ci=cs.findIndex(c=>c.start===rb);
       if(ci===1||(ci===3&&st==="offarp")){ const nx=cs[ci+1]?cs[ci+1].start:m.bp, s16=pd*m.sub*((piece.unit||4)/16), l16=(nx-rb)*16/(m.sub*(piece.unit||4));
-        const up=[...new Set(ch.concat([ch[0]+12,(ch[1]!=null?ch[1]:ch[0])+12]))].sort((x,y)=>x-y), n=Math.max(3,Math.min(5,Math.round(l16))), ns=up.slice(-n), sp=Math.min(s16,(nx-rb)*pd/n);
+        const up=[...new Set(ch.concat([ch[0]+12,(ch[1]!=null?ch[1]:ch[0])+12]))].sort((x,y)=>x-y), n=Math.max(3,Math.min(5,Math.round(l16))), ns=up.slice(-n).slice(0,arpFit(p2,rb,m,sec,s16,pd)), sp=s16;
         const t0=hum(); ns.forEach((x,k)=>pnoNote(x,t0+k*sp,0.4,(nx-rb)*pd*1.6)); } } return; }
   /* ON 2ND & FALL (David, 30 Sep 2026: "upwards arpeggio on 2nd beat, downwards arpeggio on last beat (onto 1st beat of
      following bar) and in the following bar upwards arpeggio on 2nd beat again, no downwards arpeggio";
@@ -12517,10 +12524,10 @@ function pnoPulse(p2,rel,m,sec,at,free){
     const cs=cellsOf(m), ci=cs.findIndex(c=>c.start===rb), nc=cs.length, first=Math.floor(Math.max(0,rel)/m.bp)%2===0;
     const s16=pd*m.sub*((piece.unit||4)/16);
     if(ci===1&&!(first&&nc<3)){ const nx=cs[2]?cs[2].start:m.bp, l16=(nx-rb)*16/(m.sub*(piece.unit||4));   // the roll up, as On 2nd beat's
-      const up=[...new Set(ch.concat([ch[0]+12,(ch[1]!=null?ch[1]:ch[0])+12]))].sort((x,y)=>x-y), n=Math.max(3,Math.min(5,Math.round(l16))), ns=up.slice(-n), sp=Math.min(s16,(nx-rb)*pd/n);
+      const up=[...new Set(ch.concat([ch[0]+12,(ch[1]!=null?ch[1]:ch[0])+12]))].sort((x,y)=>x-y), n=Math.max(3,Math.min(5,Math.round(l16))), ns=up.slice(-n).slice(0,arpFit(p2,rb,m,sec,s16,pd)), sp=s16;
       const t0=hum(); ns.forEach((x,k)=>pnoNote(x,t0+k*sp,0.4,(nx-rb)*pd*1.6)); }
-    if(first&&ci===nc-1&&nc>1){ const span=(m.bp-rb)*pd, n=Math.max(2,Math.min(6,Math.round(span/s16)));   // the fall
-      const dn=[...new Set(ch.concat([ch[0]+12,(ch[1]!=null?ch[1]:ch[0])+12]))].sort((x,y)=>y-x).slice(0,n), sp=span/dn.length;
+    if(first&&ci===nc-1&&nc>1){ const span=(m.bp-rb)*pd, n=Math.max(1,Math.min(6,Math.ceil(span/s16-1e-6)));   // the fall, in sixteenths (30 Sep 2026)
+      const dn=[...new Set(ch.concat([ch[0]+12,(ch[1]!=null?ch[1]:ch[0])+12]))].sort((x,y)=>y-x).slice(0,n), sp=s16;
       const t0=hum(); dn.forEach((x,k)=>pnoNote(x,t0+k*sp,0.46-0.04*k/Math.max(1,dn.length-1),span*1.5));
       const nn=chordInForceAt(p2+(m.bp-rb),sec,m), np=(nn&&chordPCs(nn))||pcs;   // the landing: the next chord's low root
       let l2=lo-12; while(((l2%12)+12)%12!==np[0]) l2++;
@@ -12750,6 +12757,7 @@ function synPlayWritten(p2,rel,m,sec,at,W){
   for(const x of here){ const at2=at+(x.t-rb)*pd; synRelease(at2); if(x.f==="rest"||!pcs) continue;
     SYN.chord=name; const ch=synChord(pcs,name), pool=[...new Set(ch.concat(ch.map(y=>y+12)))].sort((a,b)=>a-b);
     const n=Math.max(1,Math.min(8,x.n||4)), i0=Math.max(0,Math.min(pool.length-1,x.h||0)); let ns=pool.slice(i0,i0+n); if(ns.length<n) ns=pool.slice(-n);
+    if(Array.isArray(x.ps)&&x.ps.length) ns=x.ps.slice().sort((a,b)=>a-b);   /* its own notes (patches/snap-up-down.py) */
     const nextT=Math.min(m.bp,...W.filter(y=>y.t>x.t+1e-6).map(y=>y.t)), beat=pd*m.sub*((piece.unit||4)/4);
     const len=x.s==="short"?beat*0.5:Math.max(0.05,(nextT-x.t)*pd), P=synSound(), k0=SYN.held.length;
     if(x.f==="pulse"){ ns.forEach((y,i)=>synNote(y,at2+i*.004,.8,len,Math.min(P.a,.03)));
@@ -14798,6 +14806,7 @@ function bassSetArt(art){
   if(P.here&&!P.here.rest&&P.here.midi!=null) bassWrite(P.here.midi,{art:U.art}); else renderEditbar();
 }
 function bassShift(by){ const P=bassAtCur(); if(P.here&&P.here.midi!=null) bassWrite(P.here.midi+by); }
+function bassSnapBy(by){ const P=bassAtCur(); if(P.here&&P.here.midi!=null) bassWrite(snapNext(P.here.midi,by,snapPCs(P.chord))); }   /* ↑ ↓ by the snap (patches/snap-up-down.py) */
 function bassRest(){
   const P=bassAtCur(); snapshot(); bassMaterialise(P.nm,P.bi);
   bassSet(piece.sections[P.nm],P.bi,P.t,{rest:true}); bassDone();
@@ -14993,7 +15002,7 @@ function synStyleHits(nm){
     hits.push({r:a.r,f,ms:blk.map(e=>e.x).sort((p,q)=>p-q)}); i=j; }
   return wtPlace(hits,m,nb); }
 function synWrittenNotes(nm,x,W){ const m=SM(piece,nm), P=synPoolAt(nm,x.bar*m.bp+x.t); if(!P||x.f==="rest") return [];
-  const n=Math.max(1,Math.min(8,x.n||4)), i0=Math.max(0,Math.min(P.pool.length-1,x.h||0)); let ns=P.pool.slice(i0,i0+n); if(ns.length<n) ns=P.pool.slice(-n); return ns; }
+  const n=Math.max(1,Math.min(8,x.n||4)), i0=Math.max(0,Math.min(P.pool.length-1,x.h||0)); let ns=P.pool.slice(i0,i0+n); if(ns.length<n) ns=P.pool.slice(-n); return Array.isArray(x.ps)&&x.ps.length?x.ps.slice().sort((a,b)=>a-b):ns; }
 function synAudition(notes){ if(!ctx||!notes.length||!synReady()) return;
   try{ ctx.resume(); }catch(e){} const t0=ctx.currentTime+0.03; notes.forEach((y,k)=>synNote(y,t0+k*0.004,0.8,0.8)); }
 /* ---- THE GUITAR (David, 30 Sep 2026: "guitar next"; the mockup's frame b): its shape where a pulse stands (fresh, as the
@@ -15079,9 +15088,12 @@ function wtAtCur(k){
 /* the first hit written in a bar writes out what the style played there */
 function wtMaterialise(k,nm,bi){
   const I=WTI[k], sec=piece.sections[nm], m=SM(piece,nm); if(wtOf(sec,k).some(x=>x.bar===bi)) return;
-  for(const h of I.styleHits(nm).filter(h=>h.bar===bi)){ const P=I.pool(nm,bi*m.bp+h.t); if(!P) continue;
+  for(const h of I.styleHits(nm).filter(h=>h.bar===bi)){ const hit=wtHitOfStyle(k,nm,bi,h); if(hit) wtSet(sec,k,bi,h.t,hit); } }
+/* a hit the style plays, as a written hit - its form, its notes' count and height, the guitar's strings, frets and cuts; one
+   conversion for writing a bar out and for copying one field (patches/field-copy.py) */
+function wtHitOfStyle(k,nm,bi,h){ const I=WTI[k], m=SM(piece,nm), P=I.pool(nm,bi*m.bp+h.t); if(!P) return null;
     const lowest=Math.min(...h.ms); let k0=0; P.pool.forEach((x,j)=>{ if(Math.abs(x-lowest)<Math.abs(P.pool[k0]-lowest)) k0=j; });
-    const hit={f:h.f,n:h.ms.length}; if(I.height!==false) hit.h=k0; if(h.qs) hit.q=h.qs.slice(); if(Array.isArray(h.fr)) hit.fr=h.fr.slice(); if(Array.isArray(h.d)) hit.d=h.d.map(v=>v==null?null:Math.round(v*1000)/1000); if(h.short) hit.s="short"; if(h.u&&h.u!==16) hit.u=h.u; wtSet(sec,k,bi,h.t,hit); } }
+    const hit={f:h.f,n:h.ms.length}; if(I.height!==false) hit.h=k0; if(h.qs) hit.q=h.qs.slice(); if(Array.isArray(h.fr)) hit.fr=h.fr.slice(); if(Array.isArray(h.d)) hit.d=h.d.map(v=>v==null?null:Math.round(v*1000)/1000); if(h.short) hit.s="short"; if(h.u&&h.u!==16) hit.u=h.u; return hit; }
 /* write at the cursor: change the hit there, or write a new one (the instrument's default) */
 function wtWrite(k,change){
   const I=WTI[k], P=wtAtCur(k); snapshot(); wtMaterialise(k,P.nm,P.bi);
@@ -15092,7 +15104,41 @@ function wtWrite(k,change){
   if(P.pool.length&&I.height!==false) hit.h=Math.max(0,Math.min(P.pool.length-1,hit.h||0));
   wtSet(P.sec,k,P.bi,t,hit); bassDone();
   if(hit.f!=="rest"){ const x=Object.assign({bar:P.bi,t},hit); I.audition(I.notes(P.nm,x,wtOf(P.sec,k)),hit.f,hit.u,P.nm,x); } }
-function wtHeight(k,by){ if(k==="gtr"){ wtNeckBy(by); return; } if(WTI[k].height===false) return; const P=wtAtCur(k); const h=P.here&&P.here.h!=null?P.here.h:WTI[k].def.h; wtWrite(k,{h:Math.max(0,h+by)}); }
+/* ↑ ↓ SNAP (David, 30 Sep 2026: "I'd like the options to a. snap to chord, b. snap to scale and c. chromatic. I'd like the
+   same possibility when a piano, guitar or synth chord is selected"; patches/snap-up-down.py). ONE RULE: ↑ or ↓ moves every
+   note of the hit to its next pitch in the chosen set - the chord's tones, the handpan's scale (its notes in every octave),
+   or every semitone - the guitar each note along its own string. A chord still following the chord row, moved by chord
+   tones, keeps following it (its height a step: the same notes); any other move gives it its exact notes - ps on the piano
+   and the synth, fr on the guitar - taken from what plays, so what moves is what is heard. */
+var SNAP=null;
+function snapMode(){ if(SNAP==null){ let s="chord"; try{ s=localStorage.getItem("hps.snap")||"chord"; }catch(e){} SNAP=["chord","scale","chrom"].includes(s)?s:"chord"; } return SNAP; }
+function snapSet(v){ SNAP=v; try{ localStorage.setItem("hps.snap",v); }catch(e){} renderEditbar(); }
+function snapPCs(chord){ const md=snapMode();   // the set a note may land in, as pitch classes; null: every semitone
+  if(md==="chord"){ const p=chord&&chordPCs(chord); if(p&&p.length) return new Set(p.map(v=>((v%12)+12)%12)); }
+  if(md==="scale"&&typeof myPan!=="undefined"&&myPan){ try{ return new Set(panMidis(myPan).map(v=>((v%12)+12)%12)); }catch(e){} }
+  return null; }
+function snapNext(midi,by,pcs,taken){ let v=midi; for(let i=0;i<24;i++){ v+=by; if((!pcs||pcs.has(((v%12)+12)%12))&&!(taken&&taken.has(v))) return v; } return midi+by; }
+function snapRow(){ const md=snapMode();
+  return '<div class="lab">Snap ↑ ↓</div><div class="pal bwsw wg" style="--n:3">'+[["chord","Chord"],["scale","Scale"],["chrom","Chromatic"]].map(([q,l])=>'<button class="bwseg'+(md===q?" on":"")+'" data-snap="'+q+'">'+l+'</button>').join("")+'</div>'; }
+function snapWire(E){ E.querySelectorAll("[data-snap]").forEach(b=>b.addEventListener("click",()=>snapSet(b.dataset.snap))); }
+function wtHeight(k,by){ const I=WTI[k], P0=wtAtCur(k), x0=P0.here||P0.auto; if(!x0||x0.f==="rest") return;
+  snapshot(); wtMaterialise(k,P0.nm,P0.bi); WT_PLAYED.clear();
+  const P=wtAtCur(k), y=P.here; if(!y||y.f==="rest"){ bassDone(); return; }
+  const put=ch=>{ const hit=Object.assign(wtBare(y),ch); wtSet(P.sec,k,P.bi,y.t,hit); bassDone(); WT_PLAYED.clear();
+    if(hit.f!=="rest"){ const z=Object.assign({bar:P.bi,t:y.t},wtBare(hit)); I.audition(I.notes(P.nm,z,wtOf(P.sec,k)),hit.f,hit.u,P.nm,z); } };
+  const md=snapMode(), pcs=snapPCs(P.chord);
+  if(k!=="gtr"){
+    if(md==="chord"&&!Array.isArray(y.ps)&&P.chord){ const h=y.h!=null?y.h:I.def.h; put({h:Math.max(0,Math.min(Math.max(0,P.pool.length-1),h+by))}); return; }   // still the chord row's: a step up its tones
+    const cur=[...new Set(Array.isArray(y.ps)?y.ps:P.notes)].sort((a,b)=>a-b); if(!cur.length){ bassDone(); return; }
+    const lo=k==="pno"?21:24, hi=k==="pno"?108:96, out=new Set();
+    for(const v of (by>0?cur.slice().reverse():cur)){ let w=snapNext(v,by,pcs,out); if(w<lo||w>hi) w=v; out.add(w); }   // the leading note first: none lands on another
+    const ps=[...out].sort((a,b)=>a-b); put({ps,n:ps.length}); return; }
+  const W=wtOf(P.sec,"gtr"), a=P.bi*P.m.bp+y.t, nx=Math.min(P.m.bp,...W.filter(z=>z.bar===P.bi&&z.t>y.t+1e-6).map(z=>z.t)), b=P.bi*P.m.bp+nx;
+  const on=new Map(); for(const e of (wtPlayed("gtr",P.nm)||[])) if(e.r>=a-0.01&&e.r<b-0.01&&e.q!=null&&!on.has(e.q)) on.set(e.q,e.x);   // each string as it sounds now
+  if(!on.size){ bassDone(); return; }
+  const fr=Array.isArray(y.fr)?y.fr.slice():[null,null,null,null,null,null];
+  for(const [q,v] of on){ const f=snapNext(v,by,pcs)-GTR_OPEN[q]; fr[q]=f>=0&&f<=19?f:v-GTR_OPEN[q]; }   // along its own string, within the neck
+  const qs=[...on.keys()].sort((p,q)=>p-q); put({fr,q:qs,n:qs.length}); }
 function wtDelete(k){ const P=wtAtCur(k); if(!P.here) return; snapshot(); wtSet(P.sec,k,P.bi,P.here.t,null); bassDone(); }
 /* MOVE A HIT (David, 30 Sep 2026: "drag piano hits/patterns in the editor? horizontally on the timeline?"; patches/pno-drag.py):
    both bars written out first, the hit standing in the pulse it lands on gives way, a bar left with nothing keeps a rest */
@@ -15251,12 +15297,12 @@ function wtLanesPlace(sc){
     ln.innerHTML=h; });
 }
 /* ---- THE PALETTE: the hit at the cursor - its notes on a keyboard, and the forms that write it */
-function pnoKeysSVG(notes,pool){
+function pnoKeysSVG(notes,pool,marks){   // marks: the pitch classes ↑ ↓ land on (a Set; null none; left out, the chord's)
   const all=notes.concat(pool); if(!all.length) return "";
   let lo=Math.min(...all)-2, hi=Math.max(...all)+2; const isB=v=>[1,3,6,8,10].includes(((v%12)+12)%12);
   if(isB(lo)) lo--; const whites=[]; for(let v=lo;v<=hi;v++) if(!isB(v)) whites.push(v);
   const ww=22, W=whites.length*ww, top=18, kh=84, xw={}; whites.forEach((v,i)=>xw[v]=i*ww+1);
-  const on=new Set(notes), inCh=new Set(pool.map(v=>((v%12)+12)%12));
+  const on=new Set(notes), inCh=marks!==undefined?(marks||new Set()):new Set(pool.map(v=>((v%12)+12)%12));
   const mark=(v,cx)=>on.has(v)?'<circle cx="'+cx+'" cy="9" r="6" fill="var(--dixie)"/>':inCh.has(((v%12)+12)%12)?'<circle cx="'+cx+'" cy="9" r="3.5" fill="none" stroke="var(--ink3)" stroke-width="1.3"/>':"";
   let s='<svg class="bkeys" viewBox="0 0 '+(W+2)+' '+(top+kh+4)+'" width="100%" style="max-width:'+(W+2)+'px" aria-label="The hit’s notes">';
   for(const v of whites){ const x=xw[v], o=on.has(v);
@@ -15279,8 +15325,9 @@ function renderWtBar(E){
   const f=x?x.f:null, n=x&&x.f!=="rest"?(P.here?(P.here.n||I.def.n):P.notes.length):null, u=x&&I.paced(x.f)?(x.u||16):null, snd=P.here&&P.here.s==="short"?"short":"ring";
   const sg=(attr,key,l,on,dis)=>'<button class="bwseg'+(on?" on":"")+'" '+attr+'="'+key+'"'+(dis?" disabled":"")+'>'+l+'</button>';
   E.innerHTML='<div class="edwrap"><div class="edpan bkpan"><div class="lab">'+I.name+' hit · '+where+'</div>'
-    +pnoKeysSVG(P.notes,P.pool)
-    +'<div class="bklegend"><span><i class="bkc"></i>the hit’s notes</span><span><i class="bks"></i>in the chord'+(P.chord?" ("+P.chord+")":"")+'</span></div>'
+    +pnoKeysSVG(P.notes,P.pool,snapPCs(P.chord))
+    +'<div class="bklegend"><span><i class="bkc"></i>the hit’s notes</span>'+({chord:P.chord?'<span><i class="bks"></i>in the chord ('+P.chord+')</span>':'',scale:'<span><i class="bks"></i>in the pan’s scale</span>',chrom:''})[snapMode()]+'</div>'
+    +snapRow()   /* under the picture (David, 30 Sep 2026; patches/snap-under-picture.py) */
     +'</div><div class="edpals">'
     +bassWriteSwitch()
     +wtStyleRows(k)   // the table's or the loop's style (30 Sep 2026)
@@ -15288,17 +15335,17 @@ function renderWtBar(E){
     +(I.strings?gtrStringsRow(P,sg):'<div class="lab">'+(I.countLabel||"Notes")+'</div><div class="pal bwsw wg" style="--n:'+(I.counts||[2,3,4,5,6,7,8]).length+'">'+(I.counts||[2,3,4,5,6,7,8]).map(q=>sg("data-pn",q,q,n===q)).join("")+'</div>')   // the guitar: which strings (30 Sep 2026)
     +(I.neck?'<div class="lab">Neck</div><div class="pal bwsw wg" style="--n:4">'+[["auto","Auto"],["open","Open"],["mid","Mid-neck"],["high","High"]].map(([q,l])=>sg("data-pg2",q,l,!!(P.here&&P.here.g===q))).join("")+'</div>':'')   // none lit: the style's shape (30 Sep 2026)
     +'<div class="lab">Pace</div><div class="pal bwsw wg" style="--n:3">'+[[32,"32nds"],[16,"16ths"],[8,"8ths"]].map(([q,l])=>sg("data-pu",q,l,u===q,!u)).join("")+'</div>'
-    +(I.height===false?'':'<div class="lab">Height</div><div class="pal"><button class="key" data-ph="-1"'+(x&&x.f!=="rest"?"":" disabled")+'>Lower</button><button class="key" data-ph="1"'+(x&&x.f!=="rest"?"":" disabled")+'>Higher</button></div>')
+    +('<div class="lab">Move</div><div class="pal"><button class="key" data-ph="-1"'+(x&&x.f!=="rest"?"":" disabled")+'>Lower</button><button class="key" data-ph="1"'+(x&&x.f!=="rest"?"":" disabled")+'>Higher</button></div>')
     +'<div class="lab">Sound</div><div class="pal bwsw wg" style="--n:2">'+sg("data-ps2","ring","Ring",snd==="ring")+sg("data-ps2","short","Short",snd==="short")+'</div>'
     +'<div class="lab">Hit</div><div class="pal"><button class="key" data-px="rest">Rest</button><button class="key" data-px="del"'+(P.here?"":" disabled")+'>Delete</button></div>'
     +'<div class="lab">Back to auto</div><div class="pal"><button class="key" data-px="bar">This bar</button><button class="key" data-px="sec">This table</button><button class="key" data-px="all">Whole piece</button></div>'
     +'<div class="bkread">'+read+'</div>'
-    +'</div></div><p class="hint edhint">Click the '+I.name.toLowerCase()+' lane under a row, then a form. <b>←</b> <b>→</b> move · <b>↑</b> <b>↓</b> '+(k==="gtr"?"neck":"height")+' · '
+    +'</div></div><p class="hint edhint">Click the '+I.name.toLowerCase()+' lane under a row, then a form. <b>←</b> <b>→</b> move · <b>↑</b> <b>↓</b> move by '+({chord:"chord tones",scale:"the pan’s scale",chrom:"semitones"})[snapMode()]+' · '
     +I.keyHint+' · <b>2</b>–<b>8</b> notes · <b>R</b> rest · <b>Delete</b> removes · <b>Esc</b> back to the handpan. '
     +'<b>Drag</b> a hit along the lane, or <b>Shift</b> + <b>←</b> <b>→</b>, to move it. The first hit written in a bar writes out what the style played there.</p>';
   E.querySelectorAll("[data-pf]").forEach(b=>b.addEventListener("click",()=>wtWrite(k,{f:b.dataset.pf})));
-  wtStyleWire(E,k);
-  E.querySelectorAll("[data-pn]").forEach(b=>b.addEventListener("click",()=>wtWrite(k,{n:+b.dataset.pn})));
+  wtStyleWire(E,k); snapWire(E);
+  E.querySelectorAll("[data-pn]").forEach(b=>b.addEventListener("click",()=>wtWrite(k,{n:+b.dataset.pn,ps:null})));
   E.querySelectorAll("[data-pu]").forEach(b=>b.addEventListener("click",()=>{ if(!b.disabled) wtWrite(k,{u:+b.dataset.pu===16?null:+b.dataset.pu}); }));
   E.querySelectorAll("[data-ph]").forEach(b=>b.addEventListener("click",()=>wtHeight(k,+b.dataset.ph)));
   E.querySelectorAll("[data-ps2]").forEach(b=>b.addEventListener("click",()=>wtWrite(k,{s:b.dataset.ps2==="short"?"short":null,d:null})));
@@ -15321,7 +15368,7 @@ window.addEventListener("keydown",e=>{
   else if(key==="Escape"){ bassUI().track="pan"; render(); renderEditbar(); }
   else if(I.keys[key.toLowerCase()]) wtWrite(k,{f:I.keys[key.toLowerCase()]});
   else if(key==="r"||key==="R") wtWrite(k,{f:"rest"});
-  else if(/^[1-8]$/.test(key)&&(I.counts||[2,3,4,5,6,7,8]).includes(+key)) wtWrite(k,{n:+key,q:null,fr:null});   // the top n (a string list cleared)
+  else if(/^[1-8]$/.test(key)&&(I.counts||[2,3,4,5,6,7,8]).includes(+key)) wtWrite(k,{n:+key,q:null,fr:null,ps:null});   // the top n (a string list cleared)
   else if(key.length===1&&key!==" "){ /* swallowed: the handpan's letters do not write while an instrument is being written */ }
   else done=false;
   if(done){ e.preventDefault(); e.stopImmediatePropagation(); }
@@ -15376,7 +15423,7 @@ function renderBassBar(E){
   const deg=d=>'<button class="key'+(role&&role.d===d&&!role.a?" on":"")+'" data-bd="'+d+'"'+(P.chord?"":" disabled")+'>'+(d===7&&iv7===10?"♭7":d)+'</button>';
   E.innerHTML='<div class="edwrap"><div class="edpan bkpan"><div class="lab">Bass note · '+where+'</div>'
     +bassKeysSVG(sel,P.chord)
-    +'<div class="bklegend"><span><i class="bkd"></i>in the chord'+(P.chord?" ("+P.chord+")":"")+'</span><span><i class="bks"></i>in the scale</span><span><i class="bkc"></i>chosen</span></div>'
+    +'<div class="bklegend"><span><i class="bkd"></i>in the chord'+(P.chord?" ("+P.chord+")":"")+'</span><span><i class="bks"></i>in the scale</span><span><i class="bkc"></i>chosen</span></div>'+snapRow()
     +'</div><div class="edpals">'
     +bassWriteSwitch()
     +wtStyleRows("bass")   // the table's or the loop's style (30 Sep 2026)
@@ -15390,13 +15437,13 @@ function renderBassBar(E){
       +'<button class="key" data-bx="sec">This table</button><button class="key" data-bx="all">Whole piece</button></div>'
     +'<div class="bkread">'+read+'</div>'
     +'</div></div><p class="hint edhint">Click the bass lane under a row, then a key or a degree. <b>←</b> <b>→</b> move · '
-    +'<b>↑</b> <b>↓</b> a semitone · <b>1</b>–<b>7</b> degree · <b>Delete</b> removes · <b>Esc</b> back to the handpan. '
+    +'<b>↑</b> <b>↓</b> '+({chord:"to the next chord tone",scale:"to the next note of the pan’s scale",chrom:"a semitone"})[snapMode()]+' · <b>1</b>–<b>7</b> degree · <b>Delete</b> removes · <b>Esc</b> back to the handpan. '
     +'Show or hide the lane from the bass button’s right-click menu.</p>';
   E.querySelectorAll("[data-bm]").forEach(g=>g.addEventListener("pointerdown",e=>{ e.preventDefault(); bassWrite(+g.dataset.bm); }));
   E.querySelectorAll("[data-bd]").forEach(b=>b.addEventListener("click",()=>bassDegree(+b.dataset.bd)));
   wtStyleWire(E,"bass");
   E.querySelectorAll("[data-ba]").forEach(b=>b.addEventListener("click",()=>bassSetArt(b.dataset.ba==="ring"?null:b.dataset.ba)));
-  E.querySelectorAll("[data-bo]").forEach(b=>b.addEventListener("click",()=>bassShift(+b.dataset.bo)));
+  E.querySelectorAll("[data-bo]").forEach(b=>b.addEventListener("click",()=>bassShift(+b.dataset.bo))); snapWire(E);
   E.querySelectorAll("[data-bx]").forEach(b=>b.addEventListener("click",()=>{ const k=b.dataset.bx;
     if(k==="rest") bassRest(); else if(k==="del") bassDelete(); else bassToAuto(k); }));
 }
@@ -15429,7 +15476,7 @@ window.addEventListener("keydown",e=>{
   if(e.shiftKey&&(k==="ArrowRight"||k==="ArrowLeft")) bassNoteMoveBy(k==="ArrowRight"?1:-1);   // the note moves a pulse (30 Sep 2026)
   else if(k==="ArrowRight") bassStep(1);
   else if(k==="ArrowLeft") bassStep(-1);
-  else if(k==="ArrowUp"||k==="ArrowDown") bassShift(k==="ArrowUp"?1:-1);
+  else if(k==="ArrowUp"||k==="ArrowDown") bassSnapBy(k==="ArrowUp"?1:-1);
   else if(k==="Delete"||k==="Backspace") bassDelete();
   else if(k==="Escape"){ bassUI().track="pan"; render(); renderEditbar(); }
   else if(/^[1-7]$/.test(k)) bassDegree(+k);
@@ -28089,8 +28136,50 @@ function styBarSet(sec,bi,sty){ const all=sec.styb||{};
     if(sty&&sty[k]) o[bi]=Object.assign({},sty[k]); else delete o[bi];
     if(Object.keys(o).length) all[k]=o; else delete all[k]; }
   if(Object.keys(all).length) sec.styb=all; else delete sec.styb; }
+/* A SINGLE FIELD, COPIED AND PASTED (David, 30 Sep 2026: "please allow me to copy/past a single selected field in the
+   editor. This can be handpan or other instrument"; patches/field-copy.py): with no loop, ⌘C takes the field at the
+   cursor of the track being written - the handpan's slot, or the instrument's pulse with its hit (the style's, as it
+   plays, when the bar is not written) - and ⌘V writes it at that track's cursor, replacing that track's field and
+   nothing else, and steps the cursor on. The field keeps what stands in it, an empty one included. */
+function edTrackNow(){ return bassEdTrack()?"bass":wtEdTrack()?wtK():"pan"; }
+function edFieldSpan(rel){ const m=SM(piece,viewSec), end=(Math.floor(rel/m.bp)+1)*m.bp;
+  const rels=[...new Set([...document.querySelectorAll("#score .slot[data-rel]")].map(s=>+s.dataset.rel))].filter(r=>r>rel&&r<end);
+  return (rels.length?Math.min(...rels):end)-rel; }
+const EDF_NAME={pan:"handpan",bass:"bass",pno:"piano",gtr:"guitar",syn:"synth"};
+function edCopyField(){ const k=edTrackNow(), nm=viewSec, sec=piece&&piece.sections[nm]; if(!sec) return; const m=SM(piece,nm);
+  if(k==="pan"){ const bi=Math.floor(cursor/m.bp), t0=cursor-bi*m.bp, span=edFieldSpan(cursor);
+    const ev=(sec.bars[bi]||[]).filter(e=>e.t>=t0-1e-9&&e.t<t0+span-1e-9).map(e=>Object.assign({},e,{t:e.t-t0}));
+    edClip={span,ev,sub:m.sub,beats:m.beats,tup:[],field:"pan"};
+    toast("Copied the field"+(ev.length?" · "+ev.length+(ev.length===1?" note":" notes"):", empty")+" — ⌘V writes it at the cursor"); return; }
+  if(k==="bass"){ const P=bassAtCur(), o=P.here, n=!o?null:o.rest?{rest:true}:o.auto?bassPitched(o.midi,o.note&&o.note.art):bassBare(o.note);
+    edClip={span:1,ev:n?[{t:0,v:"bassmark",bass:n}]:[],sub:m.sub,beats:m.beats,tup:[],field:"bass"};
+    toast("Copied the bass field"+(n?(n.rest?" · a rest":" · "+bassName(o.midi)):", empty")+" — ⌘V writes it at the cursor"); return; }
+  const I=WTI[k], P=wtAtCur(k), x=P.here||P.auto, hit=!x?null:P.here?wtBare(x):wtHitOfStyle(k,nm,P.bi,x);
+  edClip={span:1,ev:hit?[{t:x.t-P.t,v:"wtmark",k,hit}]:[],sub:m.sub,beats:m.beats,tup:[],field:k};
+  toast("Copied the "+EDF_NAME[k]+" field"+(hit?" · "+(I.fName[hit.f]||hit.f):", empty")+" — ⌘V writes it at the cursor"); }
+/* write the copied field at rel, into its own track; returns true when it wrote */
+function edPasteField(rel){ const f=edClip.field, k=edTrackNow(), nm=viewSec, sec=piece&&piece.sections[nm]; if(!sec) return false;
+  if(f!==k){ toast("That is a "+EDF_NAME[f]+" field — choose "+EDF_NAME[f].replace(/^./,c=>c.toUpperCase())+" under Write to paste it"); return false; }
+  const m=SM(piece,nm), kk=m.sub/(edClip.sub||m.sub), bi=Math.floor(rel/m.bp); if(bi>=sec.bars.length) return false;
+  snapshot();
+  if(f==="pan"){ const t0=rel-bi*m.bp, span=edFieldSpan(rel); let ev=edClip.ev;
+    if(grooveEdit){ const def=(jamDefs().byName||{})[grooveEdit.ref], pcs=(def&&def.pcs)||[];   // a groove's notes are chord degrees
+      ev=ev.filter(e=>e.v!=="field"||!pcs.length||pcs.includes(jpc(myPan.posMidi(e.f)))).map(e=>{ const c=Object.assign({},e); delete c.art; return c; }); }
+    sec.bars[bi]=sec.bars[bi].filter(e=>!(e.t>=t0-1e-9&&e.t<t0+span-1e-9));
+    for(const e of ev){ const t=t0+Math.round(e.t*kk); if(t<t0+span) sec.bars[bi].push(Object.assign({},e,{t})); }
+    refresh(); toast("Pasted the field"); return true; }
+  const t0=Math.floor(rel-bi*m.bp+1e-6);
+  if(f==="bass"){ bassMaterialise(nm,bi); for(const y of bassOf(sec).filter(y=>y.bar===bi&&y.t>=t0-1e-6&&y.t<t0+1-1e-6)) bassSet(sec,bi,y.t,null);
+    for(const e of edClip.ev) bassSet(sec,bi,t0,e.bass);
+    if(!bassOf(sec).some(y=>y.bar===bi)) bassSet(sec,bi,0,{rest:true});   // a bar left empty keeps a rest
+    BASSPLAN=null; bassUI().cur=bi*m.bp+t0; bassDone(); bassHear(); return true; }
+  wtMaterialise(f,nm,bi); for(const y of wtOf(sec,f).filter(y=>y.bar===bi&&y.t>=t0-1e-6&&y.t<t0+1-1e-6)) wtSet(sec,f,bi,y.t,null);
+  for(const e of edClip.ev) wtSet(sec,f,bi,t0+Math.min(0.999,Math.max(0,Math.round(e.t*kk*1000)/1000)),e.hit);
+  if(!wtOf(sec,f).some(y=>y.bar===bi)) wtSet(sec,f,bi,0,{f:"rest"});   // a bar left empty keeps a rest
+  bassUI().cur=bi*m.bp+t0; bassDone(); wtHear(f); return true; }
 function edPasteAt(rel0){
   if(!edClip) return;
+  if(edClip.field){ edPasteField(rel0); return 0; }   // a single field (30 Sep 2026)
   const m=SM(piece,viewSec), sec=piece.sections[viewSec];
   const total=sec.bars.length*m.bp;
   if(rel0>=total){ toast("Nothing here to paste into"); return; }
@@ -28189,13 +28278,15 @@ function edClipKeys(k){
   if(k==="c"){
     try{ if(String(window.getSelection()||"")) return false; }catch(x){}
     if(loopSec){ edCopyLoop(); return true; }
-    if(editing){ toast("Loop the bars you want to copy first"); return true; }
+    if(editing){ edCopyField(); return true; }   // no loop: the field at the cursor (30 Sep 2026)
     return false;
   }
   if(k==="v"){
     if(!editing) return false;
     if(!edClip){ toast("Copy something first"); return true; }
     const m=SM(piece,viewSec), total=piece.sections[viewSec].bars.length*m.bp;
+    if(edClip.field){ const inst=edClip.field!=="pan", at=inst?bassUI().cur:cursor;   // a single field (30 Sep 2026)
+      if(edPasteField(at)){ if(inst) bassStep(1); else { cursor=Math.min(cursor+edFieldSpan(cursor),total-1); refresh(); } } return true; }
     const span=edPasteAt(cursor);
     if(span){ cursor=Math.min(cursor+span,total-1); refresh(); }
     return true;
