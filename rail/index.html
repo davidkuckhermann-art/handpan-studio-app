@@ -11173,7 +11173,15 @@ function percBuf(kind){ const k="p|"+kind;
   if(!BUFC.has(k)) BUFC.set(k,renderPerc(kind)); return BUFC.get(k); }
 
 /* ---------------- audio graph (from WGG, commit 766fdb3) ---------------- */
-let master=null, dry=null, wet=null, send=null, conv=null, limiter=null, sendOn=false;
+let master=null, dry=null, wet=null, send=null, conv=null, limiter=null, sendOn=false, glue=null;   // glue: the mix's compressor, {in,out} (30 Sep 2026)
+/* THE MIX HELD UNDER THE CLIPPER'S KNEE (David, 30 Sep 2026: "playback is distorting with all instruments";
+   patches/mix-glue.py): every sound goes through this compressor before the soft clipper - threshold -5 dB, ratio 20, a
+   1 ms attack - so a whole band sums under the knee (0.72) and the clipper, the last safety, no longer bends it. The
+   compressor's automatic make-up (+2.51 dB, measured for these settings) is taken back by the trim: nothing under the
+   threshold changes level. Measured: every instrument on, peak 1.32 -> 0.69, never over the knee; the handpan alone -0.04 dB */
+function mixGlue(ac){ const c=ac.createDynamicsCompressor(), t=ac.createGain();
+  c.threshold.value=-5; c.knee.value=2; c.ratio.value=20; c.attack.value=0.001; c.release.value=0.1;
+  t.gain.value=Math.pow(10,-2.51/20); c.connect(t); return {in:c,out:t}; }
 function softClipCurve(){ // slope exactly 1 below the knee — cannot colour or boost
   const n=2048,c=new Float32Array(n),T=.72;
   for(let i=0;i<n;i++){const x=(i/(n-1))*2-1,a=Math.abs(x);
@@ -11199,7 +11207,7 @@ function setWet(p){ const w=p/100; wet.gain.value=w*1.1; dry.gain.value=1-w*.35;
 let VBUS={ctx:null};
 function voiceBus(k){
   if(VBUS.ctx!==ctx){ VBUS={ctx};
-    const cv=ctx.createConvolver(); cv.buffer=makeIR(1.4,2.4); cv.connect(limiter); VBUS.conv=cv; }
+    const cv=ctx.createConvolver(); cv.buffer=makeIR(1.4,2.4); cv.connect(glue.in); VBUS.conv=cv; }
   if(!VBUS[k]){
     const inp=ctx.createGain(), pn=ctx.createStereoPanner?ctx.createStereoPanner():null, d=ctx.createGain(), s=ctx.createGain();
     if(pn){ inp.gain.value=Math.SQRT2; inp.connect(pn); pn.connect(d); pn.connect(s); } else { inp.connect(d); inp.connect(s); }
@@ -11620,7 +11628,8 @@ function ensureCtx(){
   master=ctx.createGain(); master.gain.value=vol; master.connect(ctx.destination);
   limiter=ctx.createWaveShaper(); limiter.curve=softClipCurve(); limiter.oversample="2x";
   limiter.connect(master);
-  dry=ctx.createGain(); wet=ctx.createGain(); dry.connect(limiter); wet.connect(limiter);
+  glue=mixGlue(ctx); glue.out.connect(limiter);   // the mix's compressor before the clipper (30 Sep 2026)
+  dry=ctx.createGain(); wet=ctx.createGain(); dry.connect(glue.in); wet.connect(glue.in);
   conv=ctx.createConvolver(); conv.buffer=makeIR(1.3,2.4); conv.connect(wet);
   send=ctx.createGain(); sendOn=false; setWet(16);
   /* THE APP NO LONGER UN-PAUSES ITSELF (David, 1 Sep — option A, chosen).
@@ -12860,9 +12869,11 @@ function loadWgg(){
    chip in the popup overrides it. */
 function rhyGrooveId(m,nm){
   const gs=(window.HPSWGG&&HPSWGG.grooves())||[]; if(!gs.length) return null;
-  const own=rhyTableGroove(nm);                  // a table's own groove, or "none" (step d, 28 Sep 2026)
+  const sub=RGSUB&&(RGSUB.names?RGSUB.names.has(nm):!rhyTableGroove(nm))?RGSUB.id:null;   /* the row selected while playing stands in: a groove, "none", "" (the drum button's) or "auto" (patches/groove-select-solo.py) */
+  if(sub==="none") return "none"; if(sub&&sub!=="auto"&&gs.some(g=>g.id===sub)) return sub;
+  const own=sub!=null?null:rhyTableGroove(nm);                  // a table's own groove, or "none" (step d, 28 Sep 2026)
   if(own==="none"||(own&&gs.some(g=>g.id===own))) return own;
-  if(rhyPick!=="auto"&&gs.some(g=>g.id===rhyPick)) return rhyPick;
+  if(sub!=="auto"&&rhyPick!=="auto"&&gs.some(g=>g.id===rhyPick)) return rhyPick;
   /* the meter of the section in hand — a jam's groove, a piece's own */
   if(!m){ try{ m=SM(piece,viewSec||piece.arrangement[0]); }catch(e){ m=null; } }
   const two=!!(m&&m.beats===2);
@@ -12939,7 +12950,7 @@ function rhyGrooveEl(nm){
   return el;
 }
 /* THE CHOOSER: for a table (nm) with where it applies, or for the drum button (nm null) */
-var RG={nm:null,val:"",tab:"all",q:"",scope:"one",wired:false}, RGP=null;
+var RG={nm:null,val:"",tab:"all",q:"",scope:"one",wired:false}, RGP=null, RGSUB=null, RGSOLO=null;   // RGSUB: the row selected while playing {id, names (null: the drum button's tables)}; RGSOLO: the groove soloed
 function rgPeers(nm){ const L=String(nm).replace(/\d+$/,"");
   return Object.keys(piece.sections||{}).filter(n=>String(n).replace(/\d+$/,"")===L); }
 async function rgOpen(nm){
@@ -12983,20 +12994,22 @@ function rgWire(){
   if(RG.wired) return; RG.wired=true;
   const d=$("rgDlg"), L=$("rgList");
   $("rgClose").addEventListener("click",()=>d.close());
-  d.addEventListener("close",rgListenStop);
+  d.addEventListener("close",()=>{ rgListenStop(); rgPreviewEnd(); });
   $("rgTabs").addEventListener("click",e=>{ const b=e.target.closest("[data-rt]"); if(b){ RG.tab=b.dataset.rt; rgPaint(); } });
   $("rgSearch").addEventListener("input",e=>{ RG.q=e.target.value; rgPaint(); });
   $("rgScope").addEventListener("click",e=>{ const b=e.target.closest("[data-rs]"); if(b){ RG.scope=b.dataset.rs; rgPaint(); } });
   L.addEventListener("click",e=>{
     const l=e.target.closest("[data-rl]"); if(l){ e.stopPropagation(); rgListen(l.dataset.rl); return; }
     const r=e.target.closest("[data-rv]"); if(!r) return;
-    RG.val=r.dataset.rv; L.querySelectorAll(".rgrow").forEach(x=>x.classList.toggle("sel",x.dataset.rv===RG.val)); });
+    RG.val=r.dataset.rv; L.querySelectorAll(".rgrow").forEach(x=>x.classList.toggle("sel",x.dataset.rv===RG.val)); rgPreview();
+    if(RGSOLO&&RGP&&RGP.solo&&rgById(RG.val)){ RGSOLO=RGP.id=RG.val; L.querySelectorAll("[data-rl]").forEach(b=>b.classList.toggle("on",b.dataset.rl===RG.val)); } });
   L.addEventListener("dblclick",e=>{ const r=e.target.closest("[data-rv]"); if(r&&!e.target.closest("[data-rl]")){ RG.val=r.dataset.rv; rgChoose(); } });
   $("rgChoose").addEventListener("click",rgChoose);
   $("rgNew").addEventListener("click",()=>{ const nm=RG.nm; $("rgDlg").close(); enterDg({table:nm}); });   // step e
 }
 function rgChoose(){
   const v=RG.val, d=$("rgDlg");
+  if(RGSUB&&v!=="none") RG.rhy0=null;   // chosen while heard: the drums stay as they are (patches/groove-select-solo.py)
   if(!RG.nm){ rhyPick=v||"auto"; try{ localStorage.setItem("hps.jamrhypick",rhyPick); }catch(e){}
     d.close(); toast("Drum groove: "+rhyMenuLabel()+(rhyOn?"":" — switch the drums on to hear it")); refresh(); return; }
   const names=RG.scope==="all"?Object.keys(piece.sections):RG.scope==="letter"?rgPeers(RG.nm):[RG.nm];
@@ -13008,10 +13021,15 @@ function rgChoose(){
 }
 /* LISTEN: the groove on its own at the piece's tempo, until clicked again, another is listened to or the chooser closes */
 async function rgListen(id){
-  const was=RGP&&RGP.id===id; rgListenStop();
   const mark=()=>$("rgList").querySelectorAll("[data-rl]").forEach(b=>b.classList.toggle("on",!!RGP&&b.dataset.rl===RGP.id));
+  /* WHILE SOMETHING PLAYS (David, 30 Sep 2026: "preview should already start with a row is selected. The play button should
+     then solo the groove, but keep it going with the playback"; patches/groove-select-solo.py): ▶ selects the row - so it
+     stands in (rgPreview) - and solos it, the drums alone in time with the playback, until ▶ again */
+  if(playing){ const again=RGSOLO===id; rgListenStop();
+    RG.val=id; $("rgList").querySelectorAll(".rgrow").forEach(x=>x.classList.toggle("sel",x.dataset.rv===id)); await rgPreview();
+    if(!again){ RGSOLO=id; RGP={id,solo:true}; } mark(); return; }
+  const was=RGP&&RGP.id===id; rgListenStop();
   if(was){ mark(); return; }
-  if(playing) stop();
   try{ ensureCtx(); await loadWgg(); }catch(e){ return; }
   if(!rgById(id)) return;
   const sd=60/effBpm()/4, me={id,s:0,t:0,sd,timer:null}; RGP=me; mark();
@@ -13022,7 +13040,16 @@ async function rgListen(id){
     while(me.t<ctx.currentTime+0.25){ HPSWGG.fireStep(me.s%st,me.t,me.sd); me.s++; me.t+=me.sd; } };
   tick(); me.timer=setInterval(tick,40);
 }
-function rgListenStop(){ if(!RGP) return; clearInterval(RGP.timer); RGP=null; }
+function rgListenStop(){ if(!RGP) return; clearInterval(RGP.timer); if(RGP.solo) RGSOLO=null; RGP=null; }
+/* THE ROW SELECTED WHILE PLAYING STANDS IN for the groove being chosen until the chooser closes (Choose keeps it); the drums
+   come on for it if they were off, and are put back as they were when it ends */
+async function rgPreview(){ if(!playing) return; const v=RG.val;
+  RGSUB={id:v,names:RG.nm?new Set(RG.scope==="all"?Object.keys(piece.sections):RG.scope==="letter"?rgPeers(RG.nm):[RG.nm]):null};
+  if(RG.rhy0==null) RG.rhy0=rhyOn;
+  if(v!=="none"&&!rhyOn){ rhyOn=true; rgDrumPaint(); }
+  if(v&&v!=="none"&&v!=="auto"&&rgById(v)){ try{ HPSWGG.use(v); const f=rhyFit(SM(piece,viewSec||piece.arrangement[0])); if(!HPSWGG.ready()) await HPSWGG.prepare(pulseDurOf(0)/(f?f.spp:1)); }catch(e){} } }
+function rgPreviewEnd(){ RGSUB=null; RGSOLO=null; if(RG.rhy0!=null){ if(!RG.rhy0&&rhyOn){ rhyOn=false; rgDrumPaint(); } RG.rhy0=null; } }
+function rgDrumPaint(){ const db=$("drumBtn"); if(!db) return; db.classList.toggle("on",rhyOn); db.setAttribute("aria-pressed",rhyOn?"true":"false"); }
 /* ==== DRUM GROOVES (step e, David 29 Sep 2026, patches/drum-grooves-e.py): the drum groove editor, a room laid over the
    room it was opened from. A drum groove is a World Groove Grid groove - {id, name, steps, group, bpm, rows:[{set, p, f,
    a, gain, pan, mute, eng}]} plus barSteps and meter - so the drums play it as they play the built-in ones, and a full
@@ -14627,7 +14654,8 @@ function bassStyled(style,sp,m,ent,bi){
     const k0=cont?FS.list[0].beat:0;                   // a carried chord goes on counting
     let notes=[[s.t,root]];
     if(style==="r5"){   // Root-5th is the bar's own: the root, the fifth at the middle - each beat in 2/4 (David, 30 Sep 2026; patches/bass-r5-each-bar.py)
-      if(s.len>=2*m.sub){ const h=s.t+Math.round(s.len/2/m.sub)*m.sub; if(h>s.t&&h<end) notes.push([h,root+iv[5]]); } }
+      const mid=s.t+s.len/2, gs=ps.filter(p=>p>s.t), cs=[]; for(let p=s.t+m.sub;p<end;p+=m.sub) cs.push(p);
+      const h=(gs.length?gs:cs).sort((a,b)=>Math.abs(a-mid)-Math.abs(b-mid)||b-a)[0]; if(h!=null) notes.push([h,root+iv[5]]); }   /* the fifth on the beat or group start nearest the span's middle - 3+2+2 plays X-- X- -- - or, a span of one group, on its count nearest the middle as before (David, 30 Sep 2026: "should follow the subdivision"; patches/bass-r5-groups.py) */
     else if(style==="oct") notes=ps.map((p,k)=>[p,root+((k+k0)%2?12:0)]);
     else if(style==="arp"){ const d=[1,3,5,3]; notes=ps.map((p,k)=>[p,root+iv[d[(k+k0)%4]]]); }
     else if(style==="walk"){ const d=[1,2,3,5]; notes=ps.map((p,k)=>[p,root+iv[d[(k+k0)%4]]]);
@@ -16459,7 +16487,7 @@ function sched(){
       /* A BREAK SILENCES THE HANDPAN. Whether it silences the bass and the
          rhythm too is now a setting (jam.brk.band) — the pan always rests, or
          it would not be a break. */
-      if(!mutedByPreview&&!brkMute&&!cpQuiet&&!panMute) for(const ev of (C.byPulse.get(p2)||[])) fireEvent(ev,at);
+      if(!mutedByPreview&&!brkMute&&!cpQuiet&&!panMute&&!RGSOLO) for(const ev of (C.byPulse.get(p2)||[])) fireEvent(ev,at);
       const brkBand=!!(jamOn&&jam.brk&&jam.brk.band);           // the band plays through it
       const brkMuteV=brkMute&&!brkBand;                          // …so these two are not muted by the break
       /* THE BREAK'S CLICK IS ITS OWN INSTRUMENT (David, 29 Aug: "if
@@ -16494,7 +16522,7 @@ function sched(){
          window around every pulse of the music its own — at 105 BPM on sixteenths that is the whole timeline,
          and David's claps were thrown away before they could ever be a pair. His log said so in one word,
          forty times over: "THE APP'S OWN SOUND, ignored". Braced now. */
-      if(!mutedByPreview&&clickNow&&rel%m.sub===0){
+      if(!mutedByPreview&&!RGSOLO&&clickNow&&rel%m.sub===0){
         fire(clickBuf(clickAccent(m,rel)),nextTime,1);   // the bar line, and each group's start (16 Sep)
         if(typeof tpMute==="function") tpMute(nextTime);   // TABLE PRACTICE — STAGE B: …and the ear must not hear it as a clap
       }
@@ -16515,7 +16543,7 @@ function sched(){
          twice, and each note rings for its OWN span rather than the whole bar.
          A bar whose chord is carried over from an earlier one still strikes on
          the bar line, through voiceChordAt's carry-back. */
-      if(bassOn&&!mutedByPreview&&!brkMuteV){
+      if(bassOn&&!mutedByPreview&&!brkMuteV&&!RGSOLO){
         const inBar=((rel%m.bp)+m.bp)%m.bp;
         /* THE WRITTEN BASS (David, 28 Sep 2026, patches/bass-track-a.py): a bar with anything written plays exactly
            what is written - each note ringing until the next one of its bar, a rest damping the string - and a bar
@@ -16541,9 +16569,9 @@ function sched(){
       }
       /* THE GUITAR (28 Sep 2026, patches/guitar-a.py) follows the chord in force, under the bass's own mutes - and
          they damp it, so it does not ring on through a groove preview or a break's silence */
-      if(gtrOn){ if(!mutedByPreview&&!brkMuteV) gtrPulse(p2,rel,m,sec,at); else if(GTR.chord) gtrDampAll(at); }
-      if(pnoOn){ if(!mutedByPreview&&!brkMuteV) pnoPulse(p2,rel,m,sec,at); else if(PNO.chord){ pnoRelease(at); PNO.chord=null; } }   // the piano (28 Sep 2026)
-      if(synOn){ if(!mutedByPreview&&!brkMuteV) synPulse(p2,rel,m,sec,at); else if(SYN.held.length){ synRelease(at); SYN.chord=null; } }   // the synth (29 Sep 2026)
+      if(gtrOn){ if(!mutedByPreview&&!brkMuteV&&!RGSOLO) gtrPulse(p2,rel,m,sec,at); else if(GTR.chord) gtrDampAll(at); }
+      if(pnoOn){ if(!mutedByPreview&&!brkMuteV&&!RGSOLO) pnoPulse(p2,rel,m,sec,at); else if(PNO.chord){ pnoRelease(at); PNO.chord=null; } }   // the piano (28 Sep 2026)
+      if(synOn){ if(!mutedByPreview&&!brkMuteV&&!RGSOLO) synPulse(p2,rel,m,sec,at); else if(SYN.held.length){ synRelease(at); SYN.chord=null; } }   // the synth (29 Sep 2026)
       /* THE RHYTHM TRACK, under the same three mutes. The step is counted
          from the top of the current ROW — rel is the pulse within the
          section, a row is bpr bars — in WGG's sixteenths, so the rhythm
@@ -17049,7 +17077,7 @@ async function reviveAudio(){
   const old=ctx;
   stopSchedClock(); stopFollowCarry();     // both hold nodes of the dying context
   live=[];
-  ctx=null; master=dry=wet=send=conv=limiter=null;
+  ctx=null; master=dry=wet=send=conv=limiter=glue=null;
   /* the iOS sink is a MediaStreamDestination of the OLD context: kept, it
      would route the new graph into a stream nothing is listening to */
   try{ if(iosSink&&iosSink!=="failed"){ iosSink.pause(); iosSink.srcObject=null; } }catch(e){}
@@ -17476,7 +17504,8 @@ async function exportRender(pulses,fade,onStage){
   const om=oc.createGain(); om.gain.value=1; om.connect(oc.destination);
   const ol=oc.createWaveShaper(); ol.curve=softClipCurve(); ol.oversample="2x";
   ol.connect(om);
-  const od=oc.createGain(), ow=oc.createGain(); od.connect(ol); ow.connect(ol);
+  const og=mixGlue(oc); og.out.connect(ol);   // as playback does (30 Sep 2026)
+  const od=oc.createGain(), ow=oc.createGain(); od.connect(og.in); ow.connect(og.in);
   od.gain.value=dry.gain.value; ow.gain.value=wet.gain.value;
   const os=oc.createGain();
   if(conv&&conv.buffer){
