@@ -11940,15 +11940,15 @@ const GTR_STRUMS=[["straight","Straight"],["folk","Folk"],["pop","Pop chuck"],["
    the 5th and the 12th fret - as many of its own notes as the strings hold, its third first, the root lowest where it
    can (four strings), the tightest hand nearest the 8th fret */
 const GTR_HIGH={};
-function gtrHighShape(name,strs){
-  strs=strs||[3,4,5]; const key=name+"|"+strs.join(""); if(!name) return null; if(GTR_HIGH[key]!==undefined) return GTR_HIGH[key];
+function gtrHighShape(name,strs,reg){   // reg: the register's hand - Open about the 3rd fret, Mid-neck and Auto the 8th, High the 12th (30 Sep 2026)
+  strs=strs||[3,4,5]; const R=({open:[1,5,3],high:[9,14,12]})[reg]||[5,10,8], key=name+"|"+strs.join("")+"|"+R[2]; if(!name) return null; if(GTR_HIGH[key]!==undefined) return GTR_HIGH[key];
   const pcs=chordPCs(name); let best=null;
   const walk=(i,b,fr)=>{ if(i===strs.length){
       const pc=fr.map((f,j)=>(GTR_OPEN[strs[j]]+f)%12), set=new Set(pc), span=Math.max(...fr)-Math.min(...fr), mid=fr.reduce((x,y)=>x+y,0)/fr.length;
-      const sc=set.size*10+(set.has(pcs[1])?4:0)+(strs.length>3&&pc[0]===pcs[0]?6:0)-span*2-Math.abs(mid-8);
+      const sc=set.size*10+(set.has(pcs[1])?4:0)+(strs.length>3&&pc[0]===pcs[0]?6:0)-span*2-Math.abs(mid-R[2]);
       if(!best||sc>best.sc){ const f={}; strs.forEach((s,j)=>f[s]=fr[j]); best={sc,s:strs.slice(),f}; } return; }
     for(let f=b;f<=b+3;f++) if(pcs.includes((GTR_OPEN[strs[i]]+f)%12)) walk(i+1,b,fr.concat([f])); };
-  if(pcs) for(let b=5;b<=10;b++) walk(0,b,[]);
+  if(pcs) for(let b=R[0];b<=R[1];b++) walk(0,b,[]);
   return GTR_HIGH[key]=best;
 }
 function gtrStrumNow(p2,m){ if(gtrStrum!=="varied") return gtrStrum; const v=["folk","pop","palm","funk"]; return v[Math.floor(Math.floor(p2/m.bp)/4)%4]; }
@@ -11965,18 +11965,18 @@ function gtrStyleName(k){ const s=GTR_STYLES.find(x=>x[0]===k); return s?s[1]:"S
 const GTR_VC=new Map();
 /* THE NECK A WRITTEN HIT ASKS FOR (David, 30 Sep 2026: "3 options: open, mid-neck and high"; patches/gtr-neck3.py): the
    frets a shape may use - Open the first four with open strings, Mid-neck 3 to 9 without; High is gtrHighShape */
-const GTR_POS={open:{lo:0,hi:4,open:true},mid:{lo:3,hi:9,open:false}};
+const GTR_POS={open:{lo:0,hi:4,open:true},mid:{lo:3,hi:10,open:false,floor:50,top:72},high:{lo:5,hi:17,open:false,floor:57,top:79}};   // and where it sounds: Mid from D3, the top under C5; High from A3, under G5 (30 Sep 2026)
 function gtrVoicing(name,prev,full,win){
   const pcs=chordPCs(name); if(!pcs) return null;
   const key=name+"|"+(prev?prev.f.join(","):"")+(full?"|F":"")+(win?"|W"+win.lo+"-"+win.hi+(win.open?"o":""):"");
   if(GTR_VC.has(key)) return GTR_VC.get(key);
   const root=pcs[0], set=new Set(pcs), fifth=(root+7)%12;
   const need=pcs.filter((pc,i)=>!(i===2&&pcs.length>=4&&pc===fifth));
-  const opts=GTR_OPEN.map(o=>{ const a=[null]; for(let k=0;k<=(full?12:GTR_MAXF);k++){ if(win&&(k===0?!win.open:(k<win.lo||k>win.hi))) continue; if(set.has((o+k)%12)&&o+k>=(win&&win.open?0:GTR_FLOOR)) a.push(k); } return a; });   // open chords may go below A2 (30 Sep 2026)   // never below A2; a full voicing may reach the 12th fret
+  const opts=GTR_OPEN.map(o=>{ const a=[null]; for(let k=0;k<=Math.max(full?12:GTR_MAXF,win?win.hi:0);k++){ if(win&&(k===0?!win.open:(k<win.lo||k>win.hi))) continue; if(set.has((o+k)%12)&&o+k>=(win&&win.floor!=null?win.floor:win&&win.open?0:GTR_FLOOR)) a.push(k); } return a; });   // open chords may go below A2 (30 Sep 2026)   // never below A2; a full voicing may reach the 12th fret
   const f=[null,null,null,null,null,null];
   let best=null, bs=1e9;
   const walk=s=>{
-    if(s===6){ const sc=gtrScore(f,root,need,fifth,prev,full); if(sc<bs){ bs=sc; best=f.slice(); } return; }
+    if(s===6){ const sc=gtrScore(f,root,need,fifth,prev,full,win&&win.top); if(sc<bs){ bs=sc; best=f.slice(); } return; }
     for(const k of opts[s]){
       f[s]=k;
       let lo=-1; for(let i=0;i<=s;i++) if(f[i]!=null){ lo=i; break; }
@@ -12008,7 +12008,7 @@ function gtrFingers(f){
   }
   return n;
 }
-function gtrScore(f,root,need,fifth,prev,full){
+function gtrScore(f,root,need,fifth,prev,full,topT){
   const sd=[]; f.forEach((k,i)=>{ if(k!=null) sd.push(i); });
   if(sd.length<(full?5:4)) return 1e9;
   const have=new Set(sd.map(i=>(GTR_OPEN[i]+f[i])%12));
@@ -12021,7 +12021,7 @@ function gtrScore(f,root,need,fifth,prev,full){
   const fr=sd.filter(i=>f[i]>0).map(i=>f[i]), pos=fr.length?Math.min(...fr):0, span=fr.length?Math.max(...fr)-pos:0;
   const opens=sd.filter(i=>f[i]===0).length, top=GTR_OPEN[hi]+f[hi];
   let sc=-1.3*sd.length+0.9*Math.max(0,pos-1)+0.6*span+0.3*fg+2.5*inner+0.8*(5-hi);
-  if(!full&&top>GTR_TOP) sc+=0.7*(top-GTR_TOP);   // a full voicing uses the whole guitar (28 Sep 2026)
+  if(!full&&top>(topT||GTR_TOP)) sc+=0.7*(top-(topT||GTR_TOP));   // a full voicing uses the whole guitar (28 Sep 2026)
   if(full&&new Set(ms).size<ms.length) return 1e9;   // …and no two strings on one pitch, ever (Dmin x50765, Emin x75400)
   if(pos<=4) sc-=0.4*opens;
   if(!have.has(fifth)&&need.length>=4) sc+=0.6;
@@ -12171,7 +12171,7 @@ function gtrPlayWritten(p2,rel,m,sec,at,W){
   for(const x of here){ const at2=at+(x.t-rb)*pd;
     if(x.f==="rest"||!name){ gtrDampAll(at2); GTR.wkey=null; continue; }
     const pos=x.g||gtrReg, key=name+"|"+pos;   // its neck: open, mid, high - or, none chosen, the menu's register (30 Sep 2026)
-    if(GTR.wkey!==key||!GTR.shape){ const sh=(pos==="high"&&gtrHighShape(name,[2,3,4,5]))||gtrVoicing(name,GTR.shape&&Array.isArray(GTR.shape.f)?GTR.shape:null,GTR_FULL.has(gtrStyle),GTR_POS[pos]); if(!sh) continue;
+    if(GTR.wkey!==key||!GTR.shape){ const sh=gtrVoicing(name,GTR.shape&&Array.isArray(GTR.shape.f)?GTR.shape:null,GTR_FULL.has(gtrStyle),GTR_POS[pos]); if(!sh) continue;
       for(let q=0;q<6;q++) if(GTR.str[q]&&sh.f[q]!==GTR.str[q].fret) gtrChoke(q,at2-0.005,0.025);   // the hand moves
       GTR.chord=name; GTR.shape=sh; GTR.wkey=key; }
     const S=GTR.shape.s, F=GTR.shape.f, use=gtrUse(S,x);
@@ -12201,7 +12201,7 @@ function gtrPulse(p2,rel,m,sec,at,free){
   if(!name){ if(GTR.chord) gtrDampAll(at); return; }
   let fresh=false;
   if(name!==GTR.chord){
-    const sh=(gtrReg==="high"&&gtrHighShape(name,[2,3,4,5]))||gtrVoicing(name,GTR.shape&&Array.isArray(GTR.shape.f)?GTR.shape:null,GTR_FULL.has(gtrStyle),GTR_POS[gtrReg]); if(!sh) return;   // Open | Mid-neck | High (30 Sep 2026)   // the register (29 Sep 2026); led only from an ordinary shape - a High one threw (29 Sep 2026, patches/guitar-register-switch.py)
+    const sh=gtrVoicing(name,GTR.shape&&Array.isArray(GTR.shape.f)?GTR.shape:null,GTR_FULL.has(gtrStyle),GTR_POS[gtrReg]); if(!sh) return;   // Open | Mid-neck | High (30 Sep 2026)   // the register (29 Sep 2026); led only from an ordinary shape - a High one threw (29 Sep 2026, patches/guitar-register-switch.py)
     for(let s=0;s<6;s++) if(GTR.str[s]&&sh.f[s]!==GTR.str[s].fret) gtrChoke(s,at-0.005,0.025);   // the hand moves
     GTR.chord=name; GTR.shape=sh; GTR.seq=0; fresh=true;
   }
@@ -12279,7 +12279,7 @@ function gtrPulse(p2,rel,m,sec,at,free){
       const shortly=(list,v,len,dir)=>{ const t0=hum(), L=dir<0?list.slice().reverse():list;
         L.forEach((x,k)=>gtrNote(x,F[x],t0+k*0.006,v)); L.forEach(x=>gtrChoke(x,t0+len,0.008)); };
       if(/^funkhi/.test(pat)){   // the high-chord funk patterns (29 Sep 2026)
-        const H=gtrHighShape(GTR.chord)||{s:S.slice(-3),f:F}, k=k16, x=(pat==="funkhi1"?"xxAxxxAxxxAxxxAx":pat==="funkhi3"?"x.xxA.x.x.xxA.x.":pat==="funkhi4"?"....A..A.A..A...":"Ax.Ax.Axx.Ax.Ax.")[k];   /* funkhi3: HALFTIME (David, 29 Sep 2026: "a halftime funk chank"; "the strokes should fall on the backbeats") - the chank on 2 and 4 */
+        const H=gtrHighShape(GTR.chord,null,gtrReg)||{s:S.slice(-3),f:F}, k=k16, x=(pat==="funkhi1"?"xxAxxxAxxxAxxxAx":pat==="funkhi3"?"x.xxA.x.x.xxA.x.":pat==="funkhi4"?"....A..A.A..A...":"Ax.Ax.Axx.Ax.Ax.")[k];   /* funkhi3: HALFTIME (David, 29 Sep 2026: "a halftime funk chank"; "the strokes should fall on the backbeats") - the chank on 2 and 4 */
         const L=k%2?H.s.slice().reverse():H.s, t0=hum();
         if(x==="A"){ L.forEach((x2,j)=>gtrNote(x2,H.f[x2],t0+j*0.007,(k===0?0.8:0.7)*lean)); L.forEach(x2=>gtrChoke(x2,t0+(pat==="funkhi1"?0.1:pat==="funkhi3"?0.13:0.16),0.02)); }
         else if(x==="x"){ L.forEach((x2,j)=>gtrNote(x2,H.f[x2],t0+j*0.004,0.22)); L.forEach(x2=>gtrChoke(x2,t0+0.02,0.006)); } }
@@ -12291,6 +12291,11 @@ function gtrPulse(p2,rel,m,sec,at,free){
         if(ts==null&&th!=null){ const fr=S.map(x=>F[x]).filter(f=>f>0), home=fr.length?fr.reduce((a,b)=>a+b,0)/fr.length:3;
           for(const x of [3,4,2]){ let f=((th-GTR_OPEN[x])%12+12)%12; if(f+12-home<home-f) f+=12;
             if(tf==null||Math.abs(f-home)<Math.abs(tf-home)){ ts=x; tf=f; } } }   // none in the shape: G, B or D string, near the hand
+        { const band=({open:[48,0,4],mid:[60,5,9],high:[72,8,19]})[gtrReg];   // THE THIRD IN ITS REGISTER'S OCTAVE (30 Sep 2026): Open C3-B3, Mid-neck C4-B4, High C5-B5
+          if(band&&th!=null){ const mi=band[0]+(((th-band[0])%12)+12)%12, c=(band[1]+band[2])/2; let bs=null;
+            for(let x=0;x<6;x++){ const f=mi-GTR_OPEN[x]; if(f<0||f>19) continue; const out=f<band[1]?band[1]-f:f>band[2]?f-band[2]:0, sc=out*10+Math.abs(f-c)*0.1;
+              if(!bs||sc<bs.sc) bs={x,f,sc}; }   // the string whose fret sits in the register's hand position
+            if(bs){ ts=bs.x; tf=bs.f; } } }
         if(ts!=null){ const x="x-xxx--x-x--xx-x"[k16], t0=hum();
           if(x==="x"){ gtrNote(ts,tf,t0,(s===0?0.78:0.64)*lean); gtrChoke(ts,t0+Math.min(0.14,tk.dur*0.3),0.02); }
           else { gtrNote(ts,tf,t0,0.2); gtrChoke(ts,t0+0.02,0.006); } } }
@@ -14994,7 +14999,7 @@ function synAudition(notes){ if(!ctx||!notes.length||!synReady()) return;
    an even pace apart, one way, three or more a roll; a hit's notes are the top n strings of the shape */
 function gtrShapeAt(nm,rel,pos){ const ent=bassEnt(nm), m=SM(piece,nm); if(!ent) return null;
   let name=null; try{ name=chordInForceAt(ent.pulse+Math.floor(rel),ent,m); }catch(e){} if(!name) return null;
-  const sh=(pos==="high"&&gtrHighShape(name,[2,3,4,5]))||gtrVoicing(name,null,GTR_FULL.has(gtrStyle),GTR_POS[pos]); return sh?{name,sh}:null; }
+  const sh=gtrVoicing(name,null,GTR_FULL.has(gtrStyle),GTR_POS[pos]); return sh?{name,sh}:null; }
 function gtrPoolAt(nm,rel){ const G=gtrShapeAt(nm,rel,gtrReg); if(!G) return null;
   const pool=G.sh.s.map(q=>GTR_OPEN[q]+G.sh.f[q]).sort((a,b)=>a-b); return {name:G.name,pool,lo:38,hi:84}; }
 function gtrStyleHits(nm){
@@ -28061,6 +28066,12 @@ function edCrossSection(dir){
    Copy takes the looped span and Paste writes it wherever the finger lands,
    replacing what is there. Both go through snapshot(), so ⌘Z / ↺ undo them. */
 let edClip=null;                  // {span, ev:[{t relative, …}]}
+/* a bar's own styles set to exactly these ({k:{y,p}}; an instrument not named has none) */
+function styBarSet(sec,bi,sty){ const all=sec.styb||{};
+  for(const k of new Set(Object.keys(all).concat(Object.keys(sty||{})))){ const o=all[k]||{};
+    if(sty&&sty[k]) o[bi]=Object.assign({},sty[k]); else delete o[bi];
+    if(Object.keys(o).length) all[k]=o; else delete all[k]; }
+  if(Object.keys(all).length) sec.styb=all; else delete sec.styb; }
 function edPasteAt(rel0){
   if(!edClip) return;
   const m=SM(piece,viewSec), sec=piece.sections[viewSec];
@@ -28103,7 +28114,7 @@ function edPasteAt(rel0){
     });
     // grooves carry no articulation
     evs=evs.map(e=>{ const c=Object.assign({},e); delete c.art; return c; });
-    evs=evs.filter(e=>e.v!=="mark"&&e.v!=="bassmark");   // a groove's chords are its progression's, not written (26 Sep 2026); nor its bass
+    evs=evs.filter(e=>e.v!=="mark"&&e.v!=="bassmark"&&e.v!=="stymark");   // a groove's chords are its progression's, not written (26 Sep 2026); nor its bass
   }
   snapshot();
   /* THE RANGES LAND FIRST (16 Sep): each becomes whole counts of one target
@@ -28137,6 +28148,7 @@ function edPasteAt(rel0){
     if(ev.v==="mark"){ markSet(sec,bi,r-bi*m.bp,ev.chord); continue; }   // a copied chord mark goes back into the list
     if(ev.v==="bassmark"){ bassSet(sec,bi,r-bi*m.bp,ev.bass); continue; }   // …and a copied bass note (28 Sep 2026)
     if(ev.v==="wtmark"){ wtSet(sec,ev.k,bi,r-bi*m.bp,ev.hit); continue; }   // …and a copied hit (30 Sep 2026)
+    if(ev.v==="stymark"){ styBarSet(sec,bi,ev.sty); continue; }   // …and a copied bar's styles (30 Sep 2026)
     sec.bars[bi].push(Object.assign({},ev,{t:r-bi*m.bp}));
     wrote++;
   }
@@ -28314,7 +28326,12 @@ function edCopyLoop(){
   const bms=bassOf(sec).map(x=>({r:x.bar*m.bp+x.t,x})).filter(o=>o.r>=r0&&o.r<r1).map(o=>({t:o.r-r0,v:"bassmark",bass:bassBare(o.x)}));
   const wms=[].concat(...WTRACKS.map(k=>wtOf(sec,k).map(x=>({r:x.bar*m.bp+x.t,x})).filter(o=>o.r>=r0&&o.r<r1)
     .map(o=>({t:o.r-r0,v:"wtmark",k,hit:wtBare(o.x)}))));   // …and the written instruments' hits (30 Sep 2026)
-  edClip={span:r1-r0, ev:ev.concat(mks,bms,wms), sub:m.sub, beats:m.beats, tup};
+  /* …and the bars' own styles, by the bar's start - an empty entry for a bar with none, so the paste plays as this did
+     (David, 30 Sep 2026: "make copy and paste carry the bar styles"; patches/copy-bar-styles.py) */
+  const sms=[]; for(let bi=0;bi<sec.bars.length;bi++){ const b0=bi*m.bp; if(b0<r0||b0>=r1) continue; const sty={};
+    for(const k of Object.keys(sec.styb||{})) if(sec.styb[k][bi]) sty[k]=Object.assign({},sec.styb[k][bi]);
+    sms.push({t:b0-r0,v:"stymark",sty}); }
+  edClip={span:r1-r0, ev:ev.concat(mks,bms,wms,sms), sub:m.sub, beats:m.beats, tup};
   const bars=(r1-r0)/m.bp;
   toast("Copied "+(Number.isInteger(bars)&&bars>=1
     ?bars+(bars===1?" bar":" bars"):(r1-r0)+" slots")
