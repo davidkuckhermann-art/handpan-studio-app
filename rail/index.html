@@ -11766,29 +11766,35 @@ let bassLast=null;
    C1-C4 at its own pitch - bass/sneaky/p<midi>.mp3 the pluck, m<midi>.mp3 the muted pluck (see its SOURCE.txt) -
    beside bank.js as the guitar's are. Nothing is fetched until the double bass is chosen; until it is decoded the
    synth plays, so the bass is never silent. ═══ */
-let bassSound=(function(){ try{ return localStorage.getItem("hps.basssound")==="dbass"?"dbass":"synth"; }catch(e){ return "synth"; } })();
-const BASS_SMP_GAIN=1.57;   // the synth's loudness: measured in the app over eight notes G1-B-flat2, their first half second
-const BASS_SMP_LO=24, BASS_SMP_HI=60;
-let BASS_SMP=null, BASS_SMP_DEC=null;
-function bassSmpURL(n){ const b=document.querySelector('script[src*="bank.js"]'); const src=b?b.getAttribute("src"):"bank.js";
-  return src.replace(/bank\.js(\?.*)?$/,"bass/sneaky/"+n); }
-function bassSmpReady(){
-  if(BASS_SMP&&BASS_SMP.ctx===ctx) return true;
-  if(ctx&&!BASS_SMP_DEC){ const ac=ctx, names=[];
-    for(let m=BASS_SMP_LO;m<=BASS_SMP_HI;m++) names.push("p"+m,"m"+m);
-    BASS_SMP_DEC=Promise.all(names.map(n=>fetch(bassSmpURL(n+".mp3")).then(r=>{ if(!r.ok) throw new Error(n+": "+r.status); return r.arrayBuffer(); })
+let bassSound=(function(){ try{ const v=localStorage.getItem("hps.basssound"); return v==="dbass"||v==="ebass"?v:"synth"; }catch(e){ return "synth"; } })();
+/* THE SAMPLED BASSES ARE ROWS OF ONE TABLE (David, 30 Sep 2026: "add yr finger as a third sound in the bass menu";
+   patches/bass-electric.py): each its folder beside bank.js, the notes recorded (lo-hi; beyond them the nearest at another
+   speed), whether it recorded a muted pluck, and the gain that brings it to the synth's loudness - measured in the app,
+   eight notes G1-B-flat2, their first half second. Electric: FreePats Electric Bass YR, fingered (CC0), one octave. */
+const BASS_SETS={dbass:{dir:"sneaky",lo:24,hi:60,mute:true,gain:1.57},
+                 ebass:{dir:"yr",lo:28,hi:39,mute:false,gain:1.57}};
+const BASS_SMP={}, BASS_SMP_DEC={};
+function bassSmpURL(dir,n){ const b=document.querySelector('script[src*="bank.js"]'); const src=b?b.getAttribute("src"):"bank.js";
+  return src.replace(/bank\.js(\?.*)?$/,"bass/"+dir+"/"+n); }
+function bassSmpReady(k){
+  const S=BASS_SETS[k]; if(!S) return false;
+  if(BASS_SMP[k]&&BASS_SMP[k].ctx===ctx) return true;
+  if(ctx&&!BASS_SMP_DEC[k]){ const ac=ctx, names=[];
+    for(let m=S.lo;m<=S.hi;m++){ names.push("p"+m); if(S.mute) names.push("m"+m); }
+    BASS_SMP_DEC[k]=Promise.all(names.map(n=>fetch(bassSmpURL(S.dir,n+".mp3")).then(r=>{ if(!r.ok) throw new Error(n+": "+r.status); return r.arrayBuffer(); })
         .then(ab=>new Promise((res,rej)=>ac.decodeAudioData(ab,b=>res([n,b]),rej)))))
-      .then(list=>{ const bufs={}; for(const [n,b] of list) bufs[n]=b; if(ac===ctx) BASS_SMP={ctx:ac,bufs}; BASS_SMP_DEC=null; })
-      .catch(()=>{ BASS_SMP_DEC=null; }); }
+      .then(list=>{ const bufs={}; for(const [n,b] of list) bufs[n]=b; if(ac===ctx) BASS_SMP[k]={ctx:ac,bufs}; BASS_SMP_DEC[k]=null; })
+      .catch(()=>{ BASS_SMP_DEC[k]=null; }); }
   return false;
 }
-/* one note of the double bass: the recording at its own pitch (beyond C1-C4 the nearest, at another speed), its strike
-   ducked for 90 ms, ringing `ring` seconds and faded at its end; the next bass note damps it (bassLast) */
-function fireBassSmp(midi,st,ring,duck,art,dur){
-  const m=Math.max(BASS_SMP_LO,Math.min(BASS_SMP_HI,Math.round(midi))), mute=art==="mute";
-  const buf=BASS_SMP.bufs[(mute?"m":"p")+m]; if(!buf) return;
-  const rate=Math.pow(2,(midi-m)/12), lvl=BASS_SMP_GAIN*(bassVol/100);
-  if(mute) ring=Math.max(0.12,Math.min(0.5,dur||0.5));            // the muted pluck: its own short thump
+/* one note of a sampled bass: the recording at its own pitch (beyond the notes recorded the nearest, at another speed),
+   its strike ducked for 90 ms, ringing `ring` seconds and faded at its end; the next bass note damps it (bassLast). A
+   muted note is the recorded muted pluck, or - where none was recorded - the pluck stopped after 0.1 s */
+function fireBassSmp(k,midi,st,ring,duck,art,dur){
+  const S=BASS_SETS[k], m=Math.max(S.lo,Math.min(S.hi,Math.round(midi))), mute=art==="mute";
+  const buf=BASS_SMP[k].bufs[(mute&&S.mute?"m":"p")+m]; if(!buf) return;
+  const rate=Math.pow(2,(midi-m)/12), lvl=S.gain*(bassVol/100);
+  if(mute) ring=S.mute?Math.max(0.12,Math.min(0.5,dur||0.5)):0.1;   // the muted pluck: its own short thump, or the pluck stopped
   ring=Math.min(ring,buf.duration/rate-0.02);
   const end=st+ring, src=ctx.createBufferSource(); src.buffer=buf; src.playbackRate.value=rate;
   const env=ctx.createGain(), ch=ctx.createGain(), g=ctx.createGain(); g.gain.value=1;   // env: the note; g: what the silencers ramp
@@ -11820,7 +11826,7 @@ function fireBass(name,at,dur,crowd,note){
      an option for staccato and muted notes") */
   const art=note&&note.art;
   if(art==="stac") ring=Math.max(0.09,Math.min(ring,(dur||0)*0.5)); else if(art==="mute") ring=0.075;
-  if(bassSound==="dbass"&&bassSmpReady()){ fireBassSmp(midi,st,ring,duck,art,dur); return; }   // the double bass (30 Sep 2026)
+  if(bassSound!=="synth"&&bassSmpReady(bassSound)){ fireBassSmp(bassSound,midi,st,ring,duck,art,dur); return; }   // a sampled bass (30 Sep 2026)
   const end=st+ring;
   const f=440*Math.pow(2,(midi-69)/12);
   /* TWO GAINS, AND THE REASON MATTERS. `env` carries the strike-and-ring
@@ -11901,7 +11907,7 @@ const GTR_OPEN=[40,45,50,55,59,64];            // string 6 (low E) … string 1 
 function gtrURL(n){ const b=document.querySelector('script[src*="bank.js"]'); const src=b?b.getAttribute("src"):"bank.js";
   return src.replace(/bank\.js(\?.*)?$/,"guitar/mf/"+n); }   // a file of MF's set (28 Sep 2026)
 const GTR_STYLES=[["strum","Strummed"],["block","Block"],["change","Chord change"],["arp","Arpeggio"],["arp1","Single arpeggio"],
-  ["offarp","Off-beat arpeggio"],["arpfl","Arpeggio first & last"],["pick","Picking"],["pan","Handpan"]];   // Handpan: doubles the pan (29 Sep 2026)   // first & last (29 Sep 2026)   // three more (David, 28 Sep 2026, patches/guitar-styles-b.py)
+  ["offarp","Off-beat arpeggio"],["arpfl","Arpeggio first & last"],["pick","Picking"],["delay","Delay"],["pan","Handpan"]];   // Delay (30 Sep 2026)   // Handpan: doubles the pan (29 Sep 2026)   // first & last (29 Sep 2026)   // three more (David, 28 Sep 2026, patches/guitar-styles-b.py)
 /* THE PICKED STYLES ASK FOR A FULL VOICING: five or six strings, not held under the pan ("Arpeggios and picking patterns
    should use 5-6 notes, with guitar voicings") */
 const GTR_FULL=new Set(["arp","arp1","offarp","arpfl","pick"]);
@@ -12177,6 +12183,12 @@ function gtrPulse(p2,rel,m,sec,at){
     if(onCount&&(first||rb===cs[cs.length-1].start)){ const nx=gtrNextCell(m,rb), n=Math.max(2,Math.min(4,Math.floor((nx-rb)*16/(m.sub*(m.den||4))+0.01)));
       const list=first?[S[0]].concat(S.slice(1).slice(-(n-1))):S.slice(-n);
       rollOf(list,first?0.72:0.64,Math.min(s16,(nx-rb)*pd/n)); }
+  } else if(st==="delay"){   /* DELAY (David, 30 Sep 2026: "add the delay style to the guitar"; patches/guitar-delay.py): as the
+       synth's - the chord strummed at the bar line or a change, then on every eighth in the table's feel, each repeat 0.7 of
+       the one before */
+    for(const tk of ticks){ if(tk.s%2) continue; tAt=at+tk.dt;
+      if((rb===0&&tk.dt<1e-6)||(fresh&&tk.dt<1e-6)) GTR.rep=0;
+      const n=GTR.rep||0; GTR.rep=n+1; down(0.78*Math.pow(0.7,n)); }
   } else for(const tk of ticks){ tAt=at+tk.dt;              // THE PATTERNS, step by step in the table's feel
     const lean=tk.lean, s=tk.s, cnt=tk.beat, fr=fresh&&tk.dt<1e-6;
     if(st==="arp"){                                         // the bass, then every string of the shape up and back down
@@ -14700,9 +14712,9 @@ document.addEventListener("click",e=>{
 /* the bass's Sound (30 Sep 2026, patches/bass-double.py): the samples start loading the moment the double bass is chosen */
 document.addEventListener("click",e=>{
   const b=e.target&&e.target.closest&&e.target.closest("#bassPop [data-bsnd]"); if(!b) return;
-  bassSound=b.dataset.bsnd==="dbass"?"dbass":"synth"; try{ localStorage.setItem("hps.basssound",bassSound); }catch(x){}
+  bassSound=BASS_SETS[b.dataset.bsnd]?b.dataset.bsnd:"synth"; try{ localStorage.setItem("hps.basssound",bassSound); }catch(x){}
   b.parentElement.querySelectorAll("[data-bsnd]").forEach(x=>x.classList.toggle("on",x===b));
-  if(bassSound==="dbass") bassSmpReady();
+  if(bassSound!=="synth") bassSmpReady(bassSound);
 });
 document.addEventListener("click",e=>{
   const b=e.target&&e.target.closest&&e.target.closest("#bassPop [data-bl]"); if(!b) return;
@@ -44368,9 +44380,10 @@ function boot(){
       /* TWO SLIDERS AND A SENTENCE. The lowest note is chosen by name — the
          slider walks semitones — and the line underneath says the whole range
          it makes, because "C2" alone does not tell you where the B♭ will land. */
-      pop.innerHTML='<div class="ttl">Sound</div><div class="pal bwsw gsty two">'   // the double bass (30 Sep 2026), laid out as the Staff row
+      pop.innerHTML='<div class="ttl">Sound</div><div class="pal bwsw gsty">'   // the double bass and the electric (30 Sep 2026): three across
         +'<button class="bwseg'+(bassSound==="synth"?' on':'')+'" data-bsnd="synth">Synth</button>'
-        +'<button class="bwseg'+(bassSound==="dbass"?' on':'')+'" data-bsnd="dbass">Double bass</button></div>'
+        +'<button class="bwseg'+(bassSound==="dbass"?' on':'')+'" data-bsnd="dbass">Double bass</button>'
+        +'<button class="bwseg'+(bassSound==="ebass"?' on':'')+'" data-bsnd="ebass">Electric</button></div>'
         +'<div class="ttl">Bass volume</div>'
         +'<div class="vol"><input type="range" id="bassVolR" min="0" max="150" step="5" '
         +'value="'+bassVol+'" aria-label="Bass volume"><span class="val" id="bassVolV">'
