@@ -4858,6 +4858,7 @@ body.phone .edhint{max-width:292px}
 #rgList{flex:1 1 auto; min-height:0; max-height:none; margin:0; overflow-y:auto; overscroll-behavior:none}
 #rgList .gname{min-width:0; flex:1}
 #rgList .hint{margin-top:0}
+#rgDlg .rgnow{margin:0; color:var(--ink2); font-size:13px}   /* what the chooser is doing while playing (patches/groove-preview-note.py) */
 #rgDlg .rgfoot{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
 #rgDlg .rgfoot .bwseg{padding:5px 12px}
 /* the bass style in the bass button's menu (28 Sep 2026): one segmented control, three to a row; greyed while the piece
@@ -9262,6 +9263,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
   <div class="pal bwsw rgtabs" id="rgTabs"><button class="bwseg on" type="button" data-rt="all">All</button><button class="bwseg" type="button" data-rt="built">Built-in</button><button class="bwseg" type="button" data-rt="mine">Yours</button></div>
   <label class="lsearch">⌕ <input id="rgSearch" type="search" placeholder="Search" autocomplete="off" aria-label="Search the grooves"></label>
   <div class="list" id="rgList"></div>
+  <p class="hint rgnow" id="rgNow" hidden></p>
   <div class="rgfoot"><button class="ctl" id="rgNew" type="button">＋ New groove</button><span class="pal bwsw" id="rgScope"></span><span class="spacer"></span><button class="ctl on" id="rgChoose" type="button">Choose</button></div>
 </dialog>
 
@@ -12161,9 +12163,14 @@ function feelSteps(m,bi){   // THE RULE: this bar's steps of the pattern - {k, s
   const den=m.den||4;
   const beats=den===8?cellsOf(m):Array.from({length:m.beats},(_,i)=>({start:i*m.sub,len:m.sub,counts:1}));
   const B=beats.length, span=(B<4&&4%B===0)?4/B:1, pb=span>1?4:B, list=[];
-  beats.forEach((c,ci)=>{ const parts=den===8?c.counts:m.sub, fr=parts%3===0?[0,1/3,2/3,5/6]:[0,.25,.5,.75];
+  const p16=m.sub*(piece.unit||4)/16;   // the pulses in a sixteenth
+  beats.forEach((c,ci)=>{ const parts=den===8?c.counts:m.sub, fr=parts%3===0?[0,1/3,2/3,5/6]:[0,.25,.5,.75], L=Math.round(c.len/p16);
     const beat=span>1?(bi%span)*B+ci:ci;
-    for(let s=0;s<4;s++) list.push({k:beat*4+s,s,beat,ci,at:c.start+fr[s]*c.len,len:c.len,first:c.start===0&&s===0}); });
+    /* A BEAT SHORTER THAN FOUR SIXTEENTHS (David, 30 Sep 2026: "most of the funk guitar styles don't work in 7/8";
+       patches/grid-steps-groups.py): its steps sit on its own sixteenths, one each, and the steps past its end are left
+       out - the swing above is for a beat of three EIGHTHS; three sixteenths swung put the fourth step off the grid */
+    for(let s=0;s<4;s++){ if(L<4&&s>=L) continue;
+      list.push({k:beat*4+s,s,beat,ci,at:c.start+(L<4?s*p16:fr[s]*c.len),len:c.len,first:c.start===0&&s===0}); } });
   return {list,B,span,pb};
 }
 function feelTicks(m,rel,pd){   // the rule, cut to one pulse: the steps inside it and how long after it each falls
@@ -12795,7 +12802,7 @@ function synPulse(p2,rel,m,sec,at,free){
   /* PULSE gates the chord on every eighth of the pattern, in the table's feel (30 Sep 2026, patches/feel-piano-synth.py) */
   /* DELAY (David, 30 Sep 2026: "work like pulse, but get softer with each repeat"; patches/synth-delay.py): each repeat 0.7
      of the one before, from the bar line or the change */
-  if(synStyle==="pulse"||synStyle==="delay") for(const tk of feelTicks(m,rel,pd)){ if(tk.s%2) continue;
+  if(synStyle==="pulse"||synStyle==="delay") for(const tk of feelTicks(m,rel,pd)){ if(m.den===8?(tk.dt>1e-6||rb%m.sub!==0):tk.s%2) continue;   /* the metre's eighths: in /8 every count, in /4 half a beat (David, 30 Sep 2026: "the guitar delay style works correctly in 7/8, but the synth doesnt"; patches/synth-pulse-eighths.py) */
     const t=at+tk.dt, len=tk.dur/2, n=SYN.rep||0, lv=synStyle==="delay"?Math.pow(.7,n):1; SYN.rep=n+1;
     for(const h of SYN.held){ if(h.end<=t) continue; h.gt.gain.setValueAtTime(lv,t); h.gt.gain.setTargetAtTime(.08*lv,t+len*.4,len*.12); } }
 }
@@ -13002,7 +13009,7 @@ function rgWire(){
     const l=e.target.closest("[data-rl]"); if(l){ e.stopPropagation(); rgListen(l.dataset.rl); return; }
     const r=e.target.closest("[data-rv]"); if(!r) return;
     RG.val=r.dataset.rv; L.querySelectorAll(".rgrow").forEach(x=>x.classList.toggle("sel",x.dataset.rv===RG.val)); rgPreview();
-    if(RGSOLO&&RGP&&RGP.solo&&rgById(RG.val)){ RGSOLO=RGP.id=RG.val; L.querySelectorAll("[data-rl]").forEach(b=>b.classList.toggle("on",b.dataset.rl===RG.val)); } });
+    if(RGSOLO&&RGP&&RGP.solo&&rgById(RG.val)){ RGSOLO=RGP.id=RG.val; L.querySelectorAll("[data-rl]").forEach(b=>b.classList.toggle("on",b.dataset.rl===RG.val)); rgNowPaint(); } });
   L.addEventListener("dblclick",e=>{ const r=e.target.closest("[data-rv]"); if(r&&!e.target.closest("[data-rl]")){ RG.val=r.dataset.rv; rgChoose(); } });
   $("rgChoose").addEventListener("click",rgChoose);
   $("rgNew").addEventListener("click",()=>{ const nm=RG.nm; $("rgDlg").close(); enterDg({table:nm}); });   // step e
@@ -13027,7 +13034,7 @@ async function rgListen(id){
      stands in (rgPreview) - and solos it, the drums alone in time with the playback, until ▶ again */
   if(playing){ const again=RGSOLO===id; rgListenStop();
     RG.val=id; $("rgList").querySelectorAll(".rgrow").forEach(x=>x.classList.toggle("sel",x.dataset.rv===id)); await rgPreview();
-    if(!again){ RGSOLO=id; RGP={id,solo:true}; } mark(); return; }
+    if(!again){ RGSOLO=id; RGP={id,solo:true}; } mark(); rgNowPaint(); return; }
   const was=RGP&&RGP.id===id; rgListenStop();
   if(was){ mark(); return; }
   try{ ensureCtx(); await loadWgg(); }catch(e){ return; }
@@ -13040,15 +13047,23 @@ async function rgListen(id){
     while(me.t<ctx.currentTime+0.25){ HPSWGG.fireStep(me.s%st,me.t,me.sd); me.s++; me.t+=me.sd; } };
   tick(); me.timer=setInterval(tick,40);
 }
-function rgListenStop(){ if(!RGP) return; clearInterval(RGP.timer); if(RGP.solo) RGSOLO=null; RGP=null; }
+function rgListenStop(){ if(!RGP) return; clearInterval(RGP.timer); if(RGP.solo) RGSOLO=null; RGP=null; rgNowPaint(); }
 /* THE ROW SELECTED WHILE PLAYING STANDS IN for the groove being chosen until the chooser closes (Choose keeps it); the drums
    come on for it if they were off, and are put back as they were when it ends */
 async function rgPreview(){ if(!playing) return; const v=RG.val;
-  RGSUB={id:v,names:RG.nm?new Set(RG.scope==="all"?Object.keys(piece.sections):RG.scope==="letter"?rgPeers(RG.nm):[RG.nm]):null};
+  RGSUB={id:v,names:RG.nm?new Set(RG.scope==="all"?Object.keys(piece.sections):RG.scope==="letter"?rgPeers(RG.nm):[RG.nm]):null}; rgNowPaint();
   if(RG.rhy0==null) RG.rhy0=rhyOn;
   if(v!=="none"&&!rhyOn){ rhyOn=true; rgDrumPaint(); }
   if(v&&v!=="none"&&v!=="auto"&&rgById(v)){ try{ HPSWGG.use(v); const f=rhyFit(SM(piece,viewSec||piece.arrangement[0])); if(!HPSWGG.ready()) await HPSWGG.prepare(pulseDurOf(0)/(f?f.spp:1)); }catch(e){} } }
-function rgPreviewEnd(){ RGSUB=null; RGSOLO=null; if(RG.rhy0!=null){ if(!RG.rhy0&&rhyOn){ rhyOn=false; rgDrumPaint(); } RG.rhy0=null; } }
+function rgPreviewEnd(){ RGSUB=null; RGSOLO=null; if(RG.rhy0!=null){ if(!RG.rhy0&&rhyOn){ rhyOn=false; rgDrumPaint(); } RG.rhy0=null; } rgNowPaint(); }
+/* WHAT THE CHOOSER IS DOING (David, 30 Sep 2026: "please add an explanation "previewing "groove xxx" in the jam, click play to
+   solo""; patches/groove-preview-note.py) */
+function rgNowPaint(){ const el=$("rgNow"); if(!el) return; const v=RGSUB?RGSUB.id:null; if(v==null){ el.hidden=true; el.textContent=""; return; }
+  const where=(typeof jamOn!=="undefined"&&jamOn)?"the jam":"the playback";
+  const nm=v==="none"?"no drums":v==="auto"?"Auto (“"+rgLabel(rhyGrooveId())+"”)":v===""?"the drum button’s groove":"“"+rgLabel(v)+"”";
+  el.hidden=false;
+  el.textContent=RGSOLO?"Soloing “"+rgLabel(RGSOLO)+"” — click ▶ again to hear "+where+" with it."
+    :"Previewing "+nm+" in "+where+(v&&rgById(v)?" — click ▶ to solo.":"."); }
 function rgDrumPaint(){ const db=$("drumBtn"); if(!db) return; db.classList.toggle("on",rhyOn); db.setAttribute("aria-pressed",rhyOn?"true":"false"); }
 /* ==== DRUM GROOVES (step e, David 29 Sep 2026, patches/drum-grooves-e.py): the drum groove editor, a room laid over the
    room it was opened from. A drum groove is a World Groove Grid groove - {id, name, steps, group, bpm, rows:[{set, p, f,
@@ -32220,7 +32235,7 @@ function buildJamPieceRaw(){
   }
   return { format:"hpd-2", id:"jam", title:"Jam", author:"",
     writtenFor:myPanId, tempo:bpm||72, meter:pat.meter, sub:pat.sub,
-    unit:pat.unit||4,
+    unit:pat.unit||4, groups:pat.groups||undefined,   // the groove's grouping, as the other builds carry it (30 Sep 2026)
     barsPerRow:pat.bpr||1, sections:{Jam:{bars}}, arrangement:["Jam"] };
 }
 /* A JAM IS A STARTING POINT, NOT A DEAD END (David, 26 Aug): copy the
