@@ -10040,7 +10040,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
 <div id="toast" role="status"></div>
 <script src="../bank.js?v=2"></script>
 <script src="../sync-map.js?v=2"></script>
-<script src="staff.js?v=22"></script>   <!-- THE STAFF VIEW (22 Sep 2026): classical notation beneath the table, drawn from the score by window.StaffView — STAFF-VIEW.md; bump ?v= when it changes; the phone and player builds rewrite the path -->
+<script src="staff.js?v=28"></script>   <!-- THE STAFF VIEW (22 Sep 2026): classical notation beneath the table, drawn from the score by window.StaffView — STAFF-VIEW.md; bump ?v= when it changes; the phone and player builds rewrite the path -->
 <script src="../clicks.js?v=1"></script>   <!-- THE CLICK EAR (20 Sep 2026): snaps and claps for table practice — four even clicks are a count-in with its tempo, two quick ones a stop. Judged by bench/clicks/run.js; bump ?v= when it changes -->   <!-- THE TEMPO-MAP ENGINE (SUITE.md phase 1, 14 Sep 2026): moved out of this file; the Lab loads the same one. Bump ?v= when it changes — a ?v= on the page does not bust a script. -->
 <script>
 "use strict";
@@ -11760,6 +11760,50 @@ function bassDuck(crowd){ return crowd<=1?1:crowd===2?0.80:crowd===3?0.62:crowd=
 /* THE BASS IS ONE STRING (David, 26 Sep 2026, patches/bass-one-string.py): the note still ringing when the next is struck */
 const BASS_DAMP=0.03;
 let bassLast=null;
+/* ═══ THE DOUBLE BASS (David, 30 Sep 2026: "lets use the original sneakybass, build it as alternative sound into the bass";
+   patches/bass-double.py). One switch, one path: fireBass decides the note, its time, its ring, the duck and the choke
+   as it always has, and only the voice at the end differs. The samples are Karoryfer Sneakybass (CC0), every note
+   C1-C4 at its own pitch - bass/sneaky/p<midi>.mp3 the pluck, m<midi>.mp3 the muted pluck (see its SOURCE.txt) -
+   beside bank.js as the guitar's are. Nothing is fetched until the double bass is chosen; until it is decoded the
+   synth plays, so the bass is never silent. ═══ */
+let bassSound=(function(){ try{ return localStorage.getItem("hps.basssound")==="dbass"?"dbass":"synth"; }catch(e){ return "synth"; } })();
+const BASS_SMP_GAIN=1.57;   // the synth's loudness: measured in the app over eight notes G1-B-flat2, their first half second
+const BASS_SMP_LO=24, BASS_SMP_HI=60;
+let BASS_SMP=null, BASS_SMP_DEC=null;
+function bassSmpURL(n){ const b=document.querySelector('script[src*="bank.js"]'); const src=b?b.getAttribute("src"):"bank.js";
+  return src.replace(/bank\.js(\?.*)?$/,"bass/sneaky/"+n); }
+function bassSmpReady(){
+  if(BASS_SMP&&BASS_SMP.ctx===ctx) return true;
+  if(ctx&&!BASS_SMP_DEC){ const ac=ctx, names=[];
+    for(let m=BASS_SMP_LO;m<=BASS_SMP_HI;m++) names.push("p"+m,"m"+m);
+    BASS_SMP_DEC=Promise.all(names.map(n=>fetch(bassSmpURL(n+".mp3")).then(r=>{ if(!r.ok) throw new Error(n+": "+r.status); return r.arrayBuffer(); })
+        .then(ab=>new Promise((res,rej)=>ac.decodeAudioData(ab,b=>res([n,b]),rej)))))
+      .then(list=>{ const bufs={}; for(const [n,b] of list) bufs[n]=b; if(ac===ctx) BASS_SMP={ctx:ac,bufs}; BASS_SMP_DEC=null; })
+      .catch(()=>{ BASS_SMP_DEC=null; }); }
+  return false;
+}
+/* one note of the double bass: the recording at its own pitch (beyond C1-C4 the nearest, at another speed), its strike
+   ducked for 90 ms, ringing `ring` seconds and faded at its end; the next bass note damps it (bassLast) */
+function fireBassSmp(midi,st,ring,duck,art,dur){
+  const m=Math.max(BASS_SMP_LO,Math.min(BASS_SMP_HI,Math.round(midi))), mute=art==="mute";
+  const buf=BASS_SMP.bufs[(mute?"m":"p")+m]; if(!buf) return;
+  const rate=Math.pow(2,(midi-m)/12), lvl=BASS_SMP_GAIN*(bassVol/100);
+  if(mute) ring=Math.max(0.12,Math.min(0.5,dur||0.5));            // the muted pluck: its own short thump
+  ring=Math.min(ring,buf.duration/rate-0.02);
+  const end=st+ring, src=ctx.createBufferSource(); src.buffer=buf; src.playbackRate.value=rate;
+  const env=ctx.createGain(), ch=ctx.createGain(), g=ctx.createGain(); g.gain.value=1;   // env: the note; g: what the silencers ramp
+  const back=Math.min(0.09,ring*0.2);
+  env.gain.setValueAtTime(lvl*duck,st); if(duck<1) env.gain.linearRampToValueAtTime(lvl,st+back);   // the strike gives way to the crowd
+  env.gain.setValueAtTime(lvl,Math.max(st+back,end-0.08)); env.gain.linearRampToValueAtTime(0,end);
+  src.connect(env); env.connect(ch); ch.connect(g); g.connect(voiceBus("bass"));
+  if(bassLast&&bassLast.ctx===ctx&&bassLast.st<st&&bassLast.end>st){
+    bassLast.ch.gain.setValueAtTime(1,st);
+    bassLast.ch.gain.linearRampToValueAtTime(0,st+BASS_DAMP); }
+  bassLast={ctx,ch,st,end};
+  g.__at=st; src.start(st); src.stop(end+0.05);
+  live.push(g); if(live.length>120) live.splice(0,40);
+  src.onended=()=>{ const i=live.indexOf(g); if(i>=0) live.splice(i,1); };
+}
 function fireBass(name,at,dur,crowd,note){
   if(!ctx||!dry) return;
   /* a WRITTEN note carries its degree (or, heard from the picker, its pitch) - 28 Sep 2026 */
@@ -11776,6 +11820,7 @@ function fireBass(name,at,dur,crowd,note){
      an option for staccato and muted notes") */
   const art=note&&note.art;
   if(art==="stac") ring=Math.max(0.09,Math.min(ring,(dur||0)*0.5)); else if(art==="mute") ring=0.075;
+  if(bassSound==="dbass"&&bassSmpReady()){ fireBassSmp(midi,st,ring,duck,art,dur); return; }   // the double bass (30 Sep 2026)
   const end=st+ring;
   const f=440*Math.pow(2,(midi-69)/12);
   /* TWO GAINS, AND THE REASON MATTERS. `env` carries the strike-and-ring
@@ -14333,8 +14378,8 @@ function bassStyled(style,sp,m,ent,bi){
     for(const x of FS.list) if(x.s===0){ const p=Math.round(x.at); if(p>s.t&&p<end&&!ps.includes(p)) ps.push(p); }   // the beats in the span
     const k0=cont?FS.list[0].beat:0;                   // a carried chord goes on counting
     let notes=[[s.t,root]];
-    if(style==="r5"){ if(cont) notes=[[s.t,root+iv[5]]];   // the pattern's third beat, in the second bar
-      else if(!(span>1&&s.len===m.bp)&&s.len>=2*m.sub){ const h=s.t+Math.round(s.len/2/m.sub)*m.sub; if(h>s.t&&h<end) notes.push([h,root+iv[5]]); } }
+    if(style==="r5"){   // Root-5th is the bar's own: the root, the fifth at the middle - each beat in 2/4 (David, 30 Sep 2026; patches/bass-r5-each-bar.py)
+      if(s.len>=2*m.sub){ const h=s.t+Math.round(s.len/2/m.sub)*m.sub; if(h>s.t&&h<end) notes.push([h,root+iv[5]]); } }
     else if(style==="oct") notes=ps.map((p,k)=>[p,root+((k+k0)%2?12:0)]);
     else if(style==="arp"){ const d=[1,3,5,3]; notes=ps.map((p,k)=>[p,root+iv[d[(k+k0)%4]]]); }
     else if(style==="walk"){ const d=[1,2,3,5]; notes=ps.map((p,k)=>[p,root+iv[d[(k+k0)%4]]]);
@@ -14651,6 +14696,13 @@ document.addEventListener("click",e=>{
   const b=e.target&&e.target.closest&&e.target.closest("#panbox [data-bw]"); if(!b) return;
   const U=bassUI(), t=b.dataset.bw; if(U.track===t) return;
   U.track=t; render(); renderEditbar();
+});
+/* the bass's Sound (30 Sep 2026, patches/bass-double.py): the samples start loading the moment the double bass is chosen */
+document.addEventListener("click",e=>{
+  const b=e.target&&e.target.closest&&e.target.closest("#bassPop [data-bsnd]"); if(!b) return;
+  bassSound=b.dataset.bsnd==="dbass"?"dbass":"synth"; try{ localStorage.setItem("hps.basssound",bassSound); }catch(x){}
+  b.parentElement.querySelectorAll("[data-bsnd]").forEach(x=>x.classList.toggle("on",x===b));
+  if(bassSound==="dbass") bassSmpReady();
 });
 document.addEventListener("click",e=>{
   const b=e.target&&e.target.closest&&e.target.closest("#bassPop [data-bl]"); if(!b) return;
@@ -24971,6 +25023,86 @@ function staffWithBass(bars,nm,m){
       :{t:o.t,v:"field",f:"p:"+staffPitchName(o.midi),bass:true,stac:!!(o.note&&o.note.art==="stac"),mute:!!(o.note&&o.note.art==="mute")});
     return add.length?(bar||[]).concat(add):bar; });
 }
+/* EVERY INSTRUMENT ON THE STAFF (David, 30 Sep 2026: "give me for all instruments the option to show them in the staff
+   notation. This option should be located in their right-click / long press menu"; patches/staff-instruments.py).
+   Each menu's "Staff: Off | On" (staffOpts.gtr / pno / syn / drm, and the bass's own staffOpts.bass); desktop and tablet.
+   WHAT IS WRITTEN IS WHAT PLAYS: guitar, piano and synth are recorded from their own pattern code, run silently over the
+   table - their state saved and put back, the randomness fixed; the drums are the table's groove. */
+/* each staff's clef by its part - its usual one first (David, 30 Sep 2026: "Staffs should be chosen according to their parts") */
+const STAFF_VOICES=[["gtr","auto","Guitar",["g8vb","g","g8va"]],["pno","auto","Piano",["g","g8va","f"]],["syn","auto","Synth",["g","g8va","f"]],
+  ["bass","auto","Bass",["f","f8vb","g8vb"]],["drm","perc","Drums"]];
+function staffRow(k){ const on=!!staffOpts[k];
+  return '<div class="ttl">Staff</div><div class="pal bwsw gsty two">'
+    +'<button class="bwseg'+(on?'':' on')+'" data-stf="'+k+'" data-v="0">Off</button><button class="bwseg'+(on?' on':'')+'" data-stf="'+k+'" data-v="1">On</button></div>'; }
+document.addEventListener("click",e=>{ const b=e.target.closest&&e.target.closest("[data-stf]"); if(!b) return;
+  const k=b.dataset.stf, on=b.dataset.v==="1"; if(!!staffOpts[k]===on) return;
+  staffOpts[k]=on; try{ localStorage.setItem("hps.staffOpts",JSON.stringify(staffOpts)); }catch(x){}
+  b.parentElement.querySelectorAll("[data-stf]").forEach(x=>x.classList.toggle("on",(x.dataset.v==="1")===on));
+  if(on&&!staffOn&&typeof setStaff==="function") setStaff(true); else if(typeof renderStaff==="function") renderStaff();
+  if(k==="bass"&&typeof staffBassWire==="function") try{ staffBassWire(); }catch(x){} });
+function staffStaves(phone){   // the instruments' staves to draw, in band order
+  if(phone) return null;
+  return STAFF_VOICES.filter(([k])=>staffOpts[k]&&(k!=="bass"||staffBassOpts(false).bass)).map(([key,clef,label,prefer])=>({key,clef,label,prefer}));
+}
+/* one table of one instrument, played silently: its notes as the staff's events, per bar */
+function staffRecord(nm,k){
+  const ent=C&&C.secStarts.find(e=>e.name===nm), sec=piece&&piece.sections[nm]; if(!ent||!sec) return [];
+  const m=SM(piece,nm), nb=(sec.bars||[]).length, pd=pulseDurOf(ent.pulse)||0.15, t0=5000, notes=[], chokes=[];
+  const sv={GTR,PNO,SYN,gtrNote,gtrChoke,gtrReady,pnoNote,pnoRelease,pnoReady,synNote,synRelease,synReady,rnd:Math.random};
+  try{
+    Math.random=()=>0; gtrReady=()=>true; pnoReady=()=>true; synReady=()=>true;
+    GTR={chord:null,shape:null,seq:0,last:-9,ctx,str:[null,null,null,null,null,null],fol:[],fpos:null};
+    PNO={chord:null,held:[],last:-9,ctx,seq:0,vc:null}; SYN={chord:null,held:[],last:-9,ctx,vc:null};
+    gtrNote=(s,f,t)=>notes.push({midi:GTR_OPEN[s]+f,t,s}); gtrChoke=(s,t)=>chokes.push({s,t});
+    pnoNote=(x,t)=>notes.push({midi:x,t}); pnoRelease=()=>{};
+    synRelease=t=>{ for(const h of SYN.held) if(h.end>t) h.end=t; SYN.held=[]; };
+    synNote=(x,t,v,len)=>{ notes.push({midi:x,t}); SYN.held.push({end:t+len,gt:{gain:{setValueAtTime:(lv,tt)=>{ if(tt>t+1e-3) notes.push({midi:x,t:tt}); },setTargetAtTime(){}}}}); };
+    const fn=k==="gtr"?gtrPulse:k==="pno"?pnoPulse:synPulse;
+    for(let r=0;r<nb*m.bp;r++) fn(ent.pulse+r,r,m,ent,t0+r*pd);
+  }catch(e){ console.warn("staff "+k+":",e); }
+  finally{ ({GTR,PNO,SYN,gtrNote,gtrChoke,gtrReady,pnoNote,pnoRelease,pnoReady,synNote,synRelease,synReady}=sv); Math.random=sv.rnd; }
+  /* a strum or a chord is one moment: notes chained less than 13 ms apart; a stroke cut within 60 ms is muted */
+  notes.sort((a,b)=>a.t-b.t);
+  const bars=Array.from({length:nb},()=>[]); let grp=null;
+  for(const n of notes){ if(!grp||n.t-grp.last>0.013){ grp={t:n.t,last:n.t,seen:new Set()}; } grp.last=n.t;
+    if(grp.seen.has(n.midi)) continue; grp.seen.add(n.midi);
+    const pos=(grp.t-t0)/pd, bi=Math.floor(pos/m.bp+1e-6); if(bi<0||bi>=nb) continue;
+    const mute=n.s!=null&&chokes.some(c=>c.s===n.s&&c.t>n.t&&c.t-n.t<0.06);
+    bars[bi].push({t:Math.round((pos-bi*m.bp)*1000)/1000,v:"field",f:"p:"+staffPitchName(n.midi),inst:k,mute}); }
+  return bars;
+}
+/* the drums: the table's groove on one line - one note a moment, its strokes' letters below (David, 30 Sep 2026: "the drums
+   dont need a staff. they can be simply notes with the letters below"; patches/staff-drums-line.py) */
+function staffDrums(nm){
+  const sec=piece&&piece.sections[nm]; if(!sec) return [];
+  if(!(window.HPSWGG&&HPSWGG.loaded&&HPSWGG.loaded())){   // the grooves not here yet: load them (the engine and the list, no samples) and draw again
+    try{ loadWgg().then(()=>{ if(staffOpts.drm) renderStaff(); }).catch(()=>{}); }catch(e){} return []; }
+  const m=SM(piece,nm), nb=(sec.bars||[]).length, id=rhyGrooveId(m,nm), g=(id&&id!=="none")?rgById(id):null, f=g&&rhyFit(m,g);
+  if(!g||!f) return [];
+  const rowP=m.bp*Math.max(1,m.bpr||1), cyc=f.steps/f.spp, span=(cyc>rowP&&cyc%rowP===0)?cyc:rowP, per=Math.max(1,f.spp);
+  const at={D:"A4",P:"B4",T:"C5",J:"E5"}, bars=[];   // D below the line, P on it, T above, the jingles higher (30 Sep 2026)
+  for(let bi=0;bi<nb;bi++){ const out=[];
+    for(let q=0;q<m.bp;q++){ const rel=bi*m.bp+q;
+      for(let j=0;j<per;j++){ const si=((rel%span)*f.spp)+j; if(Math.abs(si-Math.round(si))>1e-6) continue;
+        const st=Math.round(si)%f.steps, got={};
+        /* A LOW AND A HIGH STROKE (David, 30 Sep 2026: "D is low accent, T and P high accents" - "low and high accent together
+           have to be split" - "T and P don't need to be notated above each other, T is enough"; patches/staff-drums-low-high.py):
+           D below the line, T or P above it - T and P together are T; the jingles their x head; a variation its dot */
+        for(const r of (g.rows||[])){ if(r.mute) continue; let c=String((r.p||"")[st]||"").toUpperCase();
+          if(c==="*") c="J"; if(c==="K") c="T"; if(!at[c]) continue;   // the cajon kit's K is its T
+          const vr=/[^.\- ]/.test(String((r.f||"")[st]||""));   // a variation: its dot above, as the drum editor writes it
+          got[c]={vr:!!(got[c]&&got[c].vr)||vr}; }
+        const put=(c,at2)=>out.push({t:q+j/per,v:"field",f:"p:"+at2,inst:"drm",letter:c==="J"?"":c+(got[c].vr?"\u0307":""),mute:c==="J"});
+        if(got.D) put("D","A4");
+        if(got.T) put("T","C5"); else if(got.P) put("P","C5");   // T and P together are T
+        if(got.J) put("J","E5"); } }
+    bars.push(out); }
+  return bars;
+}
+function staffWithVoices(bars,nm,staves){
+  const add={}; for(const s of staves) if(s.key!=="bass") add[s.key]=s.key==="drm"?staffDrums(nm):staffRecord(nm,s.key);
+  return (bars||[]).map((bar,bi)=>{ let b=bar||[]; for(const k in add) if(add[k][bi]&&add[k][bi].length) b=b.concat(add[k][bi]); return b; });
+}
 function staffBassOpts(phone){
   const grand=!!staffOpts.grand;
   if(typeof allowed==="function"&&!allowed("bassline")) return {bass:false,bassOnly:false,grand};
@@ -25044,11 +25176,12 @@ function renderStaff(){
   const opts={numbers:!!staffOpts.numbers,grand:!!staffOpts.grand,chords:!!staffOpts.chords,heads:false,band:staffBand,clefFrom:staffFields(piece),barNumbers:false,fontUrl:(/\/phone\//.test(location.pathname)||/\/player\//.test(location.pathname))?"../fonts/Leland.otf":"fonts/Leland.otf"};   // the phone and player builds live one level down; heads:false = every notehead in ink, the numbers keep the hands' colours (David, 22 Sep)
   opts.repeats=typeof scStaffRepeats==="function"?scStaffRepeats(m):null;   // an exercise's repeat barlines (24 Sep 2026)
   { const bo=staffBassOpts(phone); Object.assign(opts,bo);   // the bass line on the staff (28 Sep 2026)
-    if(bo.bass||bo.bassOnly) input.bars=staffWithBass(input.bars,viewSec,m); }
+    if(bo.bass||bo.bassOnly) input.bars=staffWithBass(input.bars,viewSec,m);
+    const st=staffStaves(phone); if(st&&st.length){ input.bars=staffWithVoices(input.bars,viewSec,st); opts.staves=StaffView.chooseClefs?StaffView.chooseClefs(input,st):st; } }   // every instrument, each clef by its part (30 Sep 2026)
   try{
     if(phone){ staffPlan=null; StaffView.render(box,input,{...opts,sp:6,perSystem:2}); }
     else{
-      const P=StaffView.plan(input,{width:box.clientWidth||row.clientWidth||900,grand:!!opts.grand,bass:!!opts.bass,bassOnly:!!opts.bassOnly,sp:8,minSp:6});
+      const P=StaffView.plan(input,{width:box.clientWidth||row.clientWidth||900,grand:!!opts.grand,bass:!!opts.bass,bassOnly:!!opts.bassOnly,staves:opts.staves,sp:8,minSp:6});
       if(!staffPlan||staffPlan.sec!==viewSec||staffPlan.piece!==piece) staffPage=0;   // another table starts on its first page
       staffPlan={...P,n:sec.bars.length,sec:viewSec,piece};
       staffPage=Math.max(0,Math.min(staffPage,P.pages-1));
@@ -44235,11 +44368,15 @@ function boot(){
       /* TWO SLIDERS AND A SENTENCE. The lowest note is chosen by name — the
          slider walks semitones — and the line underneath says the whole range
          it makes, because "C2" alone does not tell you where the B♭ will land. */
-      pop.innerHTML='<div class="ttl">Bass volume</div>'
+      pop.innerHTML='<div class="ttl">Sound</div><div class="pal bwsw gsty two">'   // the double bass (30 Sep 2026), laid out as the Staff row
+        +'<button class="bwseg'+(bassSound==="synth"?' on':'')+'" data-bsnd="synth">Synth</button>'
+        +'<button class="bwseg'+(bassSound==="dbass"?' on':'')+'" data-bsnd="dbass">Double bass</button></div>'
+        +'<div class="ttl">Bass volume</div>'
         +'<div class="vol"><input type="range" id="bassVolR" min="0" max="150" step="5" '
         +'value="'+bassVol+'" aria-label="Bass volume"><span class="val" id="bassVolV">'
         +bassVol+'%</span></div>'
         +mixRows("bass")                      // pan and reverb, beside the volume (28 Sep 2026)
+        +staffRow("bass")                     // on the staff (30 Sep 2026)
         +'<div class="ttl">Lowest note</div>'
         +'<div class="vol"><input type="range" id="bassLowR" min="24" max="48" step="1" '
         +'value="'+bassLow+'" aria-label="Lowest bass note"><span class="val" id="bassLowV">'
@@ -44348,7 +44485,7 @@ function boot(){
       pop.innerHTML='<div class="ttl">Rhythm volume</div>'
         +'<div class="vol"><input type="range" id="rhyVolR" min="0" max="150" step="5" '
         +'value="'+rhyVol+'" aria-label="Rhythm volume"><span class="val" id="rhyVolV">'+rhyVol+'%</span></div>'
-        +'<div class="ttl">Groove</div><div class="rgmenu">'+chips+'</div>'+ownNote
+        +'<div class="ttl">Groove</div><div class="rgmenu">'+chips+'</div>'+ownNote+staffRow("drm")   // on the staff (30 Sep 2026)
         +(gs.length?'':'<div class="note">The grooves appear once the rhythm has loaded — switch it on first.</div>')
         +fitNote
         +(rhyOn?'':'<div class="note">The rhythm is off — click the button to turn it on.</div>')
@@ -44401,7 +44538,7 @@ function boot(){
         +'value="'+gtrVol+'" aria-label="Guitar volume"><span class="val" id="gtrVolV">'+gtrVol+'%</span></div>'
         +'<div class="ttl">Register</div><div class="pal bwsw gsty">'   // the guitar's register (29 Sep 2026)
         +[["normal","Normal"],["high","High"]].map(([k,l])=>'<button class="bwseg'+(k===gtrReg?' on':'')+'" data-gr="'+k+'">'+l+'</button>').join("")+'</div>'
-        +mixRows("gtr")
+        +mixRows("gtr")+staffRow("gtr")
         +(gtrOn?'':'<div class="note">The guitar is off — click the button to turn it on.</div>');
       const apply=()=>{ gtrVol=Math.max(0,Math.min(150,+$("gtrVolR").value||0));
         $("gtrVolV").textContent=gtrVol+"%";
@@ -44464,7 +44601,7 @@ function boot(){
         +'<div class="ttl">Piano volume</div>'
         +'<div class="vol"><input type="range" id="pnoVolR" min="0" max="150" step="5" '
         +'value="'+pnoVol+'" aria-label="Piano volume"><span class="val" id="pnoVolV">'+pnoVol+'%</span></div>'
-        +mixRows("pno")
+        +mixRows("pno")+staffRow("pno")
         +(pnoOn?'':'<div class="note">The piano is off — click the button to turn it on.</div>')
         +'<div class="note">Salamander Grand Piano by Alexander Holm, CC BY 3.0.</div>';
       const apply=()=>{ pnoVol=Math.max(0,Math.min(150,+$("pnoVolR").value||0));
@@ -44521,7 +44658,7 @@ function boot(){
         +'<div class="vol"><input type="range" id="synVolR" min="0" max="150" step="5" value="'+synVol+'" aria-label="Synth volume"><span class="val" id="synVolV">'+synVol+'%</span></div>'
         +'<div class="ttl">Brightness</div>'
         +'<div class="vol"><input type="range" id="synBriR" min="40" max="250" step="5" value="'+synBright+'" aria-label="Brightness"><span class="val" id="synBriV">'+synBright+'%</span></div>'
-        +mixRows("syn")
+        +mixRows("syn")+staffRow("syn")
         +(synOn?'':'<div class="note">The synth is off — click the button to turn it on.</div>');
       const apply=()=>{ synVol=Math.max(0,Math.min(150,+$("synVolR").value||0)); synBright=Math.max(40,Math.min(250,+$("synBriR").value||100));
         $("synVolV").textContent=synVol+"%"; $("synBriV").textContent=synBright+"%";
