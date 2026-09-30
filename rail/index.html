@@ -11947,6 +11947,24 @@ const GTR_FULL=new Set(["arp","arp1","offarp","arpfl","pick"]);
 const GTR_PICKS=[["travis","Travis"],["rolling","Rolling"],["pinch","Pinch"],["classical","Classical"],["bossa","Bossa"],["varied","Varied"]];
 const GTR_FLOOR=45;
 /* STRUMMED'S PATTERN (David, 29 Sep 2026; patches/strum-patterns-piano-rolls.py) - Varied turns four of them, four bars each */
+/* THE STRUM PATTERNS' SPELLING, played and folded alike (David, 30 Sep 2026; patches/feel-figures.py): sixteen steps a
+   four-beat bar - or eight, eighths, for the plain strums; pop2's eight are sixteenths. D down, U up, A the high chord, x
+   Funk's ghost (the 3rd's note), - the 3rd's ghost, X a chuck, P a palm mute, S a skank, . nothing */
+const GTR_FIG={straight:"D.U.D.U.D.U.D.U.",funk:"DxxxxxDxxxxUxxxx",funkhi1:"xxAxxxAxxxAxxxAx",funkhi2:"Ax.Ax.Axx.Ax.Ax.",
+  funkhi3:"x.xxA.x.x.xxA.x.",funkhi4:"....A..A.A..A...",third:"x-xxx--x-x--xx-x",
+  pop2:"D.DUXUDU",folk:"D.DU.UDU",pop:"D.DUXUDU",reggae:"..S...S.",palm:"PPPPPPPP"};
+/* a pattern's strength on each of its sixteen steps: an accent 3, a stroke 2, a ghost or a mute 1, nothing 0 */
+function strumStr(pat){ const f=GTR_FIG[pat]; if(!f) return null;
+  const w=c=>pat==="third"?(c==="x"?2:c==="-"?1:0):({D:3,A:3,U:2,S:2,P:2,X:1,x:1})[c]||0;
+  return Array.from({length:16},(_,k)=>f.length===16?w(f[k]):pat==="pop2"?w(f[k%8]):(k%2?0:w(f[(k>>1)%8]))); }
+/* THE FIGURES: for a beat of two or three sixteenths, which of its four steps it plays - the first, and the strongest of
+   the rest ("and" first where they tie), in order; per beat of the pattern. Without strengths, the eighth figure */
+const FEEL_FOLD_DEF={3:[0,1,2],2:[0,2]};
+const FEEL_FOLDS=new Map();
+function feelFoldOf(str){ if(!str) return null; const key=str.join(""); if(FEEL_FOLDS.has(key)) return FEEL_FOLDS.get(key);
+  const f={}; for(const L of [2,3]) f[L]=[0,1,2,3].map(b=>{ const w=str.slice(b*4,b*4+4), c=[2,1,3].sort((x,y)=>w[y]-w[x]);
+    return [0].concat(c.slice(0,L-1)).sort((x,y)=>x-y); });
+  FEEL_FOLDS.set(key,f); return f; }
 const GTR_STRUMS=[["straight","Straight"],["folk","Folk"],["pop","Pop chuck"],["pop2","Pop chuck double"],["reggae","Reggae"],["palm","Palm-muted"],["funk","Funk"],
   ["funkhi1","Funk chank"],["funkhi2","Funk stabs"],["funkhi3","Funk halftime"],["funkhi4","Funk hits"],["third","3rd"],["delay","Delay"],["varied","Varied"]];   // Delay (30 Sep 2026: "move delay into the strummed category")   // 3rd (30 Sep 2026)   // halftime (29 Sep 2026)
 /* A HIGH CHORD (David, 29 Sep 2026: "2 funk patterns with higher register chords" - and "a high register toggle for the
@@ -12159,22 +12177,33 @@ function pnoFollow(p2,at){
    where it divides in three; a bar of two beats (2/4, 6/8) runs on into the next, so two of them play one pattern.
    Returns this pulse's steps: {k: the step in the pattern, s: the step in its beat, beat, ci: the beat in the bar,
    dt: seconds after the pulse, first: the bar line, lean: the stroke's weight}. */
-function feelSteps(m,bi){   // THE RULE: this bar's steps of the pattern - {k, s, beat, ci, at (pulses into the bar), len (the beat's), first}
+/* A SHORT BAR IS HALF A PHRASE (David, 30 Sep 2026: "time signatures such as 7/8 should in a way be treated like 2/4, and
+   the patterns should be applied to a two bar phrase instead of every 7/8 cycle"; patches/arp-phrase.py): a bar of two
+   beats or fewer (2/4, 6/8), or no longer than two beats of the tempo (the jam's 7/8, 5/8, Bembé), pairs with the next into
+   one phrase - the table's first bar starting one - and the arpeggio patterns run over the phrase as over one bar */
+function phraseAt(m,rel){ const B=m.den===8?cellsOf(m).length:m.beats, n=(B<=2||m.beats*4/(piece.unit||4)<=2)?2:1;
+  const bi=Math.floor(Math.max(0,rel)/m.bp+1e-9), rb=((rel%m.bp)+m.bp)%m.bp, k=n>1?bi%n:0, cells=cellsOf(m).map(c=>c.start), cs=[];
+  for(let j=0;j<n;j++) for(const c of cells) cs.push(j*m.bp+c);
+  const pos=k*m.bp+rb;
+  return {n,k,pos,cs,ci:cs.findIndex(c=>Math.abs(c-pos)<1e-6),first:pos<1e-6,last:Math.abs(pos-cs[cs.length-1])<1e-6,idx:Math.floor(bi/n)}; }
+function feelSteps(m,bi,fold){   // THE RULE: this bar's steps of the pattern - {k, s, beat, ci, at (pulses into the bar), len (the beat's), first}
   const den=m.den||4;
   const beats=den===8?cellsOf(m):Array.from({length:m.beats},(_,i)=>({start:i*m.sub,len:m.sub,counts:1}));
   const B=beats.length, span=(B<4&&4%B===0)?4/B:1, pb=span>1?4:B, list=[];
   const p16=m.sub*(piece.unit||4)/16;   // the pulses in a sixteenth
   beats.forEach((c,ci)=>{ const parts=den===8?c.counts:m.sub, fr=parts%3===0?[0,1/3,2/3,5/6]:[0,.25,.5,.75], L=Math.round(c.len/p16);
     const beat=span>1?(bi%span)*B+ci:ci;
-    /* A BEAT SHORTER THAN FOUR SIXTEENTHS (David, 30 Sep 2026: "most of the funk guitar styles don't work in 7/8";
-       patches/grid-steps-groups.py): its steps sit on its own sixteenths, one each, and the steps past its end are left
-       out - the swing above is for a beat of three EIGHTHS; three sixteenths swung put the fourth step off the grid */
-    for(let s=0;s<4;s++){ if(L<4&&s>=L) continue;
-      list.push({k:beat*4+s,s,beat,ci,at:c.start+(L<4?s*p16:fr[s]*c.len),len:c.len,first:c.start===0&&s===0}); } });
+    /* A BEAT SHORTER THAN FOUR SIXTEENTHS plays a FIGURE (David, 30 Sep 2026: "most of the funk guitar styles don't work in
+       7/8" - "figures sounds best, build it for all patterns"; patches/grid-steps-groups.py, patches/feel-figures.py): the
+       steps its pattern keeps for that length (fold, feelFoldOf), in order, one on each of its sixteenths - the swing above
+       is for a beat of three EIGHTHS */
+    if(L<4){ const q=(fold&&fold[L]&&fold[L][beat%4])||FEEL_FOLD_DEF[L]||[0];
+      q.forEach((s,pos)=>list.push({k:beat*4+s,s,beat,ci,at:c.start+pos*p16,len:c.len,first:c.start===0&&pos===0})); return; }
+    for(let s=0;s<4;s++) list.push({k:beat*4+s,s,beat,ci,at:c.start+fr[s]*c.len,len:c.len,first:c.start===0&&s===0}); });
   return {list,B,span,pb};
 }
-function feelTicks(m,rel,pd){   // the rule, cut to one pulse: the steps inside it and how long after it each falls
-  const rb=((rel%m.bp)+m.bp)%m.bp, FS=feelSteps(m,Math.floor(Math.max(0,rel)/m.bp));
+function feelTicks(m,rel,pd,fold){   // the rule, cut to one pulse: the steps inside it and how long after it each falls
+  const rb=((rel%m.bp)+m.bp)%m.bp, FS=feelSteps(m,Math.floor(Math.max(0,rel)/m.bp),fold);
   return FS.list.filter(x=>x.at>=rb-1e-6&&x.at<rb+1-1e-6).map(x=>({k:x.k,s:x.s,beat:x.beat,ci:x.ci,dt:Math.max(0,(x.at-rb)*pd),
     first:x.first,lean:x.s?0.82:(x.at===0?1:0.92),dur:x.len*pd,pb:FS.pb,nb:FS.B}));   // the beat's length, the pattern's beats, the bar's
 }
@@ -12217,7 +12246,7 @@ function gtrPulse(p2,rel,m,sec,at,free){
   /* the patterns read feelTicks - this pulse's steps, in the table's feel (30 Sep 2026); Block, Chord change and the
      rolled arpeggios keep to the table's groups */
   const rb=((rel%m.bp)+m.bp)%m.bp, onCount=rb%m.sub===0, pd=pulseDurOf(p2);
-  const ticks=feelTicks(m,rel,pd);
+  const ticks=feelTicks(m,rel,pd,gtrStyle==="strum"?feelFoldOf(strumStr(gtrStrumNow(p2,m))):null);   // a strum pattern's own figures (30 Sep 2026)
   if(!onCount&&!ticks.length) return;
   if(!gtrReady()) return;
   if(GTR.ctx!==ctx||at<GTR.last-0.05||at-GTR.last>2.5){ GTR.chord=null; GTR.shape=null; GTR.ctx=ctx; }   // a fresh start
@@ -12250,7 +12279,7 @@ function gtrPulse(p2,rel,m,sec,at,free){
   } else if(st==="change"){                                // one block chord where the chord changes
     if(fresh){ const t0=hum(); S.forEach(s=>gtrNote(s,F[s],t0+Math.random()*0.005,0.8)); }
   } else if(st==="arp1"){   // from the chord change (and the bar line), low to high, LANDING on the next subdivision: five notes in 4/4
-    if((onCount&&rb===0)||fresh){ const nx=gtrNextCell(m,rb), n=Math.min(S.length,Math.round((nx-rb)*16/(m.sub*(piece.unit||4)))+1);
+    if((onCount&&phraseAt(m,rel).first)||fresh){ const nx=gtrNextCell(m,rb), n=Math.min(S.length,Math.round((nx-rb)*16/(m.sub*(piece.unit||4)))+1);
       rollOf(S.slice(0,Math.min(n,arpFit(p2,rb,m,sec,s16,pd))),0.72,s16); }
   } else if(st==="offarp"){   // from the 2nd and the 4th subdivision, the top strings, 3 to 5 notes ENDING before the next one
     if(onCount){ const ci=cellsOf(m).findIndex(c=>c.start===rb);
@@ -12259,8 +12288,8 @@ function gtrPulse(p2,rel,m,sec,at,free){
   } else if(st==="arpfl"){   /* ARPEGGIO FIRST & LAST (David, 29 Sep 2026: "Also for guitar: Arpeggio beginning and end";
        patches/guitar-arp-first-last.py): the first count, the bass and the top strings rolled up in sixteenths; the last
        count, the top strings up to the highest; a chord arriving mid-bar is rolled where it arrives */
-    const cs=cellsOf(m), first=rb===0||fresh;   // a beat is the bar's group: a count in 4/4, a dotted quarter in 6/8
-    if(onCount&&(first||rb===cs[cs.length-1].start)){ const nx=gtrNextCell(m,rb), n=Math.max(2,Math.min(4,Math.floor((nx-rb)*16/(m.sub*(piece.unit||4))+0.01)));
+    const cs=cellsOf(m), PH=phraseAt(m,rel), first=PH.first||(fresh&&PH.n===1);   // a beat is the bar's group: a count in 4/4, a dotted quarter in 6/8; the phrase's (patches/arp-phrase.py)
+    if(onCount&&(first||PH.last)){ const nx=gtrNextCell(m,rb), n=Math.max(2,Math.min(4,Math.floor((nx-rb)*16/(m.sub*(piece.unit||4))+0.01)));
       const list=first?[S[0]].concat(S.slice(1).slice(-(n-1))):S.slice(-n);
       rollOf(list,first?0.72:0.64,Math.min(s16,(nx-rb)*pd/n)); }
   } else if(st==="delay"||(st==="strum"&&gtrStrumNow(p2,m)==="delay")){   /* DELAY (David, 30 Sep 2026: "add the delay style to the guitar";
@@ -12304,7 +12333,7 @@ function gtrPulse(p2,rel,m,sec,at,free){
       const shortly=(list,v,len,dir)=>{ const t0=hum(), L=dir<0?list.slice().reverse():list;
         L.forEach((x,k)=>gtrNote(x,F[x],t0+k*0.006,v)); L.forEach(x=>gtrChoke(x,t0+len,0.008)); };
       if(/^funkhi/.test(pat)){   // the high-chord funk patterns (29 Sep 2026)
-        const H=gtrHighShape(GTR.chord,null,gtrReg)||{s:S.slice(-3),f:F}, k=k16, x=(pat==="funkhi1"?"xxAxxxAxxxAxxxAx":pat==="funkhi3"?"x.xxA.x.x.xxA.x.":pat==="funkhi4"?"....A..A.A..A...":"Ax.Ax.Axx.Ax.Ax.")[k];   /* funkhi3: HALFTIME (David, 29 Sep 2026: "a halftime funk chank"; "the strokes should fall on the backbeats") - the chank on 2 and 4 */
+        const H=gtrHighShape(GTR.chord,null,gtrReg)||{s:S.slice(-3),f:F}, k=k16, x=GTR_FIG[pat][k];   /* funkhi3: HALFTIME (David, 29 Sep 2026: "a halftime funk chank"; "the strokes should fall on the backbeats") - the chank on 2 and 4 */
         const L=k%2?H.s.slice().reverse():H.s, t0=hum();
         if(x==="A"){ L.forEach((x2,j)=>gtrNote(x2,H.f[x2],t0+j*0.007,(k===0?0.8:0.7)*lean)); L.forEach(x2=>gtrChoke(x2,t0+(pat==="funkhi1"?0.1:pat==="funkhi3"?0.13:0.16),0.02)); }
         else if(x==="x"){ L.forEach((x2,j)=>gtrNote(x2,H.f[x2],t0+j*0.004,0.22)); L.forEach(x2=>gtrChoke(x2,t0+0.02,0.006)); } }
@@ -12321,14 +12350,14 @@ function gtrPulse(p2,rel,m,sec,at,free){
             for(let x=0;x<6;x++){ const f=mi-GTR_OPEN[x]; if(f<0||f>19) continue; const out=f<band[1]?band[1]-f:f>band[2]?f-band[2]:0, sc=out*10+Math.abs(f-c)*0.1;
               if(!bs||sc<bs.sc) bs={x,f,sc}; }   // the string whose fret sits in the register's hand position
             if(bs){ ts=bs.x; tf=bs.f; } } }
-        if(ts!=null){ const x="x-xxx--x-x--xx-x"[k16], t0=hum();
+        if(ts!=null){ const x=GTR_FIG.third[k16], t0=hum();
           if(x==="x"){ gtrNote(ts,tf,t0,(s===0?0.78:0.64)*lean); gtrChoke(ts,t0+Math.min(0.14,tk.dur*0.3),0.02); }
           else { gtrNote(ts,tf,t0,0.2); gtrChoke(ts,t0+0.02,0.006); } } }
-      else if(pat==="funk"){ const k=k16;
-        if(k===0||k===6||k===11){ if(k%2===0) down(0.82*lean); else up(0.7); }
+      else if(pat==="funk"){ const k=k16, c=GTR_FIG.funk[k];
+        if(c==="D") down(0.82*lean); else if(c==="U") up(0.7);
         else shortly(S,0.26,0.022,k%2?-1:1); }
-      else if(pat==="straight"){ if(s===0) down(0.86*lean); else if(s===2) up(0.5); }
-      else if(pat==="pop2"||s%2===0){ const k=pat==="pop2"?k16%8:(k16>>1)%8, x=({pop2:"D.DUXUDU",folk:"D.DU.UDU",pop:"D.DUXUDU",reggae:"..S...S.",palm:"PPPPPPPP"})[pat][k];
+      else if(pat==="straight"){ const c=GTR_FIG.straight[k16]; if(c==="D") down(0.86*lean); else if(c==="U") up(0.5); }
+      else if(pat==="pop2"||s%2===0){ const k=pat==="pop2"?k16%8:(k16>>1)%8, x=GTR_FIG[pat][k];
         if(x==="D") down((k===0?0.86:0.78)*lean);
         else if(x==="U") up(0.52);
         else if(x==="X") shortly(S,0.4,0.03,1);
@@ -12512,7 +12541,7 @@ function pnoPulse(p2,rel,m,sec,at,free){
   const ch=PNO.vc.v.slice();
   if(pnoWide&&ch.length>=3){ const w=ch[1]+12; ch.splice(1,1); ch.push(w); ch.sort((a,b)=>a-b); }   /* WIDE (David, 29 Sep 2026): the second note an octave up */
   let low=lo-12; while(((low%12)+12)%12!==pcs[0]) low++;
-  const st=pnoStyle, start=rb===0||fresh;
+  const st=pnoStyle, start=rb===0||fresh, PH=phraseAt(m,rel);   /* the phrase (patches/arp-phrase.py) */
   let tAt=at;                                           // the step being played: at, or later inside this pulse
   const hum=()=>tAt+Math.random()*0.006;
   const chord=(v,len)=>{ const t0=hum(); ch.forEach(x=>pnoNote(x,t0+Math.random()*0.006,v,len)); };
@@ -12522,14 +12551,14 @@ function pnoPulse(p2,rel,m,sec,at,free){
   if(st==="pad"){ if(onCount&&start){ pnoRelease(at); ch.concat([ch[0]+12]).forEach(x=>pnoNote(x,at,0.35,0,0.45)); } return; }
   /* THE TWO ARPEGGIOS, as the guitar plays them (David, 29 Sep 2026: "for the piano incorporate the single arpeggio and
      off-beat arpeggio"; patches/strum-patterns-piano-rolls.py) */
-  if(st==="arp1"){ if(onCount&&start){ pnoRelease(at);   // from the chord change and the bar line, landing on the next subdivision
+  if(st==="arp1"){ if(onCount&&(PH.first||fresh)){ pnoRelease(at);   // from the chord change and the bar line, landing on the next subdivision
       const ns=[low].concat(ch,[ch[0]+12]).sort((x,y)=>x-y), nx=cellsOf(m).map(c=>c.start).filter(x=>x>rb), span=((nx.length?Math.min(...nx):m.bp)-rb)*pd;
       const t0=hum(), s16=pd*m.sub*((piece.unit||4)/16); ns.slice(0,arpFit(p2,rb,m,sec,s16,pd)).forEach((x,k)=>pnoNote(x,t0+k*s16,k?0.46:0.55)); } return; }
   /* ARPEGGIO ON THE 2ND BEAT (David, 30 Sep 2026: "like off-beat arpeggio, but only on the first off-beat";
      patches/piano-arp-2nd-beat.py): the same roll, on the second beat alone */
-  if(st==="offarp"||st==="arp2"){ if(onCount&&start) pnoRelease(at);   // on the 2nd and 4th subdivision, the upper notes, ending before the next
+  if(st==="offarp"||st==="arp2"){ if(onCount&&(st==="arp2"?PH.first||fresh:start)) pnoRelease(at);   // on the 2nd and 4th subdivision, the upper notes, ending before the next
     if(onCount){ const cs=cellsOf(m), ci=cs.findIndex(c=>c.start===rb);
-      if(ci===1||(ci===3&&st==="offarp")){ const nx=cs[ci+1]?cs[ci+1].start:m.bp, s16=pd*m.sub*((piece.unit||4)/16), l16=(nx-rb)*16/(m.sub*(piece.unit||4));
+      if((ci===1&&(st==="offarp"||PH.k===0))||(ci===3&&st==="offarp")){ const nx=cs[ci+1]?cs[ci+1].start:m.bp, s16=pd*m.sub*((piece.unit||4)/16), l16=(nx-rb)*16/(m.sub*(piece.unit||4));
         const up=[...new Set(ch.concat([ch[0]+12,(ch[1]!=null?ch[1]:ch[0])+12]))].sort((x,y)=>x-y), n=Math.max(3,Math.min(5,Math.round(l16))), ns=up.slice(-n).slice(0,arpFit(p2,rb,m,sec,s16,pd)), sp=s16;
         const t0=hum(); ns.forEach((x,k)=>pnoNote(x,t0+k*sp,0.4,(nx-rb)*pd*1.6)); } } return; }
   /* ON 2ND & FALL (David, 30 Sep 2026: "upwards arpeggio on 2nd beat, downwards arpeggio on last beat (onto 1st beat of
@@ -12537,7 +12566,7 @@ function pnoPulse(p2,rel,m,sec,at,free){
      patches/piano-arp2-fall-sparse.py): two bars - the first rolls up on its 2nd beat and falls from its last beat onto the
      next chord's low root on the next bar's first beat, the second rolls up alone. Each note carries its length. */
   if(st==="arp2fall"){ if(!onCount) return;
-    const cs=cellsOf(m), ci=cs.findIndex(c=>c.start===rb), nc=cs.length, first=Math.floor(Math.max(0,rel)/m.bp)%2===0;
+    const cs=cellsOf(m), ci=PH.ci, nc=PH.cs.length, first=PH.idx%2===0;   // the phrase's cells, and two phrases (patches/arp-phrase.py)
     const s16=pd*m.sub*((piece.unit||4)/16);
     if(ci===1&&!(first&&nc<3)){ const nx=cs[2]?cs[2].start:m.bp, l16=(nx-rb)*16/(m.sub*(piece.unit||4));   // the roll up, as On 2nd beat's
       const up=[...new Set(ch.concat([ch[0]+12,(ch[1]!=null?ch[1]:ch[0])+12]))].sort((x,y)=>x-y), n=Math.max(3,Math.min(5,Math.round(l16))), ns=up.slice(-n).slice(0,arpFit(p2,rb,m,sec,s16,pd)), sp=s16;
@@ -12557,7 +12586,7 @@ function pnoPulse(p2,rel,m,sec,at,free){
      keyed to the place in the piece, so the staff, which runs this silently, writes what plays. */
   if(st==="flow"||st==="flowsp"){   // Flow sparse: half the rolls (David, 30 Sep 2026: "about half the amount of arpeggios")
     const s16=pd*m.sub*((piece.unit||4)/16), cs=cellsOf(m), lastB=cs[cs.length-1].start;
-    const fB=Math.min(1,cs.length/4);   // a shorter bar, fewer chances: about as many rolls per four beats in any metre
+    const fB=Math.min(1,PH.cs.length/4);   // a shorter bar, fewer chances: about as many rolls per four beats in any metre
     const pool=[...new Set([low].concat(ch,ch.slice(0,3).map(x=>x+12)))].sort((x,y)=>x-y);
     if((PNO.fbusy||0)-at>4){ PNO.fbusy=0; PNO.fpairT=null; }    // a timer left from another start
     /* A NEW TAKE EACH TIME ROUND: the jam's loop counts its pulses from 0 again, and dice keyed to the place alone would
@@ -12580,7 +12609,7 @@ function pnoPulse(p2,rel,m,sec,at,free){
          ring over chord changes"; patches/piano-flow-ring.py) - a chord change no longer lifts it */
       const pair=PNO.fpairT!=null&&Math.abs(tAt-PNO.fpairT)<0.02; if(pair) PNO.fpairT=null;   // the second of two in a row (30 Sep 2026)
       if(!change&&!pair&&tAt<(PNO.fbusy||0)-1e-3) continue;   // one roll at a time (a roll never runs past a change)
-      const p=pair?1:(st==="flowsp"?0.35:1)*(change?0.5:fB*(tk.s===0?((pos<1e-6||Math.abs(pos-lastB)<1e-6)?0.4:0.25):0.12));   // sparse: 0.35, measured to give half the rolls (0.5 gave 69%: a roll blocks the chances after it)
+      const p=pair?1:(st==="flowsp"?0.35:1)*(change?0.5:fB*(tk.s===0?(((PH.k===0&&pos<1e-6)||(PH.k===PH.n-1&&Math.abs(pos-lastB)<1e-6))?0.4:0.25):0.12));   // sparse: 0.35, measured to give half the rolls (0.5 gave 69%: a roll blocks the chances after it)
       if(R(1)>=p) continue;
       let end=m.bp;                                             // to the bar line, or the next count where the chord changes
       for(let q=Math.floor(pos)+1;q<m.bp;q++){ if(q%m.sub) continue; if(chordInForceAt(p2+(q-rb),sec,m)!==name){ end=q; break; } }
@@ -12604,8 +12633,8 @@ function pnoPulse(p2,rel,m,sec,at,free){
   /* ARPEGGIO FIRST & LAST (David, 29 Sep 2026: "Arpeggio beginning and end, playing arpeggios on the first and last beat of
      4/4"; patches/piano-voicing-leading.py): the first count, the low root and the chord rolled up in sixteenths; the last
      count, the chord rolled up to its octave; a chord arriving mid-bar gets the first roll where it arrives */
-  if(st==="arpfl"){ const cs=cellsOf(m), first=rb===0||fresh;   // a beat is the bar's group (29 Sep 2026, patches/guitar-arp-first-last.py)
-    if(onCount&&(first||rb===cs[cs.length-1].start)){ if(first) pnoRelease(at);
+  if(st==="arpfl"){ const cs=cellsOf(m), first=PH.first||(fresh&&PH.n===1);   /* a change inside a two-bar phrase adds no roll (patches/arp-phrase-fl.py) */   // a beat is the bar's group (29 Sep 2026, patches/guitar-arp-first-last.py)
+    if(onCount&&(first||PH.last)){ if(first||PNO.flName!==name) pnoRelease(at); PNO.flName=name;
         const nx=gtrNextCell(m,rb), n=Math.max(2,Math.min(4,Math.floor((nx-rb)*16/(m.sub*(piece.unit||4))+0.01))), s16=Math.min(pd*m.sub*((piece.unit||4)/16),(nx-rb)*pd/n);
         const ns=[...new Set(first?[low].concat(ch):ch.concat([ch[0]+12]))].sort((x,y)=>x-y).slice(0,n);
         const t0=hum(); ns.forEach((x,k)=>pnoNote(x,t0+k*s16,k?0.44:0.54)); } return; }
@@ -12803,7 +12832,7 @@ function synPulse(p2,rel,m,sec,at,free){
   /* DELAY (David, 30 Sep 2026: "work like pulse, but get softer with each repeat"; patches/synth-delay.py): each repeat 0.7
      of the one before, from the bar line or the change */
   if(synStyle==="pulse"||synStyle==="delay") for(const tk of feelTicks(m,rel,pd)){ if(m.den===8?(tk.dt>1e-6||rb%m.sub!==0):tk.s%2) continue;   /* the metre's eighths: in /8 every count, in /4 half a beat (David, 30 Sep 2026: "the guitar delay style works correctly in 7/8, but the synth doesnt"; patches/synth-pulse-eighths.py) */
-    const t=at+tk.dt, len=tk.dur/2, n=SYN.rep||0, lv=synStyle==="delay"?Math.pow(.7,n):1; SYN.rep=n+1;
+    const t=at+tk.dt, len=m.den===8?m.sub*pd:tk.dur/2, n=SYN.rep||0, lv=synStyle==="delay"?Math.pow(.7,n):1; SYN.rep=n+1;   /* len: the time to the next repeat - a count in /8, an eighth in /4 (patches/synth-gate-even.py) */
     for(const h of SYN.held){ if(h.end<=t) continue; h.gt.gain.setValueAtTime(lv,t); h.gt.gain.setTargetAtTime(.08*lv,t+len*.4,len*.12); } }
 }
 function synFollow(p2,at){   // the handpan's basic pattern (panTones), the pattern moved as one by register
