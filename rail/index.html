@@ -1307,6 +1307,12 @@ body.editing #scorefoot #arrbox,#scorefoot.tight #arrbox{flex-wrap:wrap; justify
 /* a slider inside a popup — the bass's volume, and whatever wants one next */
 .pop .vol{display:flex; align-items:center; gap:9px; padding:3px 10px 8px}
 .pop .vol input[type=range]{width:130px; accent-color:var(--dixie)}
+/* THE INSTRUMENT MENUS' ONE ORDER (David, 30 Sep 2026: "give the various instrument menus the same structure ... make volume a full
+   width slider and place pan and reverb below into one row"; patches/menus-unified.py) */
+.pop .vol.full input[type=range]{flex:1 1 auto; width:auto; min-width:0}
+.pop .mix2{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:0 2px}   /* columns that may shrink: a range input's own width is ~130px */
+.pop .mix2 .vol input[type=range]{flex:1 1 0; width:auto; min-width:0}
+.pop .mix2 .val{min-width:3.4em; text-align:right}
 /* THE INSTRUMENT MENUS ARE CARDS ON THE PHONE (David, 29 Sep 2026: "open as cards and take up more of the screen ...
    center screen"; patches/jam-row-cards.py): openPop adds .card for a menu opened from #jamVoices and centres it */
 body.phone:not(.tablet) .pop.card{position:fixed; left:12px; right:12px; min-width:0; padding:8px 6px;
@@ -11222,11 +11228,15 @@ function handMixSet(){
 }
 function panLabel(v){ return v===0?"Centre":(v<0?"L ":"R ")+Math.abs(v); }
 /* the two sliders both popups carry, and the one reader of them */
+/* PAN AND REVERB SIDE BY SIDE, under a full-width volume (David, 30 Sep 2026; patches/menus-unified.py) - every menu that mixes
+   a voice: the bass, the guitar, the piano, the synth and the handpan */
 function mixRows(k){ const x=voiceMix(k);
-  return '<div class="ttl">Pan</div><div class="vol"><input type="range" id="'+k+'PanR" min="-100" max="100" step="5" value="'+x.pan+'" aria-label="Pan">'
-    +'<span class="val" id="'+k+'PanV">'+panLabel(x.pan)+'</span></div>'
-    +'<div class="ttl">Reverb</div><div class="vol"><input type="range" id="'+k+'RevR" min="0" max="60" step="1" value="'+x.rev+'" aria-label="Reverb">'
-    +'<span class="val" id="'+k+'RevV">'+x.rev+'%</span></div>'; }
+  return '<div class="mix2"><div><div class="ttl">Pan</div><div class="vol"><input type="range" id="'+k+'PanR" min="-100" max="100" step="5" value="'+x.pan+'" aria-label="Pan">'
+    +'<span class="val" id="'+k+'PanV">'+panLabel(x.pan)+'</span></div></div>'
+    +'<div><div class="ttl">Reverb</div><div class="vol"><input type="range" id="'+k+'RevR" min="0" max="60" step="1" value="'+x.rev+'" aria-label="Reverb">'
+    +'<span class="val" id="'+k+'RevV">'+x.rev+'%</span></div></div></div>'; }
+function volRow(k,v,label){ return '<div class="ttl">Volume</div><div class="vol full"><input type="range" id="'+k+'VolR" min="0" max="150" step="5" value="'+v+'" aria-label="'+label+'">'
+  +'<span class="val" id="'+k+'VolV">'+v+'%</span></div>'; }
 function mixRead(k){
   const pan=Math.max(-100,Math.min(100,+$(k+"PanR").value||0)), rev=Math.max(0,Math.min(60,+$(k+"RevR").value||0));
   if(k==="hand"){ handPan=pan; handRev=rev; } else if(k==="bass"){ bassPan=pan; bassRev=rev; } else if(k==="pno"){ pnoPan=pan; pnoRev=rev; } else if(k==="syn"){ synPan=pan; synRev=rev; } else { gtrPan=pan; gtrRev=rev; }
@@ -12415,7 +12425,7 @@ function pnoPulse(p2,rel,m,sec,at){
     const s16=pd*m.sub*((m.den||4)/16), cs=cellsOf(m), lastB=cs[cs.length-1].start;
     const fB=Math.min(1,cs.length/4);   // a shorter bar, fewer chances: about as many rolls per four beats in any metre
     const pool=[...new Set([low].concat(ch,ch.slice(0,3).map(x=>x+12)))].sort((x,y)=>x-y);
-    if((PNO.fbusy||0)-at>4) PNO.fbusy=0;                        // a timer left from another start
+    if((PNO.fbusy||0)-at>4){ PNO.fbusy=0; PNO.fpairT=null; }    // a timer left from another start
     /* A NEW TAKE EACH TIME ROUND: the jam's loop counts its pulses from 0 again, and dice keyed to the place alone would
        play the same rolls every loop - so a loop coming round in one run moves the dice on; a new start is take 0 again,
        as the staff's silent run is */
@@ -12426,17 +12436,26 @@ function pnoPulse(p2,rel,m,sec,at){
       const R=j=>{ let h=(Math.imul(PNO.ftake||0,374761393)+Math.imul(p2,668265263)+Math.imul(tk.k,-2048144777)+Math.imul(j,-1028477379))|0;
         h=Math.imul(h^(h>>>15),-2048144777); h=Math.imul(h^(h>>>13),-1028477379); h^=h>>>16; return (h>>>0)/4294967296; };   // this place's dice, this take (an integer hash: sin() dice repeat along evenly spaced beats)
       if(change) pnoRelease(tAt);                               // nothing under the flow: the old chord's pedal comes up
-      if(!change&&tAt<(PNO.fbusy||0)-1e-3) continue;            // one roll at a time (a roll never runs past a change)
-      const p=(st==="flowsp"?0.35:1)*(change?0.5:fB*(tk.s===0?((pos<1e-6||Math.abs(pos-lastB)<1e-6)?0.4:0.25):0.12));   // sparse: 0.35, measured to give half the rolls (0.5 gave 69%: a roll blocks the chances after it)
+      const pair=PNO.fpairT!=null&&Math.abs(tAt-PNO.fpairT)<0.02; if(pair) PNO.fpairT=null;   // the second of two in a row (30 Sep 2026)
+      if(!change&&!pair&&tAt<(PNO.fbusy||0)-1e-3) continue;   // one roll at a time (a roll never runs past a change)
+      const p=pair?1:(st==="flowsp"?0.35:1)*(change?0.5:fB*(tk.s===0?((pos<1e-6||Math.abs(pos-lastB)<1e-6)?0.4:0.25):0.12));   // sparse: 0.35, measured to give half the rolls (0.5 gave 69%: a roll blocks the chances after it)
       if(R(1)>=p) continue;
       let end=m.bp;                                             // to the bar line, or the next count where the chord changes
       for(let q=Math.floor(pos)+1;q<m.bp;q++){ if(q%m.sub) continue; if(chordInForceAt(p2+(q-rb),sec,m)!==name){ end=q; break; } }
-      const room=Math.floor((end-pos)*pd/s16+1e-6); if(room<3) continue;
-      const n=Math.min(room,3+Math.floor(R(2)*4)), up=R(3)<0.75, i0=Math.floor(R(4)*Math.max(1,pool.length-n+1));
+      /* AT LEAST TO THE SIXTEENTH BEFORE THE NEXT SUBDIVISION (David, 30 Sep 2026: "in 4/4, the 3 note arpeggios don't make
+         much sense"; patches/piano-flow-lengths-pairs.py): from a subdivision's start all of it - four in 4/4, six in 6/8;
+         from inside one (an "and") through the next as well; then up to six notes, as the room allows */
+      const room=Math.floor((end-pos)*pd/s16+1e-6), nxt=cs.map(c=>c.start).concat([m.bp]).filter(x=>x>pos+1e-6);
+      const k0=Math.round((nxt[0]-pos)*pd/s16), need=k0>=3?k0:(nxt[1]!=null?Math.round((nxt[1]-pos)*pd/s16):99);
+      if(room<need) continue;
+      const n=Math.min(room,need+Math.floor(R(2)*(Math.max(need,6)-need+1))), up=R(3)<0.75, i0=Math.floor(R(4)*Math.max(1,pool.length-n+1));
       let ns=pool.slice(i0,i0+n); if(ns.length<n) ns=pool.slice(-n); if(!up) ns.reverse();
       pnoRelease(tAt); const t0=hum(), L=Math.max(1,ns.length-1);
       ns.forEach((x,k)=>pnoNote(x,t0+k*s16,(up?0.42+0.08*k/L:0.5-0.1*k/L)+(k?0:0.06)));
       PNO.fbusy=t0+ns.length*s16+s16;                           // and a sixteenth's breath before the next
+      /* TWO IN A ROW (David, 30 Sep 2026: "sometimes let's add 2 arpeggios in a row"): after one roll in four - not after a
+         second - the next subdivision after it rolls too, if the bar and the chord go on */
+      if(!pair&&R(5)<0.25){ const after=pos+ns.length*s16/pd-1e-6, q=cs.map(c=>c.start).find(x=>x>=after); if(q!=null&&q<end) PNO.fpairT=at+(q-rb)*pd; }
     }
     return;
   }
@@ -14547,10 +14566,19 @@ function bassPieceHasOwn(){
 }
 function bassStyleOnto(p){ if(p&&BASSROOM&&BASSROOM!=="root") p.bassStyle=BASSROOM; }   // a saved jam or exercise keeps its style
 function bassIsPlayer(){ return document.documentElement.classList.contains("player")||document.body.classList.contains("player"); }
+/* THE BASS'S STYLES IN THREE GROUPS, each with its Pattern selector, as the piano's (David, 30 Sep 2026; patches/menus-unified.py):
+   choosing a group opens its patterns and chooses nothing; BASSGRP keeps the open group across the box's redraws */
+const BASS_GROUPS=[["basic","Basic",[["root","Root"],["r5","Root–5th"],["oct","Octaves"],["arp","Arpeggio"],["walk","Walking"],["kick","Follow kick"]]],
+  ["latin","Latin",[["tumbao","Tumbao"],["332","3-3-2"],["332t","3-3-2 tumbao"]]],
+  ["dbl","Double time",[["tumbaox2","Tumbao"],["332x2","3-3-2"],["332tx2","3-3-2 tumbao"]]]];
+let BASSGRP=null;
+function bassGroupOf(k){ const g=BASS_GROUPS.find(g=>g[2].some(x=>x[0]===k)); return g?g[0]:"basic"; }
 function bassStyleMenuInner(){
-  const cur=bassPieceStyle(), own=bassPieceHasOwn(), lock=own&&!BASSOV;
-  let h='<div class="ttl">Bass style</div><div class="bsgrid'+(lock?" locked":"")+'">'
-    +BASS_STYLES.map(([k,l])=>'<button class="bwseg'+(k===cur?" on":"")+'" data-bms="'+k+'"'+(lock?" disabled":"")+'>'+l+'</button>').join("")+'</div>';
+  const cur=bassPieceStyle(), own=bassPieceHasOwn(), lock=own&&!BASSOV, open=BASSGRP||bassGroupOf(cur);
+  let h='<div class="ttl">Style</div><div class="pal bwsw gsty" id="bassGroupRow">'
+    +BASS_GROUPS.map(([g,l])=>'<button class="bwseg'+(g===open?" on":"")+'" data-bgg="'+g+'"'+(lock?" disabled":"")+'>'+l+'</button>').join("")+'</div>'
+    +BASS_GROUPS.map(([g,l,ps])=>'<div data-bgb="'+g+'"'+(g===open?'':' hidden')+'><div class="ttl">Pattern</div><div class="bsgrid'+(lock?" locked":"")+'">'
+      +ps.map(([k,l2])=>'<button class="bwseg'+(k===cur?" on":"")+'" data-bms="'+k+'"'+(lock?" disabled":"")+'>'+l2+'</button>').join("")+'</div></div>').join("");
   if(own) h+='<div class="bsov"><span>Override the piece’s bass for now</span><span class="pal bwsw"><button class="bwseg'+(BASSOV?"":" on")+'" data-bov="0">Off</button>'
     +'<button class="bwseg'+(BASSOV?" on":"")+'" data-bov="1">On</button></span></div>'
     +'<div class="note">'+(BASSOV?"This style plays every bar for now — the piece is unchanged.":"This piece has its own bass in the editor.")+'</div>';
@@ -14568,7 +14596,11 @@ function bassRedraw(){
 document.addEventListener("click",e=>{
   const t=e.target&&e.target.closest; if(!t) return;
   const s=e.target.closest("#bassPop [data-bms]"), o=e.target.closest("#bassPop [data-bov]");
-  if(s&&!s.disabled){ const k=s.dataset.bms;
+  const gg=e.target.closest("#bassPop [data-bgg]");
+  if(gg&&!gg.disabled){ BASSGRP=gg.dataset.bgg;   // a group opens its patterns and chooses nothing (30 Sep 2026)
+    document.querySelectorAll("#bassPop [data-bgg]").forEach(x=>x.classList.toggle("on",x===gg));
+    document.querySelectorAll("#bassPop [data-bgb]").forEach(x=>{ x.hidden=x.dataset.bgb!==BASSGRP; }); return; }
+  if(s&&!s.disabled){ const k=s.dataset.bms; BASSGRP=null;
     if(bassInRoom()) BASSROOM=k;
     else if(k!==((piece&&piece.bassStyle)||"root")){ snapshot(); if(k==="root") delete piece.bassStyle; else piece.bassStyle=k; }
     bassRedraw();
@@ -44453,20 +44485,15 @@ function boot(){
         +'<button class="bwseg'+(bassSound==="synth"?' on':'')+'" data-bsnd="synth">Synth</button>'
         +'<button class="bwseg'+(bassSound==="dbass"?' on':'')+'" data-bsnd="dbass">Double bass</button>'
         +'<button class="bwseg'+(bassSound==="ebass"?' on':'')+'" data-bsnd="ebass">Electric</button></div>'
-        +'<div class="ttl">Bass volume</div>'
-        +'<div class="vol"><input type="range" id="bassVolR" min="0" max="150" step="5" '
-        +'value="'+bassVol+'" aria-label="Bass volume"><span class="val" id="bassVolV">'
-        +bassVol+'%</span></div>'
-        +mixRows("bass")                      // pan and reverb, beside the volume (28 Sep 2026)
-        +staffRow("bass")                     // on the staff (30 Sep 2026)
+        +bassStyleMenuHTML()   // the bass style (David, 28 Sep 2026) - the menus' one order (30 Sep 2026): style, register, volume, mix
         +'<div class="ttl">Lowest note</div>'
-        +'<div class="vol"><input type="range" id="bassLowR" min="24" max="48" step="1" '
+        +'<div class="vol full"><input type="range" id="bassLowR" min="24" max="48" step="1" '
         +'value="'+bassLow+'" aria-label="Lowest bass note"><span class="val" id="bassLowV">'
         +nameOf(bassLow)+'</span></div>'
         +'<div class="note" id="bassRangeN">Every root sounds in '+bassRange()+'.</div>'
+        +volRow("bass",bassVol,"Bass volume")+mixRows("bass")+staffRow("bass")
         /* THE LANE IN THE EDITOR, shown or hidden here (David, 28 Sep 2026: "the show/hide function for the bass should be
            selectable in the right click popup"); hiding does not silence the bass */
-        +bassStyleMenuHTML()   // the bass style (David, 28 Sep 2026)
         +(allowed("bassline")?'<div class="ttl">Bass line in the editor</div><div class="pal bwsw" style="margin:2px 10px 8px">'
           +'<button class="bwseg'+(bassUI().show?' on':'')+'" data-bl="1">Show</button><button class="bwseg'+(bassUI().show?'':' on')+'" data-bl="0">Hide</button></div>':'')
         +(bassOn?'':'<div class="note">The bass is off — click the button to turn it on.</div>');
@@ -44513,9 +44540,7 @@ function boot(){
     const openHand=()=>{
       if(closePop()) return;
       const pop=document.createElement("div"); pop.className="pop"; pop.id="handPop";
-      pop.innerHTML='<div class="ttl">Handpan volume</div><div class="vol"><input type="range" id="handVolR" min="0" max="150" step="5" '
-        +'value="'+handVol+'" aria-label="Handpan volume"><span class="val" id="handVolV">'+handVol+'%</span></div>'
-        +mixRows("hand")
+      pop.innerHTML=volRow("hand",handVol,"Handpan volume")+mixRows("hand")   // the menus' one order (30 Sep 2026)
         +(panMute?'<div class="note">The handpan is muted — click the button to hear it again.</div>':'');
       const apply=()=>{ handVol=Math.max(0,Math.min(150,+$("handVolR").value||0)); $("handVolV").textContent=handVol+"%";
         try{ localStorage.setItem("hps.handvol",String(handVol)); }catch(e){}
@@ -44612,7 +44637,7 @@ function boot(){
       /* THE STYLE ROW AND ITS PATTERN SELECTORS (David, 30 Sep 2026: "Arpeggio submenu for guitar"; patches/menus-and-flow.py):
          the four arpeggios are one group; choosing the group opens its patterns and chooses nothing */
       const GARP=[["arp","Up & down"],["arp1","Single"],["offarp","Off-beat"],["arpfl","First & last"]], inArp=GARP.some(x=>x[0]===gtrStyle);
-      pop.innerHTML='<div class="ttl">Guitar style</div><div class="pal bwsw gsty" id="gtrStyleRow">'
+      pop.innerHTML='<div class="ttl">Style</div><div class="pal bwsw gsty" id="gtrStyleRow">'
         +GTR_STYLES.filter(([k])=>!GARP.some(x=>x[0]===k)).map(([k,l])=>(k==="pick"?'<button class="bwseg'+(inArp?' on':'')+'" data-gg="arp">Arpeggio</button>':'')
           +'<button class="bwseg'+(k===gtrStyle?' on':'')+'" data-gs="'+k+'">'+l+'</button>').join("")+'</div>'
         +'<div id="gtrArpBox"'+(inArp?'':' hidden')+'><div class="ttl">Pattern</div><div class="pal bwsw gsty">'
@@ -44621,12 +44646,9 @@ function boot(){
         +GTR_PICKS.map(([k,l])=>'<button class="bwseg'+(k===gtrPick?' on':'')+'" data-gp="'+k+'">'+l+'</button>').join("")+'</div></div>'
         +'<div id="gtrStrumBox"'+(gtrStyle==="strum"?'':' hidden')+'><div class="ttl">Pattern</div><div class="pal bwsw gsty">'   // Strummed's pattern (29 Sep 2026)
         +GTR_STRUMS.map(([k,l])=>'<button class="bwseg'+(k===gtrStrum?' on':'')+'" data-gt="'+k+'">'+l+'</button>').join("")+'</div></div>'
-        +'<div class="ttl">Guitar volume</div>'
-        +'<div class="vol"><input type="range" id="gtrVolR" min="0" max="150" step="5" '
-        +'value="'+gtrVol+'" aria-label="Guitar volume"><span class="val" id="gtrVolV">'+gtrVol+'%</span></div>'
-        +'<div class="ttl">Register</div><div class="pal bwsw gsty">'   // the guitar's register (29 Sep 2026)
+        +'<div class="ttl">Register</div><div class="pal bwsw gsty two">'   // the guitar's register (29 Sep 2026)
         +[["normal","Normal"],["high","High"]].map(([k,l])=>'<button class="bwseg'+(k===gtrReg?' on':'')+'" data-gr="'+k+'">'+l+'</button>').join("")+'</div>'
-        +mixRows("gtr")+staffRow("gtr")
+        +volRow("gtr",gtrVol,"Guitar volume")+mixRows("gtr")+staffRow("gtr")   // the menus' one order (30 Sep 2026)
         +(gtrOn?'':'<div class="note">The guitar is off — click the button to turn it on.</div>');
       const apply=()=>{ gtrVol=Math.max(0,Math.min(150,+$("gtrVolR").value||0));
         $("gtrVolV").textContent=gtrVol+"%";
@@ -44688,18 +44710,15 @@ function boot(){
       /* THE STYLE ROW IS FOUR GROUPS, each opening its Pattern selector (David, 30 Sep 2026: "submenus for piano" - "Choosing a
          group should not select a style yet"; patches/menus-and-flow.py); Handpan is a style of its own */
       const og=pnoGroupOf(pnoStyle);
-      pop.innerHTML='<div class="ttl">Piano style</div><div class="pal bwsw gsty" id="pnoGroupRow" style="grid-template-columns:repeat(4,1fr)">'
+      pop.innerHTML='<div class="ttl">Style</div><div class="pal bwsw gsty" id="pnoGroupRow" style="grid-template-columns:repeat(4,1fr)">'
         +PNO_GROUPS.map(([g,l,ps])=>'<button class="bwseg'+(g===og?' on':'')+'" data-pg="'+g+'"'+(ps?'':' data-ps="'+g+'"')+'>'+l+'</button>').join("")+'</div>'
         +PNO_GROUPS.filter(g=>g[2]).map(([g,l,ps])=>'<div data-pgb="'+g+'"'+(g===og?'':' hidden')+'><div class="ttl">Pattern</div><div class="pal bwsw gsty">'
           +ps.map(([k,l2])=>'<button class="bwseg'+(k===pnoStyle?' on':'')+'" data-ps="'+k+'">'+l2+'</button>').join("")+'</div></div>').join("")
         +'<div class="ttl">Register</div><div class="pal bwsw gsty">'
         +PNO_REGS.map(([k,l])=>'<button class="bwseg'+(k===pnoReg?' on':'')+'" data-pr="'+k+'">'+l+'</button>').join("")+'</div>'
-        +'<div class="ttl">Voicing</div><div class="pal bwsw gsty">'   // Close | Wide (29 Sep 2026)
+        +'<div class="ttl">Voicing</div><div class="pal bwsw gsty two">'   // Close | Wide (29 Sep 2026)
         +[["0","Close"],["1","Wide"]].map(([k,l])=>'<button class="bwseg'+((k==="1")===pnoWide?' on':'')+'" data-pw="'+k+'">'+l+'</button>').join("")+'</div>'
-        +'<div class="ttl">Piano volume</div>'
-        +'<div class="vol"><input type="range" id="pnoVolR" min="0" max="150" step="5" '
-        +'value="'+pnoVol+'" aria-label="Piano volume"><span class="val" id="pnoVolV">'+pnoVol+'%</span></div>'
-        +mixRows("pno")+staffRow("pno")
+        +volRow("pno",pnoVol,"Piano volume")+mixRows("pno")+staffRow("pno")   // the menus' one order (30 Sep 2026)
         +(pnoOn?'':'<div class="note">The piano is off — click the button to turn it on.</div>')
         +'<div class="note">Salamander Grand Piano by Alexander Holm, CC BY 3.0.</div>';
       const apply=()=>{ pnoVol=Math.max(0,Math.min(150,+$("pnoVolR").value||0));
@@ -44751,16 +44770,14 @@ function boot(){
     const openSyn=()=>{
       if(closePop()) return;
       const pop=document.createElement("div"); pop.className="pop"; pop.id="synPop";
-      pop.innerHTML='<div class="ttl">Synth sound</div>'+seg(SYN_PRE,"ss",synSnd)
+      pop.innerHTML='<div class="ttl">Sound</div>'+seg(SYN_PRE,"ss",synSnd)
         +'<div class="note" id="synDesc">'+synSound().d+'</div>'
-        +'<div class="ttl">Style</div>'+seg(SYN_STYLES,"sy",synStyle," two")
+        +'<div class="ttl">Style</div>'+seg(SYN_STYLES,"sy",synStyle)
         +'<div class="ttl">Register</div>'+seg(PNO_REGS,"sr",synReg)
         +'<div class="ttl">Voicing</div>'+seg(SYN_VOICINGS,"sv",synVc," two")
-        +'<div class="ttl">Synth volume</div>'
-        +'<div class="vol"><input type="range" id="synVolR" min="0" max="150" step="5" value="'+synVol+'" aria-label="Synth volume"><span class="val" id="synVolV">'+synVol+'%</span></div>'
         +'<div class="ttl">Brightness</div>'
-        +'<div class="vol"><input type="range" id="synBriR" min="40" max="250" step="5" value="'+synBright+'" aria-label="Brightness"><span class="val" id="synBriV">'+synBright+'%</span></div>'
-        +mixRows("syn")+staffRow("syn")
+        +'<div class="vol full"><input type="range" id="synBriR" min="40" max="250" step="5" value="'+synBright+'" aria-label="Brightness"><span class="val" id="synBriV">'+synBright+'%</span></div>'
+        +volRow("syn",synVol,"Synth volume")+mixRows("syn")+staffRow("syn")   // the menus' one order (30 Sep 2026)
         +(synOn?'':'<div class="note">The synth is off — click the button to turn it on.</div>');
       const apply=()=>{ synVol=Math.max(0,Math.min(150,+$("synVolR").value||0)); synBright=Math.max(40,Math.min(250,+$("synBriR").value||100));
         $("synVolV").textContent=synVol+"%"; $("synBriV").textContent=synBright+"%";
