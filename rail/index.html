@@ -12113,7 +12113,7 @@ function gtrFollow(p2,at){
   for(const s of (GTR.fol||[])) gtrChoke(s,at-0.004,0.03);   // the last doubled notes give way
   GTR.fol=[]; const used=new Set();
   for(const {midi,g,stac} of evs){ let m=midi+sh; while(m>GTR_REACH) m-=12; let best=null;
-    const home=GTR.fpos!=null?GTR.fpos:(({open:2,mid:5,high:7})[gtrReg]||3);   // the hand where the register sits (30 Sep 2026)
+    const home=GTR.fpos!=null?GTR.fpos:(({auto:3,open:2,mid:5,high:7})[gtrReg]||3);   // the hand where the register sits (30 Sep 2026)
     for(let s=0;s<6;s++){ if(used.has(s)) continue; const fr=m-GTR_OPEN[s]; if(fr<0||fr>15) continue;
       const c=Math.abs(fr-home); if(!best||c<best.c) best={s,fr,c}; }
     if(!best) continue;
@@ -12156,6 +12156,10 @@ function feelTicks(m,rel,pd){   // the rule, cut to one pulse: the steps inside 
    whose fret moves is stopped, as the styles do; a hit takes the top n strings of it: a down-strum low to high, an up-strum
    high to low, a block all at once, a roll one string after another at its pace (stopping at the next hit), a muted
    chuck cut after 30 ms; Short damps its strings at half a beat; a rest damps them all. */
+/* THE STRINGS A HIT PLAYS (David, 30 Sep 2026: exact strings per hit; patches/gtr-strings.py): its own list (q), those of it the
+   shape sounds - or, with none left or none kept, the top n strings of the shape */
+function gtrUse(S,x){ if(Array.isArray(x.q)&&x.q.length){ const u=S.filter(s=>x.q.includes(s)); if(u.length) return u; }
+  return S.slice(-Math.max(1,Math.min(S.length,x.n||S.length))); }
 function gtrPlayWritten(p2,rel,m,sec,at,W){
   const rb=((rel%m.bp)+m.bp)%m.bp, pd=pulseDurOf(p2), here=W.filter(x=>x.t>=rb-1e-6&&x.t<rb+1-1e-6); if(!here.length) return;
   if(!gtrReady()) return;
@@ -12165,10 +12169,10 @@ function gtrPlayWritten(p2,rel,m,sec,at,W){
   for(const x of here){ const at2=at+(x.t-rb)*pd;
     if(x.f==="rest"||!name){ gtrDampAll(at2); GTR.wkey=null; continue; }
     const pos=x.g||gtrReg, key=name+"|"+pos;   // its neck: open, mid, high - or, none chosen, the menu's register (30 Sep 2026)
-    if(GTR.wkey!==key||!GTR.shape){ const sh=(pos==="high"&&gtrHighShape(name,[2,3,4,5]))||gtrVoicing(name,GTR.shape&&Array.isArray(GTR.shape.f)?GTR.shape:null,true,GTR_POS[pos]); if(!sh) continue;
+    if(GTR.wkey!==key||!GTR.shape){ const sh=(pos==="high"&&gtrHighShape(name,[2,3,4,5]))||gtrVoicing(name,GTR.shape&&Array.isArray(GTR.shape.f)?GTR.shape:null,GTR_FULL.has(gtrStyle),GTR_POS[pos]); if(!sh) continue;
       for(let q=0;q<6;q++) if(GTR.str[q]&&sh.f[q]!==GTR.str[q].fret) gtrChoke(q,at2-0.005,0.025);   // the hand moves
       GTR.chord=name; GTR.shape=sh; GTR.wkey=key; }
-    const S=GTR.shape.s, F=GTR.shape.f, use=S.slice(-Math.max(1,Math.min(S.length,x.n||S.length)));
+    const S=GTR.shape.s, F=GTR.shape.f, use=gtrUse(S,x);
     const beat=pd*m.sub*((m.den||4)/4), t0=at2+Math.random()*0.004, nextT=Math.min(m.bp,...W.filter(y=>y.t>x.t+1e-6).map(y=>y.t));
     const play=(list,sp,vel)=>list.forEach((q,k)=>gtrNote(q,F[q],t0+k*sp,vel*(1-0.03*k)));
     if(x.f==="sd") play(use,0.0095,0.78);
@@ -12404,7 +12408,7 @@ function pnoVoicing(pcs,lo,hi,prev){
    first note among the chord's notes; s "short". Its notes are the chord's where it stands, so it follows the chord. ═══ */
 const WTRACKS=["pno","syn","gtr"];   // the written instruments beside the bass (the synth and the guitar join later)
 function wtOf(sec,k){ return (sec&&Array.isArray(sec[k]))?sec[k]:[]; }
-function wtBare(x){ const n={}; for(const q of ["f","n","u","h","s","g"]) if(x[q]!=null) n[q]=x[q]; return n; }   // g: the guitar's neck (30 Sep 2026)
+function wtBare(x){ const n={}; for(const q of ["f","n","u","h","s","g","q"]) if(x[q]!=null) n[q]=Array.isArray(x[q])?x[q].slice():x[q]; return n; }   // q: the guitar's strings (30 Sep 2026)   // g: the guitar's neck (30 Sep 2026)
 function wtSet(sec,k,bar,t,hit){
   const rest=wtOf(sec,k).filter(x=>!(x.bar===bar&&x.t===t));
   if(hit) rest.push(Object.assign({bar,t},wtBare(hit)));
@@ -14860,11 +14864,11 @@ function wtK(){ return bassUI().track; }
 function wtLaneWanted(sc,lanes){ return !lanes&&wtEdTrack()&&!!(sc&&sc.closest&&sc.closest("#score"))&&!sc.closest("#prSheet"); }
 /* a silent run of an instrument's pulse function over a table - the staff's way, the live take - its notes as {r,x,seg}:
    r its place in pulses, seg the pedal it sounds in (a release starts the next) */
-function wtRun(k,nm){
+function wtRun(k,nm,written){
   const ent=bassEnt(nm), sec=piece&&piece.sections[nm]; if(!ent||!sec) return {ev:[],m:null};
   const m=SM(piece,nm), nb=(sec.bars||[]).length, pd=pulseDurOf(ent.pulse)||0.15, t0=5000, ev=[], chokes=[];
   const sv={PNO,SYN,GTR,pnoNote,pnoRelease,pnoReady,synNote,synRelease,synReady,gtrNote,gtrChoke,gtrReady,wb:wtBar,rnd:Math.random}; let seg=0;
-  try{ Math.random=()=>0; pnoReady=()=>true; synReady=()=>true; gtrReady=()=>true; wtBar=()=>null;   // the style's own notes
+  try{ Math.random=()=>0; pnoReady=()=>true; synReady=()=>true; gtrReady=()=>true; if(!written) wtBar=()=>null;   // the style's own notes - or, written, what plays
     PNO={chord:null,held:[],last:-9,ctx,seq:0,vc:null,ftake:(sv.PNO&&sv.PNO.ftake)||0}; SYN={chord:null,held:[],last:-9,ctx,vc:null};
     GTR={chord:null,shape:null,seq:0,last:-9,ctx,str:[null,null,null,null,null,null],fol:[],fpos:null};
     pnoNote=(x,t)=>ev.push({r:(t-t0)/pd,x,seg}); pnoRelease=()=>{ seg++; };
@@ -14877,6 +14881,14 @@ function wtRun(k,nm){
   }catch(e){ console.warn("written "+k+":",e); }
   finally{ ({PNO,SYN,GTR,pnoNote,pnoRelease,pnoReady,synNote,synRelease,synReady,gtrNote,gtrChoke,gtrReady}=sv); wtBar=sv.wb; Math.random=sv.rnd; }
   ev.sort((a,b)=>a.r-b.r||a.x-b.x); return {ev,m,nb,pd,chokes}; }
+/* THE EDITOR SHOWS WHAT PLAYS (30 Sep 2026, patches/gtr-strings.py): a written hit's notes are read from a silent run of the
+   player itself - the voicing and the shape led from the chord before, as they sound - once a drawing (the lane and the
+   palette clear it), not worked out afresh beside it */
+const WT_PLAYED=new Map();
+function wtPlayed(k,nm){ const key=k+"|"+nm; if(!WT_PLAYED.has(key)) WT_PLAYED.set(key,wtRun(k,nm,true).ev); return WT_PLAYED.get(key); }
+function wtPlayedAt(k,nm,x,W){ if(x.f==="rest") return []; const ev=wtPlayed(k,nm), m=SM(piece,nm); if(!ev||!m) return null;
+  const a=x.bar*m.bp+x.t, nx=Math.min(m.bp,...W.filter(y=>y.bar===x.bar&&y.t>x.t+1e-6).map(y=>y.t)), b=x.bar*m.bp+nx;
+  const ns=ev.filter(e=>e.r>=a-0.01&&e.r<b-0.01).map(e=>e.x); return ns.length?ns:null; }
 function wtPlace(hits,m,nb){ return hits.map(h=>{ const rel=Math.round(h.r*1000)/1000, bar=Math.floor(rel/m.bp+1e-6);
   return Object.assign(h,{bar,t:Math.round((rel-bar*m.bp)*1000)/1000}); }).filter(h=>h.bar>=0&&h.bar<nb); }
 /* ---- THE PIANO: its chord's notes where a pulse stands (the low root, the chord voiced afresh, its octave); its style
@@ -14938,7 +14950,7 @@ function synAudition(notes){ if(!ctx||!notes.length||!synReady()) return;
    an even pace apart, one way, three or more a roll; a hit's notes are the top n strings of the shape */
 function gtrShapeAt(nm,rel,pos){ const ent=bassEnt(nm), m=SM(piece,nm); if(!ent) return null;
   let name=null; try{ name=chordInForceAt(ent.pulse+Math.floor(rel),ent,m); }catch(e){} if(!name) return null;
-  const sh=(pos==="high"&&gtrHighShape(name,[2,3,4,5]))||gtrVoicing(name,null,true,GTR_POS[pos]); return sh?{name,sh}:null; }
+  const sh=(pos==="high"&&gtrHighShape(name,[2,3,4,5]))||gtrVoicing(name,null,GTR_FULL.has(gtrStyle),GTR_POS[pos]); return sh?{name,sh}:null; }
 function gtrPoolAt(nm,rel){ const G=gtrShapeAt(nm,rel,gtrReg); if(!G) return null;
   const pool=G.sh.s.map(q=>GTR_OPEN[q]+G.sh.f[q]).sort((a,b)=>a-b); return {name:G.name,pool,lo:38,hi:84}; }
 function gtrStyleHits(nm){
@@ -14947,19 +14959,19 @@ function gtrStyleHits(nm){
   while(i<ev.length){ const a=ev[i], g=[a]; let j=i+1; while(j<ev.length&&sec(ev[j].r-g[g.length-1].r)<0.013) g.push(ev[j++]);
     if(g.length>1){ const muted=g.every(e=>chokes.some(c=>c.q===e.q&&c.r>e.r&&sec(c.r-e.r)<0.06));
       const f=muted?"mute":sec(g[g.length-1].r-a.r)<0.002?"block":(g[g.length-1].x>a.x?"sd":"su");
-      hits.push({r:a.r,f,ms:g.map(e=>e.x).sort((p,q)=>p-q)}); i=j; continue; }
+      hits.push({r:a.r,f,ms:g.map(e=>e.x).sort((p,q)=>p-q),qs:[...new Set(g.map(e=>e.q))].sort((p,q)=>p-q)}); i=j; continue; }   // and its strings (30 Sep 2026)
     const run=[a]; let k=i+1, sp=null;
     while(k<ev.length){ const b=ev[k], prev=run[run.length-1]; if(k+1<ev.length&&sec(ev[k+1].r-b.r)<0.013) break;
       const d=b.r-prev.r, dir=Math.sign(b.x-prev.x); if(d<0.02||!dir) break;
       if(sp==null) sp=d; else if(Math.abs(d-sp)>0.03*Math.max(1,sp)) break;
       if(run.length>=2&&dir!==Math.sign(run[1].x-run[0].x)) break;
       run.push(b); k++; }
-    if(run.length>=3){ const u=Math.round(16*s16/sp); hits.push({r:a.r,f:run[1].x>run[0].x?"up":"down",ms:run.map(e=>e.x),u:[8,16,32].includes(u)?u:16}); i=k; }
-    else { hits.push({r:a.r,f:"block",ms:[a.x]}); i++; } }
+    if(run.length>=3){ const u=Math.round(16*s16/sp); hits.push({r:a.r,f:run[1].x>run[0].x?"up":"down",ms:run.map(e=>e.x),u:[8,16,32].includes(u)?u:16,qs:[...new Set(run.map(e=>e.q))].sort((p,q)=>p-q)}); i=k; }
+    else { hits.push({r:a.r,f:"block",ms:[a.x],qs:[a.q]}); i++; } }
   return wtPlace(hits,m,nb); }
 function gtrWrittenNotes(nm,x,W){ const m=SM(piece,nm); if(x.f==="rest") return [];
   const G=gtrShapeAt(nm,x.bar*m.bp+x.t,x.g||gtrReg); if(!G) return [];
-  const S=G.sh.s, use=S.slice(-Math.max(1,Math.min(S.length,x.n||S.length)));
+  const S=G.sh.s, use=gtrUse(S,x);
   let ns=use.map(q=>GTR_OPEN[q]+G.sh.f[q]);
   if(x.f==="up"||x.f==="down"){ const ent=bassEnt(nm), pd=pulseDurOf(ent?ent.pulse:0)||0.15, sp=pd*m.sub*((m.den||4)/(x.u||16));
     const nextT=Math.min(m.bp,...W.filter(y=>y.bar===x.bar&&y.t>x.t+1e-6).map(y=>y.t));
@@ -14967,23 +14979,30 @@ function gtrWrittenNotes(nm,x,W){ const m=SM(piece,nm); if(x.f==="rest") return 
   return ns; }
 function gtrAudition(notes,f,u,nm,x){ if(!ctx||!x||!gtrReady()) return;
   const m=SM(piece,nm), G=gtrShapeAt(nm,x.bar*m.bp+x.t,x.g||gtrReg); if(!G) return;
-  try{ ctx.resume(); }catch(e){} const S=G.sh.s, F=G.sh.f, use=S.slice(-Math.max(1,Math.min(S.length,x.n||S.length))), t0=ctx.currentTime+0.03;
+  try{ ctx.resume(); }catch(e){} const S=G.sh.s, F=G.sh.f, use=gtrUse(S,x), t0=ctx.currentTime+0.03;
   const ent=bassEnt(nm), pd=pulseDurOf(ent?ent.pulse:0)||0.15, sp=(f==="up"||f==="down")?pd*m.sub*((m.den||4)/(u||16)):f==="su"?0.0075:f==="block"?0:0.0095;
   const list=(f==="su"||f==="down")?use.slice().reverse():use;
   list.forEach((q,k)=>gtrNote(q,F[q],t0+k*sp,f==="mute"?0.3:0.7)); if(f==="mute") list.forEach(q=>gtrChoke(q,t0+0.03,0.008)); }
+/* THE GUITAR'S STRINGS ROW: six toggles, low to high - lit the strings the hit plays, dim the ones its shape does not sound */
+function gtrStringsNow(P){ const x=P.here||P.auto; if(!x) return [];
+  if(!P.here) return (x.qs||[]).slice();
+  const G=gtrShapeAt(P.nm,P.bi*P.m.bp+x.t,x.g||gtrReg); return G?gtrUse(G.sh.s,x):[]; }
+function gtrStringsRow(P,sg){ const x=P.here||P.auto, G=x&&gtrShapeAt(P.nm,P.bi*P.m.bp+x.t,(P.here&&P.here.g)||gtrReg), on=gtrStringsNow(P);
+  return '<div class="lab">Strings</div><div class="pal bwsw wg" style="--n:6">'
+    +["E","A","D","G","B","e"].map((l,q)=>sg("data-pq",q,l,on.includes(q),!G||!G.sh.s.includes(q)||x.f==="rest")).join("")+'</div>'; }
 /* THE INSTRUMENTS THE EDITOR WRITES: what differs between them */
 const WTI={
   pno:{name:"Piano", forms:[["block","Block"],["up","Roll ↑"],["down","Roll ↓"]], paced:f=>f==="up"||f==="down", def:{f:"block",n:4,h:1},
-    pool:pnoPoolAt, styleHits:pnoStyleHits, notes:pnoWrittenNotes, audition:pnoAudition, styleName:()=>pnoStyleName(pnoStyle),
+    pool:pnoPoolAt, styleHits:pnoStyleHits, notes:(nm,x,W)=>wtPlayedAt("pno",nm,x,W)||pnoWrittenNotes(nm,x,W), audition:pnoAudition, styleName:()=>pnoStyleName(pnoStyle),
     keys:{b:"block",u:"up",d:"down"}, keyHint:'<b>B</b> block · <b>U</b> roll up · <b>D</b> roll down',
     fName:{block:"a block chord",up:"a roll up",down:"a roll down",rest:"a rest"}},
   syn:{name:"Synth", forms:[["held","Held"],["pulse","Pulse"]], paced:f=>f==="pulse", def:{f:"held",n:4,h:0},
-    pool:synPoolAt, styleHits:synStyleHits, notes:synWrittenNotes, audition:synAudition, styleName:()=>synStyleName(synStyle),
+    pool:synPoolAt, styleHits:synStyleHits, notes:(nm,x,W)=>wtPlayedAt("syn",nm,x,W)||synWrittenNotes(nm,x,W), audition:synAudition, styleName:()=>synStyleName(synStyle),
     keys:{h:"held",p:"pulse"}, keyHint:'<b>H</b> held · <b>P</b> pulse',
     fName:{held:"a held chord",pulse:"a pulsed chord",rest:"a rest"}},
   gtr:{name:"Guitar", forms:[["sd","Strum ↓"],["su","Strum ↑"],["block","Block"],["up","Roll ↑"],["down","Roll ↓"],["mute","Muted"]],
-    paced:f=>f==="up"||f==="down", def:{f:"sd",n:6}, counts:[1,2,3,4,5,6], countLabel:"Strings", height:false, neck:true,
-    pool:gtrPoolAt, styleHits:gtrStyleHits, notes:gtrWrittenNotes, audition:gtrAudition, styleName:()=>gtrStyleName(gtrStyle),
+    paced:f=>f==="up"||f==="down", def:{f:"sd",n:6}, counts:[1,2,3,4,5,6], countLabel:"Strings", strings:true, height:false, neck:true,
+    pool:gtrPoolAt, styleHits:gtrStyleHits, notes:(nm,x,W)=>wtPlayedAt("gtr",nm,x,W)||gtrWrittenNotes(nm,x,W), audition:gtrAudition, styleName:()=>gtrStyleName(gtrStyle),
     keys:{s:"sd",u:"su",b:"block",m:"mute"}, keyHint:'<b>S</b> strum down · <b>U</b> strum up · <b>B</b> block · <b>M</b> muted',
     fName:{sd:"a down-strum",su:"an up-strum",block:"a block chord",up:"a roll up",down:"a roll down",mute:"a muted chuck",rest:"a rest"}}};
 /* the hit at the cursor: the one starting in its pulse */
@@ -14998,7 +15017,7 @@ function wtMaterialise(k,nm,bi){
   const I=WTI[k], sec=piece.sections[nm], m=SM(piece,nm); if(wtOf(sec,k).some(x=>x.bar===bi)) return;
   for(const h of I.styleHits(nm).filter(h=>h.bar===bi)){ const P=I.pool(nm,bi*m.bp+h.t); if(!P) continue;
     const lowest=Math.min(...h.ms); let k0=0; P.pool.forEach((x,j)=>{ if(Math.abs(x-lowest)<Math.abs(P.pool[k0]-lowest)) k0=j; });
-    const hit={f:h.f,n:h.ms.length}; if(I.height!==false) hit.h=k0; if(h.u&&h.u!==16) hit.u=h.u; wtSet(sec,k,bi,h.t,hit); } }
+    const hit={f:h.f,n:h.ms.length}; if(I.height!==false) hit.h=k0; if(h.qs) hit.q=h.qs.slice(); if(h.u&&h.u!==16) hit.u=h.u; wtSet(sec,k,bi,h.t,hit); } }
 /* write at the cursor: change the hit there, or write a new one (the instrument's default) */
 function wtWrite(k,change){
   const I=WTI[k], P=wtAtCur(k); snapshot(); wtMaterialise(k,P.nm,P.bi);
@@ -15058,6 +15077,7 @@ function wtLaneEl(nm,r0,r1){
   return ln; }
 function wtLanesPlace(sc){
   const lanes=sc.querySelectorAll(".wlane"); if(!lanes.length) return;
+  WT_PLAYED.clear();   // what plays, read afresh
   const k=wtK(), I=WTI[k]; if(!I) return;
   const U=bassUI(), H=58, auto={};
   lanes.forEach(ln=>{
@@ -15122,6 +15142,7 @@ function pnoKeysSVG(notes,pool){
     s+='<rect x="'+x+'" y="'+top+'" width="13" height="'+(kh*.6)+'" rx="2.5" fill="'+(o?"var(--dixie)":"var(--ink2)")+'"/>'+mark(v,x+6.5); }
   return s+'</svg>'; }
 function renderWtBar(E){
+  WT_PLAYED.clear();   // what plays, read afresh
   const k=wtK(), I=WTI[k], P=wtAtCur(k), m=P.m, x=P.here||P.auto, beat=Math.floor(P.t/m.sub)+1, sub=P.t%m.sub;
   const where="bar "+(P.bi+1)+" · beat "+beat+(sub?" · "+(sub+1)+" of "+m.sub:"");
   const nn=P.here&&P.here.f!=="rest"?(P.here.n||I.def.n):0;
@@ -15139,8 +15160,8 @@ function renderWtBar(E){
     +'</div><div class="edpals">'
     +bassWriteSwitch()
     +'<div class="lab">Form</div><div class="pal bwsw wg" style="--n:'+(I.forms.length>4?3:I.forms.length)+'">'+I.forms.map(([fk,fl])=>sg("data-pf",fk,fl,f===fk)).join("")+'</div>'
-    +'<div class="lab">'+(I.countLabel||"Notes")+'</div><div class="pal bwsw wg" style="--n:'+(I.counts||[2,3,4,5,6,7,8]).length+'">'+(I.counts||[2,3,4,5,6,7,8]).map(q=>sg("data-pn",q,q,n===q)).join("")+'</div>'
-    +(I.neck?'<div class="lab">Neck</div><div class="pal bwsw wg" style="--n:3">'+[["open","Open"],["mid","Mid-neck"],["high","High"]].map(([q,l])=>sg("data-pg2",q,l,!!(P.here&&P.here.g===q))).join("")+'</div>':'')   // none lit: the style's shape (30 Sep 2026)
+    +(I.strings?gtrStringsRow(P,sg):'<div class="lab">'+(I.countLabel||"Notes")+'</div><div class="pal bwsw wg" style="--n:'+(I.counts||[2,3,4,5,6,7,8]).length+'">'+(I.counts||[2,3,4,5,6,7,8]).map(q=>sg("data-pn",q,q,n===q)).join("")+'</div>')   // the guitar: which strings (30 Sep 2026)
+    +(I.neck?'<div class="lab">Neck</div><div class="pal bwsw wg" style="--n:4">'+[["auto","Auto"],["open","Open"],["mid","Mid-neck"],["high","High"]].map(([q,l])=>sg("data-pg2",q,l,!!(P.here&&P.here.g===q))).join("")+'</div>':'')   // none lit: the style's shape (30 Sep 2026)
     +'<div class="lab">Pace</div><div class="pal bwsw wg" style="--n:3">'+[[32,"32nds"],[16,"16ths"],[8,"8ths"]].map(([q,l])=>sg("data-pu",q,l,u===q,!u)).join("")+'</div>'
     +(I.height===false?'':'<div class="lab">Height</div><div class="pal"><button class="key" data-ph="-1"'+(x&&x.f!=="rest"?"":" disabled")+'>Lower</button><button class="key" data-ph="1"'+(x&&x.f!=="rest"?"":" disabled")+'>Higher</button></div>')
     +'<div class="lab">Sound</div><div class="pal bwsw wg" style="--n:2">'+sg("data-ps2","ring","Ring",snd==="ring")+sg("data-ps2","short","Short",snd==="short")+'</div>'
@@ -15155,7 +15176,9 @@ function renderWtBar(E){
   E.querySelectorAll("[data-pu]").forEach(b=>b.addEventListener("click",()=>{ if(!b.disabled) wtWrite(k,{u:+b.dataset.pu===16?null:+b.dataset.pu}); }));
   E.querySelectorAll("[data-ph]").forEach(b=>b.addEventListener("click",()=>wtHeight(k,+b.dataset.ph)));
   E.querySelectorAll("[data-ps2]").forEach(b=>b.addEventListener("click",()=>wtWrite(k,{s:b.dataset.ps2==="short"?"short":null})));
-  E.querySelectorAll("[data-pg2]").forEach(b=>b.addEventListener("click",()=>wtWrite(k,{g:b.dataset.pg2})));   // the guitar's neck: open, mid, high
+  E.querySelectorAll("[data-pg2]").forEach(b=>b.addEventListener("click",()=>wtWrite(k,{g:b.dataset.pg2})));
+  E.querySelectorAll("[data-pq]").forEach(b=>b.addEventListener("click",()=>{ if(b.disabled) return; const cur=gtrStringsNow(P), q0=+b.dataset.pq;   // a string in or out
+    const q=cur.includes(q0)?cur.filter(x=>x!==q0):cur.concat([q0]).sort((a,c)=>a-c); if(q.length) wtWrite(k,{q,n:q.length}); }));   // the guitar's neck: open, mid, high
   E.querySelectorAll("[data-px]").forEach(b=>b.addEventListener("click",()=>{ const q=b.dataset.px;
     if(q==="rest") wtWrite(k,{f:"rest"}); else if(q==="del") wtDelete(k); else wtToAuto(k,q); }));
 }
@@ -15172,7 +15195,7 @@ window.addEventListener("keydown",e=>{
   else if(key==="Escape"){ bassUI().track="pan"; render(); renderEditbar(); }
   else if(I.keys[key.toLowerCase()]) wtWrite(k,{f:I.keys[key.toLowerCase()]});
   else if(key==="r"||key==="R") wtWrite(k,{f:"rest"});
-  else if(/^[1-8]$/.test(key)&&(I.counts||[2,3,4,5,6,7,8]).includes(+key)) wtWrite(k,{n:+key});
+  else if(/^[1-8]$/.test(key)&&(I.counts||[2,3,4,5,6,7,8]).includes(+key)) wtWrite(k,{n:+key,q:null});   // the top n (a string list cleared)
   else if(key.length===1&&key!==" "){ /* swallowed: the handpan's letters do not write while an instrument is being written */ }
   else done=false;
   if(done){ e.preventDefault(); e.stopImmediatePropagation(); }
@@ -15506,7 +15529,7 @@ let gtrStyle=(()=>{ const s=localStorage.getItem("hps.gtrstyle"); return GTR_STY
 let gtrStrum=(()=>{ let s=null; try{ s=localStorage.getItem("hps.gtrstrum");
     if(localStorage.getItem("hps.gtrstyle")==="delay"){ s="delay"; localStorage.setItem("hps.gtrstyle","strum"); localStorage.setItem("hps.gtrstrum","delay"); }   // Delay was a style until 30 Sep 2026
   }catch(e){} return GTR_STRUMS.some(x=>x[0]===s)?s:"straight"; })();   // Strummed's pattern (29 Sep 2026)
-let gtrReg=(()=>{ try{ const v=localStorage.getItem("hps.gtrreg"); return v==="high"||v==="mid"?v:"open"; }catch(e){ return "open"; } })();   // Open | Mid-neck | High; a stored Normal takes Open (30 Sep 2026)   // the guitar's register (29 Sep 2026)
+let gtrReg=(()=>{ try{ const v=localStorage.getItem("hps.gtrreg"); return v==="open"||v==="mid"||v==="high"?v:"auto"; }catch(e){ return "auto"; } })();   // Auto | Open | Mid-neck | High; Auto (the old Normal) the default, a stored Normal takes it (30 Sep 2026)   // the guitar's register (29 Sep 2026)
 let gtrPick=(()=>{ let s=null; try{ s=localStorage.getItem("hps.gtrpick"); }catch(e){} return GTR_PICKS.some(x=>x[0]===s)?s:"travis"; })();   // Picking's pattern (28 Sep 2026)
 let gtrVol=Math.max(0,Math.min(150,+(localStorage.getItem("hps.gtrvol")??100)));
 const mixGet=(k,d,lo,hi)=>{ const v=localStorage.getItem(k); return v==null||v===""||isNaN(+v)?d:Math.max(lo,Math.min(hi,+v)); };
@@ -16060,7 +16083,7 @@ function panTones(p2){
   return out;
 }
 /* the pattern moved as one, so it keeps the pan's shape: an octave step per register */
-const PNO_FOLLOW_SHIFT={below:-12,around:0,above:12}, GTR_FOLLOW_SHIFT={open:0,mid:0,high:12}, GTR_REACH=79;   // G5, the top string's 15th fret
+const PNO_FOLLOW_SHIFT={below:-12,around:0,above:12}, GTR_FOLLOW_SHIFT={auto:0,open:0,mid:0,high:12}, GTR_REACH=79;   // G5, the top string's 15th fret
 function fireEvent(ev,at){
   if(ev.v==="ghost") return;   // ghosts are notated, not sounded (David, 26 Aug: silent for now)
   if(ev.v==="perc"){
@@ -45101,8 +45124,8 @@ function boot(){
         +GTR_PICKS.map(([k,l])=>'<button class="bwseg'+(k===gtrPick?' on':'')+'" data-gp="'+k+'">'+l+'</button>').join("")+'</div></div>'
         +'<div id="gtrStrumBox"'+(gtrStyle==="strum"?'':' hidden')+'><div class="ttl">Pattern</div><div class="pal bwsw gsty">'   // Strummed's pattern (29 Sep 2026)
         +GTR_STRUMS.map(([k,l])=>'<button class="bwseg'+(k===gtrStrum?' on':'')+'" data-gt="'+k+'">'+l+'</button>').join("")+'</div></div>'
-        +'<div class="ttl">Register</div><div class="pal bwsw gsty">'   // the guitar's register (29 Sep 2026): Open | Mid-neck | High (30 Sep 2026)
-        +[["open","Open"],["mid","Mid-neck"],["high","High"]].map(([k,l])=>'<button class="bwseg'+(k===gtrReg?' on':'')+'" data-gr="'+k+'">'+l+'</button>').join("")+'</div>'
+        +'<div class="ttl">Register</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(4,1fr)">'   // the guitar's register (29 Sep 2026): Auto | Open | Mid-neck | High (30 Sep 2026)
+        +[["auto","Auto"],["open","Open"],["mid","Mid-neck"],["high","High"]].map(([k,l])=>'<button class="bwseg'+(k===gtrReg?' on':'')+'" data-gr="'+k+'">'+l+'</button>').join("")+'</div>'
         +volRow("gtr",gtrVol,"Guitar volume")+mixRows("gtr")+staffRow("gtr")   // the menus' one order (30 Sep 2026)
         +(gtrOn?'':'<div class="note">The guitar is off — click the button to turn it on.</div>');
       const apply=()=>{ gtrVol=Math.max(0,Math.min(150,+$("gtrVolR").value||0));
