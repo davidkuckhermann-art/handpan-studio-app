@@ -81,7 +81,10 @@ input[type=range]{accent-color:var(--dixie);width:100%}
 <script>
 "use strict";
 const $=id=>document.getElementById(id);
-let ctx=null, out=null, room=null, bassBus=null;
+let ctx=null, out=null, room=null, bassBus=null, meter=null;
+/* DIAGNOSTIC (30 Sep 2026: David hears nothing in Safari on the Mac, the page says it plays): the level leaving the page,
+   shown under the play button; ?session=off leaves the phone's audio session alone */
+const NOSESSION=/session=off/.test(location.search);
 const S={bass:"synth",style:"r5",low:36,len:"ring",pan:"on",vol:1};
 /* ---- the music: Composition 1 Advanced, A1 (pan numbers on D Kurd 10), as on the synth's page ---- */
 const PANMIDI={D:50,1:57,2:58,3:60,4:62,5:64,6:65,7:67,8:69,9:72};
@@ -213,6 +216,7 @@ function makeIR(sec,dec){ const n=Math.floor(ctx.sampleRate*sec), b=ctx.createBu
 function graph(){
   ctx=new (window.AudioContext||window.webkitAudioContext)();
   const comp=ctx.createDynamicsCompressor(); comp.threshold.value=-10; comp.ratio.value=4; comp.connect(ctx.destination);
+  meter=ctx.createAnalyser(); meter.fftSize=2048; comp.connect(meter); const mz=ctx.createGain(); mz.gain.value=0; meter.connect(mz); mz.connect(ctx.destination);
   out=ctx.createGain(); out.gain.value=.7;   // headroom: a plucked string's strike peaks at twice today's bass out.connect(comp);
   const cv=ctx.createConvolver(); cv.buffer=makeIR(1.4,2.4); const wet=ctx.createGain(); wet.gain.value=.18; cv.connect(wet); wet.connect(out); room=cv;
 }
@@ -232,13 +236,15 @@ function tick(){ while(nextT<ctx.currentTime+.3){ playBar(nextBar,nextT); nextBa
 /* THE PHONE'S SOUND STARTS INSIDE THE TAP, as on the synth's page: the session declared "playback" (the ringer switch no
    longer silences it), the context resumed and one silent sample played at once - before anything slow */
 function unlock(){
-  try{ if(navigator.audioSession) navigator.audioSession.type="playback"; }catch(e){}
+  try{ if(navigator.audioSession&&!NOSESSION) navigator.audioSession.type="playback"; }catch(e){}
   if(!ctx) graph();
   try{ ctx.resume(); const b=ctx.createBuffer(1,1,ctx.sampleRate), s=ctx.createBufferSource(); s.buffer=b; s.connect(ctx.destination); s.start(0); }catch(e){}
 }
 function soundState(){
   let s="Sound: "+(ctx?({running:"on",suspended:"waiting (tap play again)",interrupted:"interrupted by the phone",closed:"closed"})[ctx.state]||ctx.state:"not started");
   try{ if(navigator.audioSession) s+=" · session: "+navigator.audioSession.type+(navigator.audioSession.state?" ("+navigator.audioSession.state+")":""); }catch(e){}
+  if(meter){ const d=new Float32Array(meter.fftSize); meter.getFloatTimeDomainData(d); let pk=0; for(const v of d) pk=Math.max(pk,Math.abs(v)); s+=" · level "+pk.toFixed(2); }
+  if(ctx) s+=" · time "+ctx.currentTime.toFixed(1)+" s · "+ctx.sampleRate+" Hz"+(NOSESSION?" · no session":"");
   return s+(window.HPS_BANK?"":" · the handpan's samples did not load, the bass plays alone");
 }
 async function load(){   // every sample, every pan note
@@ -251,7 +257,7 @@ async function start(){
   if(!ready){ $("status").textContent="Loading the basses…"; await load(); ready=true; }
   if(ctx.state!=="running") try{ await ctx.resume(); }catch(e){}
   newBassBus(); playing=true; nextBar=0; nextT=ctx.currentTime+.15; tick(); timer=setInterval(tick,60); $("pp").classList.add("on");
-  $("status").textContent=soundState(); setTimeout(()=>{ $("status").textContent=soundState(); },1500);
+  $("status").textContent=soundState(); clearInterval(window.__st); window.__st=setInterval(()=>{ $("status").textContent=soundState(); },400);
 }
 function stop(){ playing=false; clearInterval(timer); if(bassBus){ const g=bassBus.gain; g.cancelScheduledValues(ctx.currentTime); g.setTargetAtTime(0,ctx.currentTime,.1); }
   $("pp").classList.remove("on"); $("now").textContent="Stopped"; }
