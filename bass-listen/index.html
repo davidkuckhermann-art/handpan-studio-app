@@ -27,7 +27,7 @@ p.sub{color:var(--ink2);margin:6px 0 20px}
 .seg button{flex:1;font:600 13px Figtree,sans-serif;color:var(--ink2);padding:7px 10px;border:none;border-radius:8px;background:none;cursor:pointer;white-space:nowrap}
 .seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(var(--sh),.18)}
 /* the primary choice: the bass, full width */
-.seg.grid{display:grid;grid-template-columns:repeat(5,1fr)}
+.seg.grid{display:grid;grid-template-columns:repeat(4,1fr)}
 .seg.three{display:grid;grid-template-columns:repeat(3,1fr)}
 .desc{grid-column:2;font-size:13px;color:var(--ink2);margin-top:-4px;min-height:2.9em}
 .pair{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -100,6 +100,8 @@ const BASSES=[
  {id:"vsco",  name:"VSCO",      d:"VSCO 2 Community Edition, solo contrabass pizzicato - an orchestral bass, round and woody (CC0)."},
  {id:"meat",  name:"Meatbass",  d:"Karoryfer Meatbass pizzicato - a 1958 Otto Rubner bass plucked hard: more folk and pop than classical (CC0)."},
  {id:"sneaky",name:"Sneakybass",d:"Karoryfer Sneakybass - the same bass played very quietly, “late night practice”: soft, close, with the fingers' noise (CC0)."},
+ {id:"warm",  name:"Sneaky warm",d:"Sneakybass, fattened (David, 30 Sep: \u201cwarmer and fuller\u201d): +6 dB below 200 Hz, the fingers' edge taken down around 3 kHz and above 3.5 kHz, and a little soft saturation for body. Same loudness as the others."},
+ {id:"layer", name:"Layered",d:"Today's bass and Sneakybass together (David, 30 Sep): the synth's round, steady low end under the real bass's pluck and wood. Same loudness as the others."},
  {id:"pluck", name:"Plucked",   d:"A plucked string made here in the browser (Karplus-Strong): a thumb's burst of noise ringing in a tuned delay - nothing to load, no licence."},
 ];
 /* the notes cut from each library (s/map.json, written by cut.py) - real pitches, measured */
@@ -130,7 +132,7 @@ function barNotes(bi){   // [time in sixteenths, midi] - each note rings until t
 /* ---- TODAY'S BASS, as fireBass builds it (app.html): partials 1, 2, 3 and the finger at 4.01, a low-pass closing as
    it rings, the ring the note plus 0.35 s held between 0.8 and 3 s, the next note damping it in 30 ms ---- */
 const BASS_PK=0.33, BASS_ATT=0.008, BASS_TAIL=0.35, BASS_RING=[0.8,3.0], BASS_FLOOR=0.12, BASS_DAMP=0.03;
-let SMPGAIN=1;   // the recorded and plucked basses brought to today's bass's loudness (calibrate)
+let SMPGAIN=1, WARMGAIN=1, LAYERGAIN=1;   // LAYERGAIN: the two layers together brought to one bass's loudness   // WARMGAIN: the warm chain brought back to the others' loudness (calibrate)   // the recorded and plucked basses brought to today's bass's loudness (calibrate)
 function synthNote(ac,dest,midi,st,dur,short){
   const pk=BASS_PK, body=pk*BASS_FLOOR, f=440*Math.pow(2,(midi-69)/12);
   let ring=Math.min(BASS_RING[1],Math.max(BASS_RING[0],dur+BASS_TAIL)); if(short) ring=Math.max(0.09,Math.min(ring,dur*0.5));
@@ -184,10 +186,16 @@ let last=null;
 function playNote(midi,st,dur){
   const short=S.len==="short"; let n;
   if(S.bass==="synth") n=synthNote(ctx,bassBus,midi,st,dur,short);
+  else if(S.bass==="layer"){   // both layers into one gain, so the next note damps them together
+    const m=nearest("sneaky",midi), b=SMP.get("sneaky"+m); const lg=ctx.createGain(); lg.gain.value=LAYERGAIN; lg.connect(bassBus);
+    const a=synthNote(ctx,lg,midi,st,dur,short); let e=a.end;
+    if(b){ const sg=ctx.createGain(); sg.gain.value=SMPGAIN; sg.connect(lg); e=Math.max(e,bufNote(ctx,sg,b,Math.pow(2,(midi-m)/12),st,dur,short).end); }
+    n={ch:lg,end:e,lv:LAYERGAIN}; }
   else if(S.bass==="pluck") n=bufNote(ctx,smpBus,pluckBuf(midi),1,st,dur,short);
-  else { const m=nearest(S.bass,midi), b=SMP.get(S.bass+m); if(!b) return; n=bufNote(ctx,smpBus,b,Math.pow(2,(midi-m)/12),st,dur,short); }
+  else { const lib=S.bass==="warm"?"sneaky":S.bass, m=nearest(lib,midi), b=SMP.get(lib+m); if(!b) return;
+    n=bufNote(ctx,S.bass==="warm"?warmBus:smpBus,b,Math.pow(2,(midi-m)/12),st,dur,short); }
   /* A NEW NOTE DAMPS THE ONE STILL RINGING, as in the app */
-  if(last&&last.end>st){ last.ch.gain.cancelScheduledValues(st); last.ch.gain.setValueAtTime(1,st); last.ch.gain.linearRampToValueAtTime(0,st+BASS_DAMP); }
+  if(last&&last.end>st){ last.ch.gain.cancelScheduledValues(st); last.ch.gain.setValueAtTime(last.lv||1,st); last.ch.gain.linearRampToValueAtTime(0,st+BASS_DAMP); }
   last=n;
 }
 
@@ -198,6 +206,37 @@ async function calibrate(){
   synthNote(oc,oc.destination,36,0,BAR/2,false);
   const x=(await oc.startRendering()).getChannelData(0); let s=0; const n=sr*0.5; for(let i=0;i<n;i++) s+=x[i]*x[i];
   SMPGAIN=Math.sqrt(s/n)/0.12;
+  /* the warm chain's own loudness, over the notes the figures use most (F, B-flat, C in both octaves) */
+  let dry=0, wet=0;
+  for(const midi of [36,41,46,48,53]){ const m=nearest("sneaky",midi), b=SMP.get("sneaky"+m); if(!b) continue;
+    const r=Math.pow(2,(midi-m)/12), o2=new OfflineAudioContext(1,sr*1,sr), s2=o2.createBufferSource(); s2.buffer=b; s2.playbackRate.value=r;
+    const w=warmChain(o2); w.out.connect(o2.destination); s2.connect(w.in); s2.start(0);
+    const y=(await o2.startRendering()).getChannelData(0); for(let i=0;i<n;i++) wet+=y[i]*y[i];
+    const o3=new OfflineAudioContext(1,sr*1,sr), s3=o3.createBufferSource(); s3.buffer=b; s3.playbackRate.value=r; s3.connect(o3.destination); s3.start(0);
+    const z=(await o3.startRendering()).getChannelData(0); for(let i=0;i<n;i++) dry+=z[i]*z[i]; }
+  WARMGAIN=wet>0?Math.sqrt(dry/wet):1;
+  /* the layer: today's bass and Sneakybass summed, over the same notes, against today's bass alone */
+  let one=0, both=0;
+  for(const midi of [36,41,46,48,53]){ const m=nearest("sneaky",midi), b=SMP.get("sneaky"+m); if(!b) continue;
+    const o4=new OfflineAudioContext(1,sr*1,sr); synthNote(o4,o4.destination,midi,0,BAR/2,false);
+    const y=(await o4.startRendering()).getChannelData(0); for(let i=0;i<n;i++) one+=y[i]*y[i];
+    const o5=new OfflineAudioContext(1,sr*1,sr); synthNote(o5,o5.destination,midi,0,BAR/2,false);
+    const g5=o5.createGain(); g5.gain.value=SMPGAIN; g5.connect(o5.destination); const s5=o5.createBufferSource(); s5.buffer=b; s5.playbackRate.value=Math.pow(2,(midi-m)/12); s5.connect(g5); s5.start(0);
+    const z=(await o5.startRendering()).getChannelData(0); for(let i=0;i<n;i++) both+=z[i]*z[i]; }
+  LAYERGAIN=both>0?Math.sqrt(one/both):1;
+}
+/* ---- SNEAKY WARM (David, 30 Sep 2026: "fatten the sneakybass a bit to make it sound warmer and fuller"): a low shelf,
+   the fingers' edge taken down, a gentle top roll-off, then a soft asymmetric saturation - even harmonics, the warm kind ---- */
+let SAT=null;
+function warmChain(ac){
+  const ls=ac.createBiquadFilter(); ls.type="lowshelf"; ls.frequency.value=200; ls.gain.value=6;
+  const pk=ac.createBiquadFilter(); pk.type="peaking"; pk.frequency.value=3000; pk.Q.value=1; pk.gain.value=-4;
+  const lp=ac.createBiquadFilter(); lp.type="lowpass"; lp.frequency.value=3500; lp.Q.value=0.5;
+  if(!SAT){ SAT=new Float32Array(2049); for(let i=0;i<2049;i++){ const x=i/1024-1; SAT[i]=Math.tanh(1.6*x+0.25*x*x)/Math.tanh(1.6); } }
+  const pre=ac.createGain(); pre.gain.value=1.4; const ws=ac.createWaveShaper(); ws.curve=SAT; ws.oversample="2x";
+  const post=ac.createGain(); post.gain.value=1/1.4; const hp=ac.createBiquadFilter(); hp.type="highpass"; hp.frequency.value=25;   // the saturation's offset out
+  ls.connect(pk); pk.connect(lp); lp.connect(pre); pre.connect(ws); ws.connect(post); post.connect(hp);
+  return {in:ls,out:hp};
 }
 
 /* ---- the handpan: the app's own samples ---- */
@@ -220,8 +259,9 @@ function graph(){
   out=ctx.createGain(); out.gain.value=.7; out.connect(comp);   // .7: headroom - a plucked string's strike peaks at twice today's bass
   const cv=ctx.createConvolver(); cv.buffer=makeIR(1.4,2.4); const wet=ctx.createGain(); wet.gain.value=.18; cv.connect(wet); wet.connect(out); room=cv;
 }
-let smpBus=null;
-function newBassBus(){ bassBus=ctx.createGain(); bassBus.gain.value=S.vol; bassBus.connect(out); smpBus=ctx.createGain(); smpBus.gain.value=SMPGAIN; smpBus.connect(bassBus); last=null; }
+let smpBus=null, warmBus=null;
+function newBassBus(){ bassBus=ctx.createGain(); bassBus.gain.value=S.vol; bassBus.connect(out); smpBus=ctx.createGain(); smpBus.gain.value=SMPGAIN; smpBus.connect(bassBus);
+  const w=warmChain(ctx), wg=ctx.createGain(); wg.gain.value=WARMGAIN; w.out.connect(wg); wg.connect(smpBus); warmBus=w.in; last=null; }
 
 function playBar(bi,t0){
   const B=BARS[bi], ns=barNotes(bi);
