@@ -322,7 +322,8 @@ function staff(bars,ctx,o){
   const xS=rS&&rS.bi>=0&&rS.bi<laid.length?(repRoom?laid[0].x0-repRoom+.2*sp:xOf(rS.bi,rS.p)):null;
   const xE=rE&&rE.bi>=0&&rE.bi<laid.length?xOf(rE.bi,rE.p):null;
   for(let i=0;i<5;i++){if(C.line&&i!==2)continue;/* one line: its middle only (30 Sep 2026) */const yy=yW(bottom+2*i);g+=rect(left,yy-E.staffLine*sp/2,(xE!=null?xE:W-(o.right||0))-left,E.staffLine*sp,COL.line)}
-  if(prelude&&o.voice)g+=text(o.voice,left+.2*sp,topY-1.1*sp,1.15*sp,COL.ink3);   // an instrument's staff is named (30 Sep 2026)
+  const voiceY=prelude&&o.voice?Math.min(topY-1.1*sp,(E.clefInk[clef]?yW(C.glyphStep)-(E.clefInk[clef][0]+.2)*sp:topY)-.45*sp):null;   // over its clef's ink (patches/staff-name-above-clef.py)
+  if(voiceY!=null)g+=text(o.voice,left+.2*sp,voiceY,1.15*sp,COL.ink3);   // an instrument's staff is named (30 Sep 2026)
   if(prelude){let cx=left+.4*sp;if(!C.line)g+=glyph(C.glyph,cx,yW(C.glyphStep));cx+=(E.clefW+.6)*sp;
     for(const l of key.flats){if(!C.perc)g+=glyph(G.flat,cx,yW(KEYPOS.flats[l]+C.keyOff));cx+=.9*sp}   // a percussion staff draws no key (30 Sep 2026)
     for(const l of key.sharps){if(!C.perc)g+=glyph(G.sharp,cx,yW(KEYPOS.sharps[l]+C.keyOff));cx+=.9*sp}
@@ -441,7 +442,7 @@ function staff(bars,ctx,o){
   /* …AND THE PICTURE HOLDS ITS CLEF (patches/staff-clef-in-crop.py): the crop is the note ink, and the clef is not note ink.
      Returned apart, so only the picture widens - the band, the chords and the numbers row keep measuring the notes. */
   const clefInk=prelude&&E.clefInk[clef], clefY=yW(C.glyphStep);
-  const clefTop=clefInk?clefY-(clefInk[0]+.2)*sp:Infinity, clefBot=clefInk?clefY+(clefInk[1]+.2)*sp:-Infinity;
+  const clefTop=Math.min(clefInk?clefY-(clefInk[0]+.2)*sp:Infinity,voiceY!=null?voiceY-1.1*sp:Infinity), clefBot=clefInk?clefY+(clefInk[1]+.2)*sp:-Infinity;
   let extentBot=extentBotRaw;
   if(numbersRow&&!collect){const ny=extentBotRaw+2*sp;let maxRows=1;over.forEach(oo=>{maxRows=Math.max(maxRows,oo.rows.length);oo.rows.forEach((r,k)=>{const yy=ny+k*1.45*sp;g+=text(r.label,oo.x,yy,sp*1.5,r.fill,'text-anchor="middle"');if(r.bot)g+=rect(oo.x-.6*sp,yy+.35*sp,1.2*sp,.16*sp,r.fill)})});extentBot=ny+(maxRows-1)*1.45*sp+1.2*sp}
   return{inner:g,bands,W,topY,botY,extentTop,extentBot,clefTop,clefBot,noteTop,noteBot,preludeW,over,laid};
@@ -551,7 +552,7 @@ function build(input,opts){
     parts=[{inner:s.bands+s.inner,extentTop:Math.min(s.extentTop,s.clefTop),extentBot:Math.max(s.extentBot,s.clefBot)}];
   }else if(opts.grand){
     const gap=3.5*sp;
-    const t=staff(bars,ctx,{...base,top:200,clef:"g",keep:keeps[0],cols,numbersRow:false,collect:!!opts.numbersRow});
+    const t=staff(bars,ctx,{...base,top:200,clef:"g",keep:keeps[0],cols,numbersRow:false,collect:!!opts.numbersRow,voice:ex.length?"Handpan":""}); /* named among the instruments (30 Sep 2026) */
     const b=staff(bars,ctx,{...base,top:t.extentBot+gap,clef:"f",keep:keeps[1],cols,barNumbers:false,numbersRow:false,collect:!!opts.numbersRow});
     W=t.W;
     const x=base.left,y1=t.topY,y2=b.botY,ym=(y1+y2)/2;
@@ -565,7 +566,7 @@ function build(input,opts){
     stackExtras(Math.max(extentBot,b.clefBot));
   }else{
     const cf=opts.clef?{clef:opts.clef}:clefFor(input.pan,opts.clefFrom);
-    const s=staff(bars,ctx,{...base,top:200,clef:cf.clef,keep:keeps[0],cols});W=s.W;
+    const s=staff(bars,ctx,{...base,top:200,clef:cf.clef,keep:keeps[0],cols,voice:ex.length?"Handpan":""}); /* named among the instruments (30 Sep 2026) */W=s.W;
     parts=[{inner:s.bands+s.inner,extentTop:Math.min(s.extentTop,s.clefTop),extentBot:Math.max(s.extentBot,s.clefBot)}];
     stackExtras(Math.max(s.extentBot,s.clefBot));
   }
