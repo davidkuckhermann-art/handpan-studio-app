@@ -11797,7 +11797,7 @@ let bassLast=null;
    C1-C4 at its own pitch - bass/sneaky/p<midi>.mp3 the pluck, m<midi>.mp3 the muted pluck (see its SOURCE.txt) -
    beside bank.js as the guitar's are. Nothing is fetched until the double bass is chosen; until it is decoded the
    synth plays, so the bass is never silent. ═══ */
-let bassSound=(function(){ try{ const v=localStorage.getItem("hps.basssound"); return v==="dbass"||v==="ebass"?v:"synth"; }catch(e){ return "synth"; } })();
+let bassSound=(function(){ try{ const v=localStorage.getItem("hps.basssound"); return v==="dbass"||v==="ebass"||v==="electro"?v:"synth"; }catch(e){ return "synth"; } })();
 /* THE SAMPLED BASSES ARE ROWS OF ONE TABLE (David, 30 Sep 2026: "add yr finger as a third sound in the bass menu";
    patches/bass-electric.py): each its folder beside bank.js, the notes recorded (lo-hi; beyond them the nearest at another
    speed), whether it recorded a muted pluck, and the gain that brings it to the synth's loudness - measured in the app,
@@ -11841,6 +11841,37 @@ function fireBassSmp(k,midi,st,ring,duck,art,dur){
   live.push(g); if(live.length>120) live.splice(0,40);
   src.onended=()=>{ const i=live.indexOf(g); if(i>=0) live.splice(i,1); };
 }
+/* ELECTRO (David, 1 Oct 2026: "another synth bass that sounds more aggressive and intentional electronic";
+   patches/bass-electro.py): two saws eight cents apart, a square and a sub an octave down, through a resonant lowpass that
+   snaps open on the strike and closes in a tenth of a second, driven into a soft clipper - held for its note and cut, not
+   left to ring. Its gain: measured to the synth bass's loudness. */
+const BASS_ELECTRO={q:9,open:32,close:3.2,tau:0.09,drive:2.6,gain:0.45};   // gain: 0.64 measured the synth bass's RMS (8 notes G1-Bb2, first half second); 3 dB under that by ear (David, 1 Oct 2026: "a bit too loud")
+let BASS_DRIVE=null;
+function fireBassElectro(midi,st,ring,duck,art,dur,pk){
+  const E=BASS_ELECTRO, f=440*Math.pow(2,(midi-69)/12), mute=art==="mute";
+  const len=mute?0.07:art==="stac"?ring:Math.max(0.12,Math.min(ring,dur||ring)), end=st+len+0.03;
+  if(!BASS_DRIVE){ BASS_DRIVE=new Float32Array(1024); for(let i=0;i<1024;i++){ const x=i/511.5-1; BASS_DRIVE[i]=Math.tanh(E.drive*x)/Math.tanh(E.drive); } }
+  const lp=ctx.createBiquadFilter(); lp.type="lowpass"; lp.Q.value=E.q;
+  lp.frequency.setValueAtTime(Math.min(5000,f*(mute?8:E.open)),st);
+  lp.frequency.setTargetAtTime(Math.max(90,f*E.close),st+0.005,mute?0.02:E.tau);   // the snap shut
+  const sh=ctx.createWaveShaper(); sh.curve=BASS_DRIVE; sh.oversample="2x";
+  const env=ctx.createGain(), ch=ctx.createGain(), g=ctx.createGain(); env.gain.value=0; g.gain.value=1;   // env: the note; ch: the choke; g: what the silencers ramp
+  const lvl=pk*E.gain;
+  env.gain.setValueAtTime(0,st); env.gain.linearRampToValueAtTime(lvl*duck,st+0.003);
+  if(duck<1) env.gain.linearRampToValueAtTime(lvl,st+Math.min(0.09,len*0.2));   // the strike gives way to the crowd
+  env.gain.setValueAtTime(lvl,Math.max(st+0.004,end-0.03)); env.gain.linearRampToValueAtTime(0,end);   // held, then cut
+  lp.connect(sh); sh.connect(env); env.connect(ch); ch.connect(g); g.connect(voiceBus("bass"));
+  if(bassLast&&bassLast.ctx===ctx&&bassLast.st<st&&bassLast.end>st){
+    bassLast.ch.gain.setValueAtTime(1,st);
+    bassLast.ch.gain.linearRampToValueAtTime(0,st+BASS_DAMP); }
+  bassLast={ctx,ch,st,end};
+  const oscs=[], osc=(type,det,amp,mul)=>{ const o=ctx.createOscillator(); o.type=type; o.frequency.value=f*mul; o.detune.value=det;
+    const a=ctx.createGain(); a.gain.value=amp; o.connect(a); a.connect(lp); oscs.push(o); };
+  osc("sawtooth",-8,0.45,1); osc("sawtooth",8,0.45,1); osc("square",0,0.3,1); osc("sine",0,0.4,0.5);
+  g.__at=st; for(const o of oscs){ o.start(st); o.stop(end+0.05); }
+  live.push(g); if(live.length>120) live.splice(0,40);
+  oscs[0].onended=()=>{ const i=live.indexOf(g); if(i>=0) live.splice(i,1); };
+}
 function fireBass(name,at,dur,crowd,note){
   if(!ctx||!dry) return;
   /* a WRITTEN note carries its degree (or, heard from the picker, its pitch) - 28 Sep 2026 */
@@ -11857,6 +11888,7 @@ function fireBass(name,at,dur,crowd,note){
      an option for staccato and muted notes") */
   const art=note&&note.art;
   if(art==="stac") ring=Math.max(0.09,Math.min(ring,(dur||0)*0.5)); else if(art==="mute") ring=0.075;
+  if(bassSound==="electro"){ fireBassElectro(midi,st,ring,duck,art,dur,pk); return; }   // Electro (1 Oct 2026, patches/bass-electro.py)
   if(bassSound!=="synth"&&bassSmpReady(bassSound)){ fireBassSmp(bassSound,midi,st,ring,duck,art,dur); return; }   // a sampled bass (30 Sep 2026)
   const end=st+ring;
   const f=440*Math.pow(2,(midi-69)/12);
@@ -12699,7 +12731,7 @@ const SYN_PRE=[
  {id:"poly",name:"80s poly",d:"Saw and pulse waves chorused wide - the bright pad of 1980s pop.",
   osc:[{t:"sawtooth",det:-12,pan:-.7},{t:"square",det:12,pan:.7,g:.6},{t:"sawtooth",g:.8}],lp:3200,q:1.5,a:.15,r:.9,vib:{rate:.6,depth:7,delay:0}},
 ];
-const SYN_STYLES=[["held","Held"],["swell","Swell"],["pulse","Pulse"],["delay","Delay"],["pan","Handpan"]];   // Delay (30 Sep 2026)
+const SYN_STYLES=[["held","Held"],["swell","Swell"],["pulse","Pulse"],["delay","Delay"],["delay2","Delay /2"],["pan","Handpan"]];   // Delay /2 (1 Oct 2026)   // Delay (30 Sep 2026)
 const SYN_VOICINGS=[["close","Close"],["open","Open"]];
 const SYN_FOLLOW_SHIFT={below:-12,around:0,above:12};   // Handpan: the pattern moved as one, as guitar and piano
 const SYN_LVL=0.06;              // one chord's loudness (RMS) at volume 100 - every sound levelled to it
@@ -12823,17 +12855,27 @@ function synPulse(p2,rel,m,sec,at,free){
     if(!name){ if(SYN.chord){ synRelease(at); SYN.chord=null; } return; }
     const pcs=chordPCs(name); if(!pcs) return;
     const fresh=name!==SYN.chord; if(fresh) SYN.chord=name;
-    if(rb===0||fresh){ const ch=synChord(pcs,name), rest=(m.bp-rb)*pd, P=synSound();
+    const cyc=rb===0&&Math.floor(Math.max(0,rel)/m.bp)%2===0;   // Delay /2 starts on bars 1, 3, 5 ... (1 Oct 2026)
+    if(fresh||(rb===0&&(synStyle!=="swell"||rel===0)&&(synStyle!=="delay2"||cyc))){ const ch=synChord(pcs,name), rest=(m.bp-rb)*pd, P=synSound();   /* a swell is not struck again at a bar line inside its chord (patches/synth-swell-down.py) */
       synRelease(at);
-      if(synStyle==="swell") ch.forEach((x,i)=>synNote(x,at+i*.004,.85,rest*.92,Math.max(P.a,rest*.5)));   // 4 ms apart, not on one instant (30 Sep 2026)
-      else if(synStyle==="pulse"||synStyle==="delay"){ SYN.rep=0; ch.forEach((x,i)=>synNote(x,at+i*.004,.8,rest,Math.min(P.a,.03))); }   // Delay counts its repeats from the chord (30 Sep 2026)
+      if(synStyle==="swell"){ let q=rel+1; const lim=(sec.bars||[]).length*m.bp;   /* one swell a chord (David, 1 Oct 2026: "make it go back down before the next chord change"; patches/synth-swell-down.py): to the next change, the table's end, or eight bars */
+        while(q<lim&&q-rel<8*m.bp&&chordInForceAt(p2+(q-rel),sec,m)===name) q++;
+        const span=Math.max(1,q-rel)*pd, pk=at+span*.5, down=at+span*.97;
+        ch.forEach((x,i)=>synNote(x,at+i*.004,.85,span,Math.max(P.a,span*.5),gt=>{ gt.gain.setValueAtTime(1,pk); gt.gain.linearRampToValueAtTime(0.0001,down); })); }   // 4 ms apart, not on one instant (30 Sep 2026)
+      else if(synStyle==="pulse"||synStyle==="delay"){ SYN.rep=0; ch.forEach((x,i)=>synNote(x,at+i*.004,.8,rest,Math.min(P.a,.03))); }
+      else if(synStyle==="delay2"){   /* DELAY /2 (David, 1 Oct 2026: "delay every 2nd bar" - "the chord should change, but in the
+           fading chords, no new start"; patches/synth-delay-half.py): struck on bars 1, 3, 5, its notes held to the end of the
+           two bars; a change inside them enters at the level the repeats have reached and carries on their count */
+        const bi=Math.floor(Math.max(0,rel)/m.bp), lim=(sec.bars||[]).length*m.bp, end=Math.min(lim||Infinity,(bi+(bi%2?1:2))*m.bp), k0=SYN.held.length;
+        if(cyc) SYN.rep=0; ch.forEach((x,i)=>synNote(x,at+i*.004,.8,Math.max(rest,(end-rel)*pd),Math.min(P.a,.03)));
+        if(!cyc){ const lv=.08*Math.pow(.7,Math.max(0,(SYN.rep||1)-1)); for(const h of SYN.held.slice(k0)) if(h.gt) h.gt.gain.setValueAtTime(lv,at); } }   // Delay counts its repeats from the chord (30 Sep 2026)
       else ch.forEach((x,i)=>synNote(x,at+i*.004,.8,rest+.05,P.a)); } }
   /* PULSE gates the chord on every eighth of the pattern, in the table's feel (30 Sep 2026, patches/feel-piano-synth.py) */
   /* DELAY (David, 30 Sep 2026: "work like pulse, but get softer with each repeat"; patches/synth-delay.py): each repeat 0.7
      of the one before, from the bar line or the change */
-  if(synStyle==="pulse"||synStyle==="delay") for(const tk of feelTicks(m,rel,pd)){ const cpe=Math.max(1,Math.round((piece.unit||4)/8));   // counts in an eighth of the tempo, in /8
+  if(synStyle==="pulse"||synStyle==="delay"||synStyle==="delay2") for(const tk of feelTicks(m,rel,pd)){ const cpe=Math.max(1,Math.round((piece.unit||4)/8));   // counts in an eighth of the tempo, in /8
     if(m.den===8?(tk.dt>1e-6||rb%m.sub!==0||((rb-cellAt(m,rb).start)/m.sub)%cpe!==0):tk.s%2) continue;   /* the tempo's eighths from each group's start, in /8; in /4 its feel's eighths (David, 30 Sep 2026: "the synth doesnt" - "yes, it's too busy"; patches/synth-pulse-eighths.py, patches/synth-tempo-eighths.py) */
-    const t=at+tk.dt, len=m.den===8?cpe*m.sub*pd:tk.dur/2, n=SYN.rep||0, lv=synStyle==="delay"?Math.pow(.7,n):1; SYN.rep=n+1;   /* len: the time to the next repeat - a count in /8, an eighth in /4 (patches/synth-gate-even.py) */
+    const t=at+tk.dt, len=m.den===8?cpe*m.sub*pd:tk.dur/2, n=SYN.rep||0, lv=synStyle==="delay"||synStyle==="delay2"?Math.pow(.7,n):1; SYN.rep=n+1;   /* len: the time to the next repeat - a count in /8, an eighth in /4 (patches/synth-gate-even.py) */
     for(const h of SYN.held){ if(h.end<=t) continue; h.gt.gain.setValueAtTime(lv,t); h.gt.gain.setTargetAtTime(.08*lv,t+len*.4,len*.12); } }
 }
 function synFollow(p2,at){   // the handpan's basic pattern (panTones), the pattern moved as one by register
@@ -15070,7 +15112,7 @@ function synPoolAt(nm,rel){ const ent=bassEnt(nm), m=SM(piece,nm); if(!ent) retu
   return {name,pool:[...new Set(ch.concat(ch.map(x=>x+12)))].sort((a,b)=>a-b),lo:lo-2,hi:hi+14}; }
 function synStyleHits(nm){
   const {ev,m,nb,pd}=wtRun("syn",nm); if(!m) return [];
-  const f=(synStyle==="pulse"||synStyle==="delay")?"pulse":"held", hits=[]; let i=0;
+  const f=(synStyle==="pulse"||synStyle==="delay"||synStyle==="delay2")?"pulse":"held", hits=[]; let i=0;
   while(i<ev.length){ const a=ev[i], blk=[a]; let j=i+1; while(j<ev.length&&Math.abs(ev[j].r-a.r)*pd<0.02) blk.push(ev[j++]);   // one chord: its notes 4 ms apart
     hits.push({r:a.r,f,ms:blk.map(e=>e.x).sort((p,q)=>p-q)}); i=j; }
   return wtPlace(hits,m,nb); }
@@ -15529,9 +15571,9 @@ document.addEventListener("click",e=>{
 /* the bass's Sound (30 Sep 2026, patches/bass-double.py): the samples start loading the moment the double bass is chosen */
 document.addEventListener("click",e=>{
   const b=e.target&&e.target.closest&&e.target.closest("#bassPop [data-bsnd]"); if(!b) return;
-  bassSound=BASS_SETS[b.dataset.bsnd]?b.dataset.bsnd:"synth"; try{ localStorage.setItem("hps.basssound",bassSound); }catch(x){}
+  bassSound=(BASS_SETS[b.dataset.bsnd]||b.dataset.bsnd==="electro")?b.dataset.bsnd:"synth"; try{ localStorage.setItem("hps.basssound",bassSound); }catch(x){}
   b.parentElement.querySelectorAll("[data-bsnd]").forEach(x=>x.classList.toggle("on",x===b));
-  if(bassSound!=="synth") bassSmpReady(bassSound);
+  if(BASS_SETS[bassSound]) bassSmpReady(bassSound);
 });
 document.addEventListener("click",e=>{
   const b=e.target&&e.target.closest&&e.target.closest("#bassPop [data-bl]"); if(!b) return;
@@ -45268,10 +45310,11 @@ function boot(){
       /* TWO SLIDERS AND A SENTENCE. The lowest note is chosen by name — the
          slider walks semitones — and the line underneath says the whole range
          it makes, because "C2" alone does not tell you where the B♭ will land. */
-      pop.innerHTML='<div class="ttl">Sound</div><div class="pal bwsw gsty">'   // the double bass and the electric (30 Sep 2026): three across
+      pop.innerHTML='<div class="ttl">Sound</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(2,1fr)">'   // the double bass and the electric (30 Sep 2026): three across
         +'<button class="bwseg'+(bassSound==="synth"?' on':'')+'" data-bsnd="synth">Synth</button>'
         +'<button class="bwseg'+(bassSound==="dbass"?' on':'')+'" data-bsnd="dbass">Double bass</button>'
-        +'<button class="bwseg'+(bassSound==="ebass"?' on':'')+'" data-bsnd="ebass">Electric</button></div>'
+        +'<button class="bwseg'+(bassSound==="ebass"?' on':'')+'" data-bsnd="ebass">Electric</button>'
+        +'<button class="bwseg'+(bassSound==="electro"?' on':'')+'" data-bsnd="electro">Electro</button></div>'
         +bassStyleMenuHTML()   // the bass style (David, 28 Sep 2026) - the menus' one order (30 Sep 2026): style, register, volume, mix
         +'<div class="ttl">Lowest note</div>'
         +'<div class="vol full"><input type="range" id="bassLowR" min="24" max="48" step="1" '
