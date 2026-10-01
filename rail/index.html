@@ -9115,10 +9115,10 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
      overview — the boxes' voicing, and the way to the settings -->
 <dialog id="cpMenuDlg" aria-label="Chord practice">
   <h3>Chord practice</h3>
-  <div class="drow"><span>Boxes</span>
-    <span class="pills" role="group" aria-label="Chord boxes">
-      <button id="cpvFull" title="Every field of the chord your pan has — drawn here and played by the arpeggio">Full chords</button>
-      <button id="cpvSug" title="The three or four suggested notes — drawn here and played by the arpeggio">Suggested voicing</button></span></div>
+  <div class="drow"><span>Chord voicing</span>
+    <span class="pills" role="group" aria-label="Chord voicing">
+      <button id="cpvSug" title="Up to five notes of the chord — drawn here and played by the arpeggio">Basic voicing</button>
+      <button id="cpvFull" title="Every field of the chord your pan has — drawn here and played by the arpeggio">Extended voicing</button></span></div>
   <div class="row" style="margin:12px 0 0">
     <button class="ctl" id="cpmSettings">Practice Settings</button>
     <span class="spacer"></span>
@@ -24928,7 +24928,7 @@ function paintPanChord(pi){
   fitPanChordName();      // cheap: it returns at once unless the name actually changed
   for(const f of chordFields(bc.name)) for(const g of els(pvId(f))) g.classList.add("clit");
   // chord practice: the most common way to play it, deeper (David, 2 Sep)
-  if(cpOn) for(const f of cpSuggested(bc.name)) for(const g of els(pvId(f))) g.classList.add("csug");
+  if(cpOn) for(const f of cpMarked(bc.name)) for(const g of els(pvId(f))) g.classList.add("csug");
   /* the ring's column: this section's names, the current bar lit, its page shown */
   const lp=landIdx>=0?$("landPanInner"):null;
   let col=lp&&lp.querySelector(".landchords");
@@ -34929,7 +34929,7 @@ function cpScaleChords(){
    Fmaj, 1 3 5 for Amin, "the others should be obvious") — read as the LOWEST
    field of each chord tone, which is what his three examples share; his to
    correct. Drawn darker on the block chords and deeper on the pan. */
-function cpSuggested(name){
+function cpSuggested(name,topFirst){
   const pcs=chordPCs(name); if(!pcs) return [];
   const root=pcs[0], best=new Map();
   /* A BASS ROOT WHEN THE UNDERSIDE IS IN USE (David, 2 Sep: "when Underside
@@ -34938,7 +34938,7 @@ function cpSuggested(name){
      read the other way round: a LOW underside note, below the ring's lowest,
      is the root's place when the chord has one; the third and the fifth stay
      on top. "Top only" leaves the underside out of the suggestion entirely. */
-  if(!topOnlyChords()&&myPan.fields&&myPan.fields.length){
+  if(!topFirst&&!topOnlyChords()&&myPan.fields&&myPan.fields.length){   // Basic voicing asks top first (1 Oct)
     const lowRing=Math.min(...myPan.fields.map(f=>f.midi));
     const bass=chordFields(name).filter(p=>isBotPos(p)&&jpc(myPan.posMidi(p))===root&&myPan.posMidi(p)<lowRing)
       .sort((a,b)=>myPan.posMidi(a)-myPan.posMidi(b))[0];
@@ -34965,6 +34965,57 @@ function cpSuggested(name){
   }
   return [...best.values()];
 }
+/* BASIC VOICING (David, 1 Oct 2026: "up to 5 notes of any given chord that are available on the handpan, taking
+   into account our chord voicing guidelines like not voicing Bb Maj D 2 4 6, but 2 4 6"; "no notes below the roots";
+   "Dmin7 should add tone field 9 as 7th before 3"): the suggested notes, the seventh moved above BOTH the third and the
+   fifth, then the chord's other fields from low to high until there are five - THE TOP SHELL FIRST (David, 1 Oct:
+   "Basic voicing should prioritize top over bottom notes"): no underside bass under the core, and the underside only
+   fills what the top cannot reach - WITH ROOTS ONLY (David, 1 Oct: "they should be used for root notes only in
+   basic"), a low bass root among them; another tone only when the top shell lacks it, once, at A3 or above. Only the
+   root, third and fifth are
+   doubled; nothing goes below the root, the ding only as the root, below A3 only one note, and no two notes a tone or
+   less apart below C4 - the jam voicer's rules. Extended voicing is every field (chordFields). */
+function cpBasic(name){
+  const pcs=chordPCs(name); if(!pcs) return [];
+  const M=p=>myPan.posMidi(p), pc=p=>jpc(M(p));
+  const topHas=x=>chordFields(name).some(q=>q!==0&&!isBotPos(q)&&pc(q)===x);
+  /* an underside note that is not the root is out - unless the top shell lacks its tone, and then only at A3 or up */
+  const under=p=>isBotPos(p)&&pc(p)!==pcs[0]&&(topHas(pc(p))||M(p)<JV_BASS_TOP);
+  const set=[];
+  for(const p of cpSuggested(name,true)){ if(M(p)==null) continue;
+    const q=!under(p)?p:chordFields(name).find(r=>isBotPos(r)&&pc(r)===pc(p)&&!under(r)&&!set.includes(r));
+    if(q!=null) set.push(q); }
+  const topFirst=l=>l.slice().sort((a,b)=>isBotPos(a)-isBotPos(b));   // stable: pitch order within each shell
+  if(!set.length) return set;
+  if(pcs.length>3){
+    const at=k=>set.find(p=>pc(p)===pcs[k]), s=at(3), th=at(1), fi=at(2);
+    if(s!=null&&(th!=null||fi!=null)){
+      const ref=Math.max(th!=null?M(th):-1,fi!=null?M(fi):-1);
+      const up=chordFields(name).filter(q=>pc(q)===pcs[3]&&M(q)>ref&&!set.includes(q)&&!under(q));
+      if(up.length) set[set.indexOf(s)]=up[0];
+    }
+  }
+  const root=set.filter(p=>pc(p)===pcs[0]).map(M), floor=root.length?Math.min(...root):Math.min(...set.map(M));
+  const ok=l=>{ const ms=l.map(M).sort((a,b)=>a-b);
+    if(ms.filter(m=>m<JV_BASS_TOP).length>1) return false;
+    for(let i=1;i<ms.length;i++) if(ms[i]-ms[i-1]<=2&&ms[i-1]<60) return false;
+    return true; };
+  for(const p of topFirst(chordFields(name))){             // the top shell low to high, then the underside
+    if(set.length>=5) break;
+    if(set.includes(p)||under(p)) continue;
+    const c=pc(p); if(!pcs.slice(0,3).includes(c)) continue;
+    if(M(p)<=floor&&c!==pcs[0]) continue;              // below the root only the root itself (a bass)
+    if(isBotPos(p)&&c!==pcs[0]&&set.some(q=>pc(q)===c)) continue;   // a tone the top lacks: once
+    if(p===0&&c!==pcs[0]) continue;
+    if(topOnlyChords()&&isBotPos(p)) continue;
+    if(M(p)<JV_BASS_TOP&&c!==pcs[0]) continue;
+    if(ok(set.concat(p))) set.push(p);
+  }
+  return set.sort((a,b)=>M(a)-M(b));
+}
+/* the fields drawn DEEPER on the pan in chord practice: the basic voicing's five when it is chosen (David, 1 Oct:
+   "they should show all 5 in this mode"), the suggested three or four beside the full chord */
+function cpMarked(name){ return cpcfg.arp==="sug"?cpBasic(name):cpSuggested(name); }
 /* ADD 7TH (David, 2 Sep): the seventh chord on the triad's root, where the
    pan has the seventh — maj7 before dom7 on a major triad (the one whose
    seventh is in the pan's own scale wins), min7 on a minor, min7♭5 on a
@@ -35150,7 +35201,7 @@ function cpBuildRaw(seq){
          turn into the four suggested"), five for a Challenge ninth; the
          arpeggio runs up them, Free plays them as one block; "every note" is
          every field of the chord */
-      let fl=(cpcfg.pattern==="cp-arp"&&cpcfg.arp==="all")?chordFields(name):cpSuggested(name);
+      let fl=cpcfg.pattern!=="cp-arp"?cpSuggested(name):cpcfg.arp==="all"?chordFields(name):cpBasic(name);
       fl=sortP(fl).slice(0,8);
       const bar=fl.map((f,i)=>F(cpcfg.pattern==="cp-arp"?i:0,f,hand(i,fl.length)));
       for(let b=0;b<bars;b++) list.push(bar.map(e=>Object.assign({},e)));
@@ -35242,7 +35293,7 @@ const LS_RING_N=80, LS_W=[1,.6,.35];
 function cpBuildListen(seq){
   const hand=(i,n)=>n===3?(i<2?"L":"R"):(i%2?"R":"L");     // right · right · left, as CP_ARP (tokens are colours)
   const sortP=fl=>fl.slice().sort((a,b)=>myPan.posMidi(a)-myPan.posMidi(b)).slice(0,8);
-  const fields=seq.names.map(name=>sortP(cpcfg.arp==="all"?chordFields(name):cpSuggested(name)));
+  const fields=seq.names.map(name=>sortP(cpcfg.arp==="all"?chordFields(name):cpBasic(name)));
   const width=cpReps()*Math.max(1,...fields.map(fl=>fl.length));
   const bars=seq.names.map((name,ci)=>{ const fl=fields[ci], n=fl.length, bar=[];
     for(let r=0;r<cpReps();r++) fl.forEach((f,i)=>bar.push(F(r*n+i,f,hand(i,n),r===0&&i===0?{chord:name}:null)));
@@ -39379,7 +39430,7 @@ function cpRenderBand(){
   const row=document.createElement("div"); row.className="chordrow";
   /* the boxes show every field of the chord, or only the suggested voicing —
      the three or four notes the simple arpeggio proposes (David, 2 Sep) */
-  const boxFields=n=>cpcfg.arp==="sug"?cpSuggested(n).slice().sort((a,b)=>myPan.posMidi(a)-myPan.posMidi(b)):chordFields(n);
+  const boxFields=n=>cpcfg.arp==="sug"?cpBasic(n).slice().sort((a,b)=>myPan.posMidi(a)-myPan.posMidi(b)):chordFields(n);
   const counts=cpSeq.names.map(n=>Math.max(1,boxFields(n).length)), fewest=Math.min(...counts);
   cpSeq.names.forEach((n,i)=>{
     const w=document.createElement("div"); w.className="cchipwrap";
@@ -39518,7 +39569,7 @@ function fourPansFill(grid,W,tag){
 /* chord practice's grids: the band's, and the magnified one while it is open */
 function cpFourFill(idx){
   const W=cpFourNames(idx);
-  W.sug=W.names.map(n=>cpSuggested(n).map(pvId));
+  W.sug=W.names.map(n=>cpMarked(n).map(pvId));
   const band=document.querySelector("#cpband .cpfour"); if(band) fourPansFill(band,W,"c");
   const z=document.querySelector("#panZoom .cpfour"); if(z) fourPansFill(z,W,"z");
   if(cpWalking()) for(const g of [band,z]){ if(!g) continue;
@@ -39538,7 +39589,7 @@ function jamFourFill(idx){
 /* WHICH FOUR IS UP RIGHT NOW, if any — what the magnifier asks (9 Sep) */
 function fourNow(){
   if(PHONE) return null;
-  if(typeof cpOn!=="undefined"&&cpOn&&cpStage&&cpFour&&cpSeq){ const W=cpFourNames(Math.max(0,cpFourIdx)); W.sug=W.names.map(n=>cpSuggested(n).map(pvId)); return W; }
+  if(typeof cpOn!=="undefined"&&cpOn&&cpStage&&cpFour&&cpSeq){ const W=cpFourNames(Math.max(0,cpFourIdx)); W.sug=W.names.map(n=>cpMarked(n).map(pvId)); return W; }
   if(typeof jamOn!=="undefined"&&jamOn&&jamFour&&jam&&jam.slots.length) return jamFourNames(Math.max(0,jamFourIdx));
   return null;
 }
@@ -40264,9 +40315,9 @@ function renderCpSetup(){
      notes that arpeggio ran up; now it also chooses the boxes the chord tab
      draws, which every pattern has. With a groove there is simply no arpeggio
      for it to act on. The same choice sits in the band's own menu. */
-  qzChipRow(round,"Chord notes",[
-    {id:"sug",label:cpcfg.sev==="7th"?"The four suggested":"The three suggested",why:"The most common way to play the chord — the fields drawn deeper on the pan. The chord tab draws these, and the simple arpeggio runs up these."},
-    {id:"all",label:"Every note of the chord",why:"Every field of the chord your pan has, lowest to highest, up to eight — drawn in the chord tab, and played by the simple arpeggio."}],
+  qzChipRow(round,"Chord voicing",[
+    {id:"sug",label:"Basic voicing",why:"Up to five notes of the chord — the most common way to play it, filled out above the root. Drawn in the chord tab and deeper on the pan, and the simple arpeggio runs up these."},
+    {id:"all",label:"Extended voicing",why:"Every field of the chord your pan has, lowest to highest, up to eight — drawn in the chord tab, and played by the simple arpeggio."}],
     cpcfg.arp,v=>set("arp",v));
   if(!ls) qzChipRow(round,"Sound",[
     {id:"play",label:"Play the notation",why:"You hear what is written and play along."},
