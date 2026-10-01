@@ -11436,6 +11436,15 @@ function audioWatch(){
    moments only. Menu ▸ Settings ▸ Audio log; one screenshot settles the next
    one. */
 const AUDIO_LOG_MAX=40;
+/* THE RATES, A DIAGNOSTIC (David, 1 Oct 2026: distortion on the phone after a rebuilt context; patches/audio-rate-diagnostic.py):
+   the engine's sample rate and latencies, and - given the sink's MediaStreamDestination - its track's own rate */
+function audioRateNote(what,dest){
+  try{ const ms=v=>(typeof v==="number"&&isFinite(v))?Math.round(v*1000)+" ms":"?";
+    let tr="";
+    if(dest){ const t=dest.stream&&dest.stream.getAudioTracks()[0], s=t&&t.getSettings?t.getSettings():{};
+      tr=", stream "+(s.sampleRate?s.sampleRate+" Hz":"? Hz")+((s.sampleRate&&ctx&&s.sampleRate!==ctx.sampleRate)?" MISMATCH":""); }
+    audioNote(what+": engine #"+ctxMade+" "+(ctx?ctx.sampleRate+" Hz":"-")+tr+", base "+ms(ctx&&ctx.baseLatency)+", out "+ms(ctx&&ctx.outputLatency)+" [diagnostic]");
+  }catch(e){} }
 function audioNote(what){
   try{
     const d=new Date(), p=n=>String(n).padStart(2,"0");
@@ -11592,7 +11601,8 @@ function ensureSink(){
       try{ togglePlay(); }catch(e){}
     });
     sinkArm("play");
-    el.play().then(()=>{ master.disconnect(); master.connect(dest); iosSink=el; try{ sinkWitness(el); }catch(x){} })
+    el.play().then(()=>{ master.disconnect(); master.connect(dest); iosSink=el; try{ sinkWitness(el); }catch(x){}
+      audioRateNote("sink on",dest); setTimeout(()=>audioRateNote("sink 1.5 s on",dest),1500); })   /* [diagnostic] */
       .catch(()=>{ iosSink="failed"; });
   }catch(e){ iosSink="failed"; }
 }
@@ -11627,6 +11637,7 @@ function ensureCtx(){
   setAudioSession();          // before the context exists, so iOS picks the media route
   ctx=new (window.AudioContext||window.webkitAudioContext)({latencyHint:"playback"});
   ctxMade++;
+  audioRateNote("engine #"+ctxMade+" built");   /* [diagnostic] (patches/audio-rate-diagnostic.py) */
   master=ctx.createGain(); master.gain.value=vol; master.connect(ctx.destination);
   limiter=ctx.createWaveShaper(); limiter.curve=softClipCurve(); limiter.oversample="2x";
   limiter.connect(master);
@@ -11845,7 +11856,7 @@ function fireBassSmp(k,midi,st,ring,duck,art,dur){
    patches/bass-electro.py): two saws eight cents apart, a square and a sub an octave down, through a resonant lowpass that
    snaps open on the strike and closes in a tenth of a second, driven into a soft clipper - held for its note and cut, not
    left to ring. Its gain: measured to the synth bass's loudness. */
-const BASS_ELECTRO={q:9,open:32,close:3.2,tau:0.09,drive:2.6,gain:0.45};   // gain: 0.64 measured the synth bass's RMS (8 notes G1-Bb2, first half second); 3 dB under that by ear (David, 1 Oct 2026: "a bit too loud")
+const BASS_ELECTRO={q:9,open:32,close:3.2,tau:0.09,drive:2.6,gain:0.505};   // gain: 0.64 measured the synth bass's RMS (8 notes G1-Bb2, first half second); 3 dB under that by ear (David, 1 Oct 2026: "a bit too loud"), then 1 dB back ("make the electro bass 1 db louder again")
 let BASS_DRIVE=null;
 function fireBassElectro(midi,st,ring,duck,art,dur,pk){
   const E=BASS_ELECTRO, f=440*Math.pow(2,(midi-69)/12), mute=art==="mute";
@@ -12595,8 +12606,9 @@ function pnoPulse(p2,rel,m,sec,at,free){
         const t0=hum(); ns.forEach((x,k)=>pnoNote(x,t0+k*sp,0.4,(nx-rb)*pd*1.6)); } } return; }
   /* ON 2ND & FALL (David, 30 Sep 2026: "upwards arpeggio on 2nd beat, downwards arpeggio on last beat (onto 1st beat of
      following bar) and in the following bar upwards arpeggio on 2nd beat again, no downwards arpeggio";
-     patches/piano-arp2-fall-sparse.py): two bars - the first rolls up on its 2nd beat and falls from its last beat onto the
-     next chord's low root on the next bar's first beat, the second rolls up alone. Each note carries its length. */
+     patches/piano-arp2-fall-sparse.py): two bars - the first rolls up on its 2nd beat and falls from its last beat, ending
+     before the bar line as the roll up ends before its next beat (1 Oct 2026: the landing on the next chord's low root is
+     gone), the second rolls up alone. Each note carries its length. */
   if(st==="arp2fall"){ if(!onCount) return;
     const cs=cellsOf(m), ci=PH.ci, nc=PH.cs.length, first=PH.idx%2===0;   // the phrase's cells, and two phrases (patches/arp-phrase.py)
     const s16=pd*m.sub*((piece.unit||4)/16);
@@ -12605,10 +12617,7 @@ function pnoPulse(p2,rel,m,sec,at,free){
       const t0=hum(); ns.forEach((x,k)=>pnoNote(x,t0+k*sp,0.4,(nx-rb)*pd*1.6)); }
     if(first&&ci===nc-1&&nc>1){ const span=(m.bp-rb)*pd, n=Math.max(1,Math.min(6,Math.ceil(span/s16-1e-6)));   // the fall, in sixteenths (30 Sep 2026)
       const dn=[...new Set(ch.concat([ch[0]+12,(ch[1]!=null?ch[1]:ch[0])+12]))].sort((x,y)=>y-x).slice(0,n), sp=s16;
-      const t0=hum(); dn.forEach((x,k)=>pnoNote(x,t0+k*sp,0.46-0.04*k/Math.max(1,dn.length-1),span*1.5));
-      const nn=chordInForceAt(p2+(m.bp-rb),sec,m), np=(nn&&chordPCs(nn))||pcs;   // the landing: the next chord's low root
-      let l2=lo-12; while(((l2%12)+12)%12!==np[0]) l2++;
-      pnoNote(l2,at+span,0.55,m.bp*pd); }
+      const t0=hum(); dn.forEach((x,k)=>pnoNote(x,t0+k*sp,0.46-0.04*k/Math.max(1,dn.length-1),span*1.5)); }   // it ends before the next beat, as the roll up does - no landing on the bar line (David, 1 Oct 2026: "the downwards arpeggio should end before the next beat, like the upwards arpeggio")
     return; }
   /* ARPEGGIO FLOW (David, 30 Sep 2026: "single arpeggios ... in a semi random fashion from different beats, mostly upwards,
      sometimes also downwards. Relatively sparse" - "16th notes ... like arpeggios on first and last beat, but with variety" -
