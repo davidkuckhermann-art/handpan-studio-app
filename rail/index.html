@@ -13145,7 +13145,7 @@ function rgNowPaint(){ const el=$("rgNow"); if(!el) return; const v=RGSUB?RGSUB.
   el.hidden=false;
   el.textContent=RGSOLO?"Soloing “"+rgLabel(RGSOLO)+"” — click ▶ again to hear "+where+" with it."
     :"Previewing "+nm+" in "+where+(v&&rgById(v)?" — click ▶ to solo.":"."); }
-function rgDrumPaint(){ const db=$("drumBtn"); if(!db) return; db.classList.toggle("on",rhyOn); db.setAttribute("aria-pressed",rhyOn?"true":"false"); }
+function rgDrumPaint(){ staffVoicesSync(); const db=$("drumBtn"); if(!db) return; db.classList.toggle("on",rhyOn); db.setAttribute("aria-pressed",rhyOn?"true":"false"); }
 /* ==== DRUM GROOVES (step e, David 29 Sep 2026, patches/drum-grooves-e.py): the drum groove editor, a room laid over the
    room it was opened from. A drum groove is a World Groove Grid groove - {id, name, steps, group, bpm, rows:[{set, p, f,
    a, gain, pan, mute, eng}]} plus barSteps and meter - so the drums play it as they play the built-in ones, and a full
@@ -25927,9 +25927,21 @@ document.addEventListener("click",e=>{ const b=e.target.closest&&e.target.closes
   b.parentElement.querySelectorAll("[data-stf]").forEach(x=>x.classList.toggle("on",(x.dataset.v==="1")===on));
   if(on&&!staffOn&&typeof setStaff==="function") setStaff(true); else if(typeof renderStaff==="function") renderStaff();
   if(k==="bass"&&typeof staffBassWire==="function") try{ staffBassWire(); }catch(x){} });
+/* ONLY WHAT PLAYS IS ON THE STAFF (David, 1 Oct 2026: "instruments that don't currently play should not show up in staff
+   notation ... If staff setting is on, then their staff should show up again"; patches/staff-plays-only.py): a staff is
+   drawn when its Staff setting is On AND the instrument is switched on. Switching never touches the setting. */
+function staffPlays(k){ return k==="gtr"?gtrOn:k==="pno"?pnoOn:k==="syn"?synOn:k==="bass"?bassOn:k==="drm"?rhyOn:false; }
+function staffSig(phone){ const b=staffBassOpts(phone), st=staffStaves(phone)||[];
+  return st.map(s=>s.key).join(",")+"|"+(b.bass?1:0)+(b.bassOnly?1:0); }
+/* every instrument button's paint calls this: redraw when the staves drawn would change (renderStaff records them) */
+function staffVoicesSync(){ try{
+  if(!staffOn||staffVoicesSync.shown===undefined) return;
+  const place=staffPlace(); if(!place) return;
+  if(staffSig(place==="phone")!==staffVoicesSync.shown) renderStaff();
+}catch(e){} }
 function staffStaves(phone){   // the instruments' staves to draw, in band order
   if(phone) return null;
-  return STAFF_VOICES.filter(([k])=>staffOpts[k]&&(k!=="bass"||staffBassOpts(false).bass)).map(([key,clef,label,prefer])=>({key,clef,label,prefer}));
+  return STAFF_VOICES.filter(([k])=>staffOpts[k]&&staffPlays(k)&&(k!=="bass"||staffBassOpts(false).bass)).map(([key,clef,label,prefer])=>({key,clef,label,prefer}));
 }
 /* one table of one instrument, played silently: its notes as the staff's events, per bar */
 function staffRecord(nm,k){
@@ -25993,6 +26005,7 @@ function staffWithVoices(bars,nm,staves){
 function staffBassOpts(phone){
   const grand=!!staffOpts.grand;
   if(typeof allowed==="function"&&!allowed("bassline")) return {bass:false,bassOnly:false,grand};
+  if(!staffPlays("bass")) return {bass:false,bassOnly:false,grand};   // only what plays (1 Oct 2026)
   if(phone){ const w=staffOpts.bassPh||"off";
     return w==="instead"?{bass:false,bassOnly:true,grand:false}:w==="below"?{bass:true,bassOnly:false,grand:false}:{bass:false,bassOnly:false,grand}; }
   return {bass:!!staffOpts.bass,bassOnly:false,grand};
@@ -26062,6 +26075,7 @@ function renderStaff(){
   const input={bars:staffChorded(sec.bars,staffBars(sec.bars),m),pan:myPan,beats:m.beats,den:m.den,sub:m.sub,groups:staffGroups(m),tup:tupsOf(sec)};
   const opts={numbers:!!staffOpts.numbers,grand:!!staffOpts.grand,chords:!!staffOpts.chords,heads:false,band:staffBand,clefFrom:staffFields(piece),barNumbers:false,fontUrl:(/\/phone\//.test(location.pathname)||/\/player\//.test(location.pathname))?"../fonts/Leland.otf":"fonts/Leland.otf"};   // the phone and player builds live one level down; heads:false = every notehead in ink, the numbers keep the hands' colours (David, 22 Sep)
   opts.repeats=typeof scStaffRepeats==="function"?scStaffRepeats(m):null;   // an exercise's repeat barlines (24 Sep 2026)
+  staffVoicesSync.shown=staffSig(phone);   // the staves drawn, for staffVoicesSync (1 Oct 2026)
   { const bo=staffBassOpts(phone); Object.assign(opts,bo);   // the bass line on the staff (28 Sep 2026)
     if(bo.bass||bo.bassOnly) input.bars=staffWithBass(input.bars,viewSec,m);
     const st=staffStaves(phone); if(st&&st.length){ input.bars=staffWithVoices(input.bars,viewSec,st); opts.staves=StaffView.chooseClefs?StaffView.chooseClefs(input,st):st; } }   // every instrument, each clef by its part (30 Sep 2026)
@@ -39817,6 +39831,13 @@ function cpSetVoicing(v){
   const changed=cpcfg.arp!==want;
   cpcfg.arp=want; cpSaveCfg();
   cpPaintVoicing();
+  /* DURING PLAYBACK THE MUSIC GOES ON (David, 1 Oct 2026: "playback should continue with the new setting instead of
+     restart with a count-in"; patches/voicing-live-swap.py): the same chords, bars and meter, rebuilt and swapped under
+     the running transport as a pan switch swaps it - the next pulse plays the new notes */
+  if(changed&&cpOn&&cpStage&&cpSeq&&!cpWalking()&&playing&&C&&cpcfg.mode!=="listen"){
+    const built=cpBuild(cpSeq);
+    if(built.arrangement[0]===viewSec){ piece=built; C=compile(piece); lastPaint=-1; refresh(); cpRenderBand(); return; }
+  }
   if(changed&&cpOn&&cpStage&&cpSeq&&!cpWalking()) cpApply(cpSeq,{announce:false,autoplay:false});
   else cpRenderBand();
 }
@@ -45359,7 +45380,7 @@ function boot(){
      opens its tables: the same `.pop`, the same openPop, and a long press
      beside the right-click so the gesture exists on a touch screen too. */
   { const bb=$("bassBtn");
-    const paintBass=()=>{ bb.classList.toggle("on",bassOn);
+    const paintBass=()=>{ staffVoicesSync(); bb.classList.toggle("on",bassOn);
       bb.setAttribute("aria-pressed",bassOn?"true":"false");
       bb.title="Bass — "+(typeof bassStyleName==="function"?bassStyleName(bassPieceStyle()).toLowerCase():"root")+", following the chords. Right-click for its style, lowest note, volume, pan and reverb"; };   // (David, 28 Sep 2026: "the tooltip for the bass needs to be updated")
     paintBass();
@@ -45449,7 +45470,7 @@ function boot(){
      or long press for the popup. Switching on fetches the rhythm files the
      first time; the button dims until they are in. */
   { const db=$("drumBtn");
-    const paintDrum=()=>{ db.classList.toggle("on",rhyOn);
+    const paintDrum=()=>{ staffVoicesSync(); db.classList.toggle("on",rhyOn);
       db.setAttribute("aria-pressed",rhyOn?"true":"false"); };
     paintDrum();
     const arm=()=>{ if(!rhyOn) return;
@@ -45510,7 +45531,7 @@ function boot(){
      room; right-click or a long press for its style, volume, pan and reverb. Switching on fetches the samples the
      first time, and the button dims until they are in, as the drums' does. */
   { const gb=$("gtrBtn");
-    const paintGtr=()=>{ gb.classList.toggle("on",gtrOn);
+    const paintGtr=()=>{ staffVoicesSync(); gb.classList.toggle("on",gtrOn);
       gb.setAttribute("aria-pressed",gtrOn?"true":"false");
       gb.title="Guitar — "+gtrStyleName(gtrStyle).toLowerCase()+", following the chords. Right-click for its style and mix"; };
     const arm=()=>{ if(!gtrOn) return;
@@ -45583,7 +45604,7 @@ function boot(){
   /* THE PIANO BUTTON (28 Sep 2026, patches/piano-a.py): the guitar's wiring - left-click on or off, remembered per room;
      right-click or a long press for its style, register, volume, pan and reverb; the samples fetched the first time */
   { const pb=$("pnoBtn");
-    const paintPno=()=>{ pb.classList.toggle("on",pnoOn);
+    const paintPno=()=>{ staffVoicesSync(); pb.classList.toggle("on",pnoOn);
       pb.setAttribute("aria-pressed",pnoOn?"true":"false");
       pb.title="Piano — "+pnoStyleName(pnoStyle).toLowerCase()+", following the chords. Right-click for its style, register and mix"; };
     const arm=()=>{ if(!pnoOn) return;
@@ -45645,7 +45666,7 @@ function boot(){
   /* THE SYNTH BUTTON (29 Sep 2026, patches/synth-a.py): the piano's wiring - left-click on or off, remembered per room;
      right-click or a long press for its card; the sounds levelled the first time (the button dimmed until then) */
   { const sb=$("synBtn");
-    const paintSyn=()=>{ sb.classList.toggle("on",synOn);
+    const paintSyn=()=>{ staffVoicesSync(); sb.classList.toggle("on",synOn);
       sb.setAttribute("aria-pressed",synOn?"true":"false");
       sb.title="Synth — "+synSound().name.toLowerCase()+", "+synStyleName(synStyle).toLowerCase()+". Right-click for its sound, style and mix"; };
     const arm=()=>{ if(!synOn||(SYN_NORM[synSound().id]&&SYN_PRE.every(p=>SYN_NORM[p.id]))) return;
