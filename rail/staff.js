@@ -545,9 +545,10 @@ function build(input,opts){
      lower where its highest ink - a note, a stem, its name - would come within 1.2 spaces of it */
   const stackExtras=prev=>ex.forEach((v,i)=>{let top=prev+3.5*sp,bs=extraStaff(top,i,v);
     const over=Math.min(bs.extentTop,bs.clefTop,bs.topY-2*sp)-(prev+1.2*sp);if(over<0){top-=over;bs=extraStaff(top,i,v)}
-    parts.push({inner:bs.bands+bs.inner,extentTop:bs.extentTop,extentBot:Math.max(bs.extentBot,bs.clefBot)});prev=Math.max(bs.extentBot,bs.clefBot)});
+    parts.push({inner:bs.bands+bs.inner,extentTop:bs.extentTop,extentBot:Math.max(bs.extentBot,bs.clefBot)});prev=Math.max(bs.extentBot,bs.clefBot);if(W==null)W=bs.W});
   const cols=mode==="grid"?spacing(bars,ctx,keeps,bars.length*ctx.ppb*base.pw,sp):null;
-  if(opts.bassOnly){
+  if(opts.panHidden&&ex.length&&!opts.bassOnly){ stackExtras(200-3.5*sp); }   /* the handpan's own staff hidden: the instruments' alone (patches/staff-pan-hide.py) */
+  else if(opts.bassOnly){
     const s=staff(bars,ctx,{...base,top:200,clef:"f",keep:keeps[0],cols,numbers:false,numbersRow:false,collect:false});W=s.W;
     parts=[{inner:s.bands+s.inner,extentTop:Math.min(s.extentTop,s.clefTop),extentBot:Math.max(s.extentBot,s.clefBot)}];
   }else if(opts.grand){
