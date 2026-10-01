@@ -921,12 +921,12 @@ body.phone:not(.tablet):not(.quiz):not(.rquiz):not(.learn):not(.cpsetup) #dsVoic
 /* THE GROUP FOLDS (David, 1 Oct 2026: "openable/collapsable" - "a nice opening/closing animation"; patches/voices-fold.py):
    the strip's width runs to nothing as its buttons shrink and fade, staggered; the summary grows in; the chevron turns */
 #jamVoices .jvset{display:inline-flex; align-items:center; gap:inherit; overflow:hidden; max-width:var(--jvw,520px); opacity:1;
-  transition:max-width .42s cubic-bezier(.4,0,.2,1), opacity .3s ease}
+  transition:max-width .42s cubic-bezier(.4,0,.2,1), opacity .3s ease, margin-left .42s cubic-bezier(.4,0,.2,1)}
 #jamVoices .jvset>.ib{transition:transform .34s cubic-bezier(.34,1.45,.6,1), opacity .22s ease}
 #jamVoices .jvset>.ib:nth-child(2){transition-delay:.03s}#jamVoices .jvset>.ib:nth-child(3){transition-delay:.06s}
 #jamVoices .jvset>.ib:nth-child(4){transition-delay:.09s}#jamVoices .jvset>.ib:nth-child(5){transition-delay:.12s}
 #jamVoices .jvset>.ib:nth-child(6){transition-delay:.15s}
-#jamVoices.folded .jvset{max-width:0; opacity:0; pointer-events:none}
+#jamVoices.folded .jvset{max-width:0; opacity:0; pointer-events:none; margin-left:-6px}   /* the zero-width strip would keep two gaps */
 #jamVoices.folded .jvset>.ib{transform:scale(.4); opacity:0; transition-delay:0s}
 #jamVoices .ib.jvsum{width:auto; min-width:0; max-width:0; padding:0; border-width:0; opacity:0; overflow:hidden; gap:2px; justify-content:center;
   transition:max-width .42s cubic-bezier(.4,0,.2,1), padding .42s cubic-bezier(.4,0,.2,1), opacity .3s ease .08s}
@@ -934,12 +934,13 @@ body.phone:not(.tablet):not(.quiz):not(.rquiz):not(.learn):not(.cpsetup) #dsVoic
 #jamVoices .ib.jvsum{display:inline-flex; align-items:center}
 body.phone.jam:not(.tablet) #jvRow #jamVoices .ib.jvsum{width:auto}   /* the phone's bigger buttons keep their size; the summary its own */
 body.phone.jam:not(.tablet) #jvRow #jamVoices .ib.jvsum svg{width:20px; height:20px}
-#jamVoices.folded .ib.jvsum{max-width:var(--jsw,160px); padding:0 8px; border-width:1px; opacity:1}   /* both widths measured (--jvw, --jsw): the strip shrinks exactly as the summary grows, so the group's width only ever moves one way */
+#jamVoices.folded .ib.jvsum{max-width:var(--jsw,160px); padding:0 6px; border-width:1px; opacity:1}   /* both widths measured (--jvw, --jsw): the strip shrinks exactly as the summary grows, so the group's width only ever moves one way */
 #jamVoices #jvSum.ib{width:auto}   /* two ids: the rail bar's .ib width (body.rail #scorefoot .ib) must not size the summary */
 .jvfold{display:inline-grid; place-items:center; width:18px; height:26px; padding:0; border:none; background:none; color:var(--ink3); cursor:pointer; border-radius:6px}
 .jvfold svg{width:12px; height:12px; transition:transform .42s cubic-bezier(.4,0,.2,1)}
 #jamVoices.folded .jvfold svg{transform:rotate(180deg)}
 .jvfold:hover{color:var(--ink); background:var(--dust)}
+body.phone #jamVoices #jvSum,body.phone #jamVoices #jvFold{display:none}   /* the phone's row never folds (patches/voices-fold-desktop.py); two ids, over #jamVoices .ib.jvsum */
 @media (prefers-reduced-motion:reduce){ #jamVoices .jvset,#jamVoices .jvset>.ib,#jamVoices .ib.jvsum,.jvfold svg{transition:none} }
 #jamVoices .ib.stf::after{content:""; position:absolute; right:2px; top:2px; width:6px; height:6px; border-radius:50%; background:var(--ink2); box-shadow:0 0 0 1.5px var(--card)}
 #jamVx{display:flex; flex-wrap:wrap; gap:6px; align-items:center; min-width:0}
@@ -26007,7 +26008,8 @@ function jvFoldSet(f,save){ const g=$("jamVoices"); if(!g) return;
   g.classList.toggle("folded",f);
   const b=$("jvFold"); if(b){ b.setAttribute("aria-expanded",f?"false":"true"); b.title=b.ariaLabel=f?"Show the instruments":"Hide the instruments"; b.setAttribute("aria-label",b.title); }
   if(save) try{ localStorage.setItem(jvFoldKey(),f?"1":"0"); }catch(e){} }
-function jvFoldInit(){ let v=null; try{ v=localStorage.getItem(jvFoldKey()); }catch(e){}
+function jvFoldInit(){ if(document.body.classList.contains("phone")){ jvFoldSet(false,false); return; }   /* the phone's row never folds (David, 1 Oct 2026; patches/voices-fold-desktop.py) */
+  let v=null; try{ v=localStorage.getItem(jvFoldKey()); }catch(e){}
   jvFoldSet(v==null?!["bass","drm","gtr","pno","syn"].some(k=>voiceOnOf(k)):v==="1",false); }
 document.addEventListener("click",e=>{ const t=e.target.closest&&e.target.closest("#jvFold,#jvSum"); if(!t) return;
   const g=$("jamVoices"); jvFoldSet(t.id==="jvSum"?false:!(g&&g.classList.contains("folded")),true); });
@@ -26020,7 +26022,7 @@ function voicePaint(){ try{
     b.classList.toggle("solo",SOLO.has(k)); b.classList.toggle("quiet",on&&!soloHeard(k)); b.classList.toggle("stf",on&&!!staffOn&&voiceStaff(k));
     b.title=n+(SOLO.has(k)?" (soloed)":on?"":" (muted)")+" — click for its menu, hold to "+(on?"mute":"unmute"); }
   { const sm=$("jvSum"); if(sm){ const on=VOICES.filter(([k])=>voiceOnOf(k));   /* the folded group's face: what plays (patches/voices-fold.py) */
-      const ic=(on.length?on:[VOICES[0]]); sm.innerHTML=ic.map(([k,n,ic])=>'<svg><use href="#is-'+ic+'"/></svg>').join(""); sm.style.setProperty("--jsw",((document.body.classList.contains("phone")?22:18)*ic.length+16)+"px");
+      const ic=(on.length?on:[VOICES[0]]); sm.innerHTML=ic.map(([k,n,ic])=>'<svg><use href="#is-'+ic+'"/></svg>').join(""); sm.style.setProperty("--jsw",(18*ic.length+12)+"px");   /* n icons of 16 two apart, 6 px either side, the border */
       sm.title="Show the instruments"+(on.length?" — playing: "+on.map(v=>v[1]).join(", "):""); } }
   const host=$("jamVx");
   if(host) host.innerHTML=VOICES.map(([k,n,ic])=>{ const on=voiceOnOf(k), st=voiceStaff(k);
