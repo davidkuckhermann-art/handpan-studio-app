@@ -1470,6 +1470,26 @@ body.phone:not(.tablet) .pop.card .dbar{margin:-5px -6px 6px; padding:0 6px}
 .pop .dbar button:hover{color:var(--ink2)}
 .pop .dbar button.on{color:var(--ink); border-bottom-color:var(--dixie)}
 .pop .dbar button:focus-visible{outline:2px solid var(--dixie); outline-offset:-2px}
+/* THE PRESETS PAGE (patches/card-presets.py): "< Presets" at the bar's left on the custom pages; twelve tiles in four groups
+   of three, the chosen one in amber (state); Custom below them, dashed until it is what plays */
+.pop .dbar .back{flex:none; display:flex; align-items:center; gap:4px; padding:10px 12px 8px 2px; border-right:1px solid var(--rule);
+  text-transform:none; letter-spacing:.2px; font-size:12.5px; font-weight:700; color:var(--ink2)}
+.pop .dbar .back svg{width:11px; height:11px}
+.pop .cpgrp{font:800 9.5px Figtree,"Helvetica Neue",Arial,sans-serif; letter-spacing:1.14px; text-transform:uppercase; color:var(--ink3); padding:8px 4px 4px}
+.pop .cpgrp:first-child{padding-top:2px}
+.pop .cpres{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px}
+.pop .cpre{border:1px solid var(--rule); border-radius:12px; padding:8px 8px 7px; cursor:pointer; background:var(--card); min-width:0; text-align:left; font-family:inherit}
+.pop .cpre:hover{border-color:var(--ink3)}
+.pop .cpre b{display:block; font:800 13px/1.2 Figtree,"Helvetica Neue",Arial,sans-serif; color:var(--ink)}
+.pop .cpre span{display:block; font:500 10.5px/1.3 Figtree,"Helvetica Neue",Arial,sans-serif; color:var(--ink3); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.pop .cpre.on{border-color:var(--dixie); background:var(--dixie-soft)}
+.pop .cpre.on b{color:var(--amber-ink)}
+.pop .cpcustom{display:flex; align-items:center; gap:10px; width:100%; margin:10px 0 2px; padding:10px 12px; border:1px dashed var(--ink3); border-radius:12px;
+  cursor:pointer; background:var(--card); font-family:inherit; text-align:left}
+.pop .cpcustom b{font:800 13px Figtree,"Helvetica Neue",Arial,sans-serif; color:var(--ink)}
+.pop .cpcustom span{flex:1; min-width:0; font:500 11.5px Figtree,"Helvetica Neue",Arial,sans-serif; color:var(--ink3)}
+.pop .cpcustom svg{flex:none; width:14px; height:14px; color:var(--ink2)}
+.pop .cpcustom.on{border-style:solid; border-color:var(--dixie); background:var(--dixie-soft)}
 /* SINGLE NOTE'S DEGREE BUBBLE (David, 2 Oct 2026; patches/guitar-single-note-chucks.py): over the menu, under its button */
 .pop .bwseg:disabled{opacity:.4; cursor:default}   /* a setting that does not apply here (patches/pan-live-jam-only.py) */
 .pop .gdeg{position:absolute; left:8px; right:8px; z-index:3; background:var(--card); border:1px solid var(--rule); border-radius:12px;
@@ -20376,23 +20396,120 @@ function cardPageOf(el){
   if(/^(style|pattern|live|pickup|groove|single note)/.test(s)) return "play";
   if(/^(volume|rhythm volume|pan|reverb|staff|plays|bass line)/.test(s)) return "mix";
   return "sound"; }   // sound, register, voicing, colour, brightness, lowest note, tuning, effects
-function cardPages(pop,k){
-  if(pop.querySelector(":scope>.dbar")) return;   // placed again (the synth's card): already paged
-  const head=pop.querySelector(":scope>.pophead"); if(!head) return;
-  const pages={}; for(const [p] of CARD_PAGES){ const d=document.createElement("div"); d.className="cpage"; d.dataset.cpage=p; pages[p]=d; }
-  let cur="play"; for(const el of [...pop.children]){ if(el===head) continue; const p=cardPageOf(el); if(p) cur=p; pages[cur].appendChild(el); }
-  let last="play"; try{ last=localStorage.getItem("hps.cardpage."+k)||"play"; }catch(e){}
-  if(!pages[last]||!pages[last].childElementCount) last=CARD_PAGES.map(p=>p[0]).find(p=>pages[p].childElementCount)||"play";
-  const bar=document.createElement("div"); bar.className="dbar"; bar.setAttribute("role","tablist");
-  bar.innerHTML=CARD_PAGES.map(([p,l])=>'<button type="button" role="tab" data-cpg="'+p+'"'+(p===last?' class="on" aria-selected="true"':'')+'>'+l+'</button>').join("");
-  head.after(bar); let at=bar; for(const [p] of CARD_PAGES){ pages[p].hidden=p!==last; at.after(pages[p]); at=pages[p]; }
-  pop.dataset.ck=k; }
-document.addEventListener("click",ev=>{ const b=ev.target.closest&&ev.target.closest(".pop [data-cpg]"); if(!b) return;
-  const pop=b.closest(".pop"), p=b.dataset.cpg;
+/* THE PRESETS (David, 2 Oct 2026: "a simple preset page that the instrument opens with by default ... Then, they can select
+   "custom" and access all of these settings"; patches/card-presets.py): a preset is the card's own buttons, pressed in order,
+   and its pedals - so it does exactly what pressing them yourself does (Metal's sound, a new voicing) - and the one shown as
+   chosen is the one whose buttons are all on and whose pedals are as it set them, else Custom. A token with ~ is pressed
+   but not compared (a category only shows its patterns); the mix is never touched */
+const CARD_PRESETS={
+  gtr:[["Gentle",[
+      ["Folk strum","Nylon · Folk","~gc=strum gi=strum:1 gsnd=mf gr=open gv=1 gl=off",{}],
+      ["Ballad picking","Nylon · Rolling","~gc=pick gi=pick:1 gsnd=mf gr=auto gv=0 gl=off",{}],
+      ["Travis picking","Hollow 2 · Travis","~gc=pick gi=pick:0 gsnd=green gr=mid gv=1 gl=off",{}]]],
+    ["Groove",[
+      ["Pop strum","Clean 2 · Pop chuck · Chorus","~gc=strum gi=strum:3 gsnd=fp-clean gr=mid gv=1 gl=off",{chorus:"light"}],
+      ["Funk chank","Clean · Chank · Wah","~gc=funk gi=funk:1 gsnd=clean gr=high gv=1 gl=off",{wah:"beat"}],
+      ["Reggae","Clean 2 · Reggae · Delay","~gc=strum gi=strum:10 gsnd=fp-clean gr=high gv=1 gl=off",{delay:"eighth"}]]],
+    ["Jazz & Latin",[
+      ["Jazz comping","Hollow 1 · Free comping","~gc=jazz gi=jazz:19 gsnd=black gr=mid gv=2 gl=off",{}],
+      ["Bossa nova","Nylon · Bossa","~gc=pick gi=pick:4 gsnd=mf gr=auto gv=1 gl=off",{}],
+      ["Samba","Nylon · Partido alto","~gc=pick gi=pick:5 gsnd=mf gr=auto gv=1 gl=off",{}]]],
+    ["Rock & ambient",[
+      ["Rock rhythm","Distorted 1 · Chug","~gc=rock gi=rock:0 gsnd=fp-dist1 gr=auto gv=1 gl=off",{}],
+      ["Metal","Distorted 2 · Thrash · Drop D","~gc=metal gi=metal:0 gdd=1 gsnd=fp-dist2 gr=auto gv=1 gl=off",{}],
+      ["Ambient shimmer","Clean · Rising · Long delay","~gc=arp gi=arp:2 gsnd=clean gr=high gv=1 gl=off",{chorus:"deep",delay:"amb"}]]]],
+  pno:[["Gentle",[
+      ["Ballad","Sustained · above the pan","~pg=sus ps=ballad pr=above pw=0 pj=0 pv=1 pl=off",{}],
+      ["Flowing arpeggio","Above the pan","~pg=arp ps=flow pr=above pw=0 pj=0 pv=1 pl=off",{}],
+      ["Broken chord","Around the pan","~pg=arp ps=alberti pr=around pw=0 pj=0 pv=1 pl=off",{}]]],
+    ["Groove",[
+      ["Pop pulse","Eighths · around the pan","~pg=rhy ps=pop8 pr=around pw=0 pj=0 pv=1 pl=off",{}],
+      ["Reggae off-beat","Above the pan","~pg=rhy ps=off pr=above pw=0 pj=0 pv=1 pl=off",{}],
+      ["Montuno","Latin · around the pan","~pg=rhy ps=montuno pr=around pw=0 pj=0 pv=1 pl=off",{}]]],
+    ["Jazz",[
+      ["Jazz comping","Free · jazz colour · wide","~pg=rhy ps=jcomp pr=around pw=1 pj=1 pv=2 pl=off",{}],
+      ["Charleston swing","Jazz colour · wide","~pg=rhy ps=jcharl pr=around pw=1 pj=1 pv=1 pl=off",{}],
+      ["Stride","Jazz colour","~pg=rhy ps=stride pr=around pw=0 pj=1 pv=1 pl=off",{}]]],
+    ["Colour",[
+      ["Lo-fi","Chorus · tremolo","~pg=rhy ps=synco pr=around pw=1 pj=1 pv=1 pl=off",{chorus:"light",trem:"slow"}],
+      ["Ambient","Pad · long delay","~pg=sus ps=pad pr=above pw=1 pj=0 pv=0 pl=off",{chorus:"deep",delay:"amb"}],
+      ["Handpan double","The pan's notes","ps=pan pr=above pw=0 pj=0 pv=0 pl=off",{}]]]],
+  bass:[["Simple",[
+      ["Root","Electric · root","~bgg=basic bms=root bsnd=ebass bbl=1 bpu=off",{}],
+      ["Root and fifth","Electric · root–5th","~bgg=basic bms=r5 bsnd=ebass bbl=1 bpu=off",{}],
+      ["Ballad arpeggio","Double bass · arpeggio","~bgg=basic bms=arp bsnd=dbass bbl=0 bpu=off",{}]]],
+    ["Groove",[
+      ["Rock on the beats","Electric · beats · Crunch","~bgg=basic bms=beats bsnd=ebass bbl=1 bpu=off",{drive:"crunch"}],
+      ["Disco octaves","Electric · octaves","~bgg=basic bms=oct bsnd=ebass bbl=1 bpu=off",{}],
+      ["Follow the kick","Electric · with the kick","~bgg=basic bms=kick bsnd=ebass bbl=1 bpu=off",{}]]],
+    ["Jazz & Latin",[
+      ["Walking jazz","Double bass · walking","~bgg=basic bms=walk bsnd=dbass bbl=2 bpu=notes",{}],
+      ["Bossa push","Double bass · push to 3","~bgg=basic bms=push3 bsnd=dbass bbl=1 bpu=off",{}],
+      ["Salsa tumbao","Electric · tumbao","~bgg=latin bms=tumbao bsnd=ebass bbl=1 bpu=off",{}]]],
+    ["Synth",[
+      ["3-3-2","Synth · 3-3-2","~bgg=latin bms=332 bsnd=synth bbl=1 bpu=off",{}],
+      ["Deep root","Synth · root, steady","~bgg=basic bms=root bsnd=synth bbl=0 bpu=off",{}],
+      ["Electro pulse","Electro · octaves","~bgg=basic bms=oct bsnd=electro bbl=1 bpu=off",{}]]]],
+  syn:[["Pads",[
+      ["Warm pad","Warm analog · held","sy=held ss=warm sr=around sv=close",{}],
+      ["Strings swell","Strings · swell","sy=swell ss=strings sr=around sv=open",{}],
+      ["Choir","Choir · swell · above","sy=swell ss=choir sr=above sv=open",{}]]],
+    ["Keys",[
+      ["Organ","Drawbar organ · held","sy=held ss=organ sr=around sv=close",{}],
+      ["80s poly","80s poly · pulse","sy=pulse ss=poly sr=around sv=close",{}],
+      ["Glass pulse","Glass · pulse · above","sy=pulse ss=glass sr=above sv=open",{}]]],
+    ["Atmosphere",[
+      ["Air pad","Air · held · above","sy=held ss=air sr=above sv=open",{}],
+      ["Dark drone","Dark · held · below","sy=held ss=dark sr=below sv=open",{}],
+      ["Sweep","Sweep · swell","sy=swell ss=sweep sr=around sv=open",{}]]],
+    ["Echoes",[
+      ["Shimmer delay","Shimmer · delay","sy=delay ss=shimmer sr=above sv=open",{}],
+      ["Ambient delay","Soft sine · long delay","sy=held ss=soft sr=above sv=open",{chorus:"light",delay:"amb"}],
+      ["Handpan double","Soft sine · the pan's notes","sy=pan ss=soft sr=around sv=close",{}]]]]};
+const CP_BACK='<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M6.5 1.5L3 5l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const CP_NEXT='<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 1.5L7 5l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+function presetBtn(pop,t){ const q=t.replace(/^~/,"").split("="); return pop.querySelector('.cpage [data-'+q[0]+'="'+q[1]+'"]'); }
+function presetIs(pop,k,p){
+  for(const t of p[2].split(" ")){ if(t[0]==="~") continue; const b=presetBtn(pop,t); if(!b) return false; if(b.disabled) continue; if(!b.classList.contains("on")) return false; }
+  const F=fxOf(k).set; return GFX_PEDALS.every(([q])=>(F[q]||"off")===(p[3][q]||"off")); }
+function presetApply(pop,k,p){
+  for(const t of p[2].split(" ")){ const b=presetBtn(pop,t); if(b&&!b.disabled) b.click(); }   // the card's own handlers, in order
+  const F=fxOf(k); for(const [q] of GFX_PEDALS){ F.set[q]=p[3][q]||"off"; if(F.set[q]!=="off") F.last[q]=F.set[q]; }
+  fxSave(k); fxChain(k); const box=pop.querySelector("[data-fxbox]"); if(box) box.innerHTML=fxHTML(k); }
+function presetsHTML(pop,k){ let hit=null;
+  CARD_PRESETS[k].forEach(([g,L],gi)=>L.forEach((p,i)=>{ if(!hit&&presetIs(pop,k,p)) hit=gi+":"+i; }));
+  return CARD_PRESETS[k].map(([g,L],gi)=>'<div class="cpgrp">'+g+'</div><div class="cpres">'+L.map((p,i)=>{ const on=hit===gi+":"+i;
+      return '<button type="button" class="cpre'+(on?' on':'')+'" data-cpre="'+gi+':'+i+'" aria-pressed="'+on+'"><b>'+p[0]+'</b><span>'+p[1]+'</span></button>'; }).join("")+'</div>').join("")
+    +'<button type="button" class="cpcustom'+(hit?'':' on')+'" data-cpg="custom"><b>Custom</b><span>'+(hit?'Choose everything yourself: style, sound, pedals, mix':'Your own settings - open them')+'</span>'+CP_NEXT+'</button>'; }
+function cardBarHTML(k,p){
+  if(CARD_PRESETS[k]&&p==="presets") return '<button type="button" role="tab" data-cpg="presets" class="on" aria-selected="true">Presets</button><button type="button" role="tab" data-cpg="custom" aria-selected="false">Custom</button>';
+  return (CARD_PRESETS[k]?'<button type="button" class="back" data-cpg="presets">'+CP_BACK+'Presets</button>':'')
+    +CARD_PAGES.map(([q,l])=>'<button type="button" role="tab" data-cpg="'+q+'"'+(q===p?' class="on" aria-selected="true"':' aria-selected="false"')+'>'+l+'</button>').join(""); }
+/* one function shows a card's page, for every card and both bars: "custom" is the page last used of Play, Sound and Mix */
+function cardShow(pop,p,centre){ const k=pop.dataset.ck||"";
+  const has=q=>{ const d=pop.querySelector(':scope>.cpage[data-cpage="'+q+'"]'); return !!d&&(q==="presets"||d.childElementCount>0); };
+  if(p==="custom"){ let l=null; try{ l=localStorage.getItem("hps.cardpage."+k); }catch(e){} p=l; }
+  if(!has(p)) p=CARD_PAGES.map(x=>x[0]).find(has)||"play";
+  if(p==="presets") pop.querySelector(':scope>.cpage[data-cpage="presets"]').innerHTML=presetsHTML(pop,k);
   pop.querySelectorAll(":scope>.cpage").forEach(x=>{ x.hidden=x.dataset.cpage!==p; });
-  pop.querySelectorAll(":scope>.dbar [data-cpg]").forEach(x=>{ x.classList.toggle("on",x===b); x.setAttribute("aria-selected",x===b?"true":"false"); });
-  try{ localStorage.setItem("hps.cardpage."+(pop.dataset.ck||""),p); }catch(e){}
-  if(pop.classList.contains("card")) pop.style.top=Math.max(16,Math.round((window.innerHeight-pop.offsetHeight)/2))+"px"; });   // centred again at its new height
+  const bar=pop.querySelector(":scope>.dbar"); if(bar) bar.innerHTML=cardBarHTML(k,p);
+  if(p!=="presets") try{ localStorage.setItem("hps.cardpage."+k,p); }catch(e){}
+  if(centre&&pop.classList.contains("card")) pop.style.top=Math.max(16,Math.round((window.innerHeight-pop.offsetHeight)/2))+"px"; }   // centred again at its new height
+function cardPages(pop,k){
+  if(!pop.querySelector(":scope>.dbar")){   // the synth's card is placed again already paged
+    const head=pop.querySelector(":scope>.pophead"); if(!head) return;
+    const pages={}; for(const [p] of CARD_PAGES){ const d=document.createElement("div"); d.className="cpage"; d.dataset.cpage=p; pages[p]=d; }
+    let cur="play"; for(const el of [...pop.children]){ if(el===head) continue; const p=cardPageOf(el); if(p) cur=p; pages[cur].appendChild(el); }
+    const bar=document.createElement("div"); bar.className="dbar"; bar.setAttribute("role","tablist"); head.after(bar);
+    let at=bar; if(CARD_PRESETS[k]){ const d=document.createElement("div"); d.className="cpage cpresets"; d.dataset.cpage="presets"; at.after(d); at=d; }
+    for(const [p] of CARD_PAGES){ at.after(pages[p]); at=pages[p]; }
+    pop.dataset.ck=k; }
+  cardShow(pop,CARD_PRESETS[k]?"presets":"custom",false); }   // the four open on their presets; the handpan and drums on the page last used
+document.addEventListener("click",ev=>{ const t=ev.target.closest&&ev.target.closest(".pop [data-cpg],.pop [data-cpre]"); if(!t) return;
+  const pop=t.closest(".pop"), k=pop.dataset.ck||"";
+  if(t.dataset.cpre!=null){ const q=t.dataset.cpre.split(":"), g=CARD_PRESETS[k]&&CARD_PRESETS[k][+q[0]], p=g&&g[1][+q[1]]; if(!p) return;
+    presetApply(pop,k,p); pop.querySelector(':scope>.cpage[data-cpage="presets"]').innerHTML=presetsHTML(pop,k); return; }
+  cardShow(pop,t.dataset.cpg,true); });
 function openPop(pop,anchor,align){
   closePop();
   /* IN FULL SCREEN ONLY THE FRAME IS PAINTED (David, 22 Sep 2026: "In full screen mode, I cannot change the marker
