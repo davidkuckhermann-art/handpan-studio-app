@@ -15359,7 +15359,7 @@ function bassBarPlan(nm,bi,at,sty){   // sty: a style visited by Live (patches/b
 }
 /* ---- THE BASS STYLES (step c, David 28 Sep 2026, patches/bass-styles-c.py): a table's style fills the bars that are not
    written. Each chord span, from its start, on the counts inside it; Root is the plan unchanged. */
-const BASS_STYLES=[["root","Root"],["r5","Root–5th"],["oct","Octaves"],["arp","Arpeggio"],["walk","Walking"],["kick","Follow kick"],
+const BASS_STYLES=[["root","Root"],["beats","Root on the beats"],["push3","Push to 3"],["r5","Root–5th"],["oct","Octaves"],["arp","Arpeggio"],["walk","Walking"],["kick","Follow kick"],
   ["tumbao","Tumbao"],["332","3-3-2"],   // two more (David, 29 Sep 2026: "a tumbao and a 3-3-2 figure")
   ["332t","3-3-2 tumbao"],["332x2","3-3-2 double"],["332tx2","3-3-2 tumbao double"],["tumbaox2","Tumbao double"]];   // four more (29 Sep 2026, patches/bass-332-tumbao-double.py)
 function bassStyleName(k){ const s=BASS_STYLES.find(x=>x[0]===k); return s?s[1]:"Root"; }
@@ -15393,6 +15393,13 @@ function bassStyled(style,sp,m,ent,bi){
       const mid=s.t+s.len/2, gs=ps.filter(p=>p>s.t), cs=[]; for(let p=s.t+m.sub;p<end;p+=m.sub) cs.push(p);
       const h=(gs.length?gs:cs).sort((a,b)=>Math.abs(a-mid)-Math.abs(b-mid)||b-a)[0]; if(h!=null) notes.push([h,root+iv[5]]); }   /* the fifth on the beat or group start nearest the span's middle - 3+2+2 plays X-- X- -- - or, a span of one group, on its count nearest the middle as before (David, 30 Sep 2026: "should follow the subdivision"; patches/bass-r5-groups.py) */
     else if(style==="oct") notes=ps.map((p,k)=>[p,root+((k+k0)%2?12:0)]);
+    else if(style==="beats") notes=ps.map(p=>[p,root]);   // the root on every beat (David, 2 Oct 2026; patches/bass-beats-push.py)
+    else if(style==="push3"){   /* PUSH TO 3 (David, 2 Oct 2026: "root on 1 and 3 with this pattern: X - - x x - - -"; patches/bass-beats-push.py):
+         the root on the bar line, on the third beat - the second in a bar of two - and on the "and" before it; the bar's own */
+      const cs=cellsOf(m), j=cs.length>=3?2:cs.length-1, P=[0];
+      if(j>0){ const mid=cs[j].start, pv=cs[j-1].start, e=FS.list.filter(x=>x.s===2&&Math.abs(x.at-Math.round(x.at))<1e-6).map(x=>Math.round(x.at)).filter(p=>p>pv&&p<mid).pop();
+        if(e!=null) P.push(e); P.push(mid); }   // the "and" only where the grid has it
+      notes=[[s.t,root]].concat(P.filter(p=>p>s.t&&p<end).map(p=>[p,root])); }
     else if(style==="arp"){ const d=[1,3,5,3]; notes=ps.map((p,k)=>[p,root+iv[d[(k+k0)%4]]]); }
     else if(style==="walk"){ const d=[1,2,3,5]; notes=ps.map((p,k)=>[p,root+iv[d[(k+k0)%4]]]);
       const nx=i+1<sp.length?sp[i+1].chord:bassNextChord(ent,bi,m), carries=span>1&&!half2&&i===sp.length-1&&nx===s.chord;
@@ -15497,7 +15504,7 @@ function bassPuAt(nm,bi,ent,m){
   let fig=null;
   if(BF){ const ps=BF.pos.map(q=>posK(kEnd-q)); if(!ps.some(p=>p==null)){ const keep=ps.filter(p=>p>floor); if(keep.length) fig=keep; } }   // the band's rhythm, where the grid has it
   for(let j=0;j<FIGS.length&&!fig;j++){ const F=FIGS[(Math.floor(r*FIGS.length)+j)%FIGS.length];
-    if(F[0]===12&&!["root","r5","oct","arp"].includes(style)) continue;   // the walk-up in quarters: the two-feel styles
+    if(F[0]===12&&!["root","beats","push3","r5","oct","arp"].includes(style)) continue;   // the walk-up in quarters: the two-feel styles
     const ps=F.map(q=>posK(kEnd-q)); if(ps.some(p=>p==null)) continue;      // off the grid: this figure does not fit
     const keep=ps.filter(p=>p>floor); if(keep.length) fig=keep; }
   if(!fig) return null;
@@ -15526,7 +15533,7 @@ function bassPuAt(nm,bi,ent,m){
    and drums are never changed, on Listen or Jam. Pure draws on the pass rule; bassBarPlan stays the home plan. */
 var bassLive=(()=>{ try{ return localStorage.getItem("hps.basslive")==="1"; }catch(e){ return false; } })();
 var bassListen=(()=>{ try{ return localStorage.getItem("hps.basslisten")==="1"; }catch(e){ return false; } })();
-const BASS_LIVE_FAM=[["root","r5","oct"],["arp","walk"],["tumbao","332t","332"],["tumbaox2","332x2","332tx2"]];
+const BASS_LIVE_FAM=[["root","beats","push3","r5","oct"],["arp","walk"],["tumbao","332t","332"],["tumbaox2","332x2","332tx2"]];
 const BASS_LIVE_SMALL={root:["pass","pop","ghost","space"],r5:["pass","pop","ghost","space"],oct:["pass","pop","ghost","space"],
   arp:["ghost","pass"],walk:["ghost","pass"],"332":["ghost","space","pop"],"332x2":["ghost","space","pop"],
   tumbao:["ghost","son"],"332t":["ghost","son"],tumbaox2:["ghost","son"],"332tx2":["ghost","son"],kick:["ghost"]};
@@ -15648,7 +15655,7 @@ function bassStyleOnto(p){ if(p&&BASSROOM&&BASSROOM!=="root") p.bassStyle=BASSRO
 function bassIsPlayer(){ return document.documentElement.classList.contains("player")||document.body.classList.contains("player"); }
 /* THE BASS'S STYLES IN THREE GROUPS, each with its Pattern selector, as the piano's (David, 30 Sep 2026; patches/menus-unified.py):
    choosing a group opens its patterns and chooses nothing; BASSGRP keeps the open group across the box's redraws */
-const BASS_GROUPS=[["basic","Basic",[["root","Root"],["r5","Root–5th"],["oct","Octaves"],["arp","Arpeggio"],["walk","Walking"],["kick","Follow kick"]]],
+const BASS_GROUPS=[["basic","Basic",[["root","Root"],["beats","Root on the beats"],["push3","Push to 3"],["r5","Root–5th"],["oct","Octaves"],["arp","Arpeggio"],["walk","Walking"],["kick","Follow kick"]]],
   ["latin","Latin",[["tumbao","Tumbao"],["332","3-3-2"],["332t","3-3-2 tumbao"]]],
   ["dbl","Double time",[["tumbaox2","Tumbao"],["332x2","3-3-2"],["332tx2","3-3-2 tumbao"]]]];
 let BASSGRP=null;
