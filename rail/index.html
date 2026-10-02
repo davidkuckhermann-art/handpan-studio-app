@@ -1414,7 +1414,7 @@ body.editing #scorefoot #arrbox,#scorefoot.tight #arrbox{flex-wrap:wrap; justify
 .pop .mix2 .val{min-width:3.4em; text-align:right}
 /* THE INSTRUMENT MENUS ARE CARDS ON THE PHONE (David, 29 Sep 2026: "open as cards and take up more of the screen ...
    center screen"; patches/jam-row-cards.py): openPop adds .card for a menu opened from #jamVoices and centres it */
-body.phone:not(.tablet) .pop.card{position:fixed; left:12px; right:12px; min-width:0; padding:8px 6px;
+body.phone:not(.tablet) .pop.card{position:fixed; left:12px; right:12px; min-width:0; padding:8px 6px; z-index:91;   /* over its dim, as the desktop's (2 Oct 2026) */
   max-height:calc(100vh - 32px); max-height:calc(100dvh - 32px); overflow-y:auto; overscroll-behavior:contain}
 body.phone:not(.tablet) .pop.card .vol input[type=range]{flex:1 1 auto; width:auto; min-width:0}
 /* ON THE DESKTOP AND THE TABLET TOO (David, 1 Oct 2026; patches/voices-menus-centred.py): centred in the window over a
@@ -12125,9 +12125,9 @@ function fireBass(name,at,dur,crowd,note){
    (the sheet: 36 runs, one per string, loudness and take); nothing is fetched until the guitar is switched on. */
 const GTR_OPEN=[40,45,50,55,59,64];            // string 6 (low E) … string 1 (high E)
 /* the samples live BESIDE bank.js, as the drums' files do (wggURL): the rail and the phone build load bank.js from the
-   site root, so one copy of guitar/mf/ at the root serves every build */
-function gtrURL(n){ const b=document.querySelector('script[src*="bank.js"]'); const src=b?b.getAttribute("src"):"bank.js";
-  return src.replace(/bank\.js(\?.*)?$/,"guitar/mf/"+n); }   // a file of MF's set (28 Sep 2026)
+   site root, so one copy of guitar/<set>/ at the root serves every build */
+function gtrURL(n,k){ const b=document.querySelector('script[src*="bank.js"]'); const src=b?b.getAttribute("src"):"bank.js";
+  return src.replace(/bank\.js(\?.*)?$/,"guitar/"+(k||"mf")+"/"+n); }   // a file of a set (28 Sep 2026; the set, patches/guitar-sound.py)
 const GTR_STYLES=[["strum","Strummed"],["block","Block"],["change","Chord change"],["arp","Arpeggio"],["arp1","Single arpeggio"],
   ["offarp","Off-beat arpeggio"],["arpfl","Arpeggio first & last"],["a16ud","Sixteenth arpeggio up & down"],["a16rise","Rising arpeggio"],["a16fall","Falling arpeggio"],["a16brk","Broken chord"],["a16bass","Bass on the beats"],["a16x","Cross-picking"],["pick","Picking"],["pan","Handpan"]];   // Delay is a Strummed pattern since 30 Sep 2026   // Delay (30 Sep 2026)   // Handpan: doubles the pan (29 Sep 2026)   // first & last (29 Sep 2026)   // three more (David, 28 Sep 2026, patches/guitar-styles-b.py)
 /* THE PICKED STYLES ASK FOR A FULL VOICING: five or six strings, not held under the pan ("Arpeggios and picking patterns
@@ -12136,7 +12136,7 @@ const GTR_FULL=new Set(["arp","arp1","offarp","arpfl","pick","a16ud","a16rise","
 /* PICKING'S PATTERNS (David, 28 Sep 2026, patches/guitar-picks-c.py) and THE FLOOR: nothing below A2 ("never below A2" -
    the Fm7b5 at the first fret sat on the handpan) */
 const GTR_PICKS=[["travis","Travis"],["rolling","Rolling"],["pinch","Pinch"],["classical","Classical"],["bossa","Bossa"],["partido","Partido alto"],["varied","Varied"]];
-const GTR_PARTIDO=".x..x.x.x.x..x..";   /* PARTIDO ALTO's fingers, sixteen steps; the thumb on the beats (David, 2 Oct 2026; patches/guitar-pickup-musical.py) */
+const GTR_PARTIDO="..x..x.x.x..x.x.";   /* PARTIDO ALTO's fingers, sixteen steps; the thumb on the beats (David, 2 Oct 2026; patches/guitar-pickup-musical.py) - "--x--x-x-x--x-x-" (David, 2 Oct 2026; was .x..x.x.x.x..x..) */
 const GTR_FLOOR=45;
 /* STRUMMED'S PATTERN (David, 29 Sep 2026; patches/strum-patterns-piano-rolls.py) - Varied turns four of them, four bars each */
 /* THE STRUM PATTERNS' SPELLING, played and folded alike (David, 30 Sep 2026; patches/feel-figures.py): sixteen steps a
@@ -12605,18 +12605,23 @@ function gtrScore(f,root,need,fifth,prev,full,topT){
    (GTR_RMS) and the guitar's own curve makes it soft or strong: the layer gives the tone, the curve the level.
    LICENCE: CC BY-NC-SA 3.0 with an exception for music productions - not for the paid app until Markus Fiedler agrees;
    the Rail only. guitar/mf/map.json lists the zones; nothing is fetched until the guitar is switched on. */
-let GTR_RAW=null, GTR_BUF=null, GTR_DEC=null;
+/* THE GUITAR'S SOUND (David, 2 Oct 2026; patches/guitar-sound.py): a set is a folder guitar/<id>/ in MF's format - MF
+   nylon, and Karoryfer's Black And Green Guitars, two hollowbody electrics (CC0; Black's notes ring 2-3 s, as recorded).
+   The guitar plays the chosen set once it is decoded and until then the set it had - never silent, the bass's rule */
+const GTR_SOUNDS=[["mf","Nylon"],["black","Hollow 1"],["green","Hollow 2"]];   // were Jazz dark, Jazz bright (David, 2 Oct 2026: "rename jazz 1 and 2 to hollow 1 and 2"); the ids stay, so a saved choice carries over
+let gtrSound=(function(){ try{ const v=localStorage.getItem("hps.gtrsound"); return GTR_SOUNDS.some(x=>x[0]===v)?v:"mf"; }catch(e){ return "mf"; } })();
+const GTR_RAW={}, GTR_DEC={}, GTR_BUFS={}; let GTR_BUF=null;   // GTR_BUF: the buffers being played
 function gtrSmpMidi(n){ const m=n.match(/^([A-G])(s?)(\d)$/); return 12*(+m[3]+1)+PC[m[1]]+(m[2]?1:0); }   // kept: the piano names its samples this way
 const GTR_RMS=0.212;        // the loudness of a Tone.js note in its first 0.45 s: the level the guitar was set at
-function gtrFetch(){
-  if(!GTR_RAW){
-    GTR_RAW=fetch(gtrURL("map.json")).then(r=>{ if(!r.ok) throw new Error("map.json: "+r.status); return r.json(); })
+function gtrFetch(k){ k=k||gtrSound;
+  if(!GTR_RAW[k]){
+    GTR_RAW[k]=fetch(gtrURL("map.json",k)).then(r=>{ if(!r.ok) throw new Error("map.json: "+r.status); return r.json(); })
       .then(map=>{ const files=[...new Set(map.flatMap(z=>z.layers.flatMap(l=>l[2])))];
-        return Promise.all(files.map(f=>fetch(gtrURL(f)).then(r=>{ if(!r.ok) throw new Error(f+": "+r.status); return r.arrayBuffer(); })
+        return Promise.all(files.map(f=>fetch(gtrURL(f,k)).then(r=>{ if(!r.ok) throw new Error(f+": "+r.status); return r.arrayBuffer(); })
           .then(ab=>[f,ab]))).then(list=>({map,list})); });
-    GTR_RAW.catch(()=>{ GTR_RAW=null; });
+    GTR_RAW[k].catch(()=>{ GTR_RAW[k]=null; });
   }
-  return GTR_RAW;
+  return GTR_RAW[k];
 }
 /* where the pluck is: a file may begin with some silence (the encoder's and the recording's), and a note started at
    its first sample would land that much late */
@@ -12624,15 +12629,15 @@ function gtrOnset(b){ const d=b.getChannelData(0); let pk=0; for(let i=0;i<d.len
   for(let i=0;i<d.length;i++) if(Math.abs(d[i])>0.05*pk) return Math.max(0,i/b.sampleRate-0.002); return 0; }
 function gtrLevel(b,off){ const d=b.getChannelData(0), s0=Math.floor(off*b.sampleRate), n=Math.min(d.length-s0,Math.floor(0.45*b.sampleRate));
   let s=0; for(let i=0;i<n;i++) s+=d[s0+i]*d[s0+i]; return Math.sqrt(s/Math.max(1,n))||1e-4; }
-function gtrReady(){
-  if(GTR_BUF) return true;
-  if(ctx&&!GTR_DEC){
-    GTR_DEC=gtrFetch().then(({map,list})=>Promise.all(list.map(([f,ab])=>new Promise((res,rej)=>ctx.decodeAudioData(ab.slice(0),b=>res([f,b]),rej))))
+function gtrReady(){ const k=gtrSound;
+  if(GTR_BUFS[k]){ GTR_BUF=GTR_BUFS[k]; return true; }
+  if(ctx&&!GTR_DEC[k]){
+    GTR_DEC[k]=gtrFetch(k).then(({map,list})=>Promise.all(list.map(([f,ab])=>new Promise((res,rej)=>ctx.decodeAudioData(ab.slice(0),b=>res([f,b]),rej))))
       .then(bs=>{ const bufs={}; for(const [f,b] of bs){ const off=gtrOnset(b); bufs[f]={buf:b,off,lvl:gtrLevel(b,off)}; }
-        GTR_BUF={map,bufs,turn:{}}; }))
-      .catch(()=>{ GTR_DEC=null; });
+        GTR_BUFS[k]={map,bufs,turn:{}}; if(k===gtrSound) GTR_BUF=GTR_BUFS[k]; }))
+      .catch(()=>{ GTR_DEC[k]=null; });
   }
-  return false;
+  return !!GTR_BUF;   // the set it had plays on while the chosen one loads
 }
 /* the recording for a note: its zone (or the nearest), the layer its strength falls in, the next take of that layer */
 function gtrTake(midi,vel){
@@ -12920,7 +12925,7 @@ function gtrPulse(p2,rel,m,sec,at,free){
     } else if(st==="pick"){
       if(gtrPickNow(p2,m)==="partido"){ const k=tk.k%16, bs=S[0], al=S.includes(bs+1)?bs+1:S[1], top=S.slice(-3);   /* PARTIDO ALTO (patches/guitar-pickup-musical.py) */
         if(k%4===0) pluck((k%8===0||fr)?bs:al,0.68*lean+0.05);
-        if(GTR_PARTIDO[k]==="x"){ const t0=hum(); top.forEach(x=>gtrNote(x,F[x],t0+Math.random()*0.005,k===1?0.62:0.5)); top.forEach(x=>gtrChoke(x,t0+0.12,0.02)); }
+        if(GTR_PARTIDO[k]==="x"){ const t0=hum(); top.forEach(x=>gtrNote(x,F[x],t0+Math.random()*0.005,k===GTR_PARTIDO.indexOf("x")?0.62:0.5));   /* the first hit a little stronger */ top.forEach(x=>gtrChoke(x,t0+0.12,0.02)); }
         continue; }
       if(s%2) continue;                                     // the fingers move in eighths
       const bass=S[0], alt=S.includes(bass+1)?bass+1:S[1], hi=S.filter(x=>x>alt), tr=hi.length?hi:[S[S.length-1]];
@@ -20082,8 +20087,10 @@ function openPop(pop,anchor,align){
   const card=host===document.body&&!!(anchor&&anchor.closest&&anchor.closest("#jamVoices"));
   if(card) pop.classList.add("card");
   /* ON THE DESKTOP AND THE TABLET TOO (David, 1 Oct 2026: "they should open on the center screen ... And they need a close
-     button"; patches/voices-menus-centred.py): a head with the instrument's name and a close button, a dim behind, Esc */
-  if(card&&!(document.body.classList.contains("phone")&&!document.body.classList.contains("tablet"))){
+     button"; patches/voices-menus-centred.py): a head with the instrument's name and a close button, a dim behind, Esc -
+     AND ON THE PHONE (David, 2 Oct 2026: "on mobile, the instrument menus also need a way to close them" - option A, the
+     same head): its M · S · staff take the place of the card's Plays row there too */
+  if(card){
     const k=Object.keys(VOICE_BTN).find(x=>VOICE_BTN[x]===anchor.id), v=k&&VOICES.find(x=>x[0]===k);
     { const old=pop.querySelector(".pophead"); if(old) old.remove(); }   /* placed again (the synth's menu, at its full height): one head (patches/pophead-once.py) */
     const hd=document.createElement("div"); hd.className="pophead";
@@ -27078,26 +27085,40 @@ function staffRecord(nm,k){
   finally{ ({GTR,PNO,SYN,gtrNote,gtrChoke,gtrReady,pnoNote,pnoRelease,pnoReady,synNote,synRelease,synReady}=sv); Math.random=sv.rnd; }
   /* a strum or a chord is one moment: notes chained less than 13 ms apart; a stroke cut within 60 ms is muted */
   notes.sort((a,b)=>a.t-b.t);
+  /* A GUITAR STRING'S LENGTH (David, 2 Oct 2026: "also on guitar, short hits should be notated short";
+     patches/staff-guitar-short.py): it sounds until the damping that ends it - none if it rings on into its next note */
+  for(const n of notes){ if(n.s==null) continue; let end=null;
+    for(const c of chokes) if(c.s===n.s&&c.t>n.t&&(end==null||c.t<end)) end=c.t;
+    if(end!=null&&notes.some(o=>o!==n&&o.s===n.s&&o.t>n.t&&o.t<=end)) end=null;
+    n.end=end; }
   const bars=Array.from({length:nb},()=>[]); let grp=null;
-  for(const n of notes){ if(!grp||n.t-grp.last>0.013){ grp={t:n.t,last:n.t,seen:new Set()}; } grp.last=n.t;
+  for(const n of notes){ if(!grp||n.t-grp.last>0.013){ grp={t:n.t,last:n.t,seen:new Set(),ends:[],ring:false}; } grp.last=n.t;
+    if(n.s!=null){ if(n.end==null) grp.ring=true; else grp.ends.push(n.end); }   // every string of the moment, a doubled pitch too
     if(grp.seen.has(n.midi)) continue; grp.seen.add(n.midi);
     const pos=(grp.t-t0)/pd, bi=Math.floor(pos/m.bp+1e-6); if(bi<0||bi>=nb) continue;
     const mute=n.s!=null&&chokes.some(c=>c.s===n.s&&c.t>n.t&&c.t-n.t<0.06);
-    bars[bi].push({t:Math.round((pos-bi*m.bp)*1000)/1000,v:"field",f:"p:"+staffPitchName(n.midi),inst:k,mute,_len:n.len,_jz:n.jz}); }
+    bars[bi].push({t:Math.round((pos-bi*m.bp)*1000)/1000,v:"field",f:"p:"+staffPitchName(n.midi),inst:k,mute,_len:n.len,_jz:n.jz,_g:n.s!=null?grp:null}); }
+  /* a guitar chord lasts as long as its longest string, from its moment; a string ringing on makes it ring */
+  bars.forEach(ev=>ev.forEach(e=>{ const g=e._g; if(g&&!g.ring&&g.ends.length) e._len=Math.max(...g.ends)-g.t; }));
   /* COMPING, AS A JAZZ PIANIST WRITES IT (David, 2 Oct 2026: "the short chords should also be short in the notation" -
-     "notate them how a jazz pianist would notate them"; patches/staff-comp-short.py): a short comping chord is an eighth
-     with a staccato dot - a sixteenth when it starts off the eighths, less where the next comes sooner - then a rest; an
+     "notate them how a jazz pianist would notate them"; patches/staff-comp-short.py): a short comping chord has a staccato
+     dot on the value that reaches the next beat or chord, whichever is sooner - a quarter on the beat, an eighth on its
+     "and" (David: "1, traditional, for guitar and piano"; patches/staff-guitar-short.py) - then a rest to the next; an
      anticipation, ringing into the next bar, an accented chord to the bar line (nothing is tied over a bar line); a held
      one keeps its length */
-  if(k==="pno"){ const s16p=m.sub*(piece.unit||4)/16, s16t=s16p*pd;
+  /* THE GUITAR'S SHORT HITS TOO (David, 2 Oct 2026: "also on guitar, short hits should be notated short";
+     patches/staff-guitar-short.py): its length from the damping (above); a chuck (mute) stays an x-head; a chord still
+     sounding when the next comes rings to it, as before - for the piano too */
+  if(k==="pno"||k==="gtr"){ const s16p=m.sub*(piece.unit||4)/16, s16t=s16p*pd;
     bars.forEach(ev=>{ const ts=[...new Set(ev.map(e=>e.t))].sort((a,b)=>a-b);
-      ts.forEach((t,i)=>{ const g=ev.filter(e=>e.t===t&&e.v==="field"); if(!g.length||!g[0]._jz||!g[0]._len) return;
+      ts.forEach((t,i)=>{ const g=ev.filter(e=>e.t===t&&e.v==="field"); if(!g.length||!g[0]._len||(k==="pno"&&!g[0]._jz)||g.some(e=>e.mute)) return;
         const nxt=i+1<ts.length?ts[i+1]:m.bp;
         if(t+g[0]._len/pd>m.bp+1e-6){ g.forEach(e=>{ e.accent=true; }); return; }   // an anticipation
         if(g[0]._len>2.2*s16t) return;                                                // a held chord
-        const onEighth=Math.abs(t/(2*s16p)-Math.round(t/(2*s16p)))<1e-6, w=Math.min(onEighth?2*s16p:s16p,nxt-t);
+        if(t+g[0]._len/pd>nxt+0.1*s16p) return;                                       // it sounds into the next chord
+        const c=cellAt(m,t), w=Math.min(c.start+c.len-t,nxt-t);                         // to the next beat or chord: the traditional value (David: "1, traditional")
         g.forEach(e=>{ e.stac=true; }); if(t+w<nxt-1e-6) ev.push({t:Math.round((t+w)*1000)/1000,v:"rest",inst:k}); }); }); }
-  bars.forEach(ev=>ev.forEach(e=>{ delete e._len; delete e._jz; }));
+  bars.forEach(ev=>ev.forEach(e=>{ delete e._len; delete e._jz; delete e._g; }));
   return bars;
 }
 /* the drums: the table's groove on one line - one note a moment, its strokes' letters below (David, 30 Sep 2026: "the drums
@@ -46681,7 +46702,10 @@ function boot(){
       /* THE STYLE ROW IS THE CATEGORIES (David, 2 Oct 2026; patches/guitar-categories.py): a category opens its patterns and
          chooses nothing; a pattern chooses (GTR_ITEMS) */
       const cur=gtrItemOf(gtrStyle,gtrStrum,gtrPick), cat0=cur?cur.c:"strum";
-      pop.innerHTML=playRow("gtr")+staffRow("gtr")+'<div class="ttl">Style</div><div class="pal bwsw gsty" id="gtrStyleRow">'
+      pop.innerHTML=playRow("gtr")+staffRow("gtr")
+        +'<div class="ttl">Sound</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(3,1fr)">'   // the guitar's Sound, as the bass's (patches/guitar-sound.py)
+        +GTR_SOUNDS.map(([k,l])=>'<button class="bwseg'+(k===gtrSound?' on':'')+'" data-gsnd="'+k+'">'+l+'</button>').join("")+'</div>'
+        +'<div class="ttl">Style</div><div class="pal bwsw gsty" id="gtrStyleRow">'
         +GTR_CATS.map(([c,l])=>'<button class="bwseg'+(c===cat0?' on':'')+'" data-gc="'+c+'">'+l+'</button>').join("")+'</div>'
         +GTR_CATS.map(([c])=>'<div data-gcb="'+c+'"'+(c===cat0?'':' hidden')+'><div class="ttl">Pattern</div><div class="pal bwsw gsty">'
           +GTR_ITEMS[c].map((it,i)=>'<button class="bwseg'+(cur&&cur.c===c&&cur.i===i?' on':'')+'" data-gi="'+c+':'+i+'"'
@@ -46726,6 +46750,9 @@ function boot(){
           { const tb=pop.querySelector('[data-gt="third"]'); if(tb) tb.textContent=gtrSnLabel(); }
           { const g=pop.querySelector(".gdeg"); if(g) g.remove(); }
           choose("funk",GTR_ITEMS.funk.findIndex(it=>it[2]==="third")); return; }   // a degree chooses Single note
+        const gs=ev.target.closest("[data-gsnd]");
+        if(gs){ gtrSound=GTR_SOUNDS.some(x=>x[0]===gs.dataset.gsnd)?gs.dataset.gsnd:"mf"; try{ localStorage.setItem("hps.gtrsound",gtrSound); }catch(e){}
+          pop.querySelectorAll("[data-gsnd]").forEach(x=>x.classList.toggle("on",x===gs)); window.paintGtr(); return; }   // with the guitar on, the button dims till the set is in
         const gr=ev.target.closest("[data-gr]");
         if(gr){ gtrReg=gr.dataset.gr; GTR.chord=null; try{ localStorage.setItem("hps.gtrreg",gtrReg); }catch(e){}   // the next count voices it anew
           pop.querySelectorAll("[data-gr]").forEach(x=>x.classList.toggle("on",x.dataset.gr===gtrReg)); return; }
