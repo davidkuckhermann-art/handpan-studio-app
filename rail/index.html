@@ -1431,6 +1431,13 @@ body:not(.phone) .pop.card .vol input[type=range],body.tablet .pop.card .vol inp
 .pophead.muted > span{color:var(--ink3)}
 .pophead .phico{width:18px; height:18px; flex:0 0 auto; color:var(--ink2); margin-right:-2px}
 .pophead .phtrk{display:flex; gap:4px; flex:0 0 auto}
+/* ‹ › beside the instrument's icon and name (patches/cards-nav-order.py): the name no longer stretches, a gap after › does */
+.pophead:has(>.phnav)>span{flex:0 1 auto}
+.pophead .phgap{flex:1 1 auto}
+.pophead .phnav{width:22px; height:24px; flex:0 0 auto; border:none; background:none; padding:0; border-radius:6px; color:var(--ink3); cursor:pointer;
+  display:grid; place-items:center}
+.pophead .phnav svg{width:10px; height:10px; display:block}
+.pophead .phnav:hover{color:var(--ink); background:var(--rule2)}
 .pop .vxb{width:28px; height:26px; border-radius:7px; border:1px solid var(--rule); background:var(--card); font-family:inherit; font-size:11px; font-weight:800; line-height:1;
   color:var(--ink3); display:grid; place-items:center; padding:0; cursor:pointer}
 .pop .vxb svg{width:15px; height:15px}
@@ -8644,8 +8651,8 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
     <span id="jamVoices" role="group" aria-label="The jam's voices">
       <button type="button" class="ib jvsum" id="jvSum" aria-label="Show the instruments" title="Show the instruments"></button><span class="jvset" id="jvSet">
       <button class="ib" id="panMuteBtn" title="Mute the handpan — the bass and the rhythm carry on" aria-pressed="false"><svg><use href="#is-hand"/></svg></button>
-      <button class="ib" id="bassBtn" title="Bass — one note under each chord"><svg><use href="#is-bass"/></svg></button>
       <button class="ib" id="drumBtn" title="Rhythm — a World Groove Grid groove under the music. Click for its volume and groove"><svg><use href="#is-darbuka"/></svg></button>
+      <button class="ib" id="bassBtn" title="Bass — one note under each chord"><svg><use href="#is-bass"/></svg></button>
       <button class="ib" id="gtrBtn" title="Guitar — following the chords. Click for its style and mix" aria-pressed="false"><svg><use href="#is-guitar"/></svg></button>
       <button class="ib" id="pnoBtn" title="Piano — following the chords. Click for its style, register and mix" aria-pressed="false"><svg><use href="#is-pno"/></svg></button>
       <button class="ib" id="synBtn" title="Synth — pads following the chords. Click for its sound, style and mix" aria-pressed="false"><svg><use href="#is-syn"/></svg></button></span><button type="button" class="jvfold" id="jvFold" aria-label="Hide the instruments" title="Hide the instruments" aria-expanded="true"><svg viewBox="0 0 16 16"><path d="M10 3.5 5.5 8l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -12674,8 +12681,8 @@ function gtrPower(name){ const pcs=chordPCs(name); if(!pcs) return null; const m
      patches/rock-register.py): Open C2-B2, Mid-neck C3-B3, High C4-B4 - the Rock riff's octaves (gtrPuLo) - else the
      octave below, else above; the string whose fret is nearest the register's hand; fifth and octave on the next two
      strings, fretted from their pitches. Auto: as before. */
-  { const rg=gtrReg==="auto"&&gtrIsMetal()?"open":gtrReg, lo=({open:36,mid:48,high:60})[rg], hand=({open:2,mid:5,high:9})[rg];   // Metal on Auto: low (patches/guitar-metal.py)
-    if(lo!=null) for(const R of [lo+r,lo+r-12,lo+r+12]){ let c=null;   // the band's octave, else the one below, else above
+  { const rg=gtrIsMetal()?"open":gtrReg, lo=({open:36,mid:48,high:60})[rg], hand=({open:2,mid:5,high:9})[rg];   // Metal on Auto: low (patches/guitar-metal.py)
+    if(lo!=null) for(const R of (gtrIsMetal()?[GTR_OPEN[0]+(((r-GTR_OPEN[0])%12)+12)%12]:[lo+r,lo+r-12,lo+r+12])){ let c=null;   // the band's octave, else the one below, else above
       for(const rs of [0,1,2,3]){ const fr=[R,R+7,R+12].map((p,i)=>p-GTR_OPEN[rs+i]);
         if(fr.some(x=>x<0||x>19)||Math.max(...fr)-Math.min(...fr)>4) continue;   // to the 19th fret, as Single note
         const sc=Math.abs(fr[0]-hand)+rs*0.1; if(!c||sc<c.sc) c={sc,rs,fr}; }
@@ -12835,18 +12842,27 @@ for(const [l,k,f] of GTR_METAL){ if(f){ GTR_FIG[k]=f; GTR_CHUCK.add(k); } GTR_ST
 function gtrIsMetal(){ return gtrStyle==="strum"&&/^mt/.test(gtrStrum||""); }
 /* METAL'S TUNING (David, 2 Oct 2026: "Let's add drop d tuning as option for the metal style"): Drop D lowers the sixth
    string to D while a Metal pattern plays - set at every pulse of the guitar, so every other pattern plays standard */
-let gtrDropD=(()=>{ try{ return localStorage.getItem("hps.gtrdropd")==="1"; }catch(e){ return false; } })();
-function gtrDropOn(){ return gtrDropD&&gtrIsMetal(); }
-function gtrTuneRow(){ return '<div class="ttl">Tuning</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(2,1fr)">'
-  +[["0","Standard"],["1","Drop D"]].map(([k,l])=>'<button class="bwseg'+((gtrDropD?"1":"0")===k?' on':'')+'" data-gdd="'+k+'">'+l+'</button>').join("")+'</div>'; }
+/* METAL TUNED TO THE KEY (David, 2 Oct 2026: "Metal always low"; patches/guitar-metal-low.py): Auto - B, C, C#, D or D# as the
+   lowest string in Drop D's shape, every other key standard; Standard; Drop D */
+let gtrTune=(()=>{ try{ const v=localStorage.getItem("hps.gtrtune"); return v==="std"||v==="drop"?v:"auto"; }catch(e){ return "auto"; } })();
+const GTR_STD=[40,45,50,55,59,64];
+function gtrKeyPc(){ try{ if(typeof jamOn!=="undefined"&&jamOn) return jamHome(); if(typeof cpOn!=="undefined"&&cpOn){ const k=cpKey(); if(k) return k.root; } }catch(e){}
+  try{ return jpc(myPan.ding); }catch(e){ return 4; } }
+function gtrTuning(){ if(!gtrIsMetal()||gtrTune==="std") return GTR_STD;
+  const k=gtrTune==="drop"?2:gtrKeyPc(), low=[35,36,37,38,39].find(x=>x%12===k);
+  return low==null?GTR_STD:[low,low+7,low+12,low+17,low+21,low+26]; }
+function gtrTuneRow(){ return '<div class="ttl">Tuning</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(3,1fr)">'
+  +[["auto","Auto"],["std","Standard"],["drop","Drop D"]].map(([k,l])=>'<button class="bwseg'+(gtrTune===k?' on':'')+'" data-gdd="'+k+'"'+(k==="auto"?' title="Tuned to the key: its root the lowest string"':'')+'>'+l+'</button>').join("")+'</div>'; }
 /* METAL SOUNDS DISTORTED (David: "Switch distortion on as default for metal and choose the distorted guitar sample"):
    into Metal, Distorted 1 and the Drive pedal on (Distorted, unless a drive is on); the sound and drive before are kept
    and come back when a pattern of another category is chosen */
 function gtrMetalSwitch(on,pop){ if(on===gtrIsMetal()) return;
-  if(on){ try{ localStorage.setItem("hps.gtrpremetal",JSON.stringify({snd:gtrSound,drive:gtrFx.drive})); }catch(e){}
-    gtrSound="fp-dist1"; if(gtrFx.drive==="off") gtrFx.drive="dist"; }
+  if(on){ try{ localStorage.setItem("hps.gtrpremetal",JSON.stringify({snd:gtrSound,drive:gtrFx.drive,fx:Object.assign({},gtrFx)})); }catch(e){}
+    const mp=gtrMetalPreset(), ms=mp&&presetTok(mp,"gsnd");   /* as the Metal preset sets the sound and the pedals (patches/guitar-metal-amp.py) */
+    gtrSound=GTR_SOUNDS.some(x=>x[0]===ms)?ms:"mt-v30"; for(const [q] of GFX_PEDALS) gtrFx[q]=(mp&&mp[3][q])||"off"; }
   else { let p=null; try{ p=JSON.parse(localStorage.getItem("hps.gtrpremetal")||"null"); localStorage.removeItem("hps.gtrpremetal"); }catch(e){}
-    if(p){ if(GTR_SOUNDS.some(x=>x[0]===p.snd)) gtrSound=p.snd; if(GFX_PEDALS[1][3].some(x=>x[0]===p.drive)) gtrFx.drive=p.drive; } }
+    if(p){ if(GTR_SOUNDS.some(x=>x[0]===p.snd)) gtrSound=p.snd;
+      if(p.fx) for(const [q] of GFX_PEDALS){ if(p.fx[q]) gtrFx[q]=p.fx[q]; } else if(GFX_PEDALS[1][3].some(x=>x[0]===p.drive)) gtrFx.drive=p.drive; } }
   try{ localStorage.setItem("hps.gtrsound",gtrSound); }catch(e){} gtrFxSave(); gtrFxChain(); GTR.alt=null;
   if(pop){ pop.querySelectorAll("[data-gsnd]").forEach(x=>x.classList.toggle("on",x.dataset.gsnd===gtrSound)); const box=pop.querySelector("#gtrFxBox"); if(box) box.innerHTML=gtrFxHTML(); }
   if(window.paintGtr) window.paintGtr(); }
@@ -12953,7 +12969,7 @@ function gtrScore(f,root,need,fifth,prev,full,topT){
 /* THE GUITAR'S SOUND (David, 2 Oct 2026; patches/guitar-sound.py): a set is a folder guitar/<id>/ in MF's format - MF
    nylon, and Karoryfer's Black And Green Guitars, two hollowbody electrics (CC0; Black's notes ring 2-3 s, as recorded).
    The guitar plays the chosen set once it is decoded and until then the set it had - never silent, the bass's rule */
-const GTR_SOUNDS=[["mf","Nylon"],["black","Hollow 1"],["green","Hollow 2"],["clean","Clean"],["fp-clean","Clean 2"],["fp-dist1","Distorted 1"],["fp-dist2","Distorted 2"]];   // Clean 2, Distorted 1 and 2: FreePats' Fender, clean amp and the two distortions, CC0 (David, 2 Oct 2026: "add the FreePats clean amp and both distorted version to the app")   // Clean: GeneralUser GS's Clean Guitar, guitar/clean/ (David, 2 Oct 2026: "add the GeneralUser Clean" - "call it Clean")   // Hollow 1 and 2 were Jazz dark, Jazz bright (David, 2 Oct 2026: "rename jazz 1 and 2 to hollow 1 and 2"); the ids stay, so a saved choice carries over
+const GTR_SOUNDS=[["mf","Nylon"],["black","Hollow 1"],["green","Hollow 2"],["clean","Clean"],["fp-clean","Clean 2"],["fp-dist1","Distorted 1"],["fp-dist2","Distorted 2"],["mt-v30","Metal V30"],["mt-rd","Metal Rockdriver"],["mt-mar","Metal Marshall"]];   // Clean 2, Distorted 1 and 2: FreePats' Fender, clean amp and the two distortions, CC0 (David, 2 Oct 2026: "add the FreePats clean amp and both distorted version to the app")   // Clean: GeneralUser GS's Clean Guitar, guitar/clean/ (David, 2 Oct 2026: "add the GeneralUser Clean" - "call it Clean")   // Hollow 1 and 2 were Jazz dark, Jazz bright (David, 2 Oct 2026: "rename jazz 1 and 2 to hollow 1 and 2"); the ids stay, so a saved choice carries over
 let gtrSound=(function(){ try{ const v=localStorage.getItem("hps.gtrsound"); return GTR_SOUNDS.some(x=>x[0]===v)?v:"mf"; }catch(e){ return "mf"; } })();
 const GTR_RAW={}, GTR_DEC={}, GTR_BUFS={}; let GTR_BUF=null;   // GTR_BUF: the buffers being played
 const GTR_STAC=new Set(["black","green"]);   // the sets with staccato recordings, stac.json beside map.json (patches/guitar-stac.py)
@@ -12965,7 +12981,7 @@ const GTR_STAC=new Set(["black","green"]);   // the sets with staccato recording
 const GTR_MEDIUM_Q=84, GTR_MEDIUM_SETS=new Set(["black","green"]);
 function gtrSmpMidi(n){ const m=n.match(/^([A-G])(s?)(\d)$/); return 12*(+m[3]+1)+PC[m[1]]+(m[2]?1:0); }   // kept: the piano names its samples this way
 const GTR_RMS=0.212;        // the loudness of a Tone.js note in its first 0.45 s: the level the guitar was set at
-function gtrFetch(k){ k=k||gtrSound;
+function gtrFetch(k){ k=k||gtrSetOf(gtrSound);
   if(!GTR_RAW[k]){
     GTR_RAW[k]=Promise.all([fetch(gtrURL("map.json",k)).then(r=>{ if(!r.ok) throw new Error("map.json: "+r.status); return r.json(); }),
         GTR_STAC.has(k)?fetch(gtrURL("stac.json",k)).then(r=>r.ok?r.json():null).catch(()=>null):null])   // the staccato plucks (patches/guitar-stac.py)
@@ -12982,12 +12998,12 @@ function gtrOnset(b){ const d=b.getChannelData(0); let pk=0; for(let i=0;i<d.len
   for(let i=0;i<d.length;i++) if(Math.abs(d[i])>0.05*pk) return Math.max(0,i/b.sampleRate-0.002); return 0; }
 function gtrLevel(b,off){ const d=b.getChannelData(0), s0=Math.floor(off*b.sampleRate), n=Math.min(d.length-s0,Math.floor(0.45*b.sampleRate));
   let s=0; for(let i=0;i<n;i++) s+=d[s0+i]*d[s0+i]; return Math.sqrt(s/Math.max(1,n))||1e-4; }
-function gtrReady(){ const k=gtrSound;
+function gtrReady(){ const k=gtrSetOf(gtrSound); gtrAmpLoad();
   if(GTR_BUFS[k]){ GTR_BUF=GTR_BUFS[k]; return true; }
   if(ctx&&!GTR_DEC[k]){
     GTR_DEC[k]=gtrFetch(k).then(({map,stac,list})=>Promise.all(list.map(([f,ab])=>new Promise((res,rej)=>ctx.decodeAudioData(ab.slice(0),b=>res([f,b]),rej))))
       .then(bs=>{ const bufs={}; for(const [f,b] of bs){ const off=gtrOnset(b); bufs[f]={buf:b,off,lvl:gtrLevel(b,off)}; }
-        GTR_BUFS[k]={map,stac,bufs,turn:{},med:GTR_MEDIUM_SETS.has(k)}; if(k===gtrSound) GTR_BUF=GTR_BUFS[k]; }))
+        GTR_BUFS[k]={map,stac,bufs,turn:{},med:GTR_MEDIUM_SETS.has(k)}; if(k===gtrSetOf(gtrSound)) GTR_BUF=GTR_BUFS[k]; }))
       .catch(()=>{ GTR_DEC[k]=null; });
   }
   return !!GTR_BUF;   // the set it had plays on while the chosen one loads
@@ -13114,7 +13130,45 @@ function gtrChordLevel(st,lp){ const R=GTR_RECENT; R.push({st,lp,cut:false}); R.
   while(a>0&&R[a].st-R[a-1].st<0.015) a--; while(b<R.length-1&&R[b+1].st-R[b].st<0.015) b++;
   if(b-a<2) return; const now=ctx?ctx.currentTime:0;
   for(let j=a;j<=b;j++){ const x=R[j]; if(x.cut) continue; x.cut=true; x.lp.gain.setValueAtTime(GTR_CHORD_GAIN,Math.max(x.st,now)); } }
-function gtrNote(s,fret,t,vel){
+/* THE METAL AMP (David, 2 Oct 2026: "doubled, brutal gain, medium, huge ... let's go with that for now for the metal sound";
+   _lab/metal-listen/; patches/guitar-metal-amp.py): an amp sound is FreePats' Fender recorded dry (guitar/fp-direct/) - each
+   note two takes as the channels of one stereo note - through one amp (a Tube Screamer as a boost, two gain stages, a tone
+   stack, the low resonance, a gate), then a 4x12 cabinet per side, hard left and right */
+const GTR_AMPS={"mt-v30":{ir:["v30-sm57-c","v30-sm57-b"]},"mt-rd":{ir:["v30-rdj-blend","v30-dv77-blend"]},"mt-mar":{ir:["greenback-a","v30-sm57-a"]}};
+const GTR_AMP_K=[34,7], GTR_AMP_TRIM=0.075;   // Brutal; the output level-matched to Distorted 2 (measured)
+const GTR_IR_GAIN={"v30-sm57-a":1,"v30-sm57-b":1,"v30-sm57-c":1,"v30-rdj-blend":0.68,"v30-dv77-blend":0.86,"greenback-a":2.34};   // each cabinet levelled, so the two sides sit even (measured)
+function gtrSetOf(k){ return GTR_AMPS[k]?"fp-direct":k; }   // the samples an amp sound plays
+function gtrAmpOn(){ return !!GTR_AMPS[gtrSound]; }
+const GTR_IR={}, GTR_IR_DEC={};
+function gtrAmpLoad(){ if(!ctx||!gtrAmpOn()) return;
+  for(const n of GTR_AMPS[gtrSound].ir){ if(GTR_IR_DEC[n]&&GTR_IR_DEC[n].ctx===ctx) continue; const ac=ctx; GTR_IR_DEC[n]={ctx:ac};
+    fetch(gtrURL(n+".wav","ir")).then(r=>{ if(!r.ok) throw new Error(n+": "+r.status); return r.arrayBuffer(); })
+      .then(ab=>new Promise((res,rej)=>ac.decodeAudioData(ab,res,rej))).then(b=>{ GTR_IR[n]={ctx:ac,buf:b}; if(GTR_AMP&&GTR_AMP.ctx===ac) gtrAmpCab(); })
+      .catch(()=>{ GTR_IR_DEC[n]=null; }); } }
+function gtrAmpReady(){ return !gtrAmpOn()||GTR_AMPS[gtrSound].ir.every(n=>GTR_IR[n]&&GTR_IR[n].ctx===ctx); }
+let GTR_AMP=null;
+function gtrAmpCurve(K){ const n=4096, c=new Float32Array(n), nm=Math.tanh(K*1.3); for(let i=0;i<n;i++){ const v=i*2/(n-1)-1; c[i]=Math.tanh(K*v+0.3*K*v*v)/nm; } return c; }
+function gtrAmp(){   // once per audio context; the cabinets follow the sound
+  if(GTR_AMP&&GTR_AMP.ctx===ctx){ if(GTR_AMP.k!==gtrSound) gtrAmpCab(); return GTR_AMP; }
+  const biq=(type,f,q,g)=>{ const b=ctx.createBiquadFilter(); b.type=type; b.frequency.value=f; if(q!=null) b.Q.value=q; if(g!=null) b.gain.value=g; return b; };
+  const gn=v=>{ const g=ctx.createGain(); g.gain.value=v; return g; }, ws=K=>{ const w=ctx.createWaveShaper(); w.curve=gtrAmpCurve(K); w.oversample="4x"; return w; };
+  const inp=gn(1), gate=gn(1), sp=ctx.createChannelSplitter(2), mg=ctx.createChannelMerger(2), out=gn(GTR_AMP_TRIM);
+  const L=[inp,biq("highpass",140,0.7),biq("peaking",760,0.8,7),biq("highshelf",3500,0.7,-3),gn(2.2),   // the boost: tight lows, a mid hump, level up
+    ws(GTR_AMP_K[0]),biq("highpass",110,0.7),biq("lowpass",7000,0.6),gn(0.6),ws(GTR_AMP_K[1]),   // two gain stages
+    biq("lowshelf",110,0.7,3),biq("peaking",480,0.8,-3.5),biq("highshelf",2800,0.7,2),biq("peaking",95,1,7),gate,sp];   // the tone stack, the low resonance, the gate
+  for(let i=0;i<L.length-1;i++) L[i].connect(L[i+1]);
+  const hp=biq("highpass",80,0.7), lp=biq("lowpass",9000,0.707); mg.connect(hp); hp.connect(lp); lp.connect(out); out.connect(gtrFxIn());
+  GTR_AMP={ctx,inp,gate,sp,mg,cL:null,cR:null,k:null}; gtrAmpCab(); return GTR_AMP; }
+function gtrAmpCab(){ const A=GTR_AMP; if(!A||A.ctx!==ctx||!gtrAmpOn()) return;   // a cabinet per side, hard left and right
+  const I=GTR_AMPS[gtrSound].ir, a=GTR_IR[I[0]], b=GTR_IR[I[1]]; if(!(a&&a.ctx===ctx&&b&&b.ctx===ctx)) return;
+  for(const c of [A.cL,A.cR,A.gL,A.gR]) if(c){ try{ c.disconnect(); }catch(e){} }
+  try{ A.sp.disconnect(); }catch(e){}
+  A.cL=ctx.createConvolver(); A.cL.buffer=a.buf; A.cR=ctx.createConvolver(); A.cR.buffer=b.buf;
+  A.gL=ctx.createGain(); A.gL.gain.value=GTR_IR_GAIN[I[0]]||1; A.gR=ctx.createGain(); A.gR.gain.value=GTR_IR_GAIN[I[1]]||1;
+  A.sp.connect(A.cL,0); A.sp.connect(A.cR,1); A.cL.connect(A.gL); A.cR.connect(A.gR); A.gL.connect(A.mg,0,0); A.gR.connect(A.mg,0,1); A.k=gtrSound; }
+function gtrAmpGate(t,L){ const A=GTR_AMP; if(!A||A.ctx!==ctx) return; const G=A.gate.gain;   // a ringing note opens the gate; a chug shuts it after L
+  G.cancelScheduledValues(t-0.002); G.setValueAtTime(1,t-0.002); if(L!=null){ G.setValueAtTime(1,t+L); G.linearRampToValueAtTime(0,t+L+0.018); } }
+function gtrNote(s,fret,t,vel,pm){
   if(!ctx||!GTR_BUF) return;
   const midi=GTR_OPEN[s]+fret;
   const T=gtrTake(midi,vel), e=T.e;   // MF: the zone, the layer, the next take (28 Sep 2026)
@@ -13125,7 +13179,16 @@ function gtrNote(s,fret,t,vel){
   const lp=ctx.createGain();   // MF's layers carry the tone of a soft or a strong pluck: no darkening filter (28 Sep 2026)
   const env=ctx.createGain(); env.gain.setValueAtTime(pk,st);
   const g=ctx.createGain(); g.gain.value=1;               // `live`'s gain, as the bass keeps it apart from its envelope
-  src.connect(lp); lp.connect(env); env.connect(g); g.connect(gtrFxIn()); gtrChordLevel(st,lp);   // through the pedalboard to the voice bus (patches/guitar-fx.py)
+  if(gtrAmpOn()&&GTR_BUF===GTR_BUFS["fp-direct"]){   /* an amp sound: two takes, one stereo note, into the amp (patches/guitar-metal-amp.py) */
+    const A=gtrAmp(), T2=gtrTake(midi,vel), e2=T2.e, src2=ctx.createBufferSource(), g2=ctx.createGain(), mg=ctx.createChannelMerger(2);
+    src2.buffer=e2.buf; src2.playbackRate.value=Math.pow(2,(midi-T2.c)/12+(3+Math.random()*3)/1200); g2.gain.value=e.lvl/e2.lvl;
+    src.connect(mg,0,0); src2.connect(g2); g2.connect(mg,0,1); let x=mg;
+    if(pm){ const f=ctx.createBiquadFilter(); f.type="lowpass"; f.frequency.value=750; f.Q.value=0.6; mg.connect(f); x=f; env.gain.setTargetAtTime(pk*0.02,st+0.025,0.05); }   /* a real palm mute: dulled and damped into the amp */
+    else gtrAmpGate(st);
+    x.connect(lp); lp.connect(env); env.connect(g); g.connect(A.inp);
+    const d2=0.009+Math.random()*0.006; src2.start(st+d2,e2.off); src2.stop(st+d2+(e2.buf.duration-e2.off)/src2.playbackRate.value+0.05); }
+  else { src.connect(lp); lp.connect(env); env.connect(g); g.connect(gtrFxIn()); }   /* through the pedalboard to the voice bus (patches/guitar-fx.py) */
+  gtrChordLevel(st,lp);
   const len=(e.buf.duration-e.off)/src.playbackRate.value;
   src.start(st,e.off); src.stop(st+len+0.05);
   g.__at=st; live.push(g); if(live.length>120) live.splice(0,40);
@@ -13253,7 +13316,7 @@ function gtrArp16(st,tk,S,pluck,fr){ const s=tk.s, b=tk.beat, k=tk.k, B=S[0], T=
   else if(st==="a16x") x=(k===0||fr)?B:T[(k-1)%3];   // three against four
   if(x!=null) pluck(x,v(x)); }
 function gtrPulse(p2,rel,m,sec,at,free){
-  GTR_OPEN[0]=gtrDropOn()?38:40;   /* Metal's Drop D, standard otherwise (patches/guitar-metal.py) */
+  { const T=gtrTuning(); for(let i=0;i<6;i++) GTR_OPEN[i]=T[i]; }   /* Metal tuned to the key, standard otherwise (patches/guitar-metal-low.py) */
   if(!free){ const W=wtBar("gtr",sec,rel,m); if(W){ gtrPlayWritten(p2,rel,m,sec,at,W); return; }
     const S=wtStyleAt("gtr",sec,rel,m); if(S){ wtAsStyle("gtr",S,()=>gtrPulse(p2,rel,m,sec,at,true)); return; } }   // a written bar plays what is written (30 Sep 2026)
   /* the pass: PLAYPASS, counted in the scheduler for every instrument (the pass rule, patches/pass-rule.py) */
@@ -13421,8 +13484,8 @@ function gtrPulse(p2,rel,m,sec,at,free){
          U up; the mutes are the guitar's own notes cut short - X a chuck (every string, soft, 30 ms), P a palm mute (the
          low strings, 120 ms), S a skank (the top strings, an upstroke, 90 ms), Funk's x (every string, very soft) */
       const pat=gtrStrumNow(p2,m,rel), k16=tk.k%16;
-      const shortly=(list,v,len,dir)=>{ const t0=hum(), L=dir<0?list.slice().reverse():list;
-        L.forEach((x,k)=>gtrNote(x,F[x],t0+k*0.006,v)); L.forEach(x=>gtrChoke(x,t0+len,0.008)); };
+      const shortly=(list,v,len,dir,pm)=>{ const t0=hum(), L=dir<0?list.slice().reverse():list;
+        L.forEach((x,k)=>gtrNote(x,F[x],t0+k*0.006,v,pm)); L.forEach(x=>gtrChoke(x,t0+len,0.008)); if(pm&&gtrAmpOn()) gtrAmpGate(t0,0.8*s16); };   /* the amp's gate after a chug (patches/guitar-metal-amp.py) */
       if(gtrStrum==="jzfree") gtrJzFreeHit({pat,k:k16,bi:Math.floor(rel/m.bp+1e-9),m,sec,p2,rb,S,F,hum,lean,pd});   /* Free comping (patches/guitar-jazz-comping.py) */
       else if(pat==="strchg"||pat==="funkchg"||pat==="rkchg"||pat==="mtchg"||pat==="jzchg"){   /* CHORD CHANGE IN THE STYLE'S ARTICULATION (David, 2 Oct 2026; patches/guitar-categories.py): where the
            chord changes, and on the phrase's first count when it stays - Strumming one down-strum left to ring, Funk one high chank */
@@ -13460,8 +13523,8 @@ function gtrPulse(p2,rel,m,sec,at,free){
         if(x==="D") down((k===0||(ck&&k%4===0)?0.86:0.78)*lean);
         else if(x==="U") up(0.52);
         else if(x==="X") shortly(S,0.4,0.03,1);
-        else if(x==="P") shortly(S.slice(0,Math.min(4,S.length)),(k%4===0?0.72:0.56)*lean,0.12,1);
-        else if(x==="R") shortly([S[0]],(k%4===0?0.74:0.6)*lean,0.11,1);   /* the pedal tone (patches/guitar-metal.py) */
+        else if(x==="P") shortly(S.slice(0,gtrIsMetal()?2:Math.min(4,S.length)),gtrAmpOn()?(k%4===0?0.95:0.9):(k%4===0?0.72:0.56)*lean,0.12,1,true);
+        else if(x==="R") shortly([S[0]],gtrAmpOn()?(k%4===0?0.95:0.9):(k%4===0?0.74:0.6)*lean,0.11,1,true);   /* the pedal tone (patches/guitar-metal.py) */
         else if(x==="S") shortly(S.slice(-3),0.55,0.09,-1);
         else if(x==="J"||x==="H"){ const t0=hum(); S.forEach((x2,j)=>gtrNote(x2,F[x2],t0+j*0.006,(x==="J"?0.6:0.68)*lean)); if(x==="J") S.forEach(x2=>gtrChoke(x2,t0+Math.min(0.22,pd*m.sub*0.55),0.03)); }   /* a jazz chord, short or held (patches/guitar-rock-jazz.py) */
         else if(x==="A"&&!/^funkhi/.test(pat)){ let to=null; try{ to=chordInForceAt(p2+(m.bp-rb),sec,m); }catch(e){}   // the next chord, early, tied over
@@ -20631,6 +20694,8 @@ function cardPlaySync(pop){ cardPreviewPaint();
   pop.querySelectorAll(".frdm").forEach(f=>{ const a=f.dataset.fra, on=pop.querySelector('.cpage [data-'+a+'].on'), v=on?+on.getAttribute("data-"+a):0;
     f.querySelector("input").value=v; f.querySelector(".frval").textContent=FREEDOM_SAYS[v]||""; });
   const tu=pop.querySelector(".gtune"); if(tu) tu.hidden=!(typeof gtrIsMetal==="function"&&gtrIsMetal());
+  if(tu){ const r=pop.querySelector('.cpage[data-cpage="sound"] [data-gr]'), row=r&&r.parentElement, t=row&&row.previousElementSibling;   /* Metal always low (patches/guitar-metal-low.py) */
+    if(row){ row.style.display=tu.hidden?"":"none"; if(t&&t.classList.contains("ttl")) t.style.display=row.style.display; } }
   pop.querySelectorAll(".cpage .vlist,.cpage :is([data-gcb]>.pal,[data-pgb]>.pal,[data-bgb]>.bsgrid,.pal:has(>[data-sy]))").forEach(l=>{ if(!l.clientHeight) return;
     const on=l.querySelector(".on"); if(!on) return; const top=on.offsetTop-l.offsetTop, h=on.offsetHeight;   // the chosen row in view
     if(top<l.scrollTop||top+h>l.scrollTop+l.clientHeight) l.scrollTop=Math.max(0,top-(l.clientHeight-h)/2); }); }
@@ -20646,21 +20711,21 @@ var CPV=null;   // a var: closePop asks before this line has run
 function gtrMetalPreset(){ for(const [,L] of CARD_PRESETS.gtr) for(const p of L) if(/(^| )gi=metal:/.test(p[2])) return p; return null; }   // the first preset that plays a Metal pattern
 function presetTok(p,a){ const t=p[2].split(" ").map(x=>x.replace(/^~/,"")).find(x=>x.startsWith(a+"=")); return t?t.slice(a.length+1):null; }   // a preset's value for one of the card's buttons
 const CPV_ADAPT={
-  gtr:{attr:"gi", get:()=>[gtrStyle,gtrStrum,gtrPick,gtrSound,Object.assign({},gtrFx),gtrDropD,gtrReg],
+  gtr:{attr:"gi", get:()=>[gtrStyle,gtrStrum,gtrPick,gtrSound,Object.assign({},gtrFx),gtrTune,gtrReg],
     set:v=>{ gtrStyle=v[0]; gtrStrum=v[1]; gtrPick=v[2]; GTR.chord=null;
-      const fx=GFX_PEDALS.some(([q])=>(v[4][q]||"off")!==(gtrFx[q]||"off")); if(v[3]!==gtrSound||fx||v[5]!==gtrDropD) GTR.alt=null;
-      gtrSound=v[3]; gtrDropD=v[5]; gtrReg=v[6]; if(fx){ for(const [q] of GFX_PEDALS) gtrFx[q]=v[4][q]||"off"; gtrFxChain(); } },
+      const fx=GFX_PEDALS.some(([q])=>(v[4][q]||"off")!==(gtrFx[q]||"off")); if(v[3]!==gtrSound||fx||v[5]!==gtrTune) GTR.alt=null;
+      gtrSound=v[3]; gtrTune=v[5]; gtrReg=v[6]; if(fx){ for(const [q] of GFX_PEDALS) gtrFx[q]=v[4][q]||"off"; gtrFxChain(); } },
     to:val=>{ const q=val.split(":"), it=GTR_ITEMS[q[0]]&&GTR_ITEMS[q[0]][+q[1]]; if(!it) return null;
-      const v=[it[1],gtrStrum,gtrPick,gtrSound,Object.assign({},gtrFx),gtrDropD,gtrReg];
+      const v=[it[1],gtrStrum,gtrPick,gtrSound,Object.assign({},gtrFx),gtrTune,gtrReg];
       if(it[2]!=null){ if(it[1]==="strum") v[1]=it[2]; else v[2]=it[2]; }
       const was=gtrIsMetal(), will=v[0]==="strum"&&/^mt/.test(v[1]||"");
       if(will&&!was){ const p=gtrMetalPreset(); if(p){   // into Metal: as the Metal preset sets it, read now (patches/card-preview-metal-preset.py)
           const s=presetTok(p,"gsnd"), d=presetTok(p,"gdd"), r=presetTok(p,"gr");
-          if(GTR_SOUNDS.some(x=>x[0]===s)) v[3]=s; if(d!=null) v[5]=d==="1"; if(r) v[6]=r;
+          if(GTR_SOUNDS.some(x=>x[0]===s)) v[3]=s; if(d==="auto"||d==="std"||d==="drop") v[5]=d; if(r) v[6]=r;
           for(const [k] of GFX_PEDALS) v[4][k]=p[3][k]||"off"; } }
       else if(was&&!will){ let p=null; try{ p=JSON.parse(localStorage.getItem("hps.gtrpremetal")||"null"); }catch(e){}   // out of Metal: as choosing would
-        if(p){ if(GTR_SOUNDS.some(x=>x[0]===p.snd)) v[3]=p.snd; if(GFX_PEDALS[1][3].some(x=>x[0]===p.drive)) v[4].drive=p.drive; } }
-      return v; }, paint:()=>{ if(window.paintGtr) paintGtr(); }, on:()=>gtrOn, ready:()=>{ gtrReady(); return !!GTR_BUFS[gtrSound]; }},
+        if(p){ if(GTR_SOUNDS.some(x=>x[0]===p.snd)) v[3]=p.snd; if(p.fx) for(const [q] of GFX_PEDALS){ if(p.fx[q]) v[4][q]=p.fx[q]; } else if(GFX_PEDALS[1][3].some(x=>x[0]===p.drive)) v[4].drive=p.drive; } }
+      return v; }, paint:()=>{ if(window.paintGtr) paintGtr(); }, on:()=>gtrOn, ready:()=>{ gtrReady(); return !!GTR_BUFS[gtrSetOf(gtrSound)]&&gtrAmpReady(); }},
   pno:{attr:"ps", get:()=>pnoStyle, set:v=>{ pnoStyle=v; PNO.chord=null; }, to:v=>v, paint:()=>{ if(window.paintPno) paintPno(); }, on:()=>pnoOn, ready:()=>pnoReady()},
   bass:{attr:"bms", get:()=>bassInRoom()?BASSROOM:((piece&&piece.bassStyle)||"root"),
     set:v=>{ if(bassInRoom()) BASSROOM=v; else if(piece){ if(v==="root") delete piece.bassStyle; else piece.bassStyle=v; } BASSPLAN=null; },
@@ -20730,7 +20795,7 @@ const CARD_PRESETS={
       ["Samba","Nylon · Partido alto","~gc=pick gi=pick:5 gsnd=mf gr=auto gv=1 gl=off",{}]]],
     ["Rock & ambient",[
       ["Rock rhythm","Distorted 1 · Chug","~gc=rock gi=rock:0 gsnd=fp-dist1 gr=auto gv=1 gl=off",{}],
-      ["Metal","Distorted 2 · Thrash · Drop D","~gc=metal gi=metal:0 gdd=1 gsnd=fp-dist2 gr=auto gv=1 gl=off",{}],
+      ["Metal","Metal V30 · Thrash · tuned low","~gc=metal gi=metal:0 gdd=auto gsnd=mt-v30 gr=auto gv=1 gl=off",{}],
       ["Ambient shimmer","Clean · Rising · Long delay","~gc=arp gi=arp:2 gsnd=clean gr=high gv=1 gl=off",{chorus:"deep",delay:"amb"}]]],
     ["Acoustic & country",[
       ["Classical","Nylon · p i m a","~gc=pick gi=pick:3 gsnd=mf gr=auto gv=0 gl=off",{}],
@@ -20825,6 +20890,7 @@ function cardShow(pop,p,centre){ const k=pop.dataset.ck||"";
   const bar=pop.querySelector(":scope>.dbar"); if(bar) bar.innerHTML=cardBarHTML(k,p);
   cardPlaySync(pop);
   if(p!=="presets") try{ localStorage.setItem("hps.cardpage."+k,p); }catch(e){}
+  if(CARD_PRESETS[k]) try{ localStorage.setItem("hps.cardview."+k,p==="presets"?"presets":"custom"); }catch(e){}   // the view it was left on (patches/cards-nav-order.py)
   if(centre&&pop.classList.contains("card")) pop.style.top=Math.max(16,Math.round((window.innerHeight-pop.offsetHeight)/2))+"px"; }   // centred again at its new height
 function cardPages(pop,k){
   if(!pop.querySelector(":scope>.dbar")){   // the synth's card is placed again already paged
@@ -20837,7 +20903,8 @@ function cardPages(pop,k){
     let at=bar; if(CARD_PRESETS[k]){ const d=document.createElement("div"); d.className="cpage cpresets"; d.dataset.cpage="presets"; at.after(d); at=d; }
     for(const [p] of CARD_PAGES){ at.after(pages[p]); at=pages[p]; }
     pop.dataset.ck=k; cardPlay(pop,k); }
-  cardShow(pop,CARD_PRESETS[k]?"presets":"custom",false); }   // the four open on their presets; the handpan and drums on the page last used
+  cardShow(pop,CARD_PRESETS[k]?cardViewOf(k):"custom",false); }
+function cardViewOf(k){ try{ return localStorage.getItem("hps.cardview."+k)==="custom"?"custom":"presets"; }catch(e){ return "presets"; } }   // never left on Custom: Presets   // the four open on their presets; the handpan and drums on the page last used
 document.addEventListener("click",ev=>{ const t=ev.target.closest&&ev.target.closest(".pop [data-cpg],.pop [data-cpre]"); if(!t) return;
   const pop=t.closest(".pop"), k=pop.dataset.ck||"";
   if(t.dataset.cpre!=null){ const q=t.dataset.cpre.split(":"), g=CARD_PRESETS[k]&&CARD_PRESETS[k][+q[0]], p=g&&g[1][+q[1]]; if(!p) return;
@@ -20861,11 +20928,15 @@ function openPop(pop,anchor,align){
     const k=Object.keys(VOICE_BTN).find(x=>VOICE_BTN[x]===anchor.id), v=k&&VOICES.find(x=>x[0]===k);
     { const old=pop.querySelector(".pophead"); if(old) old.remove(); }   /* placed again (the synth's menu, at its full height): one head (patches/pophead-once.py) */
     const hd=document.createElement("div"); hd.className="pophead";
-    hd.innerHTML=(v?'<svg class="phico"><use href="#is-'+v[2]+'"/></svg>':'')+'<span>'+(v?v[1]:"")+'</span>'+(v?'<div class="phtrk">'+vxTrio(k,false)+'</div>':'')+'<button type="button" class="popx" aria-label="Close" title="Close"><svg viewBox="0 0 16 16"><path d="M4 4 12 12M12 4 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>';
+    hd.innerHTML=(v?'<button type="button" class="phnav" data-phnav="-1" aria-label="The previous instrument" title="The previous instrument">'+CP_BACK+'</button>':'')   // ‹ › (patches/cards-nav-order.py)
+      +(v?'<svg class="phico"><use href="#is-'+v[2]+'"/></svg>':'')+'<span>'+(v?v[1]:"")+'</span>'
+      +(v?'<button type="button" class="phnav" data-phnav="1" aria-label="The next instrument" title="The next instrument">'+CP_NEXT+'</button><i class="phgap"></i>':'')+(v?'<div class="phtrk">'+vxTrio(k,false)+'</div>':'')+'<button type="button" class="popx" aria-label="Close" title="Close"><svg viewBox="0 0 16 16"><path d="M4 4 12 12M12 4 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>';
     pop.prepend(hd); hd.querySelector(".popx").addEventListener("click",()=>closePop());
     if(v){ hd.dataset.vk=k; hd.classList.toggle("muted",!voiceOnOf(k)); pop.querySelectorAll(".vxrow-x").forEach(x=>x.remove()); cardPages(pop,k); }   /* Play | Sound | Mix (patches/card-pages.py) */   /* M · S · staff are in the head (patches/card-play-row.py) */
     const dim=document.createElement("div"); dim.className="popdim"; dim.addEventListener("click",()=>closePop()); host.insertBefore(dim,pop);
-    _popKey=e=>{ if(e.key==="Escape"){ e.preventDefault(); e.stopPropagation(); closePop(); } };
+    _popKey=e=>{ if(e.key==="Escape"){ e.preventDefault(); e.stopPropagation(); closePop(); return; }
+      if((e.key==="ArrowLeft"||e.key==="ArrowRight")&&!e.altKey&&!e.metaKey&&!e.ctrlKey&&!(e.target&&e.target.closest&&e.target.closest("input,select,textarea,[contenteditable]"))){   // ← → : the previous or next instrument
+        if(cardNav(e.key==="ArrowLeft"?-1:1)){ e.preventDefault(); e.stopPropagation(); } } };
     window.addEventListener("keydown",_popKey,true); }
   const a=anchor.getBoundingClientRect(), w=pop.offsetWidth, h=pop.offsetHeight;
   let left=align==="right"?(a.right-w):(a.left+a.width/2-w/2);
@@ -20873,6 +20944,7 @@ function openPop(pop,anchor,align){
   let top=a.top-h-8;                              // above the button by default
   if(top<8) top=a.bottom+8;                       // …below when there is no room
   if(card) pop.style.top=Math.max(16,Math.round((window.innerHeight-h)/2))+"px";   // centred; the sides are the CSS's
+  if(card) cardKeepIn(pop);   // and kept inside the window as it grows (patches/cards-nav-order.py)
   else if(host===document.body){
     pop.style.left=Math.round(left+window.scrollX)+"px";
     pop.style.top=Math.round(top+window.scrollY)+"px";
@@ -20885,6 +20957,22 @@ function openPop(pop,anchor,align){
   setTimeout(()=>document.addEventListener("pointerdown",_popAway,true),0);
 }
 let _popAway=null, _popKey=null;
+/* A CARD ALWAYS LIES INSIDE THE WINDOW (David, 2 Oct 2026: "sometimes the menu goes off screen"; patches/cards-nav-order.py):
+   whenever its size changes, or the window's, it moves up only as far as it must - never above 16 px; at the window's full
+   height its page scrolls inside (max-height). The phone's card is pinned to the screen's edges by its CSS */
+function cardKeepIn(pop){ if(typeof ResizeObserver==="undefined") return;
+  const fit=()=>{ if(!pop.isConnected){ ro.disconnect(); window.removeEventListener("resize",fit); return; }
+    if(document.body.classList.contains("phone")&&!document.body.classList.contains("tablet")) return;
+    const h=pop.offsetHeight, top=parseFloat(pop.style.top)||16, lim=window.innerHeight-16-h; if(top>lim) pop.style.top=Math.max(16,Math.round(lim))+"px"; };
+  const ro=new ResizeObserver(fit); ro.observe(pop); window.addEventListener("resize",fit);
+  pop.addEventListener("click",fit); }   // after the card's own handlers too: a click is what makes it grow (an observer waits for a frame)
+/* ‹ › BETWEEN THE INSTRUMENTS (David, 2 Oct 2026: "little triangle arrows left and right of the instrument name/icon, so I
+   can change to the next one"): the previous or next card in the band's order (VOICES), round the end - its own button
+   opens it, as a click does */
+function cardNav(d){ const h=document.querySelector(".pop.card>.pophead[data-vk]"); if(!h) return false;
+  const i=VOICES.findIndex(v=>v[0]===h.dataset.vk); if(i<0) return false; const k=VOICES[(i+d+VOICES.length)%VOICES.length][0], b=$(VOICE_BTN[k]); if(!b) return false;
+  closePop(); b.click(); return true; }
+document.addEventListener("click",ev=>{ const b=ev.target.closest&&ev.target.closest(".pophead [data-phnav]"); if(!b) return; ev.preventDefault(); ev.stopPropagation(); cardNav(+b.dataset.phnav); },true);
 function closePop(){
   if(typeof cardPreviewEnd==="function") cardPreviewEnd();   // closing the card ends a variation's preview (patches/card-previews.py)
   const p=document.querySelector(".pop");
@@ -27663,8 +27751,8 @@ function staffWithBass(bars,nm,m){
    WHAT IS WRITTEN IS WHAT PLAYS: guitar, piano and synth are recorded from their own pattern code, run silently over the
    table - their state saved and put back, the randomness fixed; the drums are the table's groove. */
 /* each staff's clef by its part - its usual one first (David, 30 Sep 2026: "Staffs should be chosen according to their parts") */
-const STAFF_VOICES=[["gtr","auto","Guitar",["g8vb","g","g8va"]],["pno","auto","Piano",["g","g8va","g8vb","f"]],["syn","auto","Synth",["g","g8va","g8vb","f"]],
-  ["bass","auto","Bass",["f","f8vb","g8vb"]],["drm","perc","Drums"]];
+const STAFF_VOICES=[["drm","perc","Drums"],["bass","auto","Bass",["f","f8vb","g8vb"]],["gtr","auto","Guitar",["g8vb","g","g8va"]],
+  ["pno","auto","Piano",["g","g8va","g8vb","f"]],["syn","auto","Synth",["g","g8va","g8vb","f"]]];   // under the handpan's, the band's order (patches/cards-nav-order.py)
 /* MUTE, SOLO AND THE STAFF FROM THE MAIN PAGE (David, 1 Oct 2026: "how can we make muting instruments and showing them in
    the staff easier accessible from the main page, especially in jam mode?" - "I'd also love an option to solo instruments
    and I'd like the simple click to open the instrument menu" - "B everywhere", A in the jam, a fold for the jam card;
@@ -27673,7 +27761,7 @@ const STAFF_VOICES=[["gtr","auto","Guitar",["g8vb","g","g8va"]],["pno","auto","P
    (staffOpts[k]; the handpan's staffOpts.pan). What sounds is what is on and - while anything is soloed - soloed. The
    transport's buttons (a click opens the menu, a long press mutes), each menu's first rows (Plays, Staff) and the jam
    card's Band row all show and set the same. */
-const VOICES=[["pan","Handpan","hand"],["bass","Bass","bass"],["drm","Drums","darbuka"],["gtr","Guitar","guitar"],["pno","Piano","pno"],["syn","Synth","syn"]];
+const VOICES=[["pan","Handpan","hand"],["drm","Drums","darbuka"],["bass","Bass","bass"],["gtr","Guitar","guitar"],["pno","Piano","pno"],["syn","Synth","syn"]];   // the band's order: Handpan, Drums, Bass, Guitar, Piano, Synth (David, 2 Oct 2026; patches/cards-nav-order.py)
 const VOICE_BTN={pan:"panMuteBtn",bass:"bassBtn",drm:"drumBtn",gtr:"gtrBtn",pno:"pnoBtn",syn:"synBtn"}, VOICE_TOG={};   // VOICE_TOG[k]: the voice's own on/off, registered by its button
 var SOLO=new Set();   // var: a room loaded at boot may ask before this line has run
 function voiceOnOf(k){ return k==="pan"?!panMute:k==="bass"?bassOn:k==="drm"?rhyOn:k==="gtr"?gtrOn:k==="pno"?pnoOn:k==="syn"?synOn:false; }
@@ -27820,7 +27908,7 @@ function staffSig(phone){ const b=staffBassOpts(phone), st=staffStaves(phone)||[
   return st.map(s=>s.key).join(",")+"|"+(b.bass?1:0)+(b.bassOnly?1:0)+"|"+staffStyleSig(); }
 /* WHAT THE STAVES PLAY (David, 2 Oct 2026: "a notation row changes the moment a new pattern is selected"; patches/staff-follows-style.py):
    every instrument's style settings, so a change of any redraws the staff */
-function staffStyleSig(){ try{ return [gtrStyle,gtrStrum,gtrPick,gtrDeg,gtrReg,gtrDropD,gtrLead,gtrLive,pnoStyle,pnoWide,pnoReg,pnoJazz,pnoLead,pnoLive,pnoListen,gtrListen,pnoJam,gtrJam,synStyle,synReg,synVc,synSnd,
+function staffStyleSig(){ try{ return [gtrStyle,gtrStrum,gtrPick,gtrDeg,gtrReg,gtrTune,gtrLead,gtrLive,pnoStyle,pnoWide,pnoReg,pnoJazz,pnoLead,pnoLive,pnoListen,gtrListen,pnoJam,gtrJam,synStyle,synReg,synVc,synSnd,
     bassPieceStyle(),bassSound,bassLow,bassLead,bassLive,bassListen,bassJam,panLv,rhyPick].join("/"); }catch(e){ return ""; } }
 /* a click inside a menu - a pattern, a register, a degree - checks the staff too, once the menu has acted (patches/staff-follows-style.py) */
 document.addEventListener("click",e=>{ if(e.target.closest&&e.target.closest(".pop")) setTimeout(()=>{ try{ staffVoicesSync(); }catch(x){} },0); });
@@ -47523,7 +47611,7 @@ function boot(){
         if(gs){ gtrSound=GTR_SOUNDS.some(x=>x[0]===gs.dataset.gsnd)?gs.dataset.gsnd:"mf"; try{ localStorage.setItem("hps.gtrsound",gtrSound); }catch(e){}
           pop.querySelectorAll("[data-gsnd]").forEach(x=>x.classList.toggle("on",x===gs)); window.paintGtr(); return; }   // with the guitar on, the button dims till the set is in
         const gdd=ev.target.closest("[data-gdd]");
-        if(gdd){ gtrDropD=gdd.dataset.gdd==="1"; GTR.chord=null; GTR.alt=null; try{ localStorage.setItem("hps.gtrdropd",gtrDropD?"1":"0"); }catch(e){}
+        if(gdd){ gtrTune=gdd.dataset.gdd; GTR.chord=null; GTR.alt=null; try{ localStorage.setItem("hps.gtrtune",gtrTune); }catch(e){}
           pop.querySelectorAll("[data-gdd]").forEach(x=>x.classList.toggle("on",x===gdd)); return; }   /* Metal's tuning (patches/guitar-metal.py) */
         const gr=ev.target.closest("[data-gr]");
         if(gr){ gtrReg=gr.dataset.gr; GTR.chord=null; try{ localStorage.setItem("hps.gtrreg",gtrReg); }catch(e){}   // the next count voices it anew
