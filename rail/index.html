@@ -10457,7 +10457,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
    second masterthehandpan.com's (Webflow + Vimeo), so either can be revoked
    without touching the other. EMBED_KEY becomes whichever one the student
    arrived with, and the bulb's link carries that same key onward. */
-const EMBED_KEYS=["ce0f3bf87594bda9","fcd73a45100059e0","0ef982d12aea35a1"];   // the third: testers and friends (David, 24 Sep 2026) - removable without touching the lessons’ keys
+const EMBED_KEYS=["ce0f3bf87594bda9","fcd73a45100059e0","0ef982d12aea35a1","c579df3829211d21"];   // the third: testers and friends (David, 24 Sep 2026) - removable without touching the lessons’ keys
 let EMBED_KEY=EMBED_KEYS[0];
 (function(){
   const local=location.protocol==="file:"||/^(localhost|127\.)/.test(location.hostname);
@@ -12418,8 +12418,8 @@ const GTR_PU_PUSH=[{pos:[2]},{pos:[2]},{pos:[3,2]},{pos:[6,2]}];
    what sounds. The pass is counted once, in the scheduler; a new pass redraws the staff as it sounds when an instrument on
    it varies. A new improvising style: draw through passDraw, add its line to VARIES. */
 let PLAYPASS=0, PLAYPREV=null;
-const VARIES={pan:()=>panLiveOn(),bass:()=>bassPuOn(),gtr:()=>gtrLive||gtrLead!=="off"||(gtrStyle==="strum"&&gtrStrum==="jzfree"),   /* the bass's Pickup (patches/bass-pickup.py) */
-  pno:()=>pnoStyle==="flow"||pnoStyle==="flowsp"||pnoStyle==="jcomp"||pnoLead!=="off"||pnoLive};   /* the piano's Flow and Comping (patches/piano-pass-rule.py) */
+const VARIES={pan:()=>panLiveOn(),bass:()=>bassPuOn(),gtr:()=>gtrLive||(gtrStyle==="strum"&&gtrStrum==="jzfree"),   /* the bass's Pickup (patches/bass-pickup.py) */
+  pno:()=>pnoStyle==="flow"||pnoStyle==="flowsp"||pnoStyle==="jcomp"||pnoLive};   /* the piano's Flow and Comping (patches/piano-pass-rule.py) */
 function passHash(x){ let h=Math.imul((Math.round(x*16)|0)^0x9e3779b9,2654435761)>>>0; h^=h>>>15; h=Math.imul(h,2246822519)>>>0; h^=h>>>13; return (h>>>0)/4294967296; }
 function passDraw(key,place,salt){ let k=0; for(const c of String(key)) k=(k*31+c.charCodeAt(0))|0; return passHash(place*7+(salt||0)*131+k*0.37+7919*PLAYPASS); }
 /* THE BAND LISTENS (David, 2 Oct 2026: "let's continue with the plan from earlier to get the band coordinated. This should be
@@ -12437,10 +12437,10 @@ function bandAcc16(f,two){ if(!f) return null; const s=f.length===16?f:two?f+f:A
   return r; }
 function bandFig(inst,nm,bi,m){ try{
   if(inst==="gtr"){ if(!gtrOn||gtrStyle==="pan") return null; let y=gtrStyle, p=gtrStyle==="strum"?gtrStrum:gtrPick;
-    if(gtrLive){ const L=gtrLiveAt(bi*m.bp,m); if(L){ y=L.y; p=L.p; } }
+    if(gtrVisit){ const L=gtrLiveAt(bi*m.bp,m); if(L){ y=L.y; p=L.p; } }
     if(p==="jzfree") p=gtrJzFreeId(bi,m);   /* Free comping's bar (patches/guitar-jazz-comping.py) */
     if(y!=="strum"||!GTR_FIG[p]||/^bd_/.test(p)) return null; return bandAcc16(GTR_FIG[p],p==="pop2"||p==="folk2"); }
-  if(inst==="pno"){ if(!pnoOn) return null; let st=pnoStyle; if(pnoLive){ const L=pnoLiveAt(bi*m.bp,m); if(L) st=L; }
+  if(inst==="pno"){ if(!pnoOn) return null; let st=pnoStyle; if(pnoVisit){ const L=pnoLiveAt(bi*m.bp,m); if(L) st=L; }
     const f=st==="jcomp"?PNO_JZ_VOCAB[Math.floor(passDraw("pno",bi*64,29)*PNO_JZ_VOCAB.length)]:/^bd_/.test(st)?null:PNO_JZ[st]; return f?f.replace(/A/g,"x"):null; }
   if(inst==="drm"){ if(!rhyOn) return null; const D=staffDrums(nm), ev=D&&D[bi]; if(!ev||!ev.length) return null;
     const s16p=m.sub*(piece.unit||4)/16, r=Array(16).fill(".");
@@ -12449,7 +12449,7 @@ function bandFig(inst,nm,bi,m){ try{
 const BAND_MEMO=new Map();   // a bar's pick, asked on every pulse, worked out once
 function bandPickAt(inst,nm,bi,m){ if(!(inst==="gtr"?gtrLive&&gtrListen:pnoLive&&pnoListen)) return null;
   if(passDraw("band"+inst,bi,5)>=((inst==="gtr"?gtrJam:pnoJam)?0.25:0.15)) return null;   // Jam one bar in four, Listen one in seven (patches/band-jam.py)                               // about one bar in seven (patches/band-less-together.py)
-  const key=[inst,nm,bi,m.bp,PLAYPASS,gtrOn,pnoOn,rhyOn,gtrLive,pnoLive,gtrStyle,gtrStrum,gtrPick,pnoStyle].join("|");
+  const key=[inst,nm,bi,m.bp,PLAYPASS,gtrOn,pnoOn,rhyOn,gtrLive,pnoLive,gtrVisit,pnoVisit,gtrStyle,gtrStrum,gtrPick,pnoStyle].join("|");
   if(BAND_MEMO.has(key)) return BAND_MEMO.get(key); if(BAND_MEMO.size>400) BAND_MEMO.clear();
   const S=["gtr","pno","drm"].filter(s=>s!==inst).map(s=>bandFig(s,nm,bi,m)).filter(r=>{ const n=r?(r.match(/x/g)||[]).length:0; return n>=2&&n<=6; });
   const v=S.length?S[Math.floor(passDraw("band"+inst,bi,6)*S.length)]:null; BAND_MEMO.set(key,v); return v; }
@@ -12610,6 +12610,17 @@ const GTR_LIVE_FAM=[
   ["arp|","offarp|","arpfl|","a16ud|","a16rise|","a16fall|","a16brk|","a16bass|","a16x|"]];   // the sixteenths join them (patches/guitar-arp-sixteenths.py)                                                      // the arpeggios (his word: all three)
 const GTR_LIVE_REL={}; for(const f of GTR_LIVE_FAM) for(const k of f) GTR_LIVE_REL[k]=f.filter(x=>x!==k);
 let GTR_LIVE_IN=false;
+/* SMALL TOUCHES ON THE CHORD CHANGE PATTERNS (David, 3 Oct 2026: "For chord change patterns, these can be occasional additional
+   hits on other beats, please make them musical"; patches/chord-change-touches.py): a figure of one or two hits on the chord
+   held - M the middle count, L the last, M+ and L+ their &s, P+ the & before the middle; D down, U up, P a palm-muted chug,
+   C a high chank, J a short comp, B the block chord, T the thumb's bass, A a short roll of the top strings */
+const GTR_CHG_KIND={strchg:"strum",funkchg:"funk",rkchg:"rock",mtchg:"rock",jzchg:"jazz"};
+const GTR_TOUCH={strum:[[["M","D"]],[["L","D"],["L+","U"]],[["P+","U"],["M","D"]],[["M+","U"],["L","D"]]],
+  rock:[[["L","P"],["L+","P"]],[["M","D"]],[["P+","P"],["M","D"]],[["L+","D"]]],
+  funk:[[["P+","C"]],[["M+","C"],["L+","C"]],[["L","C"]],[["P+","C"],["L","C"]]],
+  jazz:[[["P+","J"]],[["L","J"]],[["M+","J"]],[["L+","J"]]],
+  pick:[[["M","B"]],[["L","B"]],[["M","T"],["L","B"]]],
+  arp:[[["M","A"]],[["L","T"]],[["M","T"],["L","A"]]]};
 function gtrLiveAt(rel,m){ const home=gtrStyle==="strum"?"strum|"+gtrStrum:gtrStyle==="pick"?"pick|"+gtrPick:gtrStyle+"|", R=GTR_LIVE_REL[home]; if(!R||!R.length) return null;
   const U=phraseAt(m,rel).n*m.bp, u=Math.floor(rel/U+1e-9), seed=Math.floor(u/4)*131+7919*PLAYPASS+3, r=gtrPuHash(seed), pos=u%4;
   const span=r<0.05?[2,3]:r<0.35?[3]:null;   /* bars 3-4 rarely, bar 4 about one block in three (patches/guitar-live-short.py) */ if(!span||!span.includes(pos)) return null;
@@ -12859,7 +12870,7 @@ function gtrTuneRow(){ return '<div class="ttl">Tuning</div><div class="pal bwsw
 function gtrMetalSwitch(on,pop){ if(on===gtrIsMetal()) return;
   if(on){ try{ localStorage.setItem("hps.gtrpremetal",JSON.stringify({snd:gtrSound,drive:gtrFx.drive,fx:Object.assign({},gtrFx)})); }catch(e){}
     const mp=gtrMetalPreset(), ms=mp&&presetTok(mp,"gsnd");   /* as the Metal preset sets the sound and the pedals (patches/guitar-metal-amp.py) */
-    gtrSound=GTR_SOUNDS.some(x=>x[0]===ms)?ms:"mt-v30"; for(const [q] of GFX_PEDALS) gtrFx[q]=(mp&&mp[3][q])||"off"; }
+    gtrSound=GTR_SOUNDS.some(x=>x[0]===ms)?ms:"metal"; for(const [q] of GFX_PEDALS) gtrFx[q]=(mp&&mp[3][q])||"off"; }
   else { let p=null; try{ p=JSON.parse(localStorage.getItem("hps.gtrpremetal")||"null"); localStorage.removeItem("hps.gtrpremetal"); }catch(e){}
     if(p){ if(GTR_SOUNDS.some(x=>x[0]===p.snd)) gtrSound=p.snd;
       if(p.fx) for(const [q] of GFX_PEDALS){ if(p.fx[q]) gtrFx[q]=p.fx[q]; } else if(GFX_PEDALS[1][3].some(x=>x[0]===p.drive)) gtrFx.drive=p.drive; } }
@@ -12969,16 +12980,18 @@ function gtrScore(f,root,need,fifth,prev,full,topT){
 /* THE GUITAR'S SOUND (David, 2 Oct 2026; patches/guitar-sound.py): a set is a folder guitar/<id>/ in MF's format - MF
    nylon, and Karoryfer's Black And Green Guitars, two hollowbody electrics (CC0; Black's notes ring 2-3 s, as recorded).
    The guitar plays the chosen set once it is decoded and until then the set it had - never silent, the bass's rule */
-const GTR_SOUNDS=[["mf","Nylon"],["black","Hollow 1"],["green","Hollow 2"],["clean","Clean"],["fp-clean","Clean 2"],["fp-dist1","Distorted 1"],["fp-dist2","Distorted 2"],["mt-v30","Metal V30"],["mt-rd","Metal Rockdriver"],["mt-mar","Metal Marshall"]];   // Clean 2, Distorted 1 and 2: FreePats' Fender, clean amp and the two distortions, CC0 (David, 2 Oct 2026: "add the FreePats clean amp and both distorted version to the app")   // Clean: GeneralUser GS's Clean Guitar, guitar/clean/ (David, 2 Oct 2026: "add the GeneralUser Clean" - "call it Clean")   // Hollow 1 and 2 were Jazz dark, Jazz bright (David, 2 Oct 2026: "rename jazz 1 and 2 to hollow 1 and 2"); the ids stay, so a saved choice carries over
-let gtrSound=(function(){ try{ const v=localStorage.getItem("hps.gtrsound"); return GTR_SOUNDS.some(x=>x[0]===v)?v:"mf"; }catch(e){ return "mf"; } })();
+const GTR_SOUNDS=[["mf","Nylon"],["black","Hollow"],["clean","Clean"],["metal","Metal"]];   /* four (David, 3 Oct 2026: "get rid of hollow 2, clean 2, distorted 1 and 2" - "combine the 3 metal options into one"; patches/guitar-sounds-four.py) */   // Clean 2, Distorted 1 and 2: FreePats' Fender, clean amp and the two distortions, CC0 (David, 2 Oct 2026: "add the FreePats clean amp and both distorted version to the app")   // Clean: GeneralUser GS's Clean Guitar, guitar/clean/ (David, 2 Oct 2026: "add the GeneralUser Clean" - "call it Clean")   // Hollow 1 and 2 were Jazz dark, Jazz bright (David, 2 Oct 2026: "rename jazz 1 and 2 to hollow 1 and 2"); the ids stay, so a saved choice carries over
+const GTR_SOUND_WAS={green:"black","fp-clean":"clean","fp-dist1":"metal","fp-dist2":"metal","mt-v30":"metal","mt-rd":"metal","mt-mar":"metal"};   // the sounds that went (3 Oct 2026), and where a stored choice goes
+let gtrSound=(function(){ try{ let v=localStorage.getItem("hps.gtrsound"); v=GTR_SOUND_WAS[v]||v; return GTR_SOUNDS.some(x=>x[0]===v)?v:"mf"; }catch(e){ return "mf"; } })();
+let gtrCab=(function(){ try{ const v=localStorage.getItem("hps.gtrcab"), w=localStorage.getItem("hps.gtrsound"); return v==="v30"||v==="rd"||v==="mar"?v:w==="mt-rd"?"rd":w==="mt-mar"?"mar":"v30"; }catch(e){ return "v30"; } })();   // Metal's cabinet
 const GTR_RAW={}, GTR_DEC={}, GTR_BUFS={}; let GTR_BUF=null;   // GTR_BUF: the buffers being played
-const GTR_STAC=new Set(["black","green"]);   // the sets with staccato recordings, stac.json beside map.json (patches/guitar-stac.py)
+const GTR_STAC=new Set(["black"]);   // the sets with staccato recordings, stac.json beside map.json (patches/guitar-stac.py)
 /* MEDIUM IS THE GUITAR'S SOUND (David, 2 Oct 2026: "hollow 1 in the app sounds way brighter than the version in the listening
    page" - "let's use medium as the general sound" - "comping styles on the existing guitars still sometimes trigger the loud
    sample, let's stick to medium in general" - "I was referring to the hollows", "nylon should stay exactly as it was"): in
    Hollow 1 and 2 the strength that chooses a recording stops at their medium (84 of 127) - a stronger stroke plays a medium
    take, louder by its strength but not brighter; Nylon chooses as it always did */
-const GTR_MEDIUM_Q=84, GTR_MEDIUM_SETS=new Set(["black","green"]);
+const GTR_MEDIUM_Q=84, GTR_MEDIUM_SETS=new Set(["black"]);
 function gtrSmpMidi(n){ const m=n.match(/^([A-G])(s?)(\d)$/); return 12*(+m[3]+1)+PC[m[1]]+(m[2]?1:0); }   // kept: the piano names its samples this way
 const GTR_RMS=0.212;        // the loudness of a Tone.js note in its first 0.45 s: the level the guitar was set at
 function gtrFetch(k){ k=k||gtrSetOf(gtrSound);
@@ -12998,15 +13011,15 @@ function gtrOnset(b){ const d=b.getChannelData(0); let pk=0; for(let i=0;i<d.len
   for(let i=0;i<d.length;i++) if(Math.abs(d[i])>0.05*pk) return Math.max(0,i/b.sampleRate-0.002); return 0; }
 function gtrLevel(b,off){ const d=b.getChannelData(0), s0=Math.floor(off*b.sampleRate), n=Math.min(d.length-s0,Math.floor(0.45*b.sampleRate));
   let s=0; for(let i=0;i<n;i++) s+=d[s0+i]*d[s0+i]; return Math.sqrt(s/Math.max(1,n))||1e-4; }
-function gtrReady(){ const k=gtrSetOf(gtrSound); gtrAmpLoad();
-  if(GTR_BUFS[k]){ GTR_BUF=GTR_BUFS[k]; return true; }
+function gtrReady(kk){ const k=kk||gtrSetOf(gtrSound); if(!kk) gtrAmpLoad();   /* kk: a set loaded beside the one played - Metal's palm mutes (patches/guitar-metal-gtx.py) */
+  if(GTR_BUFS[k]){ if(!kk) GTR_BUF=GTR_BUFS[k]; return true; }
   if(ctx&&!GTR_DEC[k]){
     GTR_DEC[k]=gtrFetch(k).then(({map,stac,list})=>Promise.all(list.map(([f,ab])=>new Promise((res,rej)=>ctx.decodeAudioData(ab.slice(0),b=>res([f,b]),rej))))
       .then(bs=>{ const bufs={}; for(const [f,b] of bs){ const off=gtrOnset(b); bufs[f]={buf:b,off,lvl:gtrLevel(b,off)}; }
         GTR_BUFS[k]={map,stac,bufs,turn:{},med:GTR_MEDIUM_SETS.has(k)}; if(k===gtrSetOf(gtrSound)) GTR_BUF=GTR_BUFS[k]; }))
       .catch(()=>{ GTR_DEC[k]=null; });
   }
-  return !!GTR_BUF;   // the set it had plays on while the chosen one loads
+  return kk?!!GTR_BUFS[kk]:!!GTR_BUF;   // the set it had plays on while the chosen one loads
 }
 /* the recording for a note: its zone (or the nearest), the layer its strength falls in, the next take of that layer */
 function gtrTake(midi,vel,stac,B){   // stac: from the set's staccato plucks; B: the set (the one playing)
@@ -13131,25 +13144,25 @@ function gtrChordLevel(st,lp){ const R=GTR_RECENT; R.push({st,lp,cut:false}); R.
   if(b-a<2) return; const now=ctx?ctx.currentTime:0;
   for(let j=a;j<=b;j++){ const x=R[j]; if(x.cut) continue; x.cut=true; x.lp.gain.setValueAtTime(GTR_CHORD_GAIN,Math.max(x.st,now)); } }
 /* THE METAL AMP (David, 2 Oct 2026: "doubled, brutal gain, medium, huge ... let's go with that for now for the metal sound";
-   _lab/metal-listen/; patches/guitar-metal-amp.py): an amp sound is FreePats' Fender recorded dry (guitar/fp-direct/) - each
-   note two takes as the channels of one stereo note - through one amp (a Tube Screamer as a boost, two gain stages, a tone
+   _lab/metal-listen/; patches/guitar-metal-amp.py): an amp sound is METAL-GTX (guitar/mgtx/: sustain, palm mutes down and
+   up; patches/guitar-metal-gtx.py) - each file's two channels two performances, the left and the right guitar - through one amp (a Tube Screamer as a boost, two gain stages, a tone
    stack, the low resonance, a gate), then a 4x12 cabinet per side, hard left and right */
-const GTR_AMPS={"mt-v30":{ir:["v30-sm57-c","v30-sm57-b"]},"mt-rd":{ir:["v30-rdj-blend","v30-dv77-blend"]},"mt-mar":{ir:["greenback-a","v30-sm57-a"]}};
+const GTR_AMPS={v30:{l:"V30",ir:["v30-sm57-c","v30-sm57-b"]},rd:{l:"Rockdriver",ir:["v30-rdj-blend","v30-dv77-blend"]},mar:{l:"Marshall",ir:["greenback-a","v30-sm57-a"]}};
 const GTR_AMP_K=[34,7], GTR_AMP_TRIM=0.075;   // Brutal; the output level-matched to Distorted 2 (measured)
 const GTR_IR_GAIN={"v30-sm57-a":1,"v30-sm57-b":1,"v30-sm57-c":1,"v30-rdj-blend":0.68,"v30-dv77-blend":0.86,"greenback-a":2.34};   // each cabinet levelled, so the two sides sit even (measured)
-function gtrSetOf(k){ return GTR_AMPS[k]?"fp-direct":k; }   // the samples an amp sound plays
-function gtrAmpOn(){ return !!GTR_AMPS[gtrSound]; }
+function gtrSetOf(k){ return k==="metal"?"mgtx/sus":k; }   // the samples an amp sound plays
+function gtrAmpOn(){ return gtrSound==="metal"; }
 const GTR_IR={}, GTR_IR_DEC={};
-function gtrAmpLoad(){ if(!ctx||!gtrAmpOn()) return;
-  for(const n of GTR_AMPS[gtrSound].ir){ if(GTR_IR_DEC[n]&&GTR_IR_DEC[n].ctx===ctx) continue; const ac=ctx; GTR_IR_DEC[n]={ctx:ac};
+function gtrAmpLoad(){ if(!ctx||!gtrAmpOn()) return; gtrReady("mgtx/pmd"); gtrReady("mgtx/pmu");
+  for(const n of GTR_AMPS[gtrCab].ir){ if(GTR_IR_DEC[n]&&GTR_IR_DEC[n].ctx===ctx) continue; const ac=ctx; GTR_IR_DEC[n]={ctx:ac};
     fetch(gtrURL(n+".wav","ir")).then(r=>{ if(!r.ok) throw new Error(n+": "+r.status); return r.arrayBuffer(); })
       .then(ab=>new Promise((res,rej)=>ac.decodeAudioData(ab,res,rej))).then(b=>{ GTR_IR[n]={ctx:ac,buf:b}; if(GTR_AMP&&GTR_AMP.ctx===ac) gtrAmpCab(); })
       .catch(()=>{ GTR_IR_DEC[n]=null; }); } }
-function gtrAmpReady(){ return !gtrAmpOn()||GTR_AMPS[gtrSound].ir.every(n=>GTR_IR[n]&&GTR_IR[n].ctx===ctx); }
+function gtrAmpReady(){ return !gtrAmpOn()||(GTR_AMPS[gtrCab].ir.every(n=>GTR_IR[n]&&GTR_IR[n].ctx===ctx)&&!!GTR_BUFS["mgtx/pmd"]&&!!GTR_BUFS["mgtx/pmu"]); }
 let GTR_AMP=null;
 function gtrAmpCurve(K){ const n=4096, c=new Float32Array(n), nm=Math.tanh(K*1.3); for(let i=0;i<n;i++){ const v=i*2/(n-1)-1; c[i]=Math.tanh(K*v+0.3*K*v*v)/nm; } return c; }
 function gtrAmp(){   // once per audio context; the cabinets follow the sound
-  if(GTR_AMP&&GTR_AMP.ctx===ctx){ if(GTR_AMP.k!==gtrSound) gtrAmpCab(); return GTR_AMP; }
+  if(GTR_AMP&&GTR_AMP.ctx===ctx){ if(GTR_AMP.k!==gtrCab) gtrAmpCab(); return GTR_AMP; }
   const biq=(type,f,q,g)=>{ const b=ctx.createBiquadFilter(); b.type=type; b.frequency.value=f; if(q!=null) b.Q.value=q; if(g!=null) b.gain.value=g; return b; };
   const gn=v=>{ const g=ctx.createGain(); g.gain.value=v; return g; }, ws=K=>{ const w=ctx.createWaveShaper(); w.curve=gtrAmpCurve(K); w.oversample="4x"; return w; };
   const inp=gn(1), gate=gn(1), sp=ctx.createChannelSplitter(2), mg=ctx.createChannelMerger(2), out=gn(GTR_AMP_TRIM);
@@ -13160,18 +13173,21 @@ function gtrAmp(){   // once per audio context; the cabinets follow the sound
   const hp=biq("highpass",80,0.7), lp=biq("lowpass",9000,0.707); mg.connect(hp); hp.connect(lp); lp.connect(out); out.connect(gtrFxIn());
   GTR_AMP={ctx,inp,gate,sp,mg,cL:null,cR:null,k:null}; gtrAmpCab(); return GTR_AMP; }
 function gtrAmpCab(){ const A=GTR_AMP; if(!A||A.ctx!==ctx||!gtrAmpOn()) return;   // a cabinet per side, hard left and right
-  const I=GTR_AMPS[gtrSound].ir, a=GTR_IR[I[0]], b=GTR_IR[I[1]]; if(!(a&&a.ctx===ctx&&b&&b.ctx===ctx)) return;
+  const I=GTR_AMPS[gtrCab].ir, a=GTR_IR[I[0]], b=GTR_IR[I[1]]; if(!(a&&a.ctx===ctx&&b&&b.ctx===ctx)) return;
   for(const c of [A.cL,A.cR,A.gL,A.gR]) if(c){ try{ c.disconnect(); }catch(e){} }
   try{ A.sp.disconnect(); }catch(e){}
   A.cL=ctx.createConvolver(); A.cL.buffer=a.buf; A.cR=ctx.createConvolver(); A.cR.buffer=b.buf;
   A.gL=ctx.createGain(); A.gL.gain.value=GTR_IR_GAIN[I[0]]||1; A.gR=ctx.createGain(); A.gR.gain.value=GTR_IR_GAIN[I[1]]||1;
-  A.sp.connect(A.cL,0); A.sp.connect(A.cR,1); A.cL.connect(A.gL); A.cR.connect(A.gR); A.gL.connect(A.mg,0,0); A.gR.connect(A.mg,0,1); A.k=gtrSound; }
+  A.sp.connect(A.cL,0); A.sp.connect(A.cR,1); A.cL.connect(A.gL); A.cR.connect(A.gR); A.gL.connect(A.mg,0,0); A.gR.connect(A.mg,0,1); A.k=gtrCab; }
+function gtrAmpPm(pm,t){ if(!pm||!gtrAmpOn()||GTR_BUF!==GTR_BUFS["mgtx/sus"]) return undefined;   /* a chug plays METAL-GTX's palm mute, down and up in turn by stroke */
+  if(Math.abs(t-(GTR.pmT==null?-9:GTR.pmT))>0.02){ GTR.pmUp=!GTR.pmUp; GTR.pmT=t; }
+  return GTR_BUFS[GTR.pmUp?"mgtx/pmu":"mgtx/pmd"]||GTR_BUFS["mgtx/pmd"]||undefined; }
 function gtrAmpGate(t,L){ const A=GTR_AMP; if(!A||A.ctx!==ctx) return; const G=A.gate.gain;   // a ringing note opens the gate; a chug shuts it after L
   G.cancelScheduledValues(t-0.002); G.setValueAtTime(1,t-0.002); if(L!=null){ G.setValueAtTime(1,t+L); G.linearRampToValueAtTime(0,t+L+0.018); } }
 function gtrNote(s,fret,t,vel,pm){
   if(!ctx||!GTR_BUF) return;
   const midi=GTR_OPEN[s]+fret;
-  const T=gtrTake(midi,vel), e=T.e;   // MF: the zone, the layer, the next take (28 Sep 2026)
+  const T=gtrTake(midi,vel,false,gtrAmpPm(pm,t)), e=T.e;   // MF: the zone, the layer, the next take (28 Sep 2026)
   const pk=GTR_PK*(gtrVol/100)*(0.25+0.75*vel)*(GTR_RMS/e.lvl); if(!(pk>0)) return;   // each take levelled, then the curve; a chord's notes go under on lp (gtrChordLevel)
   const st=Math.max(t,ctx.currentTime);
   gtrChoke(s,st,0.012,true);                              // a string sounds one note at a time (a re-pluck, not a damping)
@@ -13179,14 +13195,9 @@ function gtrNote(s,fret,t,vel,pm){
   const lp=ctx.createGain();   // MF's layers carry the tone of a soft or a strong pluck: no darkening filter (28 Sep 2026)
   const env=ctx.createGain(); env.gain.setValueAtTime(pk,st);
   const g=ctx.createGain(); g.gain.value=1;               // `live`'s gain, as the bass keeps it apart from its envelope
-  if(gtrAmpOn()&&GTR_BUF===GTR_BUFS["fp-direct"]){   /* an amp sound: two takes, one stereo note, into the amp (patches/guitar-metal-amp.py) */
-    const A=gtrAmp(), T2=gtrTake(midi,vel), e2=T2.e, src2=ctx.createBufferSource(), g2=ctx.createGain(), mg=ctx.createChannelMerger(2);
-    src2.buffer=e2.buf; src2.playbackRate.value=Math.pow(2,(midi-T2.c)/12+(3+Math.random()*3)/1200); g2.gain.value=e.lvl/e2.lvl;
-    src.connect(mg,0,0); src2.connect(g2); g2.connect(mg,0,1); let x=mg;
-    if(pm){ const f=ctx.createBiquadFilter(); f.type="lowpass"; f.frequency.value=750; f.Q.value=0.6; mg.connect(f); x=f; env.gain.setTargetAtTime(pk*0.02,st+0.025,0.05); }   /* a real palm mute: dulled and damped into the amp */
-    else gtrAmpGate(st);
-    x.connect(lp); lp.connect(env); env.connect(g); g.connect(A.inp);
-    const d2=0.009+Math.random()*0.006; src2.start(st+d2,e2.off); src2.stop(st+d2+(e2.buf.duration-e2.off)/src2.playbackRate.value+0.05); }
+  if(gtrAmpOn()&&GTR_BUF===GTR_BUFS["mgtx/sus"]){   /* a Metal sound: METAL-GTX's two channels, the left and the right guitar, into the amp (patches/guitar-metal-gtx.py) */
+    const A=gtrAmp(); if(!pm) gtrAmpGate(st);   // a ringing note opens the gate; a chug shuts it (shortly)
+    src.connect(lp); lp.connect(env); env.connect(g); g.connect(A.inp); }
   else { src.connect(lp); lp.connect(env); env.connect(g); g.connect(gtrFxIn()); }   /* through the pedalboard to the voice bus (patches/guitar-fx.py) */
   gtrChordLevel(st,lp);
   const len=(e.buf.duration-e.off)/src.playbackRate.value;
@@ -13323,12 +13334,12 @@ function gtrPulse(p2,rel,m,sec,at,free){
   if(gtrListen&&gtrLive&&!GTR_LIVE_IN){ const R=bandPickAt("gtr",sec&&sec.name,Math.floor(rel/m.bp+1e-9),m);   /* LISTEN: a figure picked up, short chords on its rhythm (patches/band-listen.py) */
     if(R){ const key="bd_"+R; if(!GTR_FIG[key]){ GTR_FIG[key]=R.replace(/x/g,"J"); GTR_CHUCK.add(key); }
       GTR_LIVE_IN=true; try{ wtAsStyle("gtr",{y:"strum",p:key},()=>gtrPulse(p2,rel,m,sec,at,true)); } finally{ GTR_LIVE_IN=false; } return; } }
-  if(gtrLive&&!GTR_LIVE_IN&&gtrStyle!=="pan"){ const L=gtrLiveAt(rel,m);   /* LIVE: a related groove for a bar or a few, then home */
+  if(gtrVisit&&!GTR_LIVE_IN&&gtrStyle!=="pan"){ const L=gtrLiveAt(rel,m);   /* LIVE: a related groove for a bar or a few, then home */
     if(L){ GTR_LIVE_IN=true; try{ wtAsStyle("gtr",L,()=>gtrPulse(p2,rel,m,sec,at,true)); } finally{ GTR_LIVE_IN=false; } return; } }
   if(gtrStyle==="pan"){   /* Live with Handpan (patches/live-handpan.py) */
     if(gtrLive&&gtrReady()){ const w=folPickup("gtr",p2,rel,m,sec,at,({open:48,mid:60,high:72})[gtrReg]||52,83,(n,t,len,v)=>{ const q=gtrPlaceNote(n,GTR.fpos!=null?GTR.fpos:5); if(q){ gtrNote(q[0],q[1],t,v); gtrChoke(q[0],t+len,0.015); } });
       if(w){ GTR.puFrom=w.from; GTR.puTo=w.to; } }
-    if(!(gtrLive&&GTR.puTo&&at>=GTR.puFrom-1e-4&&at<GTR.puTo-1e-4)) gtrFollow(p2,at,gtrLive?folVar("gtr",rel,m):null);
+    if(!(gtrLive&&GTR.puTo&&at>=GTR.puFrom-1e-4&&at<GTR.puTo-1e-4)) gtrFollow(p2,at,gtrVisit?folVar("gtr",rel,m):null);
     return; }   // the handpan's notes instead of the chords (29 Sep 2026)
   /* the patterns read feelTicks - this pulse's steps, in the table's feel (30 Sep 2026); Block, Chord change and the
      rolled arpeggios keep to the table's groups */
@@ -13381,7 +13392,7 @@ function gtrPulse(p2,rel,m,sec,at,free){
       const cn=tihaiChordAt(e0,m,s.rel)||name, sh=shapes[cn]||(shapes[cn]=gtrPuShape(pk0,cn)); if(!sh) return;
       sh.s.forEach((x,i)=>gtrNote(x,sh.f[x],t+i*0.007+Math.random()*0.002,v*(1-0.03*i))); }); }
   { const pk=gtrPuKind(p2,m);
-    const ld=gtrLead!=="off"?gtrLead:gtrLive?"auto":"off";   /* Live leads in by itself, notes or strums by draw (patches/guitar-live.py) */
+    const ld=!gtrLive?"off":gtrLead==="both"?"auto":gtrLead;   /* Freedom 1+: every pattern, as the row says (patches/freedom-five-levels.py) */   /* Live leads in by itself, notes or strums by draw (patches/guitar-live.py) */
     if(pk&&ld!=="off"&&onCount&&!TH){ const P=phraseAt(m,rel).n*m.bp, N=(Math.floor(rel/P)+1)*P, x16=m.sub*(piece.unit||4)/16, ahead=N-rel, idx=Math.round(N/P);
       const seed=N+7919*PLAYPASS, prob=idx%4===0?0.8:idx%2===0?0.5:0.2;   // into the bar after a fourth, a second, a first or third
       const BR=bandPuRel(N,"gtr"), lead=BR&&BR!=="rhythm"?"notes":ld==="auto"?(gtrPuHash(seed+57)<0.5?"notes":"strums"):ld;   // a shared line is notes (patches/band-listen-lines.py)
@@ -13422,6 +13433,25 @@ function gtrPulse(p2,rel,m,sec,at,free){
           if(FIG.part&&GTR.puTo) GTR.puFrom=at+(ahead-FIG.pos[FIG.part[0]]*x16)*pd;   // a part of the band's passage (patches/jam-passages.py)   // the arrival rings through the first beat (patches/jam-rhythms.py)
           tAt=at; } } } }
   if(TH&&GTR.puTo&&at>=GTR.puFrom-1e-4&&at<GTR.puTo-1e-4) return;   /* the tihai sounds: every pattern rests (patches/jam-tihai.py) */
+  /* SMALL TOUCHES (patches/chord-change-touches.py): from Freedom's step 2, a Chord change pattern's figure in this bar - about
+     one bar in four, more on a phrase's 2nd and 4th unit (the bass's small touches' rate); never on the bar's first count,
+     where the chord changes, or under a pickup phrase */
+  if(gtrVisit&&!GTR_LIVE_IN){ const ck=gtrStyle==="change"?"pick":gtrStyle==="arp1"?"arp":gtrStyle==="strum"?GTR_CHG_KIND[gtrStrumNow(p2,m,rel)]:null;
+    const bi=Math.floor(rel/m.bp+1e-9), place=bi*m.bp+1, pos=Math.floor(bi/phraseAt(m,bi*m.bp).n)%4;
+    if(ck&&passDraw("gtrtouch",place,0)<(pos===1||pos===3?0.35:0.15)){ const FG=GTR_TOUCH[ck], fig=FG[Math.floor(passDraw("gtrtouch",place,1)*FG.length)];
+      for(const tk of ticks){ const B=tk.nb||1, mid=Math.floor(B/2), P={M:[mid,0],L:[B-1,0],"M+":[mid,2],"L+":[B-1,2],"P+":[mid-1,2]};
+        const hit=fig.find(([w])=>P[w][0]===tk.beat&&P[w][1]===tk.s); if(!hit||(tk.beat===0&&tk.s===0)||(fresh&&tk.dt<1e-6)) continue;
+        tAt=at+tk.dt; if(GTR.puTo&&tAt>=GTR.puFrom-1e-4&&tAt<GTR.puTo-1e-4) continue;
+        const a=hit[1], lean=tk.lean;
+        if(a==="D") down(0.62*lean);
+        else if(a==="U") up(0.5*lean);
+        else if(a==="P"){ const L=S.slice(0,gtrIsMetal()?2:Math.min(4,S.length)), t0=hum(); L.forEach((x,k)=>gtrNote(x,F[x],t0+k*0.006,gtrAmpOn()?0.85:0.55*lean,true)); L.forEach(x=>gtrChoke(x,t0+0.12,0.008)); if(gtrAmpOn()) gtrAmpGate(t0,0.8*s16); }
+        else if(a==="C"){ const H=gtrHighShape(GTR.chord,null,gtrReg)||{s:S.slice(-3),f:F}, t0=hum(); H.s.forEach((x,j)=>gtrNote(x,H.f[x],t0+j*0.007,0.62*lean)); H.s.forEach(x=>gtrChoke(x,t0+0.12,0.02)); }
+        else if(a==="J"){ const t0=hum(); S.forEach((x,j)=>gtrNote(x,F[x],t0+j*0.006,0.5*lean)); S.forEach(x=>gtrChoke(x,t0+0.2,0.03)); }
+        else if(a==="B"){ const t0=hum(); S.forEach(x=>gtrNote(x,F[x],t0+Math.random()*0.005,0.6*lean)); }
+        else if(a==="T") pluck(S[0],0.62*lean);
+        else if(a==="A") rollOf(S.slice(-3).slice(0,Math.max(1,arpFit(p2,rb,m,sec,s16,pd))),0.55*lean,s16); }   // a roll that fits before the next count, as the pattern's own
+      tAt=at; } }
   const st=gtrStyle;
   if(st==="block"){
     if(onCount&&(lean0>0.9||fresh)){ const t0=hum(); S.forEach(s=>gtrNote(s,F[s],t0+Math.random()*0.005,0.8*lean0)); }
@@ -13724,12 +13754,12 @@ function pnoPulse(p2,rel,m,sec,at,free){
   if(pnoListen&&pnoLive&&!PNO_LIVE_IN){ const R=bandPickAt("pno",sec&&sec.name,Math.floor(rel/m.bp+1e-9),m);   /* LISTEN: a figure picked up (patches/band-listen.py) */
     if(R){ const key="bd_"+R; if(!PNO_JZ[key]) PNO_JZ[key]=R;
       PNO_LIVE_IN=true; try{ wtAsStyle("pno",{y:key},()=>pnoPulse(p2,rel,m,sec,at,true)); } finally{ PNO_LIVE_IN=false; } return; } }
-  if(pnoLive&&!PNO_LIVE_IN&&pnoStyle!=="pan"){ const L=pnoLiveAt(rel,m);   /* LIVE: a related pattern for a bar, then home (patches/piano-live.py) */
+  if(pnoVisit&&!PNO_LIVE_IN&&pnoStyle!=="pan"){ const L=pnoLiveAt(rel,m);   /* LIVE: a related pattern for a bar, then home (patches/piano-live.py) */
     if(L){ PNO_LIVE_IN=true; try{ wtAsStyle("pno",{y:L},()=>pnoPulse(p2,rel,m,sec,at,true)); } finally{ PNO_LIVE_IN=false; } return; } }
   if(pnoStyle==="pan"){   /* Live with Handpan (patches/live-handpan.py) */
     if(pnoLive&&pnoReady()){ const w=folPickup("pno",p2,rel,m,sec,at,(PNO_WIN[pnoReg]||PNO_WIN.above)[0],96,(n,t,len,v)=>{ PNO.pu=true; try{ pnoNote(n,t,v,len); } finally{ PNO.pu=false; } });
       if(w){ PNO.puFrom=w.from; PNO.puTo=w.to; } }
-    if(!(pnoLive&&PNO.puTo&&at>=PNO.puFrom-1e-4&&at<PNO.puTo-1e-4)) pnoFollow(p2,at,pnoLive?folVar("pno",rel,m):null);
+    if(!(pnoLive&&PNO.puTo&&at>=PNO.puFrom-1e-4&&at<PNO.puTo-1e-4)) pnoFollow(p2,at,pnoVisit?folVar("pno",rel,m):null);
     return; }   // the handpan's notes instead of the chords (29 Sep 2026)
   /* the rhythmic styles read feelTicks - this pulse's steps in the table's feel (30 Sep 2026, patches/feel-piano-synth.py);
      Held, Rolled, Pad and the rolled arpeggios keep to the counts and the groups */
@@ -13766,7 +13796,7 @@ function pnoPulse(p2,rel,m,sec,at,free){
         (vc&&vc.length?vc:ch).forEach(x=>pnoNote(x,t+Math.random()*0.006,v,len)); }); }
     finally{ PNO.pu=false; } }
   { const pk=pnoPuKind();
-    const ld=pnoLead!=="off"?pnoLead:pnoLive?"auto":"off";   /* Live leads in by itself, notes or the style's option by draw (patches/piano-live.py) */
+    const ld=!pnoLive?"off":pnoLead==="both"?"auto":pnoLead;   /* Freedom 1+ (patches/freedom-five-levels.py) */   /* Live leads in by itself, notes or the style's option by draw (patches/piano-live.py) */
     if(pk&&ld!=="off"&&onCount&&!TH){ const P=PH.n*m.bp, N=(Math.floor(rel/P)+1)*P, x16=m.sub*(piece.unit||4)/16, ahead=N-rel, idx=Math.round(N/P);
       const BR=bandPuRel(N,"pno"), CALL=bandPrevCall(N,P,sec.pulses||(sec.bars||[]).length*m.bp), ANS=!!CALL;   /* the guitar called a phrase ago: the piano answers (patches/band-listen-lines.py) */
       const prob=idx%4===0?0.8:idx%2===0?0.5:0.2, lead=ANS||(BR&&BR!=="rhythm")?"notes":ld==="auto"?(passDraw("pno",N,57)<0.5?"notes":"strums"):ld, JM=pnoLive&&pnoJam, FIGS=(lead==="notes"?(pk==="jazz"?GTR_PU_JAZZ:GTR_PU_NOTES):(pk==="jazz"?GTR_PU_PUSH:GTR_PU_STRUMS)).concat(JM?jamFigs(idx%4===0):[]);   // Jam: the jam's rhythms too (patches/jam-rhythms.py)
@@ -16044,8 +16074,8 @@ function bassStyled(style,sp,m,ent,bi){
    line, the next one left out; Walking's Skip: a ghost of the note it is on. Never beat one, never a written bar; Follow kick
    and the anticipating tumbaos lead in by themselves; a push never crosses a table's edge; a place off the grid is never
    drawn. Pure draws on the pass rule; bassBarPlan stays the home plan (the editor's lane), bassBarPlay is what sounds. */
-var bassLead=(()=>{ let v=null; try{ v=localStorage.getItem("hps.basslead"); }catch(e){} return ["off","notes","push"].includes(v)?v:"off"; })();
-function bassPuOn(){ return bassLead==="notes"||bassLead==="push"||bassLive===true; }   /* Live too (patches/bass-live.py) */   // read before its line has run, bassLead is undefined: off
+var bassLead=(()=>{ let v=null; try{ v=localStorage.getItem("hps.basslead"); }catch(e){} return ["notes","push","both"].includes(v)?v:"both"; })();   /* A | B | Both (patches/freedom-five-levels.py) */
+function bassPuOn(){ return bassLive===true; }   /* Freedom 1+ (patches/freedom-five-levels.py) */   /* Live too (patches/bass-live.py) */   // read before its line has run, bassLead is undefined: off
 const BASS_PU_NONE=new Set(["kick","tumbao","332t","tumbaox2","332tx2"]);
 /* figures, in the pattern's sixteenths before the one; drawn evenly, so weighted by repetition (the research: one note is
    the common approach, a longer fill marks a phrase's end) */
@@ -16121,6 +16151,7 @@ function bassPuAt(nm,bi,ent,m){
 var bassLive=(()=>{ try{ return localStorage.getItem("hps.basslive")==="1"; }catch(e){ return false; } })();
 var bassJam=(()=>{ try{ return localStorage.getItem("hps.bassjam")==="1"; }catch(e){ return false; } })();   // Live's Jam: Listen, busier (patches/jam-rhythms.py)
 var bassListen=(()=>{ try{ return localStorage.getItem("hps.basslisten")==="1"; }catch(e){ return false; } })();
+var bassVisit=(()=>{ try{ const v=localStorage.getItem("hps.bassvisit"); return v==null?localStorage.getItem("hps.basslive")==="1":v==="1"; }catch(e){ return false; } })();   /* Freedom 2+ (patches/freedom-five-levels.py) */
 const BASS_LIVE_FAM=[["root","beats","push3","r5","oct"],["arp","walk"],["tumbao","332t","332"],["tumbaox2","332x2","332tx2"]];
 const BASS_LIVE_SMALL={root:["pass","pop","ghost","space"],r5:["pass","pop","ghost","space"],oct:["pass","pop","ghost","space"],
   arp:["ghost","pass"],walk:["ghost","pass"],"332":["ghost","space","pop"],"332x2":["ghost","space","pop"],
@@ -16173,7 +16204,7 @@ function bassListenFig(nm,bi,m,pl){   // the rhythm another plays in this bar, i
 }
 function bassBarVaried(nm,bi,ent,m){   // the bar as Live plays it, before the pickup
   const sec=piece.sections[nm], base=bassBarPlan(nm,bi,ent);
-  if(bassLive!==true||!sec||!base.length||bassWrittenBar(sec,bi)) return base;
+  if(bassVisit!==true||!sec||!base.length||bassWrittenBar(sec,bi)) return base;
   const style=bassStyleFor(sec,bi), n=phraseAt(m,bi*m.bp).n, pos=Math.floor(bi/n)%4, place=bi*m.bp+1;
   const vis=bassLiveVisit(bi,m,style);
   if(vis){ let v=bassBarPlan(nm,bi,ent,vis); const one=base.find(o=>o.t===0), tail=base.find(o=>o.t>0&&(o.ring||0)>o.len+1e-6);
@@ -16265,14 +16296,17 @@ function bassStyleMenuInner(){
     +'<button class="bwseg'+(BASSOV?" on":"")+'" data-bov="1">On</button></span></div>'
     +'<div class="note">'+(BASSOV?"This style plays every bar for now — the piece is unchanged.":"This piece has its own bass in the editor.")+'</div>';
   { const none=BASS_PU_NONE.has(cur), wk=cur==="walk";   /* the Pickup (patches/bass-pickup.py) */
-    h+='<div class="ttl">Live</div><div class="pal bwsw gsty" id="bassLiveRow" style="grid-template-columns:repeat(4,1fr)">'   /* Live (patches/bass-live.py) */
-      +[["0","Off",""],["1","Live","Plays like a band bassist: small variations, a related pattern for a bar now and then, and its own lead-ins"],
-        ["2","Listen","Live, listening to the band: now and then the drums\u2019 kick or another\u2019s rhythm, and leads in with the band"],
-        ["3","Jam","Listen, busier: another\u2019s rhythm more often, the jam\u2019s rhythms in its lead-ins, and leads in with guitar and piano whenever they lead in together"]]   /* Jam (patches/jam-rhythms.py) */
-        .map(([k,l,t])=>'<button class="bwseg'+(k===(bassLive?(bassListen?(bassJam?"3":"2"):"1"):"0")?" on":"")+'" data-bbl="'+k+'"'+(t?' title="'+t+'"':"")+'>'+l+'</button>').join("")+'</div>';
-    h+='<div class="ttl">Pickup</div><div class="pal bwsw gsty" id="bassPuRow">'
-      +[["off","Off",""],["notes","Approach","Notes into the next chord, before a phrase\u2019s first count"],
-        ["push",wk?"Skip":"Push",wk?"A ghost note on the & of 4, into the next bar":"The next chord\u2019s note early, ringing over the bar line"]]
+    h+='<div class="ttl">Live</div><div class="pal bwsw gsty" id="bassLiveRow" style="grid-template-columns:repeat(5,1fr)">'   /* Freedom's five steps (patches/freedom-five-levels.py) */
+      +FREEDOM_STEPS.map(([k,l,t])=>'<button class="bwseg'+(+k===(bassJam?4:bassListen?3:bassVisit?2:bassLive?1:0)?" on":"")+'" data-bbl="'+k+'" title="'+t+'">'+l+'</button>').join("")+'</div>'; }
+  return h;
+}
+/* THE BASS'S PICKUP PHRASES, under the Freedom slider (patches/freedom-five-levels.py): built on their own, so the slider's
+   neighbour survives the style box's redraws */
+function bassPuRowHTML(){ const cur=bassPieceStyle(), none=BASS_PU_NONE.has(cur), wk=cur==="walk"; let h="";
+  {
+    h+='<div class="ttl">Pickup phrases</div><div class="pal bwsw gsty" id="bassPuRow">'
+      +[["notes","Approach","Notes into the next chord, before a phrase\u2019s first count"],
+        ["push",wk?"Skip":"Push",wk?"A ghost note on the & of 4, into the next bar":"The next chord\u2019s note early, ringing over the bar line"],["both","Both","Approach or "+(wk?"Skip":"Push")+", drawn each time"]]
         .map(([k,l,t])=>'<button class="bwseg'+(k===bassLead?" on":"")+'" data-bpu="'+k+'"'+(none?" disabled":"")+(t?' title="'+t+'"':"")+'>'+l+'</button>').join("")+'</div>'
       +(none?'<div class="note">'+(cur==="kick"?"Follow kick plays the drums\u2019 notes \u2014 no pickup.":"The tumbao leads into each bar by itself \u2014 no pickup.")+'</div>':""); }
   return h;
@@ -16285,13 +16319,14 @@ function bassRedraw(){
   BASSPLAN=null; render(); if(editing) renderEditbar();
   if(window.paintBass) paintBass();   // the tooltip names the style
   const box=document.getElementById("bassStyleBox"); if(box) box.innerHTML=bassStyleMenuInner();
+  const pb=document.getElementById("bassPuBox"); if(pb){ pb.innerHTML=bassPuRowHTML(); pb.hidden=!puShown("bass"); }   /* (patches/freedom-five-levels.py) */
 }
 document.addEventListener("click",e=>{
   const t=e.target&&e.target.closest; if(!t) return;
   const s=e.target.closest("#bassPop [data-bms]"), o=e.target.closest("#bassPop [data-bov]");
   const gg=e.target.closest("#bassPop [data-bgg]");
   const pu=e.target.closest("#bassPop [data-bpu]"), bl=e.target.closest("#bassPop [data-bbl]");
-  if(bl){ bassLive=bl.dataset.bbl!=="0"; bassListen=bl.dataset.bbl>="2"; bassJam=bl.dataset.bbl==="3"; try{ localStorage.setItem("hps.bassjam",bassJam?"1":"0"); }catch(x){}   // Live (patches/bass-live.py)
+  if(bl){ const L=+bl.dataset.bbl; bassLive=L>=1; bassVisit=L>=2; bassListen=L>=3; bassJam=L===4; try{ localStorage.setItem("hps.bassjam",bassJam?"1":"0"); localStorage.setItem("hps.bassvisit",bassVisit?"1":"0"); }catch(x){}   // Live (patches/bass-live.py)
     try{ localStorage.setItem("hps.basslive",bassLive?"1":"0"); localStorage.setItem("hps.basslisten",bassListen?"1":"0"); }catch(x){} bassRedraw(); return; }   // the Pickup (patches/bass-pickup.py)
   if(pu&&!pu.disabled){ bassLead=pu.dataset.bpu; try{ localStorage.setItem("hps.basslead",bassLead); }catch(x){} bassRedraw(); return; }
   if(gg&&!gg.disabled){ BASSGRP=gg.dataset.bgg;   // a group opens its patterns and chooses nothing (30 Sep 2026)
@@ -17253,9 +17288,10 @@ let gtrStrum=(()=>{ let s=null; try{ s=localStorage.getItem("hps.gtrstrum");
     if(localStorage.getItem("hps.gtrstyle")==="delay"){ s="delay"; localStorage.setItem("hps.gtrstyle","strum"); localStorage.setItem("hps.gtrstrum","delay"); }   // Delay was a style until 30 Sep 2026
   }catch(e){} if(s==="pop") s="pop2"; return GTR_STRUMS.some(x=>x[0]===s)?s:"straight"; })();   // Strummed's pattern (29 Sep 2026)   /* the eighth Pop chuck is gone: Pop chuck (patches/guitar-categories.py) */
 let gtrLive=(()=>{ try{ return localStorage.getItem("hps.gtrlive")==="1"; }catch(e){ return false; } })();   /* Live (patches/guitar-live.py) */
+let gtrVisit=(()=>{ try{ const v=localStorage.getItem("hps.gtrvisit"); return v==null?localStorage.getItem("hps.gtrlive")==="1":v==="1"; }catch(e){ return false; } })();   /* Freedom 2+: the visits; a missing one is the old Live (patches/freedom-five-levels.py) */
 let gtrListen=(()=>{ try{ return localStorage.getItem("hps.gtrlisten")==="1"; }catch(e){ return false; } })();   /* Live's Listen: the band plays together (patches/band-listen.py) */
 let gtrJam=(()=>{ try{ return localStorage.getItem("hps.gtrjam")==="1"; }catch(e){ return false; } })();   /* Live's Jam: Listen, busier (patches/band-jam.py) */
-let gtrLead=(()=>{ let v=null; try{ v=localStorage.getItem("hps.gtrlead"); }catch(e){} return ["off","notes","strums"].includes(v)?v:"off"; })();   /* the pickup into a chord change (patches/guitar-pickup.py) */
+let gtrLead=(()=>{ let v=null; try{ v=localStorage.getItem("hps.gtrlead"); }catch(e){} return ["notes","strums","both"].includes(v)?v:"both"; })();   /* A | B | Both; a saved Off is Both (patches/freedom-five-levels.py) */   /* the pickup into a chord change (patches/guitar-pickup.py) */
 let gtrDeg=(()=>{ let v=3; try{ v=+(localStorage.getItem("hps.gtrdeg")||3); }catch(e){} return v>=1&&v<=7?Math.round(v):3; })();   /* Single note's degree (patches/guitar-single-note-chucks.py) */
 let gtrReg=(()=>{ try{ const v=localStorage.getItem("hps.gtrreg"); return v==="open"||v==="mid"||v==="high"?v:"auto"; }catch(e){ return "auto"; } })();   // Auto | Open | Mid-neck | High; Auto (the old Normal) the default, a stored Normal takes it (30 Sep 2026)   // the guitar's register (29 Sep 2026)
 let gtrPick=(()=>{ let s=null; try{ s=localStorage.getItem("hps.gtrpick"); }catch(e){} return GTR_PICKS.some(x=>x[0]===s)?s:"travis"; })();   // Picking's pattern (28 Sep 2026)
@@ -17268,6 +17304,7 @@ let pnoOn=false;
 let pnoStyle=(()=>{ let s=null; try{ s=localStorage.getItem("hps.pnostyle"); }catch(e){} return PNO_STYLES.some(x=>x[0]===s)?s:"ballad"; })();
 let pnoWide=(()=>{ try{ return localStorage.getItem("hps.pnowide")==="1"; }catch(e){ return false; } })();   // the piano's voicing: Close | Wide (29 Sep 2026)
 let pnoLive=(()=>{ try{ return localStorage.getItem("hps.pnolive")==="1"; }catch(e){ return false; } })();   /* Live (patches/piano-live.py) */
+let pnoVisit=(()=>{ try{ const v=localStorage.getItem("hps.pnovisit"); return v==null?localStorage.getItem("hps.pnolive")==="1":v==="1"; }catch(e){ return false; } })();   /* Freedom 2+ (patches/freedom-five-levels.py) */
 let pnoListen=(()=>{ try{ return localStorage.getItem("hps.pnolisten")==="1"; }catch(e){ return false; } })();   /* Live's Listen (patches/band-listen.py) */
 let pnoJam=(()=>{ try{ return localStorage.getItem("hps.pnojam")==="1"; }catch(e){ return false; } })();   /* Live's Jam (patches/band-jam.py) */
 /* LIVE FOR THE PIANO (David, 2 Oct 2026: "piano also should get a live option"; patches/piano-live.py): as the guitar's - home
@@ -17281,7 +17318,7 @@ function pnoLiveAt(rel,m){ const R=PNO_LIVE_REL[pnoStyle]; if(!R||!R.length) ret
   const U=phraseAt(m,rel).n*m.bp, u=Math.floor(rel/U+1e-9), blk=Math.floor(u/4), r=passDraw("pnolive",blk,3), pos=u%4;
   const span=r<0.05?[2,3]:r<0.35?[3]:null; if(!span||!span.includes(pos)) return null;
   return R[Math.floor(passDraw("pnolive",blk,11)*R.length)]; }
-let pnoLead=(()=>{ let v=null; try{ v=localStorage.getItem("hps.pnolead"); }catch(e){} return ["off","notes","strums"].includes(v)?v:"off"; })();   /* the piano's Pickup (patches/piano-pickup.py) */
+let pnoLead=(()=>{ let v=null; try{ v=localStorage.getItem("hps.pnolead"); }catch(e){} return ["notes","strums","both"].includes(v)?v:"both"; })();   /* A | B | Both (patches/freedom-five-levels.py) */   /* the piano's Pickup (patches/piano-pickup.py) */
 /* the kind of pickup a piano style plays, and its options' names (patches/piano-pickup.py) */
 const PNO_PU_LABELS={sus:["Notes","Roll"],rhy:["Notes","Stabs"],arp:["Notes","Roll"],jazz:["Approach","Push"]};
 function pnoPuKind(){ if(pnoStyle==="pan") return null; if(PNO_JZ[pnoStyle]||pnoStyle==="jcomp") return "jazz"; return ({sus:"sus",rhy:"rhy",arp:"arp"})[pnoGroupOf(pnoStyle)]||null; }
@@ -20682,18 +20719,37 @@ const CARD_PAGES=[["play","Play"],["sound","Sound"]];   /* Sound and Mix one pag
    (Steady - Free) over the card's own Live buttons, which stay in the card, hidden - presets, saving and the staff are
    untouched; the guitar's Tuning moves to Sound, shown while it plays Metal; the chosen variation kept in view */
 const FREEDOM_KEY={gtr:"gv",pno:"pv",bass:"bbl",pan:"hlv"};   // the handpan's too (David, 2 Oct 2026; patches/pan-freedom.py)
-const FREEDOM_SAYS=["As written","Small touches","Answers the band","Jams with the band"];
+const FREEDOM_SAYS=["As written","Pickup phrases","Small touches","Answers the band","Jams with the band"];   /* five steps (patches/freedom-five-levels.py) */
+const FREEDOM_SAYS_PAN=["As written","Small touches","Answers the band","Jams with the band"];   // the handpan has no pickup phrases
+const FREEDOM_STEPS=[["0","Off","As written: nothing added"],["1","Phrases","Pickup phrases into chord changes, nothing else"],
+  ["2","Live","Pickup phrases, and short visits to related patterns and small variations"],
+  ["3","Listen","Live, listening to the band: picks up the others' figures, and leads in together"],
+  ["4","Jam","Listening, busier: the band picks up and plays together more often"]];
+/* PICKUP PHRASES ARE SHOWN when they can play: from Freedom's step 1, on a pattern that has them - the Handpan pattern
+   leads in with the pan's own notes (patches/freedom-five-levels.py) */
+function puShown(k){ try{ return k==="gtr"?gtrLive&&gtrStyle!=="pan":k==="pno"?pnoLive&&!!pnoPuKind():k==="bass"?bassLive===true:false; }catch(e){ return false; } }
 function cardPlay(pop,k){
   const play=pop.querySelector(':scope>.cpage[data-cpage="play"]'), sound=pop.querySelector(':scope>.cpage[data-cpage="sound"]'); if(!play) return;
   const a=FREEDOM_KEY[k]; if(a){ const d=document.createElement("div"); d.className="frdm"; d.dataset.fra=a;
     d.innerHTML='<div class="ttl"><span>Freedom</span><em>how far a variation goes</em></div><input type="range" min="0" max="3" step="1" value="0" aria-label="Freedom"><div class="frlr"><span>Steady</span><b class="frval"></b><span>Free</span></div>';
-    play.appendChild(d); }
+    play.appendChild(d);
+    d.querySelector("input").max=String(Math.max(0,pop.querySelectorAll('.cpage [data-'+a+']').length-1));   // five steps, the handpan's four
+    const lb=play.querySelector("#gtrLeadBox,#pnoLeadBox"); if(lb) d.after(lb);   // Pickup phrases under the slider (patches/freedom-five-levels.py)
+    if(k==="bass"){ const b=document.createElement("div"); b.id="bassPuBox"; b.innerHTML=bassPuRowHTML(); b.hidden=!puShown("bass"); d.after(b); } }
   if(k==="gtr"&&sound){ const dd=play.querySelector("[data-gdd]"), row=dd&&dd.parentElement, t=row&&row.previousElementSibling, reg=sound.querySelector("[data-gr]");
-    if(row&&t&&t.classList.contains("ttl")&&reg){ const w=document.createElement("div"); w.className="gtune"; w.append(t,row); reg.parentElement.after(w); } } }
+    if(row&&t&&t.classList.contains("ttl")&&reg){ const w=document.createElement("div"); w.className="gtune"; w.append(t,row); reg.parentElement.after(w); } }
+  if(k==="gtr"&&sound&&typeof GTR_AMPS!=="undefined"){ const c=document.createElement("div"); c.className="gcab";   /* Metal's cabinet, above Tuning (patches/guitar-sounds-four.py) */
+    c.innerHTML='<div class="ttl">Cabinet</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(3,1fr)">'+Object.keys(GTR_AMPS).map(q=>'<button class="bwseg'+(q===gtrCab?' on':'')+'" data-gcab="'+q+'">'+GTR_AMPS[q].l+'</button>').join("")+'</div>';
+    const tu=sound.querySelector(".gtune"), rg=sound.querySelector("[data-gr]"); if(tu) tu.before(c); else if(rg) rg.parentElement.after(c); else sound.prepend(c); } }
+document.addEventListener("click",ev=>{ const b=ev.target.closest&&ev.target.closest(".pop [data-gcab]"); if(!b) return;   // Metal's cabinet
+  gtrCab=b.dataset.gcab; try{ localStorage.setItem("hps.gtrcab",gtrCab); }catch(e){} gtrAmpLoad(); gtrAmpCab();
+  b.parentElement.querySelectorAll("[data-gcab]").forEach(x=>x.classList.toggle("on",x===b)); });
 function cardPlaySync(pop){ cardPreviewPaint();
   pop.querySelectorAll(".frdm").forEach(f=>{ const a=f.dataset.fra, on=pop.querySelector('.cpage [data-'+a+'].on'), v=on?+on.getAttribute("data-"+a):0;
-    f.querySelector("input").value=v; f.querySelector(".frval").textContent=FREEDOM_SAYS[v]||"";
-    f.querySelector("input").disabled=!!pop.querySelector('.cpage [data-'+a+']:disabled'); });   // greyed with its buttons - the handpan's outside the jam (patches/pan-freedom.py)
+    f.querySelector("input").value=v; f.querySelector(".frval").textContent=(a==="hlv"?FREEDOM_SAYS_PAN:FREEDOM_SAYS)[v]||"";
+    f.querySelector("input").disabled=!!pop.querySelector('.cpage [data-'+a+']:disabled'); });
+  [["gtr","#gtrLeadBox"],["pno","#pnoLeadBox"],["bass","#bassPuBox"]].forEach(([k,s])=>{ const b=pop.querySelector(s); if(b) b.hidden=!puShown(k); });   // (patches/freedom-five-levels.py)   // greyed with its buttons - the handpan's outside the jam (patches/pan-freedom.py)
+  const gc=pop.querySelector(".gcab"); if(gc) gc.hidden=gtrSound!=="metal";   /* Metal's cabinet (patches/guitar-sounds-four.py) */
   const tu=pop.querySelector(".gtune"); if(tu) tu.hidden=!(typeof gtrIsMetal==="function"&&gtrIsMetal());
   if(tu){ const r=pop.querySelector('.cpage[data-cpage="sound"] [data-gr]'), row=r&&r.parentElement, t=row&&row.previousElementSibling;   /* Metal always low (patches/guitar-metal-low.py) */
     if(row){ row.style.display=tu.hidden?"":"none"; if(t&&t.classList.contains("ttl")) t.style.display=row.style.display; } }
@@ -20783,65 +20839,65 @@ function cardPageOf(el){
    but not compared (a category only shows its patterns); the mix is never touched */
 const CARD_PRESETS={
   gtr:[["Gentle",[
-      ["Folk strum","Nylon · Folk","~gc=strum gi=strum:1 gsnd=mf gr=open gv=1 gl=off",{}],
-      ["Ballad picking","Nylon · Rolling","~gc=pick gi=pick:1 gsnd=mf gr=auto gv=0 gl=off",{}],
-      ["Travis picking","Hollow 2 · Travis","~gc=pick gi=pick:0 gsnd=green gr=mid gv=1 gl=off",{}]]],
+      ["Folk strum","Nylon · Folk","~gc=strum gi=strum:1 gsnd=mf gr=open gv=2 gl=both",{}],
+      ["Ballad picking","Nylon · Rolling","~gc=pick gi=pick:1 gsnd=mf gr=auto gv=0 gl=both",{}],
+      ["Travis picking","Hollow · Travis","~gc=pick gi=pick:0 gsnd=black gr=mid gv=2 gl=both",{}]]],
     ["Groove",[
-      ["Pop strum","Clean 2 · Pop chuck · Chorus","~gc=strum gi=strum:3 gsnd=fp-clean gr=mid gv=1 gl=off",{chorus:"light"}],
-      ["Funk chank","Clean · Chank · Wah","~gc=funk gi=funk:1 gsnd=clean gr=high gv=1 gl=off",{wah:"beat"}],
-      ["Reggae","Clean 2 · Reggae · Delay","~gc=strum gi=strum:10 gsnd=fp-clean gr=high gv=1 gl=off",{delay:"eighth"}]]],
+      ["Pop strum","Clean · Pop chuck · Chorus","~gc=strum gi=strum:3 gsnd=clean gr=mid gv=2 gl=both",{chorus:"light"}],
+      ["Funk chank","Clean · Chank · Wah","~gc=funk gi=funk:1 gsnd=clean gr=high gv=2 gl=both",{wah:"beat"}],
+      ["Reggae","Clean · Reggae · Delay","~gc=strum gi=strum:10 gsnd=clean gr=high gv=2 gl=both",{delay:"eighth"}]]],
     ["Jazz & Latin",[
-      ["Jazz comping","Hollow 1 · Free comping","~gc=jazz gi=jazz:19 gsnd=black gr=mid gv=2 gl=off",{}],
-      ["Bossa nova","Nylon · Bossa","~gc=pick gi=pick:4 gsnd=mf gr=auto gv=1 gl=off",{}],
-      ["Samba","Nylon · Partido alto","~gc=pick gi=pick:5 gsnd=mf gr=auto gv=1 gl=off",{}]]],
+      ["Jazz comping","Hollow · Free comping","~gc=jazz gi=jazz:19 gsnd=black gr=mid gv=3 gl=both",{}],
+      ["Bossa nova","Nylon · Bossa","~gc=pick gi=pick:4 gsnd=mf gr=auto gv=2 gl=both",{}],
+      ["Samba","Nylon · Partido alto","~gc=pick gi=pick:5 gsnd=mf gr=auto gv=2 gl=both",{}]]],
     ["Rock & ambient",[
-      ["Rock rhythm","Distorted 1 · Chug","~gc=rock gi=rock:0 gsnd=fp-dist1 gr=auto gv=1 gl=off",{}],
-      ["Metal","Metal V30 · Thrash · tuned low","~gc=metal gi=metal:0 gdd=auto gsnd=mt-v30 gr=auto gv=1 gl=off",{}],
-      ["Ambient shimmer","Clean · Rising · Long delay","~gc=arp gi=arp:2 gsnd=clean gr=high gv=1 gl=off",{chorus:"deep",delay:"amb"}]]],
+      ["Rock rhythm","Clean · Chug · Drive","~gc=rock gi=rock:0 gsnd=clean gr=auto gv=2 gl=both",{drive:"dist"}],
+      ["Metal","Metal · V30 · Thrash · tuned low","~gc=metal gi=metal:0 gdd=auto gsnd=metal gcab=v30 gr=auto gv=2 gl=both",{}],
+      ["Ambient shimmer","Clean · Rising · Long delay","~gc=arp gi=arp:2 gsnd=clean gr=high gv=2 gl=both",{chorus:"deep",delay:"amb"}]]],
     ["Acoustic & country",[
-      ["Classical","Nylon · p i m a","~gc=pick gi=pick:3 gsnd=mf gr=auto gv=0 gl=off",{}],
-      ["Country train","Clean 2 · Chuck train · Slapback","~gc=strum gi=strum:9 gsnd=fp-clean gr=mid gv=1 gl=off",{delay:"slap"}],
-      ["Handpan double","Nylon · the pan's notes","~gc=pick gi=pick:7 gsnd=mf gr=auto gv=0 gl=off",{}]]]],
+      ["Classical","Nylon · p i m a","~gc=pick gi=pick:3 gsnd=mf gr=auto gv=0 gl=both",{}],
+      ["Country train","Clean · Chuck train · Slapback","~gc=strum gi=strum:9 gsnd=clean gr=mid gv=2 gl=both",{delay:"slap"}],
+      ["Handpan double","Nylon · the pan's notes","~gc=pick gi=pick:7 gsnd=mf gr=auto gv=0 gl=both",{}]]]],
   pno:[["Gentle",[
-      ["Ballad","Sustained · above the pan","~pg=sus ps=ballad pr=above pw=0 pj=0 pv=1 pl=off",{}],
-      ["Flowing arpeggio","Above the pan","~pg=arp ps=flow pr=above pw=0 pj=0 pv=1 pl=off",{}],
-      ["Broken chord","Around the pan","~pg=arp ps=alberti pr=around pw=0 pj=0 pv=1 pl=off",{}]]],
+      ["Ballad","Sustained · above the pan","~pg=sus ps=ballad pr=above pw=0 pj=0 pv=2 pl=both",{}],
+      ["Flowing arpeggio","Above the pan","~pg=arp ps=flow pr=above pw=0 pj=0 pv=2 pl=both",{}],
+      ["Broken chord","Around the pan","~pg=arp ps=alberti pr=around pw=0 pj=0 pv=2 pl=both",{}]]],
     ["Groove",[
-      ["Pop pulse","Eighths · around the pan","~pg=rhy ps=pop8 pr=around pw=0 pj=0 pv=1 pl=off",{}],
-      ["Reggae off-beat","Above the pan","~pg=rhy ps=off pr=above pw=0 pj=0 pv=1 pl=off",{}],
-      ["Montuno","Latin · around the pan","~pg=rhy ps=montuno pr=around pw=0 pj=0 pv=1 pl=off",{}]]],
+      ["Pop pulse","Eighths · around the pan","~pg=rhy ps=pop8 pr=around pw=0 pj=0 pv=2 pl=both",{}],
+      ["Reggae off-beat","Above the pan","~pg=rhy ps=off pr=above pw=0 pj=0 pv=2 pl=both",{}],
+      ["Montuno","Latin · around the pan","~pg=rhy ps=montuno pr=around pw=0 pj=0 pv=2 pl=both",{}]]],
     ["Jazz",[
-      ["Jazz comping","Free · jazz colour · wide","~pg=rhy ps=jcomp pr=around pw=1 pj=1 pv=2 pl=off",{}],
-      ["Charleston swing","Jazz colour · wide","~pg=rhy ps=jcharl pr=around pw=1 pj=1 pv=1 pl=off",{}],
-      ["Stride","Jazz colour","~pg=rhy ps=stride pr=around pw=0 pj=1 pv=1 pl=off",{}]]],
+      ["Jazz comping","Free · jazz colour · wide","~pg=rhy ps=jcomp pr=around pw=1 pj=1 pv=3 pl=both",{}],
+      ["Charleston swing","Jazz colour · wide","~pg=rhy ps=jcharl pr=around pw=1 pj=1 pv=2 pl=both",{}],
+      ["Stride","Jazz colour","~pg=rhy ps=stride pr=around pw=0 pj=1 pv=2 pl=both",{}]]],
     ["Colour",[
-      ["Lo-fi","Chorus · tremolo","~pg=rhy ps=synco pr=around pw=1 pj=1 pv=1 pl=off",{chorus:"light",trem:"slow"}],
-      ["Ambient","Pad · long delay","~pg=sus ps=pad pr=above pw=1 pj=0 pv=0 pl=off",{chorus:"deep",delay:"amb"}],
-      ["Handpan double","The pan's notes","ps=pan pr=above pw=0 pj=0 pv=0 pl=off",{}]]],
+      ["Lo-fi","Chorus · tremolo","~pg=rhy ps=synco pr=around pw=1 pj=1 pv=2 pl=both",{chorus:"light",trem:"slow"}],
+      ["Ambient","Pad · long delay","~pg=sus ps=pad pr=above pw=1 pj=0 pv=0 pl=both",{chorus:"deep",delay:"amb"}],
+      ["Handpan double","The pan's notes","ps=pan pr=above pw=0 pj=0 pv=0 pl=both",{}]]],
     ["Sparse",[
-      ["Held chords","Around the pan","~pg=sus ps=held pr=around pw=0 pj=0 pv=0 pl=off",{}],
-      ["Rolled chords","Wide · around the pan","~pg=sus ps=rolled pr=around pw=1 pj=0 pv=1 pl=off",{}],
-      ["Sparse flow","Flow, fewer notes · above","~pg=arp ps=flowsp pr=above pw=0 pj=0 pv=1 pl=off",{}]]]],
+      ["Held chords","Around the pan","~pg=sus ps=held pr=around pw=0 pj=0 pv=0 pl=both",{}],
+      ["Rolled chords","Wide · around the pan","~pg=sus ps=rolled pr=around pw=1 pj=0 pv=2 pl=both",{}],
+      ["Sparse flow","Flow, fewer notes · above","~pg=arp ps=flowsp pr=above pw=0 pj=0 pv=2 pl=both",{}]]]],
   bass:[["Simple",[
-      ["Root","Electric · root","~bgg=basic bms=root bsnd=ebass bbl=1 bpu=off",{}],
-      ["Root and fifth","Electric · root–5th","~bgg=basic bms=r5 bsnd=ebass bbl=1 bpu=off",{}],
-      ["Ballad arpeggio","Double bass · arpeggio","~bgg=basic bms=arp bsnd=dbass bbl=0 bpu=off",{}]]],
+      ["Root","Electric · root","~bgg=basic bms=root bsnd=ebass bbl=2 bpu=both",{}],
+      ["Root and fifth","Electric · root–5th","~bgg=basic bms=r5 bsnd=ebass bbl=2 bpu=both",{}],
+      ["Ballad arpeggio","Double bass · arpeggio","~bgg=basic bms=arp bsnd=dbass bbl=0 bpu=both",{}]]],
     ["Groove",[
-      ["Rock on the beats","Electric · beats · Crunch","~bgg=basic bms=beats bsnd=ebass bbl=1 bpu=off",{drive:"crunch"}],
-      ["Disco octaves","Electric · octaves","~bgg=basic bms=oct bsnd=ebass bbl=1 bpu=off",{}],
-      ["Follow the kick","Electric · with the kick","~bgg=basic bms=kick bsnd=ebass bbl=1 bpu=off",{}]]],
+      ["Rock on the beats","Electric · beats · Crunch","~bgg=basic bms=beats bsnd=ebass bbl=2 bpu=both",{drive:"crunch"}],
+      ["Disco octaves","Electric · octaves","~bgg=basic bms=oct bsnd=ebass bbl=2 bpu=both",{}],
+      ["Follow the kick","Electric · with the kick","~bgg=basic bms=kick bsnd=ebass bbl=2 bpu=both",{}]]],
     ["Jazz & Latin",[
-      ["Walking jazz","Double bass · walking","~bgg=basic bms=walk bsnd=dbass bbl=2 bpu=notes",{}],
-      ["Bossa push","Double bass · push to 3","~bgg=basic bms=push3 bsnd=dbass bbl=1 bpu=off",{}],
-      ["Salsa tumbao","Electric · tumbao","~bgg=latin bms=tumbao bsnd=ebass bbl=1 bpu=off",{}]]],
+      ["Walking jazz","Double bass · walking","~bgg=basic bms=walk bsnd=dbass bbl=3 bpu=notes",{}],
+      ["Bossa push","Double bass · push to 3","~bgg=basic bms=push3 bsnd=dbass bbl=2 bpu=both",{}],
+      ["Salsa tumbao","Electric · tumbao","~bgg=latin bms=tumbao bsnd=ebass bbl=2 bpu=both",{}]]],
     ["Synth",[
-      ["3-3-2","Synth · 3-3-2","~bgg=latin bms=332 bsnd=synth bbl=1 bpu=off",{}],
-      ["Deep root","Synth · root, steady","~bgg=basic bms=root bsnd=synth bbl=0 bpu=off",{}],
-      ["Electro pulse","Electro · octaves","~bgg=basic bms=oct bsnd=electro bbl=1 bpu=off",{}]]],
+      ["3-3-2","Synth · 3-3-2","~bgg=latin bms=332 bsnd=synth bbl=2 bpu=both",{}],
+      ["Deep root","Synth · root, steady","~bgg=basic bms=root bsnd=synth bbl=0 bpu=both",{}],
+      ["Electro pulse","Electro · octaves","~bgg=basic bms=oct bsnd=electro bbl=2 bpu=both",{}]]],
     ["Double time",[
-      ["Driving tumbao","Electric · tumbao, double time","~bgg=dbl bms=tumbaox2 bsnd=ebass bbl=1 bpu=off",{}],
-      ["Driving 3-3-2","Synth · 3-3-2, double time","~bgg=dbl bms=332x2 bsnd=synth bbl=1 bpu=off",{}],
-      ["Afro-Cuban drive","Electric · 3-3-2 tumbao, double","~bgg=dbl bms=332tx2 bsnd=ebass bbl=1 bpu=off",{}]]]],
+      ["Driving tumbao","Electric · tumbao, double time","~bgg=dbl bms=tumbaox2 bsnd=ebass bbl=2 bpu=both",{}],
+      ["Driving 3-3-2","Synth · 3-3-2, double time","~bgg=dbl bms=332x2 bsnd=synth bbl=2 bpu=both",{}],
+      ["Afro-Cuban drive","Electric · 3-3-2 tumbao, double","~bgg=dbl bms=332tx2 bsnd=ebass bbl=2 bpu=both",{}]]]],
   syn:[["Pads",[
       ["Warm pad","Warm analog · held","sy=held ss=warm sr=around sv=close",{}],
       ["Strings swell","Strings · swell","sy=swell ss=strings sr=around sv=open",{}],
@@ -27909,8 +27965,8 @@ function staffSig(phone){ const b=staffBassOpts(phone), st=staffStaves(phone)||[
   return st.map(s=>s.key).join(",")+"|"+(b.bass?1:0)+(b.bassOnly?1:0)+"|"+staffStyleSig(); }
 /* WHAT THE STAVES PLAY (David, 2 Oct 2026: "a notation row changes the moment a new pattern is selected"; patches/staff-follows-style.py):
    every instrument's style settings, so a change of any redraws the staff */
-function staffStyleSig(){ try{ return [gtrStyle,gtrStrum,gtrPick,gtrDeg,gtrReg,gtrTune,gtrLead,gtrLive,pnoStyle,pnoWide,pnoReg,pnoJazz,pnoLead,pnoLive,pnoListen,gtrListen,pnoJam,gtrJam,synStyle,synReg,synVc,synSnd,
-    bassPieceStyle(),bassSound,bassLow,bassLead,bassLive,bassListen,bassJam,panLv,rhyPick].join("/"); }catch(e){ return ""; } }
+function staffStyleSig(){ try{ return [gtrStyle,gtrStrum,gtrPick,gtrDeg,gtrReg,gtrTune,gtrLead,gtrLive,gtrVisit,pnoStyle,pnoWide,pnoReg,pnoJazz,pnoLead,pnoLive,pnoVisit,pnoListen,gtrListen,pnoJam,gtrJam,synStyle,synReg,synVc,synSnd,
+    bassPieceStyle(),bassSound,bassLow,bassLead,bassLive,bassVisit,bassListen,bassJam,panLv,rhyPick].join("/"); }catch(e){ return ""; } }
 /* a click inside a menu - a pattern, a register, a degree - checks the staff too, once the menu has acted (patches/staff-follows-style.py) */
 document.addEventListener("click",e=>{ if(e.target.closest&&e.target.closest(".pop")) setTimeout(()=>{ try{ staffVoicesSync(); }catch(x){} },0); });
 /* every instrument button's paint calls this: redraw when the staves drawn would change (renderStaff records them) */
@@ -47567,10 +47623,10 @@ function boot(){
         +GTR_CATS.map(([c])=>'<div data-gcb="'+c+'"'+(c===cat0?'':' hidden')+'><div class="ttl">Variation</div><div class="pal bwsw gsty">'
           +GTR_ITEMS[c].map((it,i)=>'<button class="bwseg'+(cur&&cur.c===c&&cur.i===i?' on':'')+'" data-gi="'+c+':'+i+'"'
             +(it[2]==="third"?' data-gt="third" title="Right-click (or hold) to choose the degree"':'')+'>'+(it[2]==="third"?gtrSnLabel():it[0])+'</button>').join("")+'</div>'+(c==="metal"?gtrTuneRow():"")+'</div>').join("")
-        +'<div id="gtrLiveBox"'+'><div class="ttl">Live</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(4,1fr)">'   /* Live, on any pattern (patches/guitar-live.py) */
-          +[["0","Off"],["1","Live"],["2","Listen"],["3","Jam"]].map(([k,l])=>'<button class="bwseg'+(k===(gtrLive?(gtrListen?(gtrJam?"3":"2"):"1"):"0")?' on':'')+'" data-gv="'+k+'" title="'+(k==="3"?"Listening, busier: the band picks up and plays together more often":k==="2"?"Live, listening to the band: picks up the others' figures, and leads in together":"Plays like a band musician: visits related grooves for a bar or a few, and leads into chord changes")+'">'+l+'</button>').join("")+'</div></div>'
-        +'<div id="gtrLeadBox"'+(gtrLeadable()?'':' hidden')+'><div class="ttl">Pickup</div><div class="pal bwsw gsty">'   /* with a Chord change (patches/guitar-pickup.py) */
-          +[["off","Off"],["notes",(GTR_PU_LABELS[cat0]||GTR_PU_LABELS.strum)[0]],["strums",(GTR_PU_LABELS[cat0]||GTR_PU_LABELS.strum)[1]]].map(([k,l])=>'<button class="bwseg'+(k===gtrLead?' on':'')+'" data-gl="'+k+'">'+l+'</button>').join("")+'</div></div>'
+        +'<div id="gtrLiveBox"'+'><div class="ttl">Live</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(5,1fr)">'   /* Freedom's five steps (patches/freedom-five-levels.py) */
+          +FREEDOM_STEPS.map(([k,l,t])=>'<button class="bwseg'+(+k===(gtrJam?4:gtrListen?3:gtrVisit?2:gtrLive?1:0)?' on':'')+'" data-gv="'+k+'" title="'+t+'">'+l+'</button>').join("")+'</div></div>'
+        +'<div id="gtrLeadBox"'+(puShown("gtr")?'':' hidden')+'><div class="ttl">Pickup phrases</div><div class="pal bwsw gsty">'   /* with a Chord change (patches/guitar-pickup.py) */
+          +[["notes",(GTR_PU_LABELS[cat0]||GTR_PU_LABELS.strum)[0]],["strums",(GTR_PU_LABELS[cat0]||GTR_PU_LABELS.strum)[1]],["both","Both"]].map(([k,l])=>'<button class="bwseg'+(k===gtrLead?' on':'')+'" data-gl="'+k+'">'+l+'</button>').join("")+'</div></div>'
         +'<div class="ttl">Register</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(4,1fr)">'   // the guitar's register (29 Sep 2026): Auto | Open | Mid-neck | High (30 Sep 2026)
         +[["auto","Auto"],["open","Open"],["mid","Mid-neck"],["high","High"]].map(([k,l])=>'<button class="bwseg'+(k===gtrReg?' on':'')+'" data-gr="'+k+'">'+l+'</button>').join("")+'</div>'
         +volRow("gtr",gtrVol,"Guitar volume")+mixRows("gtr")+fxBoxHTML("gtr");   // the menus' one order (30 Sep 2026); the pedalboard (patches/guitar-fx.py)
@@ -47600,7 +47656,7 @@ function boot(){
           try{ localStorage.setItem("hps.gtrstyle",gtrStyle); localStorage.setItem("hps.gtrstrum",gtrStrum); localStorage.setItem("hps.gtrpick",gtrPick); }catch(e){}
           pop.querySelectorAll("[data-gi]").forEach(x=>x.classList.toggle("on",x.dataset.gi===c+":"+i)); openCat(c); paintGtr();
           { const vb=pop.querySelector("#gtrLiveBox"); if(vb) vb.hidden=false; }   // Live with every pattern, Handpan too (patches/live-handpan.py)   // Live: every pattern but Handpan
-          { const lb=pop.querySelector("#gtrLeadBox"); if(lb){ lb.hidden=!gtrLeadable(); const Lb=GTR_PU_LABELS[c]||GTR_PU_LABELS.strum;   // the options named for the style (patches/guitar-pickup-musical.py)
+          { const lb=pop.querySelector("#gtrLeadBox"); if(lb){ lb.hidden=!puShown("gtr"); const Lb=GTR_PU_LABELS[c]||GTR_PU_LABELS.strum;   // the options named for the style (patches/guitar-pickup-musical.py)
               const bn=lb.querySelector('[data-gl="notes"]'), bs=lb.querySelector('[data-gl="strums"]'); if(bn) bn.textContent=Lb[0]; if(bs) bs.textContent=Lb[1]; } } };
         const gd=ev.target.closest("[data-gd]");
         if(gd){ gtrDeg=+gd.dataset.gd; try{ localStorage.setItem("hps.gtrdeg",String(gtrDeg)); }catch(e){}
@@ -47618,7 +47674,7 @@ function boot(){
         if(gr){ gtrReg=gr.dataset.gr; GTR.chord=null; try{ localStorage.setItem("hps.gtrreg",gtrReg); }catch(e){}   // the next count voices it anew
           pop.querySelectorAll("[data-gr]").forEach(x=>x.classList.toggle("on",x.dataset.gr===gtrReg)); return; }
         const gv=ev.target.closest("[data-gv]");
-        if(gv){ gtrLive=gv.dataset.gv!=="0"; gtrListen=gv.dataset.gv>="2"; gtrJam=gv.dataset.gv==="3"; try{ localStorage.setItem("hps.gtrlive",gtrLive?"1":"0"); localStorage.setItem("hps.gtrlisten",gtrListen?"1":"0"); localStorage.setItem("hps.gtrjam",gtrJam?"1":"0"); }catch(e){}
+        if(gv){ const L=+gv.dataset.gv; gtrLive=L>=1; gtrVisit=L>=2; gtrListen=L>=3; gtrJam=L===4; try{ localStorage.setItem("hps.gtrvisit",gtrVisit?"1":"0"); localStorage.setItem("hps.gtrlive",gtrLive?"1":"0"); localStorage.setItem("hps.gtrlisten",gtrListen?"1":"0"); localStorage.setItem("hps.gtrjam",gtrJam?"1":"0"); }catch(e){}
           pop.querySelectorAll("[data-gv]").forEach(x=>x.classList.toggle("on",x.dataset.gv===gv.dataset.gv)); return; }
         const gl=ev.target.closest("[data-gl]");
         if(gl){ gtrLead=gl.dataset.gl; try{ localStorage.setItem("hps.gtrlead",gtrLead); }catch(e){}
@@ -47676,9 +47732,9 @@ function boot(){
         +'<div class="ttl">Colour</div><div class="pal bwsw gsty two">'   // Plain | Jazz (David, 2 Oct 2026; patches/piano-jazz.py)
         +[["0","Plain"],["1","Jazz"]].map(([k,l])=>'<button class="bwseg'+((k==="1")===pnoJazz?' on':'')+'" data-pj="'+k+'" title="Jazz: the 7th and 9th from the key, even over a plain triad">'+l+'</button>').join("")+'</div>'
         +'<div id="pnoLiveBox"'+'><div class="ttl">Live</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(4,1fr)">'   /* Live (patches/piano-live.py) */
-          +[["0","Off"],["1","Live"],["2","Listen"],["3","Jam"]].map(([k,l])=>'<button class="bwseg'+(k===(pnoLive?(pnoListen?(pnoJam?"3":"2"):"1"):"0")?' on':'')+'" data-pv="'+k+'" title="'+(k==="3"?"Listening, busier: the band picks up and plays together more often":k==="2"?"Live, listening to the band: picks up the others' figures, and leads in together":"Plays like a band musician: visits related patterns for a bar, and leads into chord changes")+'">'+l+'</button>').join("")+'</div></div>'
-        +'<div id="pnoLeadBox"'+(pnoPuKind()?'':' hidden')+'><div class="ttl">Pickup</div><div class="pal bwsw gsty">'   /* the piano's Pickup (patches/piano-pickup.py) */
-          +[["off","Off"],["notes",(PNO_PU_LABELS[pnoPuKind()]||PNO_PU_LABELS.sus)[0]],["strums",(PNO_PU_LABELS[pnoPuKind()]||PNO_PU_LABELS.sus)[1]]].map(([k,l])=>'<button class="bwseg'+(k===pnoLead?' on':'')+'" data-pl="'+k+'">'+l+'</button>').join("")+'</div></div>'
+          +FREEDOM_STEPS.map(([k,l,t])=>'<button class="bwseg'+(+k===(pnoJam?4:pnoListen?3:pnoVisit?2:pnoLive?1:0)?' on':'')+'" data-pv="'+k+'" title="'+t+'">'+l+'</button>').join("")+'</div></div>'
+        +'<div id="pnoLeadBox"'+(puShown("pno")?'':' hidden')+'><div class="ttl">Pickup phrases</div><div class="pal bwsw gsty">'   /* the piano's Pickup (patches/piano-pickup.py) */
+          +[["notes",(PNO_PU_LABELS[pnoPuKind()]||PNO_PU_LABELS.sus)[0]],["strums",(PNO_PU_LABELS[pnoPuKind()]||PNO_PU_LABELS.sus)[1]],["both","Both"]].map(([k,l])=>'<button class="bwseg'+(k===pnoLead?' on':'')+'" data-pl="'+k+'">'+l+'</button>').join("")+'</div></div>'
         +volRow("pno",pnoVol,"Piano volume")+mixRows("pno")   // the menus' one order (30 Sep 2026)
         +fxBoxHTML("pno")+'<div class="note" id="pnoCredit">'+PNO_CREDIT[pnoSound]+'</div>';
       const apply=()=>{ pnoVol=Math.max(0,Math.min(150,+$("pnoVolR").value||0));
@@ -47698,7 +47754,7 @@ function boot(){
         if(jz){ pnoJazz=jz.dataset.pj==="1"; try{ localStorage.setItem("hps.pnojazz",pnoJazz?"1":"0"); }catch(e){}
           pop.querySelectorAll("[data-pj]").forEach(x=>x.classList.toggle("on",x.dataset.pj===(pnoJazz?"1":"0"))); PNO.chord=null; PNO.vc=null; return; }
         const pv=ev.target.closest("[data-pv]");
-        if(pv){ pnoLive=pv.dataset.pv!=="0"; pnoListen=pv.dataset.pv>="2"; pnoJam=pv.dataset.pv==="3"; try{ localStorage.setItem("hps.pnolive",pnoLive?"1":"0"); localStorage.setItem("hps.pnolisten",pnoListen?"1":"0"); localStorage.setItem("hps.pnojam",pnoJam?"1":"0"); }catch(e){}
+        if(pv){ const L=+pv.dataset.pv; pnoLive=L>=1; pnoVisit=L>=2; pnoListen=L>=3; pnoJam=L===4; try{ localStorage.setItem("hps.pnovisit",pnoVisit?"1":"0"); localStorage.setItem("hps.pnolive",pnoLive?"1":"0"); localStorage.setItem("hps.pnolisten",pnoListen?"1":"0"); localStorage.setItem("hps.pnojam",pnoJam?"1":"0"); }catch(e){}
           pop.querySelectorAll("[data-pv]").forEach(x=>x.classList.toggle("on",x.dataset.pv===pv.dataset.pv)); return; }
         const pl=ev.target.closest("[data-pl]");
         if(pl){ pnoLead=pl.dataset.pl; try{ localStorage.setItem("hps.pnolead",pnoLead); }catch(e){}
@@ -47711,7 +47767,7 @@ function boot(){
         if(s){ pnoStyle=s.dataset.ps; try{ localStorage.setItem("hps.pnostyle",pnoStyle); }catch(e){}
           pop.querySelectorAll("[data-pgb] [data-ps]").forEach(x=>x.classList.toggle("on",x.dataset.ps===pnoStyle)); openG(pnoGroupOf(pnoStyle)); PNO.chord=null; paintPno();
           { const vb=pop.querySelector("#pnoLiveBox"); if(vb) vb.hidden=false; }   // Live with every pattern, Handpan too (patches/live-handpan.py)
-          { const lb=pop.querySelector("#pnoLeadBox"), pk=pnoPuKind(); if(lb){ lb.hidden=!pk; const Lb=PNO_PU_LABELS[pk]||PNO_PU_LABELS.sus;   // the Pickup's options named for the style (patches/piano-pickup.py)
+          { const lb=pop.querySelector("#pnoLeadBox"), pk=pnoPuKind(); if(lb){ lb.hidden=!puShown("pno"); const Lb=PNO_PU_LABELS[pk]||PNO_PU_LABELS.sus;   // the Pickup's options named for the style (patches/piano-pickup.py)
               const bn=lb.querySelector('[data-pl="notes"]'), bs=lb.querySelector('[data-pl="strums"]'); if(bn) bn.textContent=Lb[0]; if(bs) bs.textContent=Lb[1]; } } }
         else if(r){ pnoReg=r.dataset.pr; try{ localStorage.setItem("hps.pnoreg",pnoReg); }catch(e){}
           pop.querySelectorAll("[data-pr]").forEach(x=>x.classList.toggle("on",x.dataset.pr===pnoReg)); PNO.chord=null; }
