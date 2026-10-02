@@ -1535,6 +1535,8 @@ body.phone:not(.tablet) .pop.card:has(>.dbar){top:calc(env(safe-area-inset-top,0
   box-sizing:border-box; border:1px solid var(--rule); border-radius:50%; background:var(--card); display:grid; place-items:center;
   padding-left:2px; font-size:8px; line-height:1; color:var(--ink2)}
 .pop .cpage :is([data-gcb]>.pal,[data-pgb]>.pal,[data-bgb]>.bsgrid,.pal:has(>[data-sy]))>.bwseg.vpv::before{content:"\25A0"; padding-left:0; font-size:9px; color:#fff; background:var(--dixie); border-color:var(--dixie)}
+.pop .cpage :is([data-gcb]>.pal,[data-pgb]>.pal,[data-bgb]>.bsgrid,.pal:has(>[data-sy]))>.bwseg.vwait::before{animation:vwait 1s ease-in-out infinite}
+@keyframes vwait{50%{opacity:.35}}   /* the preview waits for its samples (patches/card-preview-wait.py) */
 .pop .cpage [data-gc="strum"]::after{content:"down & up"}
 .pop .cpage [data-gc="funk"]::after{content:"sixteenths"}
 .pop .cpage [data-gc="rock"]::after{content:"power chords"}
@@ -13497,6 +13499,26 @@ function pnoStyleName(k){ const s=PNO_STYLES.find(x=>x[0]===k); return s?s[1]:"B
 function pnoURL(n){ const b=document.querySelector('script[src*="bank.js"]'); const src=b?b.getAttribute("src"):"bank.js";
   return src.replace(/bank\.js(\?.*)?$/,"piano/salamander/"+n+".mp3"); }
 let PNO_RAW=null, PNO_BUF=null, PNO_DEC=null;
+/* THE PIANO'S SOUND (David, 2 Oct 2026: "lets use the Rhodes, Wurlitzer and DX7 and integrate them as alternative piano
+   sounds into the app"; patches/piano-sounds.py): Grand (Salamander, as before) or an electric piano - a set in the guitar's
+   format (piano/<id>/map.json), read by gtrTake; the sound it had plays on while the chosen one loads */
+const PNO_SOUNDS=[["grand","Grand"],["rhodes","Rhodes"],["wurli","Wurlitzer"],["dx7","DX7"]];
+const PNO_CREDIT={grand:"Salamander Grand Piano by Alexander Holm, CC BY 3.0.",rhodes:"Rhodes: jRhodes GM by Jeff Learman, CC0.",
+  wurli:"Wurlitzer EP200 by Greg Sullivan, CC BY 3.0.",dx7:"DX7: FreePats FM Piano 1, CC0."};
+let pnoSound=(function(){ try{ const v=localStorage.getItem("hps.pnosound"); return PNO_SOUNDS.some(x=>x[0]===v)?v:"grand"; }catch(e){ return "grand"; } })();
+const PNO_EP_RAW={}, PNO_EP_DEC={}, PNO_EP={}; let PNO_PLAY=null;   // PNO_PLAY: "grand" or the electric piano's set being played
+function pnoEpURL(k,n){ const b=document.querySelector('script[src*="bank.js"]'); const src=b?b.getAttribute("src"):"bank.js";
+  return src.replace(/bank\.js(\?.*)?$/,"piano/"+k+"/"+n); }
+function pnoEpFetch(k){
+  if(!PNO_EP_RAW[k]){
+    PNO_EP_RAW[k]=fetch(pnoEpURL(k,"map.json")).then(r=>{ if(!r.ok) throw new Error("map.json: "+r.status); return r.json(); })
+      .then(map=>{ const files=[...new Set(map.flatMap(z=>z.layers.flatMap(l=>l[2])))];
+        return Promise.all(files.map(f=>fetch(pnoEpURL(k,f)).then(r=>{ if(!r.ok) throw new Error(f+": "+r.status); return r.arrayBuffer(); }).then(ab=>[f,ab])))
+          .then(list=>({map,list})); });
+    PNO_EP_RAW[k].catch(()=>{ PNO_EP_RAW[k]=null; });
+  }
+  return PNO_EP_RAW[k]; }
+function pnoLoad(){ return pnoSound==="grand"?pnoFetch():pnoEpFetch(pnoSound); }   // the chosen sound's files (the button waits for them)
 function pnoFetch(){
   if(!PNO_RAW){
     PNO_RAW=Promise.all(PNO_SMP.map(n=>fetch(pnoURL(n)).then(r=>{ if(!r.ok) throw new Error(n+".mp3: "+r.status); return r.arrayBuffer(); })
@@ -13508,20 +13530,32 @@ function pnoFetch(){
 function pnoLevel(b){ let pk=0; const n=Math.min(b.length,Math.floor(b.sampleRate*0.5));
   for(let c=0;c<b.numberOfChannels;c++){ const d=b.getChannelData(c); for(let i=0;i<n;i++) pk=Math.max(pk,Math.abs(d[i])); }
   if(pk>0){ const k=0.8/pk; for(let c=0;c<b.numberOfChannels;c++){ const d=b.getChannelData(c); for(let i=0;i<d.length;i++) d[i]*=k; } } }
-function pnoReady(){
-  if(PNO_BUF) return true;
-  if(ctx&&!PNO_DEC){
-    PNO_DEC=pnoFetch().then(list=>Promise.all(list.map(([n,ab])=>new Promise((res,rej)=>ctx.decodeAudioData(ab.slice(0),b=>res([n,b]),rej)))))
-      .then(bs=>{ PNO_BUF=bs.map(([n,b])=>{ pnoLevel(b); return {midi:gtrSmpMidi(n),buf:b,off:gtrOnset(b)}; }); })
-      .catch(()=>{ PNO_DEC=null; });
+function pnoReady(){ const k=pnoSound;
+  if(k==="grand"){
+    if(PNO_BUF){ PNO_PLAY="grand"; return true; }
+    if(ctx&&!PNO_DEC){
+      PNO_DEC=pnoFetch().then(list=>Promise.all(list.map(([n,ab])=>new Promise((res,rej)=>ctx.decodeAudioData(ab.slice(0),b=>res([n,b]),rej)))))
+        .then(bs=>{ PNO_BUF=bs.map(([n,b])=>{ pnoLevel(b); return {midi:gtrSmpMidi(n),buf:b,off:gtrOnset(b)}; }); if(pnoSound==="grand") PNO_PLAY="grand"; })
+        .catch(()=>{ PNO_DEC=null; });
+    }
+    return !!PNO_PLAY;   // the sound it had plays on while the Grand loads
   }
-  return false;
+  if(PNO_EP[k]){ PNO_PLAY=PNO_EP[k]; return true; }
+  if(ctx&&!PNO_EP_DEC[k]){
+    PNO_EP_DEC[k]=pnoEpFetch(k).then(({map,list})=>Promise.all(list.map(([f,ab])=>new Promise((res,rej)=>ctx.decodeAudioData(ab.slice(0),b=>res([f,b]),rej))))
+      .then(bs=>{ const bufs={}; for(const [f,b] of bs){ pnoLevel(b); bufs[f]={buf:b,off:gtrOnset(b)}; }
+        PNO_EP[k]={map,bufs,turn:{}}; if(k===pnoSound) PNO_PLAY=PNO_EP[k]; }))
+      .catch(()=>{ PNO_EP_DEC[k]=null; });
+  }
+  return !!PNO_PLAY;   // the sound it had plays on while the chosen one loads
 }
 let PNO={chord:null,held:[],last:-9,ctx:null,seq:0};
 function pnoRelease(t){ for(const v of PNO.held){ try{ v.env.gain.cancelScheduledValues(t); v.env.gain.setTargetAtTime(0,t,0.08); }catch(e){} } PNO.held=[]; }
 function pnoNote(midi,t,vel,len,fin){
-  if(!ctx||!PNO_BUF) return;
-  let e=PNO_BUF[0]; for(const x of PNO_BUF) if(Math.abs(x.midi-midi)<Math.abs(e.midi-midi)) e=x;
+  if(!ctx||!PNO_PLAY) return;
+  let e;
+  if(PNO_PLAY==="grand"){ e=PNO_BUF[0]; for(const x of PNO_BUF) if(Math.abs(x.midi-midi)<Math.abs(e.midi-midi)) e=x; }
+  else { const T=gtrTake(midi,vel,false,PNO_PLAY); if(!T.e) return; e={buf:T.e.buf,off:T.e.off,midi:T.c}; }   // an electric piano: its zone, layer and take (patches/piano-sounds.py)
   const pk=PNO_PK*(pnoVol/100)*(0.7+0.3*vel); if(!(pk>0)) return;
   const st=Math.max(t,ctx.currentTime);
   const src=ctx.createBufferSource(); src.buffer=e.buf; src.playbackRate.value=Math.pow(2,(midi-e.midi)/12);
@@ -20626,16 +20660,16 @@ const CPV_ADAPT={
           for(const [k] of GFX_PEDALS) v[4][k]=p[3][k]||"off"; } }
       else if(was&&!will){ let p=null; try{ p=JSON.parse(localStorage.getItem("hps.gtrpremetal")||"null"); }catch(e){}   // out of Metal: as choosing would
         if(p){ if(GTR_SOUNDS.some(x=>x[0]===p.snd)) v[3]=p.snd; if(GFX_PEDALS[1][3].some(x=>x[0]===p.drive)) v[4].drive=p.drive; } }
-      return v; }, paint:()=>{ if(window.paintGtr) paintGtr(); }, on:()=>gtrOn},
-  pno:{attr:"ps", get:()=>pnoStyle, set:v=>{ pnoStyle=v; PNO.chord=null; }, to:v=>v, paint:()=>{ if(window.paintPno) paintPno(); }, on:()=>pnoOn},
+      return v; }, paint:()=>{ if(window.paintGtr) paintGtr(); }, on:()=>gtrOn, ready:()=>{ gtrReady(); return !!GTR_BUFS[gtrSound]; }},
+  pno:{attr:"ps", get:()=>pnoStyle, set:v=>{ pnoStyle=v; PNO.chord=null; }, to:v=>v, paint:()=>{ if(window.paintPno) paintPno(); }, on:()=>pnoOn, ready:()=>pnoReady()},
   bass:{attr:"bms", get:()=>bassInRoom()?BASSROOM:((piece&&piece.bassStyle)||"root"),
     set:v=>{ if(bassInRoom()) BASSROOM=v; else if(piece){ if(v==="root") delete piece.bassStyle; else piece.bassStyle=v; } BASSPLAN=null; },
-    to:v=>v, paint:()=>{ render(); if(window.paintBass) paintBass(); }, on:()=>bassOn},
-  syn:{attr:"sy", get:()=>synStyle, set:v=>{ synStyle=v; SYN.chord=null; SYN.vc=null; }, to:v=>v, paint:()=>{ if(window.paintSyn) paintSyn(); }, on:()=>synOn}};
+    to:v=>v, paint:()=>{ render(); if(window.paintBass) paintBass(); }, on:()=>bassOn, ready:()=>!BASS_SETS[bassSound]||bassSmpReady(bassSound)},
+  syn:{attr:"sy", get:()=>synStyle, set:v=>{ synStyle=v; SYN.chord=null; SYN.vc=null; }, to:v=>v, paint:()=>{ if(window.paintSyn) paintSyn(); }, on:()=>synOn, ready:()=>{ if(!synReady()) synLevel(); return synReady(); }}};
 function cardPreviewPaint(){
-  document.querySelectorAll(".pop .cpage .vpv").forEach(x=>x.classList.remove("vpv"));
+  document.querySelectorAll(".pop .cpage .vpv").forEach(x=>x.classList.remove("vpv","vwait"));
   if(!CPV) return; const a=CPV_ADAPT[CPV.k].attr;
-  document.querySelectorAll('.pop.card[data-ck="'+CPV.k+'"] .cpage [data-'+a+'="'+CPV.val+'"]').forEach(x=>x.classList.add("vpv")); }
+  document.querySelectorAll('.pop.card[data-ck="'+CPV.k+'"] .cpage [data-'+a+'="'+CPV.val+'"]').forEach(x=>{ x.classList.add("vpv"); x.classList.toggle("vwait",!!CPV.wait); }); }
 function cardPreviewEnd(fromStop){ const P=CPV; if(!P) return; CPV=null; clearTimeout(P.timer);
   const A=CPV_ADAPT[P.k]; A.set(P.snap); try{ A.paint(); }catch(e){}
   if(!P.onWas&&A.on()&&VOICE_TOG[P.k]) VOICE_TOG[P.k]();   // switched on for the preview: off again
@@ -20652,7 +20686,12 @@ async function cardPreview(pop,k,b){
   A.set(v); try{ A.paint(); }catch(e){} cardPreviewPaint();
   if(!P.own) return;   // inside the running jam: the next count plays it
   P.solo=[...SOLO]; SOLO.clear(); SOLO.add(k); const cw=countIn; countIn=false;   // alone, no count-in
-  try{ ensureCtx(); await Promise.race([preloadBank(), new Promise(r=>setTimeout(r,800))]); if(CPV===P) await start(); }catch(e){}
+  try{ wakeAudio(); sinkHold(12);   /* the path woken inside the tap, held open while the samples come (patches/card-preview-wait.py) */
+    await Promise.race([preloadBank(), new Promise(r=>setTimeout(r,800))]);
+    if(CPV===P&&!A.ready()){ P.wait=true; cardPreviewPaint(); const until=Date.now()+10000;
+      while(CPV===P&&!A.ready()&&Date.now()<until) await new Promise(r=>setTimeout(r,100));
+      P.wait=false; cardPreviewPaint(); }   /* its own sound in first, at most 10 s */
+    if(CPV===P) await start(); }catch(e){}
   countIn=cw; if(CPV!==P) return;
   const m0=SM(piece,piece.arrangement[0]), bar=60/effBpm()/m0.sub*(4/(piece.unit||4))*m0.bp;
   P.timer=setTimeout(()=>{ if(CPV===P) cardPreviewEnd(); },(2*bar+0.25)*1000); }   // two bars, then stop
@@ -47522,7 +47561,7 @@ function boot(){
       pb.title="Piano — "+pnoStyleName(pnoStyle).toLowerCase()+", following the chords. Click for its style, register and mix"; };
     const arm=()=>{ if(!pnoOn) return;
       pb.classList.add("wait");
-      pnoFetch().then(()=>{ pb.classList.remove("wait"); pnoReady(); })
+      pnoLoad().then(()=>{ pb.classList.remove("wait"); pnoReady(); })
         .catch(e=>{ pb.classList.remove("wait"); pnoOn=false; paintPno();
           toast("The piano could not be loaded — "+(e&&e.message||"unknown")); }); };
     window.paintPno=()=>{ paintPno(); arm(); };
@@ -47534,7 +47573,10 @@ function boot(){
       /* THE STYLE ROW IS FOUR GROUPS, each opening its Pattern selector (David, 30 Sep 2026: "submenus for piano" - "Choosing a
          group should not select a style yet"; patches/menus-and-flow.py); Handpan is a style of its own */
       const og=pnoGroupOf(pnoStyle);
-      pop.innerHTML=playRow("pno")+staffRow("pno")+'<div class="ttl">Style</div><div class="pal bwsw gsty" id="pnoGroupRow" style="grid-template-columns:repeat(4,1fr)">'
+      pop.innerHTML=playRow("pno")+staffRow("pno")
+        +'<div class="ttl">Sound</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(4,1fr)">'   // the piano's Sound (patches/piano-sounds.py)
+        +PNO_SOUNDS.map(([k,l])=>'<button class="bwseg'+(k===pnoSound?' on':'')+'" data-psnd="'+k+'">'+l+'</button>').join("")+'</div>'
+        +'<div class="ttl">Style</div><div class="pal bwsw gsty" id="pnoGroupRow" style="grid-template-columns:repeat(4,1fr)">'
         +PNO_GROUPS.map(([g,l,ps])=>'<button class="bwseg'+(g===og?' on':'')+'" data-pg="'+g+'"'+(ps?'':' data-ps="'+g+'"')+'>'+l+'</button>').join("")+'</div>'
         +PNO_GROUPS.filter(g=>g[2]).map(([g,l,ps])=>'<div data-pgb="'+g+'"'+(g===og?'':' hidden')+'><div class="ttl">Variation</div><div class="pal bwsw gsty">'
           +ps.map(([k,l2])=>'<button class="bwseg'+(k===pnoStyle?' on':'')+'" data-ps="'+k+'">'+l2+'</button>').join("")+'</div></div>').join("")
@@ -47549,13 +47591,17 @@ function boot(){
         +'<div id="pnoLeadBox"'+(pnoPuKind()?'':' hidden')+'><div class="ttl">Pickup</div><div class="pal bwsw gsty">'   /* the piano's Pickup (patches/piano-pickup.py) */
           +[["off","Off"],["notes",(PNO_PU_LABELS[pnoPuKind()]||PNO_PU_LABELS.sus)[0]],["strums",(PNO_PU_LABELS[pnoPuKind()]||PNO_PU_LABELS.sus)[1]]].map(([k,l])=>'<button class="bwseg'+(k===pnoLead?' on':'')+'" data-pl="'+k+'">'+l+'</button>').join("")+'</div></div>'
         +volRow("pno",pnoVol,"Piano volume")+mixRows("pno")   // the menus' one order (30 Sep 2026)
-        +fxBoxHTML("pno")+'<div class="note">Salamander Grand Piano by Alexander Holm, CC BY 3.0.</div>';
+        +fxBoxHTML("pno")+'<div class="note" id="pnoCredit">'+PNO_CREDIT[pnoSound]+'</div>';
       const apply=()=>{ pnoVol=Math.max(0,Math.min(150,+$("pnoVolR").value||0));
         $("pnoVolV").textContent=pnoVol+"%";
         try{ localStorage.setItem("hps.pnovol",String(pnoVol)); }catch(e){}
         mixRead("pno"); };
       pop.addEventListener("input",apply); pop.addEventListener("change",apply);
       pop.addEventListener("click",ev=>{
+        const ps0=ev.target.closest("[data-psnd]");
+        if(ps0){ pnoSound=PNO_SOUNDS.some(x=>x[0]===ps0.dataset.psnd)?ps0.dataset.psnd:"grand"; try{ localStorage.setItem("hps.pnosound",pnoSound); }catch(e){}
+          pop.querySelectorAll("[data-psnd]").forEach(x=>x.classList.toggle("on",x===ps0)); const cr=pop.querySelector("#pnoCredit"); if(cr) cr.textContent=PNO_CREDIT[pnoSound];
+          window.paintPno(); return; }   // with the piano on, the button dims till the sound is in (patches/piano-sounds.py)
         const w=ev.target.closest("[data-pw]");
         if(w){ pnoWide=w.dataset.pw==="1"; try{ localStorage.setItem("hps.pnowide",pnoWide?"1":"0"); }catch(e){}
           pop.querySelectorAll("[data-pw]").forEach(x=>x.classList.toggle("on",x.dataset.pw===(pnoWide?"1":"0"))); PNO.chord=null; return; }
