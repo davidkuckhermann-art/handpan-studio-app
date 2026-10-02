@@ -1451,6 +1451,16 @@ body.phone:not(.tablet) .pop .vxrow .vxb.v{display:none}
 .popx{display:grid; place-items:center; width:28px; height:28px; padding:0; border:none; border-radius:8px; background:none; color:var(--ink3); cursor:pointer}
 .popx:hover{background:var(--dust); color:var(--ink)}
 .popx svg{width:14px; height:14px}
+/* THE GUITAR'S PEDALBOARD (patches/guitar-fx.py): six stomp boxes on a dark board, each with its footswitch light (mockup B) */
+.gfxb{display:grid; grid-template-columns:repeat(6,1fr); gap:5px; margin:2px 2px 0; padding:7px 4px 5px; border-radius:12px; background:linear-gradient(#3A332A,#2A251E)}
+.gfp{display:flex; flex-direction:column; align-items:center; min-width:0; padding:6px 1px 5px; border:none; border-radius:8px 8px 10px 10px; cursor:pointer;
+  background:linear-gradient(#F7F3EC,#E9E2D6); box-shadow:inset 0 -2px 0 rgba(0,0,0,.12),0 2px 3px rgba(0,0,0,.35); font-family:inherit; color:var(--ink)}
+.gfp .gfl{width:7px; height:7px; border-radius:50%; margin-bottom:4px; background:#9C9284; box-shadow:inset 0 1px 1px rgba(0,0,0,.3)}
+.gfp.on .gfl{background:var(--dixie); box-shadow:0 0 6px 2px rgba(229,147,21,.7)}
+.gfp b{font-size:9px; font-weight:800; letter-spacing:.5px; text-transform:uppercase}
+.gfp span{font-size:9px; font-weight:600; color:var(--ink3); max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.gfp .gfs{width:18px; height:18px; border-radius:50%; margin-top:5px; background:radial-gradient(circle at 40% 35%,#D9D2C6,#8E8576); box-shadow:0 1px 2px rgba(0,0,0,.4)}
+.gfp.sel{outline:2px solid var(--dixie); outline-offset:1px}
 /* SINGLE NOTE'S DEGREE BUBBLE (David, 2 Oct 2026; patches/guitar-single-note-chucks.py): over the menu, under its button */
 .pop .bwseg:disabled{opacity:.4; cursor:default}   /* a setting that does not apply here (patches/pan-live-jam-only.py) */
 .pop .gdeg{position:absolute; left:8px; right:8px; z-index:3; background:var(--card); border:1px solid var(--rule); border-radius:12px;
@@ -12213,10 +12223,78 @@ function bandPickAt(inst,nm,bi,m){ if(!(inst==="gtr"?gtrLive&&gtrListen:pnoLive&
   if(BAND_MEMO.has(key)) return BAND_MEMO.get(key); if(BAND_MEMO.size>400) BAND_MEMO.clear();
   const S=["gtr","pno","drm"].filter(s=>s!==inst).map(s=>bandFig(s,nm,bi,m)).filter(r=>{ const n=r?(r.match(/x/g)||[]).length:0; return n>=2&&n<=6; });
   const v=S.length?S[Math.floor(passDraw("band"+inst,bi,6)*S.length)]:null; BAND_MEMO.set(key,v); return v; }
-function bandPuRel(N){ if(!(gtrLive&&gtrListen&&gtrOn&&pnoLive&&pnoListen&&pnoOn)) return null;
+/* THE JAM'S PASSAGES (David, 2 Oct 2026: "for the passages where instruments play a rhythmical phrase together, also make
+   it so that instruments sometimes pick up part of the phrase from another instrument, not always exactly the complete
+   phrase. Also, these passages should sometimes happen between some of the jam instruments, not always all together" -
+   "any 2+, all rarely" - "the tail should be more common than the head" - "jam only"; patches/jam-passages.py): with two or
+   more on Jam a passage is theirs, drawn per place and pass - whether (70 %), how (unison, thirds, the same rhythm; a call
+   with guitar and piano both in it), who (a pair most often, all of them about one in five) and what each plays: the first
+   the whole figure, each other the whole (one in two), its tail (its last notes, landing with the others; one in three)
+   or its head (its first half, then out; one in six) */
+function jamOnList(){ const L=[]; try{ if(gtrOn&&gtrLive&&gtrJam) L.push("gtr"); if(pnoOn&&pnoLive&&pnoJam) L.push("pno");
+  if(bassOn&&bassLive===true&&bassJam) L.push("bass"); if(panLiveOn()&&panLv===3) L.push("pan"); }catch(e){} return L; }
+const JAMB_MEMO=new Map();
+function jamPassage(N){ const J=jamOnList(); if(J.length<2) return undefined;   // fewer than two on Jam: the band as before
+  const key=N+"|"+PLAYPASS+"|"+J.join(","); if(JAMB_MEMO.has(key)) return JAMB_MEMO.get(key); if(JAMB_MEMO.size>400) JAMB_MEMO.clear();
+  let v=null; const r=passDraw("band",N,7);
+  if(r<0.7){ let rel=r<0.25?"unison":r<0.45?"thirds":r<0.6?"rhythm":"call";
+    const mem=jamMembers(J,"jamb",N);
+    if(rel==="call"&&!(mem.includes("gtr")&&mem.includes("pno"))) rel="rhythm";   // a call is the guitar's, answered by the piano
+    const V=GTR_PU_NOTES.concat(jamFigs(false)), F0=V[Math.floor(passDraw("band",N,101)*V.length)], nf=F0.pos.length;
+    const fig={pos:F0.pos,chrom:F0.chrom,encl:F0.encl,dir:F0.pos.map(p=>p%2?"U":"D").join("")}, parts={};
+    if(rel!=="call") mem.forEach((k,i)=>{ if(!i||nf<3) return; const q=passDraw("jamb"+k,N,19);
+      if(q<0.5) return;                                                                        // the whole figure
+      if(q<0.833){ const kk=2+Math.floor(passDraw("jamb"+k,N,23)*(nf-2)); parts[k]=[nf-kk,nf]; }  // its tail: the last notes
+      else parts[k]=[0,Math.ceil(nf/2)]; });                                                   // its head: the first half
+    v={rel,mem,fig,parts}; }
+  JAMB_MEMO.set(key,v); return v; }
+/* who plays a passage or a tihai: of two on Jam both; of three a pair 7 in 10, else all; of four a pair 55 %, three 25 %, all 20 % */
+function jamMembers(J,key,N){ const ord=J.map(k=>[k,passDraw(key+k,N,13)]).sort((a,b)=>a[1]-b[1]).map(x=>x[0]), s=passDraw(key,N,17);
+  return ord.slice(0,J.length===2?2:J.length===3?(s<0.7?2:3):(s<0.55?2:s<0.8?3:4)); }
+/* THE TIHAI (David, 2 Oct 2026: "in rare cases some of the instruments can play a tihai together towards the beginning of a
+   new table" - "jam only, one table change in 8, also the same table" - "same rules as for unison" - "sometimes two for more
+   complex tihais or chakradars" - "also sometimes exactly the same melodic motif"; patches/jam-tihai.py): a phrase three
+   times, its rests worked out so the third's last stroke falls on the next table's one - each instrument's own first stroke
+   there is the landing. Drawn per table end and pass: whether (one in eight, two or more on Jam), who (jamMembers), the span
+   (the last bar; one in three two bars - a longer phrase or a chakradar), the phrase and rests, stabs or one motif */
+const TIHAI_P1=["xxx","x-x","x-xx","xx-x","x-x-x","xxx-x","x-xxx","xx-xx","xxxx"];
+const TIHAI_P2=["x-xx-x-x","xx-x-xx","x-x-xx-x-x","x--x--x-x","xxx-xx-x","x-xx-xxx","xx-x-x-xx"];
+const TIHAI_LEAD=["x-xx","xx-","x-x-","xxx-","x--x"], TIHAI_CELL=[["x",1],["xx",1],["x",0]];   // a chakradar's phrase: a lead, then a small tihai
+function tihaiShapes(lo,hi,pool,chak){ const out=[];   // every phrase and rest that fit: three phrases and two rests, S slots, the last on the one
+  for(let S=lo;S<=hi;S++) for(const P of pool){ const r=S-3*P.length; if(r>=0&&r%2===0&&r/2<=Math.max(2,P.length)) out.push({S,P,g:r/2}); }
+  if(chak) for(const L of TIHAI_LEAD) for(const [c,gi] of TIHAI_CELL){ const U=L+[c,c,c].join("-".repeat(gi));
+    for(let S=lo;S<=hi;S++){ const r=S-3*U.length; if(r>=0&&r%2===0&&r/2<=4) out.push({S,P:U,g:r/2,chak:true}); } }
+  return out; }
+const TIHAI_MEMO=new Map();
+function tihaiAt(nm,m){ const J=jamOnList(); if(J.length<2) return null; const sec=piece&&piece.sections[nm]; if(!sec) return null;
+  const nb=(sec.bars||[]).length, lim=nb*m.bp; if(!nb) return null;
+  const key=nm+"|"+PLAYPASS+"|"+J.join(",")+"|"+m.bp+"|"+m.sub; if(TIHAI_MEMO.has(key)) return TIHAI_MEMO.get(key); if(TIHAI_MEMO.size>200) TIHAI_MEMO.clear();
+  let v=null;
+  if(passDraw("tihai"+nm,lim,0)<1/6){   /* about one table in six (David, 2 Oct 2026: "it can happen a bit more often, one time in 6 tables"; was one in eight) */
+    const x16=m.sub*(piece.unit||4)/16, sp=(Math.abs(x16-Math.round(x16))<1e-6&&x16>=1)?x16:2*x16, barS=Math.round(m.bp/sp);   // a slot: a sixteenth, or an eighth where the grid has none
+    const two=nb>=2&&passDraw("tihai"+nm,lim,1)<0.33;
+    let C=two?tihaiShapes(barS+2,2*barS+1,TIHAI_P2,true):[]; if(!C.length) C=tihaiShapes(Math.ceil(barS/2)+1,barS+1,TIHAI_P1,false);
+    if(C.length&&Math.abs(sp-Math.round(sp))<1e-6){ const T=C[Math.floor(passDraw("tihai"+nm,lim,2)*C.length)], st=[];
+      for(let k=0;k<3;k++){ let xi=0; for(let i=0;i<T.P.length;i++) if(T.P[i]==="x"){ st.push({rel:lim-(T.S-1-(k*(T.P.length+T.g)+i))*sp,k,x:xi}); xi++; } }
+      st.pop();   // the third's last stroke: the next table's one - each instrument's own stroke there
+      v={mem:jamMembers(J,"tihai"+nm,lim),strokes:st,from:st[0].rel,lim,motif:passDraw("tihai"+nm,lim,3)<0.5,n:T.P.split("").filter(c=>c==="x").length,P:T.P,g:T.g,S:T.S,chak:!!T.chak,sp}; } }
+  TIHAI_MEMO.set(key,v); return v; }
+function tihaiFor(inst,nm,rel,m){ const T=nm?tihaiAt(nm,m):null; return T&&T.mem.includes(inst)&&rel>T.from-m.sub+1e-6&&rel<T.lim?T:null; }   // from the count at or before its first stroke
+/* the chords: at the tihai's last stroke, and the next table's first (the table again when it repeats) - the same for every
+   instrument; the chord in force at a stroke */
+function tihaiChords(ent,m,T){ let from=null, to=null; try{ from=chordInForceAt(ent.pulse+T.strokes[T.strokes.length-1].rel,ent,m); }catch(e){}
+  try{ const nb=(piece.sections[ent.name].bars||[]).length, nx=bassNextBar(ent.name,nb-1,ent,m); if(nx) to=chordInForceAt(nx.ent.pulse+nx.bi*nx.m.bp,nx.ent,nx.m); }catch(e){}
+  if(!to){ try{ to=chordInForceAt(ent.pulse,ent,m); }catch(e){} }
+  return {from,to}; }
+function tihaiLine(ent,m,T){ if(!T.motif) return null; const c=tihaiChords(ent,m,T); return c.from&&c.to?bandLine(c.from,c.to,{pos:new Array(T.n).fill(0)}):null; }
+function tihaiChordAt(ent,m,rel){ try{ return chordInForceAt(ent.pulse+rel,ent,m); }catch(e){ return null; } }
+function bandKeep(F,j){ return !F||!F.part||(j>=F.part[0]&&j<F.part[1]); }   // a note of the instrument's part of the passage
+function bandPuRel(N,inst){ const JB=jamPassage(N); if(JB!==undefined) return JB&&(!inst||JB.mem.includes(inst))?JB.rel:null;   // two or more on Jam: the passage is theirs
+  if(!(gtrLive&&gtrListen&&gtrOn&&pnoLive&&pnoListen&&pnoOn)) return null;
   const r=passDraw("band",N,7); if(gtrJam&&pnoJam) return r<0.25?"unison":r<0.45?"thirds":r<0.6?"rhythm":r<0.7?"call":null;   /* both on Jam: the earlier, busier links - 70 % (David, 2 Oct 2026; patches/band-jam.py) */
   return r<0.1?"unison":r<0.2?"thirds":r<0.32?"rhythm":r<0.42?"call":null; }   // together is the exception: each link about 10 %, the same rhythm 12 (David, 2 Oct 2026: "around 10% for each link" - "same rhythm can stay at 12"; patches/band-less-together.py)
-function bandPuFig(N){ if(!bandPuRel(N)) return null; const F=GTR_PU_NOTES[Math.floor(passDraw("band",N,101)*GTR_PU_NOTES.length)];
+function bandPuFig(N,inst){ const JB=jamPassage(N); if(JB!==undefined) return JB&&(!inst||JB.mem.includes(inst))?Object.assign({},JB.fig,{part:(inst&&JB.parts[inst])||null}):null;
+  if(!bandPuRel(N)) return null; const V=gtrJam&&pnoJam?GTR_PU_NOTES.concat(jamFigs(false)):GTR_PU_NOTES, F=V[Math.floor(passDraw("band",N,101)*V.length)];   // both on Jam: the jam's short and syncopated rhythms too (patches/jam-rhythms.py)
   return {pos:F.pos,chrom:F.chrom,encl:F.encl,dir:F.pos.map(p=>p%2?"U":"D").join("")}; }   // one rhythm for both; a stroke's way from its place
 /* STEP 2 - THE LINE THEY SHARE (David, 2 Oct 2026: "step 2"; patches/band-listen-lines.py): one run from the two chords and the
    band's figure alone - no instrument's state - so each instrument, and its staff, works out the same line; each plays it
@@ -12245,10 +12323,10 @@ function folVary(evs,vr){ if(vr.kind==="octave") return evs.map(e=>Object.assign
   const out=[]; for(const e of evs){ out.push(e); out.push(Object.assign({},e,{midi:folThird(e.midi),g:e.g*0.8})); } return out; }
 function folPickup(inst,p2,rel,m,sec,at,lo,hi,play){ const rb=((rel%m.bp)+m.bp)%m.bp; if(rb%m.sub) return null;
   const P=phraseAt(m,rel).n*m.bp, N=(Math.floor(rel/P)+1)*P, x16=m.sub*(piece.unit||4)/16, ahead=N-rel, pd=pulseDurOf(p2), lim=sec.pulses||0;
-  const listen=inst==="gtr"?gtrListen:pnoListen, BR=listen?bandPuRel(N):null, CALL=listen?bandPrevCall(N,P,lim):null;
+  const listen=inst==="gtr"?gtrListen:pnoListen, BR=listen?bandPuRel(N,inst):null, CALL=listen?bandPrevCall(N,P,lim):null;
   if(inst==="gtr"&&CALL) return null; if(inst==="pno"&&BR==="call") return null;   // the guitar calls, the piano answers
   const ANS=inst==="pno"&&!!CALL;
-  const FIG=(ANS?CALL:BR?bandPuFig(N):null)||GTR_PU_NOTES[Math.floor(passDraw("fol"+inst,N,101)*GTR_PU_NOTES.length)], nf=FIG.pos.length, p0=FIG.pos[0]*x16;
+  const FIG=(ANS?CALL:BR?bandPuFig(N,inst):null)||GTR_PU_NOTES[Math.floor(passDraw("fol"+inst,N,101)*GTR_PU_NOTES.length)], nf=FIG.pos.length, p0=FIG.pos[0]*x16;
   if(!(ahead>=p0-1e-6&&ahead-p0<m.sub-1e-6)) return null;
   if(!ANS&&(BR?passDraw("band",N,0):passDraw("fol"+inst,N,0))>=bandPuProb(N,P)) return null;
   let name=null, to=null; try{ name=chordInForceAt(p2,sec,m); to=chordInForceAt(p2+ahead,sec,m); }catch(e){}
@@ -12258,7 +12336,7 @@ function folPickup(inst,p2,rel,m,sec,at,lo,hi,play){ const rb=((rel%m.bp)+m.bp)%
   if(L&&inst==="pno"&&BR==="thirds"&&!ANS) L=bandThird(L,to);
   if(!L) L=gtrLeadNotes(name,to,lo,nf,!!FIG.chrom,!!FIG.encl,null,false);
   if(!L||L.some(v=>v==null)) return null; L=bandShift(L,lo+6,inst==="gtr"?40:48,hi);
-  FIG.pos.forEach((ps,j)=>{ const gap=j<nf-1?ps-FIG.pos[j+1]:ps; play(L[j],at+(ahead-ps*x16)*pd,gap*x16*pd*0.95,0.42+0.12*(j+1)/nf); });
+  FIG.pos.forEach((ps,j)=>{ if(!bandKeep(FIG,j)) return;   const gap=j<nf-1?ps-FIG.pos[j+1]:ps; play(L[j],at+(ahead-ps*x16)*pd,gap*x16*pd*0.95,0.42+0.12*(j+1)/nf); });
   return {from:at+(ahead-p0)*pd,to:at+ahead*pd}; }
 function bandPrevCall(N,P,lim){ const prev=N-P, ps=prev>0?PLAYPASS:PLAYPASS-1, place=prev>0?prev:lim; if(ps<0) return null;
   const was=PLAYPASS; PLAYPASS=ps; try{ return bandPuRel(place)==="call"&&passDraw("band",place,0)<bandPuProb(place,P)?bandPuFig(place):null; } finally{ PLAYPASS=was; } }
@@ -12340,13 +12418,27 @@ function gtrLeadNotes(from,to,lo,n,chrom,encl,aim,turn){ const pc=chordPCs(to); 
 const GTR_PU_NOTES=[{pos:[6,4,2]},{pos:[6,4,2]},{pos:[6,4,2]},{pos:[4,2]},{pos:[4,3,2,1]},{pos:[2,1],chrom:true},
   {pos:[6,4,3,2]},{pos:[4,3,2]},{pos:[6,5,4,2]},{pos:[6,4,3,2,1]}];   // & 4 e &, 4 e &, & a 4 &, & 4 e & a
 const GTR_PU_STRUMS=[{pos:[3,2,1],dir:"UDU"},{pos:[4,1],dir:"DU"},{pos:[4,3,2,1],dir:"DUDU"},{pos:[2,1],dir:"DU"}];
+/* THE JAM'S RHYTHMS (David, 2 Oct 2026: "let's make the rhythmic vocabulary for the jam setting more interesting for all
+   instruments" - "a, b, c. and for short pickups also use phrases like x-xx, xx-x, -xxx, xxx-xx, xx-xxx, xx-xx-" - "jam
+   only"; patches/jam-rhythms.py): on Jam every instrument's lead-in draws from these as well as its own - in sixteenths
+   before the count, far to near: the short phrases, the syncopated, and into a block's start the long fills (the bass's and
+   the pan's also the sixteenth run); the guitar and the piano now and then anticipate (jamAnt) */
+const JAM_SHORT=[[4,2,1],[4,3,1],[3,2,1],[6,5,4,2,1],[6,5,3,2,1],[6,5,3,2]];   // x-xx xx-x -xxx xxx-xx xx-xxx xx-xx-
+const JAM_SYNC=[[8,5,2],[7,4,1],[5,2]];                                         // 3-3-2 over two beats, dotted eighths, a &
+const JAM_LONG=[[8,6,4,2],[12,10,8,4,2]], JAM_RUN=[8,7,6,5,4,3,2,1];             // 3 & 4 &, 2 & 3 . 4 &; 3 e & a 4 e & a
+function jamPos(end,run){ return JAM_SHORT.concat(JAM_SYNC,end?JAM_LONG:[],end&&run?[JAM_RUN]:[]); }   // end: into a block's start
+function jamFigs(end){ return jamPos(end,false).map(pos=>({pos,dir:pos.map(p=>p%2?"U":"D").join("")})); }
+/* an anticipation: the figure's notes before the last beat's &, then the arrival on it - the next chord, ringing over the bar
+   line; the groove leaves out the first beat */
+function jamAnt(F){ const pos=F.pos.filter(p=>p>=3).concat([2]); return Object.assign({},F,{pos,dir:pos.map(p=>p%2?"U":"D").join(""),ant:true,chrom:false,encl:false}); }
 /* the note the next chord begins with in the pickup's style: the lowest of the shape it will be played with
    (patches/pickup-one-direction.py) */
-function gtrPuAim(pk,to){ try{
+function gtrPuShape(pk,to){ try{   // the shape the next chord will be played with, in the pickup's style (an anticipation strikes it: patches/jam-rhythms.py)
   const sh=pk==="rock"?gtrPower(to):pk==="jazz"?gtrJazz(to,GTR.alt&&GTR.alt.sh):pk==="funk"?gtrHighShape(to,null,gtrReg)
     :gtrVoicing(to,GTR.shape&&Array.isArray(GTR.shape.f)?GTR.shape:null,GTR_FULL.has(gtrStyle),GTR_POS[gtrReg]);
-  if(!sh||!sh.s||!sh.f) return null; const ps=sh.s.map(x=>GTR_OPEN[x]+sh.f[x]).filter(v=>v===v&&v!=null);
-  return ps.length?Math.min(...ps):null; }catch(e){ return null; } }
+  return sh&&sh.s&&sh.f?sh:null; }catch(e){ return null; } }
+function gtrPuAim(pk,to){ const sh=gtrPuShape(pk,to); if(!sh) return null; const ps=sh.s.map(x=>GTR_OPEN[x]+sh.f[x]).filter(v=>v===v&&v!=null);
+  return ps.length?Math.min(...ps):null; }
 function gtrPlaceNote(n,home){ let b=null;   // the string whose fret lies nearest the hand
   for(let x=0;x<6;x++){ const f=n-GTR_OPEN[x]; if(f<0||f>19) continue; const sc=Math.abs(f-home)+(x<2?0.6:0)+(f>15?2:0); if(!b||sc<b.sc) b={x,f,sc}; }
   return b?[b.x,b.f]:null; }
@@ -12608,17 +12700,25 @@ function gtrScore(f,root,need,fifth,prev,full,topT){
 /* THE GUITAR'S SOUND (David, 2 Oct 2026; patches/guitar-sound.py): a set is a folder guitar/<id>/ in MF's format - MF
    nylon, and Karoryfer's Black And Green Guitars, two hollowbody electrics (CC0; Black's notes ring 2-3 s, as recorded).
    The guitar plays the chosen set once it is decoded and until then the set it had - never silent, the bass's rule */
-const GTR_SOUNDS=[["mf","Nylon"],["black","Hollow 1"],["green","Hollow 2"]];   // were Jazz dark, Jazz bright (David, 2 Oct 2026: "rename jazz 1 and 2 to hollow 1 and 2"); the ids stay, so a saved choice carries over
+const GTR_SOUNDS=[["mf","Nylon"],["black","Hollow 1"],["green","Hollow 2"],["clean","Clean"],["fp-clean","Clean 2"],["fp-dist1","Distorted 1"],["fp-dist2","Distorted 2"]];   // Clean 2, Distorted 1 and 2: FreePats' Fender, clean amp and the two distortions, CC0 (David, 2 Oct 2026: "add the FreePats clean amp and both distorted version to the app")   // Clean: GeneralUser GS's Clean Guitar, guitar/clean/ (David, 2 Oct 2026: "add the GeneralUser Clean" - "call it Clean")   // Hollow 1 and 2 were Jazz dark, Jazz bright (David, 2 Oct 2026: "rename jazz 1 and 2 to hollow 1 and 2"); the ids stay, so a saved choice carries over
 let gtrSound=(function(){ try{ const v=localStorage.getItem("hps.gtrsound"); return GTR_SOUNDS.some(x=>x[0]===v)?v:"mf"; }catch(e){ return "mf"; } })();
 const GTR_RAW={}, GTR_DEC={}, GTR_BUFS={}; let GTR_BUF=null;   // GTR_BUF: the buffers being played
+const GTR_STAC=new Set(["black","green"]);   // the sets with staccato recordings, stac.json beside map.json (patches/guitar-stac.py)
+/* MEDIUM IS THE GUITAR'S SOUND (David, 2 Oct 2026: "hollow 1 in the app sounds way brighter than the version in the listening
+   page" - "let's use medium as the general sound" - "comping styles on the existing guitars still sometimes trigger the loud
+   sample, let's stick to medium in general" - "I was referring to the hollows", "nylon should stay exactly as it was"): in
+   Hollow 1 and 2 the strength that chooses a recording stops at their medium (84 of 127) - a stronger stroke plays a medium
+   take, louder by its strength but not brighter; Nylon chooses as it always did */
+const GTR_MEDIUM_Q=84, GTR_MEDIUM_SETS=new Set(["black","green"]);
 function gtrSmpMidi(n){ const m=n.match(/^([A-G])(s?)(\d)$/); return 12*(+m[3]+1)+PC[m[1]]+(m[2]?1:0); }   // kept: the piano names its samples this way
 const GTR_RMS=0.212;        // the loudness of a Tone.js note in its first 0.45 s: the level the guitar was set at
 function gtrFetch(k){ k=k||gtrSound;
   if(!GTR_RAW[k]){
-    GTR_RAW[k]=fetch(gtrURL("map.json",k)).then(r=>{ if(!r.ok) throw new Error("map.json: "+r.status); return r.json(); })
-      .then(map=>{ const files=[...new Set(map.flatMap(z=>z.layers.flatMap(l=>l[2])))];
+    GTR_RAW[k]=Promise.all([fetch(gtrURL("map.json",k)).then(r=>{ if(!r.ok) throw new Error("map.json: "+r.status); return r.json(); }),
+        GTR_STAC.has(k)?fetch(gtrURL("stac.json",k)).then(r=>r.ok?r.json():null).catch(()=>null):null])   // the staccato plucks (patches/guitar-stac.py)
+      .then(([map,stac])=>{ const files=[...new Set([map].concat(stac?[stac]:[]).flatMap(M=>M.flatMap(z=>z.layers.flatMap(l=>l[2]))))];
         return Promise.all(files.map(f=>fetch(gtrURL(f,k)).then(r=>{ if(!r.ok) throw new Error(f+": "+r.status); return r.arrayBuffer(); })
-          .then(ab=>[f,ab]))).then(list=>({map,list})); });
+          .then(ab=>[f,ab]))).then(list=>({map,stac,list})); });
     GTR_RAW[k].catch(()=>{ GTR_RAW[k]=null; });
   }
   return GTR_RAW[k];
@@ -12632,27 +12732,113 @@ function gtrLevel(b,off){ const d=b.getChannelData(0), s0=Math.floor(off*b.sampl
 function gtrReady(){ const k=gtrSound;
   if(GTR_BUFS[k]){ GTR_BUF=GTR_BUFS[k]; return true; }
   if(ctx&&!GTR_DEC[k]){
-    GTR_DEC[k]=gtrFetch(k).then(({map,list})=>Promise.all(list.map(([f,ab])=>new Promise((res,rej)=>ctx.decodeAudioData(ab.slice(0),b=>res([f,b]),rej))))
+    GTR_DEC[k]=gtrFetch(k).then(({map,stac,list})=>Promise.all(list.map(([f,ab])=>new Promise((res,rej)=>ctx.decodeAudioData(ab.slice(0),b=>res([f,b]),rej))))
       .then(bs=>{ const bufs={}; for(const [f,b] of bs){ const off=gtrOnset(b); bufs[f]={buf:b,off,lvl:gtrLevel(b,off)}; }
-        GTR_BUFS[k]={map,bufs,turn:{}}; if(k===gtrSound) GTR_BUF=GTR_BUFS[k]; }))
+        GTR_BUFS[k]={map,stac,bufs,turn:{},med:GTR_MEDIUM_SETS.has(k)}; if(k===gtrSound) GTR_BUF=GTR_BUFS[k]; }))
       .catch(()=>{ GTR_DEC[k]=null; });
   }
   return !!GTR_BUF;   // the set it had plays on while the chosen one loads
 }
 /* the recording for a note: its zone (or the nearest), the layer its strength falls in, the next take of that layer */
-function gtrTake(midi,vel){
-  const B=GTR_BUF; let z=B.map.find(z=>midi>=z.lo&&midi<=z.hi);
-  if(!z) z=B.map.reduce((a,b)=>Math.abs(b.c-midi)<Math.abs(a.c-midi)?b:a);
-  const q=Math.round(Math.max(0,Math.min(1,vel))*127), l=z.layers.find(l=>q>=l[0]&&q<=l[1])||z.layers[z.layers.length-1];
-  const k=z.c+"|"+l[0], n=B.turn[k]=((B.turn[k]==null?-1:B.turn[k])+1)%l[2].length;
+function gtrTake(midi,vel,stac,B){   // stac: from the set's staccato plucks; B: the set (the one playing)
+  B=B||GTR_BUF; const M=stac&&B.stac?B.stac:B.map; let z=M.find(z=>midi>=z.lo&&midi<=z.hi);
+  if(!z) z=M.reduce((a,b)=>Math.abs(b.c-midi)<Math.abs(a.c-midi)?b:a);
+  const q=Math.min(B.med?GTR_MEDIUM_Q:127,Math.round(Math.max(0,Math.min(1,vel))*127)), l=z.layers.find(l=>q>=l[0]&&q<=l[1])||z.layers[z.layers.length-1];   // never past medium
+  const k=(M===B.map?"":"s")+z.c+"|"+l[0], n=B.turn[k]=((B.turn[k]==null?-1:B.turn[k])+1)%l[2].length;
   return {e:B.bufs[l[2][n]], c:z.c};
 }
 
 /* ---- the plucking hand ---- */
 let GTR={chord:null,shape:null,seq:0,last:-9,ctx:null,str:[null,null,null,null,null,null]};
-function gtrChoke(s,t,tc){ const st=GTR.str[s]; if(!st) return; GTR.str[s]=null;
+/* THE HAND DAMPS AT ONCE: A STACCATO PLUCK (David, 2 Oct 2026: "the muted strummed chucks ... a bit of a machine gun
+   effect and they are too soft" - "go, lets incorporate it directly"; patches/guitar-stac.py). On a set with staccato
+   recordings, a pluck damped within GTR_STAC_WIN of its start - set before it sounds - is swapped for one of them, levelled
+   as every take is; the damping still falls where it was set. Chucks, palm mutes, skanks, chanks; not a re-pluck */
+const GTR_STAC_WIN=0.16;
+function gtrStac(n,t){ const B=n.B; if(!ctx||!B||!B.stac||n.at==null||t-n.at>GTR_STAC_WIN||n.at<ctx.currentTime+0.003) return;
+  const T=gtrTake(n.midi,n.vel,true,B), e=T.e; if(!e) return;
+  try{ n.src.onended=null; n.src.stop(n.at); }catch(x){ try{ n.src.disconnect(); }catch(y){} }   // the ordinary take never sounds
+  const src=ctx.createBufferSource(); src.buffer=e.buf; src.playbackRate.value=Math.pow(2,(n.midi-T.c)/12);
+  const a=ctx.createGain(); a.gain.value=n.e.lvl/e.lvl;   // GTR_RMS/e.lvl in place of the ordinary take's
+  src.connect(a); a.connect(n.lp); src.start(n.at,e.off); src.stop(n.at+(e.buf.duration-e.off)/src.playbackRate.value+0.05);
+  src.onended=()=>{ const i=live.indexOf(n.g); if(i>=0) live.splice(i,1); };
+  n.src=src; }
+function gtrChoke(s,t,tc,re){ const st=GTR.str[s]; if(!st) return; GTR.str[s]=null;   // re: a re-pluck of the string, not a damping
+  if(!re) gtrStac(st,t);
   try{ st.env.gain.cancelScheduledValues(t); st.env.gain.setTargetAtTime(0,t,tc||0.012); st.src.stop(t+0.3); }catch(e){} }
 function gtrDampAll(t){ for(let s=0;s<6;s++) gtrChoke(s,t,0.03); GTR.chord=null; GTR.shape=null; }
+/* THE GUITAR'S PEDALBOARD (David, 2 Oct 2026: "B is great. Lets go and implement it with all the FX from the listening page";
+   patches/guitar-fx.py): six pedals in pedal order on the whole guitar channel - every note goes through them to the
+   guitar's voice bus, so a chord distorts as one; the listening page's effects and levels; the in-time ones follow the
+   tempo. A stable input and output per audio context, the chain between them rebuilt on a change */
+const GFX_PEDALS=[["wah","Wah","Wah",[["off","Off"],["slow","Slow"],["beat","Every beat"]]],
+  ["drive","Drive","Drive",[["off","Off"],["crunch","Crunch"],["dist","Distorted"],["heavy","Heavy"]]],
+  ["chorus","Chorus","Chorus",[["off","Off"],["light","Light"],["deep","Deep"]]],
+  ["phaser","Phaser","Phaser",[["off","Off"],["slow","Slow"],["fast","Fast"]]],
+  ["trem","Tremolo","Trem",[["off","Off"],["slow","Slow"],["fast","Fast"]]],
+  ["delay","Delay","Delay",[["off","Off"],["slap","Slapback"],["eighth","Eighth"],["dot","Dotted 8th"],["quarter","Quarter"],["ping","Ping-pong"],["amb","Ambient"]]]];
+function gtrFxLoad(key,dflt){ const d=Object.assign({},dflt); try{ const v=JSON.parse(localStorage.getItem(key)||"{}");
+  for(const [k,,,o] of GFX_PEDALS) if(v&&o.some(x=>x[0]===v[k])) d[k]=v[k]; }catch(e){} return d; }
+let gtrFx=gtrFxLoad("hps.gtrfx",{wah:"off",drive:"off",chorus:"off",phaser:"off",trem:"off",delay:"off"});
+let gtrFxLast=gtrFxLoad("hps.gtrfxlast",{wah:"slow",drive:"dist",chorus:"light",phaser:"slow",trem:"slow",delay:"dot"});
+let gtrFxSel="drive", GFX={ctx:null};
+function gtrFxSave(){ try{ localStorage.setItem("hps.gtrfx",JSON.stringify(gtrFx)); localStorage.setItem("hps.gtrfxlast",JSON.stringify(gtrFxLast)); }catch(e){} }
+function gtrFxIn(){
+  if(GFX.ctx!==ctx){ GFX={ctx,inp:ctx.createGain(),out:ctx.createGain(),N:[],O:[],beat:0}; GFX.out.connect(voiceBus("gtr")); }
+  if(Math.abs(GFX.beat-60/effBpm())>1e-3) gtrFxChain();
+  return GFX.inp; }
+function gtrFxChain(){ if(!ctx||GFX.ctx!==ctx) return;
+  for(const o of GFX.O){ try{ o.stop(); }catch(e){} } for(const n of GFX.N){ try{ n.disconnect(); }catch(e){} }
+  try{ GFX.inp.disconnect(); }catch(e){}
+  GFX.N=[]; GFX.O=[]; const B=GFX.beat=60/effBpm(), F=gtrFx;
+  const node=n=>{ GFX.N.push(n); return n; }, gain=v=>{ const g=node(ctx.createGain()); g.gain.value=v; return g; };
+  const biq=(type,f,q,g)=>{ const b=node(ctx.createBiquadFilter()); b.type=type; b.frequency.value=f; if(q!=null) b.Q.value=q; if(g!=null) b.gain.value=g; return b; };
+  const lfo=(rate,depth,param,shape)=>{ const o=ctx.createOscillator(); o.type=shape||"sine"; o.frequency.value=rate; const g=gain(depth); o.connect(g); g.connect(param); o.start(); GFX.O.push(o); GFX.N.push(o); };
+  const chainOf=(x,list)=>{ for(const n of list){ x.connect(n); x=n; } return x; };
+  let x=GFX.inp;
+  if(F.wah!=="off"){ const f=biq("bandpass",1100,4); lfo(F.wah==="slow"?1/(B*4):1/B,750,f.frequency,"triangle");   // a band swept 450 Hz - 2.2 kHz
+    const s=gain(1), w=gain(2.2), d=gain(0.35); x.connect(f); f.connect(w); w.connect(s); x.connect(d); d.connect(s); x=s; }
+  if(F.drive!=="off"){ const P={crunch:{pre:3.5,hp:80,mid:3,k:1.2,asym:0.04,stages:1,scoop:0,pres:0,cab:5500,post:0.177},
+        dist:{pre:14,hp:110,mid:5,k:2.2,asym:0.08,stages:1,scoop:0,pres:0,cab:4200,post:0.06},
+        heavy:{pre:25,hp:160,mid:3,k:2.6,asym:0.1,stages:2,scoop:-4,pres:3,cab:4800,post:0.054,link:2.5}}[F.drive];   // level-matched to the dry guitar
+    x=chainOf(x,[gain(P.pre),biq("highpass",P.hp,0.8),biq("peaking",800,0.9,P.mid)]);
+    for(let s=0;s<P.stages;s++){ const ws=node(ctx.createWaveShaper()), n=4096, c=new Float32Array(n);
+      for(let i=0;i<n;i++){ const v=i*2/(n-1)-1; c[i]=Math.tanh(P.k*v+P.asym*v*v)/Math.tanh(P.k); } ws.curve=c; ws.oversample="4x";
+      x.connect(ws); x=ws; if(s<P.stages-1) x=chainOf(x,[biq("highpass",120),gain(P.link||4)]); }
+    if(P.scoop) x=chainOf(x,[biq("peaking",500,0.7,P.scoop)]);
+    if(P.pres) x=chainOf(x,[biq("peaking",3200,1,P.pres)]);
+    x=chainOf(x,[biq("lowpass",P.cab,0.8),biq("peaking",2600,1.5,-4),gain(P.post)]); }   // the cabinet
+  if(F.chorus!=="off"){ const s=gain(1), d=gain(0.8); x.connect(d); d.connect(s);
+    for(const [dt,r,dep] of F.chorus==="deep"?[[0.016,0.5,0.004],[0.021,0.33,0.005]]:[[0.014,0.8,0.0022]]){
+      const dl=node(ctx.createDelay(0.1)); dl.delayTime.value=dt; lfo(r,dep,dl.delayTime); const w=gain(F.chorus==="deep"?0.55:0.5); x.connect(dl); dl.connect(w); w.connect(s); }
+    x=s; }
+  if(F.phaser!=="off"){ let y=x; for(let i=0;i<4;i++){ const a=biq("allpass",700,0.7); lfo(F.phaser==="fast"?1.1:0.25,550,a.frequency); y.connect(a); y=a; }
+    const s=gain(1), d=gain(0.6), w=gain(0.6); x.connect(d); d.connect(s); y.connect(w); w.connect(s); x=s; }
+  if(F.trem!=="off"){ const g=gain(0.62); lfo(F.trem==="fast"?2/B:1/B,0.38,g.gain); x.connect(g); x=g; }   // a beat's cycle, or an eighth's
+  if(F.delay!=="off"){ const s=gain(1); x.connect(s);
+    if(F.delay==="ping"&&ctx.createStereoPanner){ const a=node(ctx.createDelay(2)), b=node(ctx.createDelay(2)); a.delayTime.value=b.delayTime.value=B/2;
+      const pl=node(ctx.createStereoPanner()), pr=node(ctx.createStereoPanner()); pl.pan.value=-0.85; pr.pan.value=0.85;
+      const fb=gain(0.45), tone=biq("lowpass",3500), w=gain(0.34);
+      x.connect(a); a.connect(tone); tone.connect(pl); pl.connect(w); tone.connect(b); b.connect(pr); pr.connect(w); b.connect(fb); fb.connect(a); w.connect(s); }
+    else { const S={slap:[0.11,0.12,0.4,4000],eighth:[B/2,0.3,0.3,3500],dot:[B*0.75,0.38,0.32,3200],quarter:[B,0.35,0.3,3200],amb:[B*1.5,0.62,0.36,1800],ping:[B/2,0.4,0.32,3500]}[F.delay];
+      const dl=node(ctx.createDelay(4)); dl.delayTime.value=S[0]; if(F.delay==="amb") lfo(0.35,0.003,dl.delayTime);
+      const fb=gain(S[1]), tone=biq("lowpass",S[3]), w=gain(S[2]); x.connect(dl); dl.connect(tone); tone.connect(fb); fb.connect(dl); tone.connect(w); w.connect(s); }
+    x=s; }
+  x.connect(GFX.out); }
+/* stop: the chain's output dips and the chain is rebuilt - no echo rings on */
+function gtrFxHush(){ if(!ctx||GFX.ctx!==ctx||!GFX.N.length) return; const g=GFX.out.gain, t=ctx.currentTime;
+  try{ g.cancelScheduledValues(t); g.setValueAtTime(g.value,t); g.linearRampToValueAtTime(0,t+0.04); }catch(e){}
+  setTimeout(()=>{ if(GFX.ctx!==ctx) return; gtrFxChain(); try{ const t2=ctx.currentTime; g.cancelScheduledValues(t2); g.setValueAtTime(0,t2); g.linearRampToValueAtTime(1,t2+0.02); }catch(e){} },70); }
+/* THE CARD: the board of six stomp boxes, the selected one's setting below (mockup B) */
+function gtrFxHTML(){ const P=GFX_PEDALS.find(p=>p[0]===gtrFxSel)||GFX_PEDALS[1], o=P[3];
+  return '<div class="ttl">Effects</div><div class="gfxb">'+GFX_PEDALS.map(([k,,s,opts])=>{ const on=gtrFx[k]!=="off";
+      return '<button type="button" class="gfp'+(on?' on':'')+(k===gtrFxSel?' sel':'')+'" data-gfp="'+k+'" title="'+(k===gtrFxSel?(on?"Switch off":"Switch on"):"Choose")+'"><i class="gfl"></i><b>'+s+'</b><span>'+(on?opts.find(x=>x[0]===gtrFx[k])[1]:"Off")+'</span><i class="gfs"></i></button>'; }).join("")+'</div>'
+    +'<div class="ttl">'+P[1]+'</div><div class="pal bwsw gsty" style="grid-template-columns:repeat('+Math.min(4,o.length)+',1fr)">'
+    +o.map(([v,l])=>'<button class="bwseg'+(gtrFx[P[0]]===v?' on':'')+'" data-gfv="'+v+'">'+l+'</button>').join("")+'</div>'; }
+function gtrFxClick(ev,pop){ const p=ev.target.closest("[data-gfp]"), v=ev.target.closest("[data-gfv]"); if(!p&&!v) return false;
+  if(p){ const k=p.dataset.gfp; if(k===gtrFxSel){ if(gtrFx[k]!=="off"){ gtrFxLast[k]=gtrFx[k]; gtrFx[k]="off"; } else gtrFx[k]=gtrFxLast[k]; } gtrFxSel=k; }
+  else { gtrFx[gtrFxSel]=v.dataset.gfv; if(v.dataset.gfv!=="off") gtrFxLast[gtrFxSel]=v.dataset.gfv; }
+  gtrFxSave(); gtrFxChain(); const box=pop.querySelector("#gtrFxBox"); if(box) box.innerHTML=gtrFxHTML(); return true; }
 /* THE CHORD'S LEVEL: this note among the last onsets; a run of three or more less than 15 ms apart is a chord - each of its
    notes 5 dB down at its start, on its own level node (the envelope, and every choke on it, untouched) */
 function gtrChordLevel(st,lp){ const R=GTR_RECENT; R.push({st,lp,cut:false}); R.sort((a,b)=>a.st-b.st); while(R.length>24) R.shift();
@@ -12666,17 +12852,17 @@ function gtrNote(s,fret,t,vel){
   const T=gtrTake(midi,vel), e=T.e;   // MF: the zone, the layer, the next take (28 Sep 2026)
   const pk=GTR_PK*(gtrVol/100)*(0.25+0.75*vel)*(GTR_RMS/e.lvl); if(!(pk>0)) return;   // each take levelled, then the curve; a chord's notes go under on lp (gtrChordLevel)
   const st=Math.max(t,ctx.currentTime);
-  gtrChoke(s,st,0.012);                                   // a string sounds one note at a time
+  gtrChoke(s,st,0.012,true);                              // a string sounds one note at a time (a re-pluck, not a damping)
   const src=ctx.createBufferSource(); src.buffer=e.buf; src.playbackRate.value=Math.pow(2,(midi-T.c)/12);
   const lp=ctx.createGain();   // MF's layers carry the tone of a soft or a strong pluck: no darkening filter (28 Sep 2026)
   const env=ctx.createGain(); env.gain.setValueAtTime(pk,st);
   const g=ctx.createGain(); g.gain.value=1;               // `live`'s gain, as the bass keeps it apart from its envelope
-  src.connect(lp); lp.connect(env); env.connect(g); g.connect(voiceBus("gtr")); gtrChordLevel(st,lp);
+  src.connect(lp); lp.connect(env); env.connect(g); g.connect(gtrFxIn()); gtrChordLevel(st,lp);   // through the pedalboard to the voice bus (patches/guitar-fx.py)
   const len=(e.buf.duration-e.off)/src.playbackRate.value;
   src.start(st,e.off); src.stop(st+len+0.05);
   g.__at=st; live.push(g); if(live.length>120) live.splice(0,40);
   src.onended=()=>{ const i=live.indexOf(g); if(i>=0) live.splice(i,1); };
-  GTR.str[s]={src,env,fret};
+  GTR.str[s]={src,env,fret,at:st,midi,vel,e,lp,g,B:GTR_BUF};   // what a damping at once needs to swap it (patches/guitar-stac.py)
 }
 /* where the next subdivision of the bar starts (the bar's end after the last), in pulses */
 /* A ROLL STEPS IN SIXTEENTHS AND STOPS WHERE ITS CHORD ENDS (David, 30 Sep 2026: "When the arpeggio holds more notes, those
@@ -12853,13 +13039,23 @@ function gtrPulse(p2,rel,m,sec,at,free){
   /* (David, 2 Oct 2026: "the pickups should happen less ... More like a real musician would play them" - "keep changing, not
      be the same every time a table is repeated"; patches/guitar-pickup-musical.py) every style's Chord change; whether it
      plays and which figure, drawn per change from where it lands and the pass through the table */
+  /* THE TIHAI (patches/jam-tihai.py): scheduled whole at the count where it begins; the groove gives way, the pickups wait */
+  const TH=gtrLive&&gtrJam?tihaiFor("gtr",sec&&sec.name,rel,m):null;
+  if(TH&&onCount&&TH.from>=rel-1e-6&&TH.from<rel+m.sub-1e-6){ const e0=sec, L=tihaiLine(e0,m,TH), pk0=gtrPuKind(p2,m)||"strum";
+    const Lg=L?bandShift(L,gtrPuLo(pk0,S,F)+6,40,83):null, fr=S.map(x=>F[x]).filter(f=>f>0), home=fr.length?fr.reduce((a,b)=>a+b,0)/fr.length:5, shapes={};
+    GTR.puFrom=at+(TH.from-rel)*pd; GTR.puTo=at+(TH.lim-rel)*pd;
+    TH.strokes.forEach((s,j)=>{ const t=at+(s.rel-rel)*pd, nt=at+((j+1<TH.strokes.length?TH.strokes[j+1].rel:TH.lim)-rel)*pd, v=Math.min(1,0.5+0.12*s.k);
+      if(Lg){ const q=gtrPlaceNote(Lg[s.x],home); if(q){ gtrNote(q[0],q[1],t,v); gtrChoke(q[0],t+(nt-t)*0.95,0.015); } return; }
+      const cn=tihaiChordAt(e0,m,s.rel)||name, sh=shapes[cn]||(shapes[cn]=gtrPuShape(pk0,cn)); if(!sh) return;
+      sh.s.forEach((x,i)=>gtrNote(x,sh.f[x],t+i*0.007+Math.random()*0.002,v*(1-0.03*i))); }); }
   { const pk=gtrPuKind(p2,m);
     const ld=gtrLead!=="off"?gtrLead:gtrLive?"auto":"off";   /* Live leads in by itself, notes or strums by draw (patches/guitar-live.py) */
-    if(pk&&ld!=="off"&&onCount){ const P=phraseAt(m,rel).n*m.bp, N=(Math.floor(rel/P)+1)*P, x16=m.sub*(piece.unit||4)/16, ahead=N-rel, idx=Math.round(N/P);
+    if(pk&&ld!=="off"&&onCount&&!TH){ const P=phraseAt(m,rel).n*m.bp, N=(Math.floor(rel/P)+1)*P, x16=m.sub*(piece.unit||4)/16, ahead=N-rel, idx=Math.round(N/P);
       const seed=N+7919*PLAYPASS, prob=idx%4===0?0.8:idx%2===0?0.5:0.2;   // into the bar after a fourth, a second, a first or third
-      const BR=bandPuRel(N), lead=BR&&BR!=="rhythm"?"notes":ld==="auto"?(gtrPuHash(seed+57)<0.5?"notes":"strums"):ld;   // a shared line is notes (patches/band-listen-lines.py)
-      const FIGS=lead==="notes"?(pk==="jazz"?GTR_PU_JAZZ:GTR_PU_NOTES):(pk==="jazz"?GTR_PU_PUSH:GTR_PU_STRUMS);
-      const FIG=bandPuFig(N)||FIGS[Math.floor(gtrPuHash(seed+101)*FIGS.length)], nf=FIG.pos.length, p0=FIG.pos[0]*x16;   // listening, one figure for the band (patches/band-listen.py)
+      const BR=bandPuRel(N,"gtr"), lead=BR&&BR!=="rhythm"?"notes":ld==="auto"?(gtrPuHash(seed+57)<0.5?"notes":"strums"):ld;   // a shared line is notes (patches/band-listen-lines.py)
+      const JM=gtrLive&&gtrJam, FIGS=(lead==="notes"?(pk==="jazz"?GTR_PU_JAZZ:GTR_PU_NOTES):(pk==="jazz"?GTR_PU_PUSH:GTR_PU_STRUMS)).concat(JM?jamFigs(idx%4===0):[]);   // Jam: the jam's rhythms too (patches/jam-rhythms.py)
+      const FIG=(f=>JM&&!BR&&gtrPuHash(seed+307)<0.2?jamAnt(f):f)(bandPuFig(N,"gtr")||FIGS[Math.floor(gtrPuHash(seed+101)*FIGS.length)]), nf=FIG.pos.length, p0=FIG.pos[0]*x16;   // Jam: one in five anticipates (patches/jam-rhythms.py)
+      const SCR=JM&&pk==="strum"&&lead!=="notes"&&gtrPuHash(seed+401)<0.5;   // Jam, the Strumming patterns: about one strum pickup in two scratched (David: "only for the strumming styles")   // listening, one figure for the band (patches/band-listen.py)
       if(ahead>=p0-1e-6&&ahead-p0<m.sub-1e-6&&!bandPrevCall(N,P,sec.pulses||(sec.bars||[]).length*m.bp)&&(BR?passDraw("band",N,0):gtrPuHash(seed))<prob){   // after its call, the piano answers (patches/band-listen-lines.py)   // the count at or before the figure's start schedules all of it - a step between counts never reaches the player in /8
         const lim=(sec.bars||[]).length*m.bp; let to=null; try{ to=chordInForceAt(p2+ahead,sec,m); }catch(e){}
         if(!to&&N>=lim){ try{ to=chordInForceAt(p2-rel,sec,m); }catch(e){} }   // the table's end: into its start, as the loop goes
@@ -12869,7 +13065,8 @@ function gtrPulse(p2,rel,m,sec,at,free){
             if(pk==="arp"){ if(GTR.rollAt!=null&&GTR.chAt!=null&&GTR.rollAt>=GTR.chAt-1e-3&&GTR.lastM!=null) was=GTR.lastM;   // this chord's roll has sounded: its last note
               else if(GTR.chAt!=null){ const tf=Math.min(...FIG.pos.map(q=>at+(ahead-q*x16)*pd).filter(t=>t>GTR.chAt+0.02)); let k=0;   // not yet: the note it will have reached when the pickup begins
                 while(k<S.length&&GTR.chAt+k*s16<tf-1e-3) k++; if(k) was=GTR_OPEN[S[k-1]]+F[S[k-1]]; } }
-            aimed=T!=null; L=gtrLeadNotes(name,to,gtrPuLo(pk,S,F),nf,!!FIG.chrom,!!FIG.encl,aimed?{T,was,up:was!=null&&was!==T?was<T:null}:null,nf>=3&&gtrPuHash(seed+211)<0.25);
+            aimed=T!=null; const nA=FIG.ant&&aimed?nf-1:nf;   // an anticipation: the run, then the next chord's note on the & (patches/jam-rhythms.py)
+            L=gtrLeadNotes(name,to,gtrPuLo(pk,S,F),nA,!!FIG.chrom,!!FIG.encl,aimed?{T,was,up:was!=null&&was!==T?was<T:null}:null,nA>=3&&gtrPuHash(seed+211)<0.25); if(L&&nA<nf) L=L.concat([T]);
             /* AFTER THE CHORD IT LEAVES HAS SOUNDED: a note on or before that chord's own count is a rest, and the window
                (the groove's silence) opens at the first note that plays - a long figure no longer swallows a short chord */
             if(L&&aimed){ for(let j=0;j<nf;j++) if(GTR.chAt!=null&&at+(ahead-FIG.pos[j]*x16)*pd<=GTR.chAt+0.02) L[j]=null;
@@ -12878,15 +13075,21 @@ function gtrPulse(p2,rel,m,sec,at,free){
           if(L&&!aimed){ if(Math.max(...L)>83) for(let i=0;i<L.length;i++) L[i]-=12; else if(Math.min(...L)<40) for(let i=0;i<L.length;i++) L[i]+=12; }   // an aimed run lands where the chord is (patches/pickup-one-direction.py)   // a walk off the neck moves an octave onto it
           const fr=S.map(x=>F[x]).filter(f=>f>0), home=fr.length?fr.reduce((a,b)=>a+b,0)/fr.length:5;
           const J=pk==="jazz"&&lead!=="notes"?gtrJazz(to,GTR.alt&&GTR.alt.sh):null;
-          FIG.pos.forEach((ps,j)=>{ const t=at+(ahead-ps*x16)*pd, v=0.4+0.3*(j+1)/nf;
-            if(lead==="notes"){ if(!L) return; const q=gtrPlaceNote(L[j],home), gap=j<nf-1?ps-FIG.pos[j+1]:ps;
+          const ARR=FIG.ant&&lead!=="notes"?gtrPuShape(pk,to):null;   // the anticipation's arrival: the next chord on the &, ringing (patches/jam-rhythms.py)
+          FIG.pos.forEach((ps,j)=>{ if(!bandKeep(FIG,j)) return;   const t=at+(ahead-ps*x16)*pd, v=0.4+0.3*(j+1)/nf;
+            if(ARR&&j===nf-1){ tAt=t; const t0=hum(); ARR.s.forEach((x,i)=>gtrNote(x,ARR.f[x],t0+i*0.008,Math.min(1,v*0.95))); return; }
+            if(SCR){ tAt=t; const t0=hum(), L2=FIG.dir[j]==="U"?S.slice().reverse():S; L2.forEach((x,i)=>gtrNote(x,F[x],t0+i*0.004,0.3)); L2.forEach(x=>gtrChoke(x,t0+0.02,0.006)); return; }   // a scratch: every string muted
+            if(lead==="notes"){ if(!L) return; const q=gtrPlaceNote(L[j],home), gap=FIG.ant&&j===nf-1&&nf>0?ps+m.sub/x16:j<nf-1?ps-FIG.pos[j+1]:ps;
               if(q){ gtrNote(q[0],q[1],t,pk==="pick"?v*0.9:v); gtrChoke(q[0],t+gap*x16*pd*0.95,0.015);   /* Funk's too ring to the next (David, 2 Oct 2026: "for funk, the pickup notes should not be staccato, even though the chord stabs are short") */ } }
             else if(pk==="strum"){ tAt=t; if(FIG.dir[j]==="D") down(v*0.8); else up(v*0.8); }
             else if(pk==="rock"){ tAt=t; const t0=hum(); S.forEach((x,i)=>gtrNote(x,F[x],t0+i*0.005,0.5*v+0.15)); S.forEach(x=>gtrChoke(x,t0+0.1,0.008)); }   /* palm-muted (patches/guitar-rock-jazz.py) */
             else if(pk==="funk"){ tAt=t; const t0=hum(); S.forEach((x,i)=>gtrNote(x,F[x],t0+i*0.004,0.22)); S.forEach(x=>gtrChoke(x,t0+0.02,0.006)); }
             else if(pk==="jazz"){ if(!J) return; J.s.forEach((x,i)=>gtrNote(x,J.f[x],t+i*0.006,0.5+0.1*j)); J.s.forEach(x=>gtrChoke(x,t+0.15,0.03)); }   // the next chord, stabbed early
             else { const x=S.slice(-nf).reverse()[j]; if(x!=null) gtrNote(x,F[x],t,v); } });
+          if(FIG.ant&&GTR.puTo) GTR.puTo=at+(ahead+m.sub)*pd;
+          if(FIG.part&&GTR.puTo) GTR.puFrom=at+(ahead-FIG.pos[FIG.part[0]]*x16)*pd;   // a part of the band's passage (patches/jam-passages.py)   // the arrival rings through the first beat (patches/jam-rhythms.py)
           tAt=at; } } } }
+  if(TH&&GTR.puTo&&at>=GTR.puFrom-1e-4&&at<GTR.puTo-1e-4) return;   /* the tihai sounds: every pattern rests (patches/jam-tihai.py) */
   const st=gtrStyle;
   if(st==="block"){
     if(onCount&&(lean0>0.9||fresh)){ const t0=hum(); S.forEach(s=>gtrNote(s,F[s],t0+Math.random()*0.005,0.8*lean0)); }
@@ -13188,30 +13391,40 @@ function pnoPulse(p2,rel,m,sec,at,free){
   /* THE PIANO'S PICKUP (David, 2 Oct 2026: "let's first build the piano pickup option"; patches/piano-pickup.py): as the
      guitar's - into a phrase's first count whose chord differs, at the musical odds, drawn on the pass rule; Notes a line
      into the top note of the next chord's voicing, one way from the top note now; the other option the style's own */
+  /* THE TIHAI (patches/jam-tihai.py): scheduled whole at the count where it begins; the groove gives way, the pickups wait */
+  const TH=pnoLive&&pnoJam?tihaiFor("pno",sec&&sec.name,rel,m):null;
+  if(TH&&onCount&&TH.from>=rel-1e-6&&TH.from<rel+m.sub-1e-6){ const e0=sec, L=tihaiLine(e0,m,TH), Lp=L?bandShift(L,Math.max(...ch),48,96):null, vs={};
+    PNO.puFrom=at+(TH.from-rel)*pd; PNO.puTo=at+(TH.lim-rel)*pd; PNO.pu=true;
+    try{ TH.strokes.forEach((s,j)=>{ const t=at+(s.rel-rel)*pd, len=Math.max(0.08,((j+1<TH.strokes.length?TH.strokes[j+1].rel:TH.lim)-s.rel)*pd*0.9), v=Math.min(1,0.45+0.12*s.k);
+        if(Lp){ pnoNote(Lp[s.x],t,v,len); return; }
+        const cn=tihaiChordAt(e0,m,s.rel)||name, tp=(pnoJazz&&jazzColourPCs(cn))||chordPCs(cn), vc=vs[cn]||(vs[cn]=tp?pnoVoicing(tp,lo,hi,ch):ch);
+        (vc&&vc.length?vc:ch).forEach(x=>pnoNote(x,t+Math.random()*0.006,v,len)); }); }
+    finally{ PNO.pu=false; } }
   { const pk=pnoPuKind();
     const ld=pnoLead!=="off"?pnoLead:pnoLive?"auto":"off";   /* Live leads in by itself, notes or the style's option by draw (patches/piano-live.py) */
-    if(pk&&ld!=="off"&&onCount){ const P=PH.n*m.bp, N=(Math.floor(rel/P)+1)*P, x16=m.sub*(piece.unit||4)/16, ahead=N-rel, idx=Math.round(N/P);
-      const BR=bandPuRel(N), CALL=bandPrevCall(N,P,sec.pulses||(sec.bars||[]).length*m.bp), ANS=!!CALL;   /* the guitar called a phrase ago: the piano answers (patches/band-listen-lines.py) */
-      const prob=idx%4===0?0.8:idx%2===0?0.5:0.2, lead=ANS||(BR&&BR!=="rhythm")?"notes":ld==="auto"?(passDraw("pno",N,57)<0.5?"notes":"strums"):ld, FIGS=lead==="notes"?(pk==="jazz"?GTR_PU_JAZZ:GTR_PU_NOTES):(pk==="jazz"?GTR_PU_PUSH:GTR_PU_STRUMS);
-      const FIG=(CALL||bandPuFig(N))||FIGS[Math.floor(passDraw("pno",N,101)*FIGS.length)], nf=FIG.pos.length, p0=FIG.pos[0]*x16;   // listening, one figure for the band (patches/band-listen.py); an answer in the call's rhythm
+    if(pk&&ld!=="off"&&onCount&&!TH){ const P=PH.n*m.bp, N=(Math.floor(rel/P)+1)*P, x16=m.sub*(piece.unit||4)/16, ahead=N-rel, idx=Math.round(N/P);
+      const BR=bandPuRel(N,"pno"), CALL=bandPrevCall(N,P,sec.pulses||(sec.bars||[]).length*m.bp), ANS=!!CALL;   /* the guitar called a phrase ago: the piano answers (patches/band-listen-lines.py) */
+      const prob=idx%4===0?0.8:idx%2===0?0.5:0.2, lead=ANS||(BR&&BR!=="rhythm")?"notes":ld==="auto"?(passDraw("pno",N,57)<0.5?"notes":"strums"):ld, JM=pnoLive&&pnoJam, FIGS=(lead==="notes"?(pk==="jazz"?GTR_PU_JAZZ:GTR_PU_NOTES):(pk==="jazz"?GTR_PU_PUSH:GTR_PU_STRUMS)).concat(JM?jamFigs(idx%4===0):[]);   // Jam: the jam's rhythms too (patches/jam-rhythms.py)
+      const FIG=(f=>JM&&!CALL&&!BR&&passDraw("pno",N,307)<0.2?jamAnt(f):f)((CALL||bandPuFig(N,"pno"))||FIGS[Math.floor(passDraw("pno",N,101)*FIGS.length)]), nf=FIG.pos.length, p0=FIG.pos[0]*x16;   // Jam: one in five anticipates (patches/jam-rhythms.py)   // listening, one figure for the band (patches/band-listen.py); an answer in the call's rhythm
       if(ahead>=p0-1e-6&&ahead-p0<m.sub-1e-6&&BR!=="call"&&(ANS||(BR?passDraw("band",N,0):passDraw("pno",N,0))<prob)){   // the count at or before the figure's start schedules all of it; at a call the guitar alone, an answer always
         const lim=(sec.bars||[]).length*m.bp; let to=null; try{ to=chordInForceAt(p2+ahead,sec,m); }catch(e){}
         if(!to&&N>=lim){ try{ to=chordInForceAt(p2-rel,sec,m); }catch(e){} }   // the table's end: into its start, as the loop goes
         if(to&&(to!==name||ANS)){ const tp=(pnoJazz&&jazzColourPCs(to))||chordPCs(to), nx=tp?pnoVoicing(tp,lo,hi,ch):null, s16=x16*pd;
-          PNO.puFrom=at+(ahead-p0)*pd; PNO.puTo=at+ahead*pd; PNO.pu=true;   // the groove gives way; the staff knows these are the pickup's
+          PNO.puFrom=at+(ahead-p0)*pd; PNO.puTo=at+(ahead+(FIG.ant?m.sub:0))*pd; PNO.pu=true;   // the groove gives way; the staff knows these are the pickup's
           try{
             if(lead==="notes"){ if(nx&&nx.length){ const T=Math.max(...nx), was=Math.max(...ch);
-                let L=gtrLeadNotes(name,to,T-12,nf,!!FIG.chrom,!!FIG.encl,{T,was:was!==T?was:null,up:was!==T?was<T:null},false);
+                let L=gtrLeadNotes(name,to,T-12,nf-(FIG.ant?1:0),!!FIG.chrom,!!FIG.encl,{T,was:was!==T?was:null,up:was!==T?was<T:null},false); if(L&&FIG.ant) L=L.concat([T]);   // an anticipation: the arrival on the & (patches/jam-rhythms.py)
                 if(ANS||BR==="unison"||BR==="thirds"){ const B=bandLine(name,to,FIG); if(B) L=bandShift(BR==="thirds"&&!ANS?bandThird(B,to):B,T,48,96); }   // the band's line (patches/band-listen-lines.py)
-                if(L) FIG.pos.forEach((ps,j)=>{ const n=L[j]; if(n==null) return; const gap=j<nf-1?ps-FIG.pos[j+1]:ps;
+                if(L) FIG.pos.forEach((ps,j)=>{ if(!bandKeep(FIG,j)) return;   const n=L[j]; if(n==null) return; const gap=FIG.ant&&j===nf-1?ps+m.sub/x16:j<nf-1?ps-FIG.pos[j+1]:ps;
                   pnoNote(n,at+(ahead-ps*x16)*pd,0.42+0.12*(j+1)/nf,gap*s16*0.95); }); } }
-            else if(pk==="jazz"){ if(nx) FIG.pos.forEach((ps,j)=>{ const t=at+(ahead-ps*x16)*pd;   // the next chord early, the last ringing over the bar line
+            else if(pk==="jazz"){ if(nx) FIG.pos.forEach((ps,j)=>{ if(!bandKeep(FIG,j)) return;   const t=at+(ahead-ps*x16)*pd;   // the next chord early, the last ringing over the bar line
                 nx.forEach(x=>pnoNote(x,t+Math.random()*0.006,0.5,j===nf-1?(ps+4)*s16:1.2*s16)); }); }
-            else if(pk==="rhy"){ FIG.pos.forEach((ps,j)=>{ const t=at+(ahead-ps*x16)*pd;   // short stabs of the chord it leaves
-                ch.forEach(x=>pnoNote(x,t+Math.random()*0.006,0.4+0.1*(j+1)/nf,1.2*s16)); }); }
+            else if(pk==="rhy"){ FIG.pos.forEach((ps,j)=>{ if(!bandKeep(FIG,j)) return;   const t=at+(ahead-ps*x16)*pd;   // short stabs of the chord it leaves
+                const A=FIG.ant&&j===nf-1&&nx; (A?nx:ch).forEach(x=>pnoNote(x,t+Math.random()*0.006,0.4+0.1*(j+1)/nf,A?(ps+m.sub/x16)*s16:1.2*s16)); }); }
             else { const up=[...new Set(ch.concat([ch[0]+12]))].sort((a,b)=>a-b).slice(-nf);   // a roll up of the chord it leaves, ringing into the change
-              FIG.pos.forEach((ps,j)=>{ const x=up[j]; if(x!=null) pnoNote(x,at+(ahead-ps*x16)*pd,0.4+0.12*(j+1)/nf,ps*s16); }); }
+              FIG.pos.forEach((ps,j)=>{ if(!bandKeep(FIG,j)) return;   const x=up[j]; if(x!=null) pnoNote(x,at+(ahead-ps*x16)*pd,0.4+0.12*(j+1)/nf,ps*s16); }); }
           } finally{ PNO.pu=false; } } } } }
+  if(TH&&PNO.puTo&&at>=PNO.puFrom-1e-4&&at<PNO.puTo-1e-4) return;   /* the tihai sounds: every pattern rests (patches/jam-tihai.py) */
   /* THE COUNTS AND THE GROUPS */
   if(st==="held"){ if(onCount&&start){ pnoRelease(at); chord(0.5); } return; }
   if(st==="rolled"){ if(onCount&&start){ pnoRelease(at); const t0=hum(); const s32=pd*m.sub*((piece.unit||4)/32); [low].concat(ch,[ch[0]+12]).sort((x,y)=>x-y).forEach((x,k)=>pnoNote(x,t0+k*s32,0.5)); /* a 32nd note of the tempo apart (David, 29 Sep 2026: "rolling a little slower") */ } return; }
@@ -15509,9 +15722,9 @@ function bassPuAt(nm,bi,ent,m){
     const nt=nplan.find(o=>o.t>0);
     return {from:p,notes:[{t:p,midi:T}],chord:last.chord,push:true,over:nt?nt.t:nx.m.bp};
   }
-  const FIGS=style==="walk"?BASS_PU_WALK:(change&&idx%4!==0)?BASS_PU_MID:BASS_PU_END, r=passDraw("bass",place,1);
+  const FIGS=(style==="walk"?BASS_PU_WALK:(change&&idx%4!==0)?BASS_PU_MID:BASS_PU_END).concat(bassLive&&bassJam&&style!=="walk"?jamPos(idx%4===0,true):[]), r=passDraw("bass",place,1);
   let fig=null;
-  if(BF){ const ps=BF.pos.map(q=>posK(kEnd-q)); if(!ps.some(p=>p==null)){ const keep=ps.filter(p=>p>floor); if(keep.length) fig=keep; } }   // the band's rhythm, where the grid has it
+  if(BF){ const ps=(BF.part?BF.pos.slice(BF.part[0],BF.part[1]):BF.pos).map(q=>posK(kEnd-q));   /* its part of the passage (patches/jam-passages.py) */ if(!ps.some(p=>p==null)){ const keep=ps.filter(p=>p>floor); if(keep.length) fig=keep; } }   // the band's rhythm, where the grid has it
   for(let j=0;j<FIGS.length&&!fig;j++){ const F=FIGS[(Math.floor(r*FIGS.length)+j)%FIGS.length];
     if(F[0]===12&&!["root","beats","push3","r5","oct","arp"].includes(style)) continue;   // the walk-up in quarters: the two-feel styles
     const ps=F.map(q=>posK(kEnd-q)); if(ps.some(p=>p==null)) continue;      // off the grid: this figure does not fit
@@ -15541,6 +15754,7 @@ function bassPuAt(nm,bi,ent,m){
    by itself (bassPuAt); on Listen it leads in with the band, on its rhythm. The bass only reads the others - guitar, piano
    and drums are never changed, on Listen or Jam. Pure draws on the pass rule; bassBarPlan stays the home plan. */
 var bassLive=(()=>{ try{ return localStorage.getItem("hps.basslive")==="1"; }catch(e){ return false; } })();
+var bassJam=(()=>{ try{ return localStorage.getItem("hps.bassjam")==="1"; }catch(e){ return false; } })();   // Live's Jam: Listen, busier (patches/jam-rhythms.py)
 var bassListen=(()=>{ try{ return localStorage.getItem("hps.basslisten")==="1"; }catch(e){ return false; } })();
 const BASS_LIVE_FAM=[["root","beats","push3","r5","oct"],["arp","walk"],["tumbao","332t","332"],["tumbaox2","332x2","332tx2"]];
 const BASS_LIVE_SMALL={root:["pass","pop","ghost","space"],r5:["pass","pop","ghost","space"],oct:["pass","pop","ghost","space"],
@@ -15602,7 +15816,7 @@ function bassBarVaried(nm,bi,ent,m){   // the bar as Live plays it, before the p
        next bar does not strike again */
     if(tail) v=v.filter(o=>o.t<tail.t).map(o=>o.t+o.len>tail.t?{...o,len:tail.t-o.t,ring:tail.t-o.t}:o).concat([tail]);
     if(!one||v.some(o=>o.t===0)) return v; const len=v.length?v[0].t:m.bp; return [{...one,len,ring:Math.min(one.ring||one.len,len)}].concat(v); }
-  if(bassListen&&passDraw("bassl",place,0)<0.15){ const L=bassListenFig(nm,bi,m,base); if(L) return L; }
+  if(bassListen&&passDraw("bassl",place,0)<(bassJam?0.25:0.15)){ const L=bassListenFig(nm,bi,m,base); if(L) return L; }
   if(passDraw("basss",place,0)<(pos===1||pos===3?0.35:0.15)){ const K=BASS_LIVE_SMALL[style]||[], j0=Math.floor(passDraw("basss",place,1)*K.length);
     for(let j=0;j<K.length;j++){ const r=bassLiveSmall(base,K[(j0+j)%K.length],m,bi,style,passDraw("basss",place,2),pos); if(r) return r; } }
   return base;
@@ -15610,13 +15824,20 @@ function bassBarVaried(nm,bi,ent,m){   // the bar as Live plays it, before the p
 /* on Listen, the band's lead-in when guitar and piano lead in together in one rhythm - the bass joins it (never call and
    response), AT LISTEN'S RATE whatever theirs (David, 2 Oct 2026: "as soon as 2 instruments are in jam mode, they can go for
    unisons and everything freely among themselves"): the band's own draw under .32, Listen's unison + thirds + same rhythm */
-function bassBandFig(place){ try{ if(!(bassLive===true&&bassListen)) return null; const r=bandPuRel(place);
-  return (r==="unison"||r==="thirds"||r==="rhythm")&&passDraw("band",place,7)<0.32?bandPuFig(place):null; }catch(e){ return null; } }
+function bassBandFig(place){ try{ if(!(bassLive===true&&bassListen)) return null; const r=bandPuRel(place,"bass");
+  return (r==="unison"||r==="thirds"||r==="rhythm")&&(bassJam||passDraw("band",place,7)<0.32)?bandPuFig(place,"bass"):null; }catch(e){ return null; } }
 function bassBarPlay(nm,bi,at){
   const base=bassBarPlan(nm,bi,at); if(!bassPuOn()||!piece) return base;
   const sec=piece.sections[nm], m=SM(piece,nm), ent=at||bassEnt(nm); if(!sec||!ent) return base;
   let out=bassBarVaried(nm,bi,ent,m);   // Live (patches/bass-live.py)
   if(bi>0&&!bassWrittenBar(sec,bi)){ const Q=bassPuAt(nm,bi-1,ent,m); if(Q&&Q.push) out=out.filter(o=>o.t!==0); }   // pushed into: its one already sounds
+  { const T=bassLive&&bassJam?tihaiAt(nm,m):null, b0=bi*m.bp, b1=b0+m.bp;   /* THE TIHAI (patches/jam-tihai.py): its strokes in this bar, the groove before it kept */
+    if(T&&T.mem.includes("bass")&&T.from<b1-1e-6&&T.lim>b0+1e-6){ const cut=Math.max(0,T.from-b0), L=tihaiLine(ent,m,T), Lb=L?bandShift(L,bassLow+7,bassLow-2,bassLow+24):null;
+      out=out.filter(o=>o.t<cut).map(o=>{ const e=Math.min(o.len,cut-o.t); return {...o,len:e,ring:e}; });
+      T.strokes.forEach((s,j)=>{ if(s.rel<b0-1e-6||s.rel>=b1-1e-6) return; const len=Math.min(j+1<T.strokes.length?T.strokes[j+1].rel:T.lim,b1)-s.rel;
+        const cn=tihaiChordAt(ent,m,s.rel), midi=Lb?Lb[s.x]:(cn?bassMidi(cn):null); if(midi==null) return;
+        out.push({t:s.rel-b0,len,ring:len,auto:true,style:"tihai",chord:cn,midi}); });
+      return out; } }
   const P=bassPuAt(nm,bi,ent,m); if(!P) return out;
   out=out.filter(o=>o.t<P.from).map(o=>{ const e=Math.min(o.len,P.from-o.t); return {...o,len:e,ring:e}; });   // the groove gives way
   P.notes.forEach((x,j)=>{ const len=(j+1<P.notes.length?P.notes[j+1].t:m.bp)-x.t;
@@ -15626,7 +15847,7 @@ function bassBarPlay(nm,bi,at){
 var BASSPLAN=null;
 function bassPlanAt(b0,ent,m){
   const W=window.HPSWGG, gk=(W&&W.loaded&&W.loaded())?rhyPick+"|"+Object.values(piece.sections||{}).map(s=>(s&&s.groove)||"").join(","):"";   // every table's groove (step d)
-  const st=bassPieceStyle()+(BASSOV?"!":"")+(bassPuOn()?"|"+bassLead+"|"+bassLive+"|"+bassListen+"|"+PLAYPASS+(bassListen?"|"+[gtrOn,pnoOn,rhyOn,gtrLive,pnoLive,gtrListen,pnoListen,gtrJam,pnoJam,gtrStyle,gtrStrum,gtrPick,pnoStyle].join(","):""):"");   // the pickup varies by pass (patches/bass-pickup.py)
+  const st=bassPieceStyle()+(BASSOV?"!":"")+(bassPuOn()?"|"+bassLead+"|"+bassLive+"|"+bassListen+"|"+bassJam+"|"+PLAYPASS+(bassListen?"|"+[gtrOn,pnoOn,rhyOn,gtrLive,pnoLive,gtrListen,pnoListen,gtrJam,pnoJam,gtrStyle,gtrStrum,gtrPick,pnoStyle].join(","):""):"");   // the pickup varies by pass (patches/bass-pickup.py)
   if(!BASSPLAN||BASSPLAN.C!==C||BASSPLAN.g!==gk||BASSPLAN.pan!==myPanId||BASSPLAN.piece!==piece||BASSPLAN.st!==st) BASSPLAN={C,g:gk,pan:myPanId,piece,st,map:new Map()};
   let pl=BASSPLAN.map.get(b0);
   if(!pl){ pl=bassBarPlay(ent.name,Math.floor((b0-ent.pulse)/m.bp),ent); BASSPLAN.map.set(b0,pl); }
@@ -15679,10 +15900,11 @@ function bassStyleMenuInner(){
     +'<button class="bwseg'+(BASSOV?" on":"")+'" data-bov="1">On</button></span></div>'
     +'<div class="note">'+(BASSOV?"This style plays every bar for now — the piece is unchanged.":"This piece has its own bass in the editor.")+'</div>';
   { const none=BASS_PU_NONE.has(cur), wk=cur==="walk";   /* the Pickup (patches/bass-pickup.py) */
-    h+='<div class="ttl">Live</div><div class="pal bwsw gsty" id="bassLiveRow">'   /* Live (patches/bass-live.py) */
+    h+='<div class="ttl">Live</div><div class="pal bwsw gsty" id="bassLiveRow" style="grid-template-columns:repeat(4,1fr)">'   /* Live (patches/bass-live.py) */
       +[["0","Off",""],["1","Live","Plays like a band bassist: small variations, a related pattern for a bar now and then, and its own lead-ins"],
-        ["2","Listen","Live, listening to the band: now and then the drums\u2019 kick or another\u2019s rhythm, and leads in with the band"]]
-        .map(([k,l,t])=>'<button class="bwseg'+(k===(bassLive?(bassListen?"2":"1"):"0")?" on":"")+'" data-bbl="'+k+'"'+(t?' title="'+t+'"':"")+'>'+l+'</button>').join("")+'</div>';
+        ["2","Listen","Live, listening to the band: now and then the drums\u2019 kick or another\u2019s rhythm, and leads in with the band"],
+        ["3","Jam","Listen, busier: another\u2019s rhythm more often, the jam\u2019s rhythms in its lead-ins, and leads in with guitar and piano whenever they lead in together"]]   /* Jam (patches/jam-rhythms.py) */
+        .map(([k,l,t])=>'<button class="bwseg'+(k===(bassLive?(bassListen?(bassJam?"3":"2"):"1"):"0")?" on":"")+'" data-bbl="'+k+'"'+(t?' title="'+t+'"':"")+'>'+l+'</button>').join("")+'</div>';
     h+='<div class="ttl">Pickup</div><div class="pal bwsw gsty" id="bassPuRow">'
       +[["off","Off",""],["notes","Approach","Notes into the next chord, before a phrase\u2019s first count"],
         ["push",wk?"Skip":"Push",wk?"A ghost note on the & of 4, into the next bar":"The next chord\u2019s note early, ringing over the bar line"]]
@@ -15704,7 +15926,7 @@ document.addEventListener("click",e=>{
   const s=e.target.closest("#bassPop [data-bms]"), o=e.target.closest("#bassPop [data-bov]");
   const gg=e.target.closest("#bassPop [data-bgg]");
   const pu=e.target.closest("#bassPop [data-bpu]"), bl=e.target.closest("#bassPop [data-bbl]");
-  if(bl){ bassLive=bl.dataset.bbl!=="0"; bassListen=bl.dataset.bbl==="2";   // Live (patches/bass-live.py)
+  if(bl){ bassLive=bl.dataset.bbl!=="0"; bassListen=bl.dataset.bbl>="2"; bassJam=bl.dataset.bbl==="3"; try{ localStorage.setItem("hps.bassjam",bassJam?"1":"0"); }catch(x){}   // Live (patches/bass-live.py)
     try{ localStorage.setItem("hps.basslive",bassLive?"1":"0"); localStorage.setItem("hps.basslisten",bassListen?"1":"0"); }catch(x){} bassRedraw(); return; }   // the Pickup (patches/bass-pickup.py)
   if(pu&&!pu.disabled){ bassLead=pu.dataset.bpu; try{ localStorage.setItem("hps.basslead",bassLead); }catch(x){} bassRedraw(); return; }
   if(gg&&!gg.disabled){ BASSGRP=gg.dataset.bgg;   // a group opens its patterns and chooses nothing (30 Sep 2026)
@@ -17303,8 +17525,8 @@ function panListenFig(nm,bi,m,bar){   // another's rhythm on the bar's own notes
   hits.forEach((t,i)=>{ const s=seq[i%seq.length]; out.push({t,v:"field",f:s.f,hand,live:1}); hand=hand==="R"?"L":"R"; });
   return panSort(out);
 }
-function panBandFig(place){ try{ if(panLv<2) return null; const r=bandPuRel(place); if(!(r==="unison"||r==="thirds"||r==="rhythm")) return null;
-  if(panLv===2&&passDraw("band",place,7)>=0.32) return null; return bandPuFig(place); }catch(e){ return null; } }   // Listen at Listen's rate; Jam whenever they link
+function panBandFig(place){ try{ if(panLv<2) return null; const r=bandPuRel(place,"pan"); if(!(r==="unison"||r==="thirds"||r==="rhythm")) return null;
+  if(panLv===2&&passDraw("band",place,7)>=0.32) return null; return bandPuFig(place,"pan"); }catch(e){ return null; } }   // Listen at Listen's rate; Jam whenever they link
 function panLeadAt(nm,bi,ent,m,bar){   // the line into the next bar, or null
   const n=phraseAt(m,bi*m.bp).n; if((bi+1)%n||bar.some(e=>e.run)) return null;   // a jam's own run leads in already
   const idx=(bi+1)/n, place=(bi+1)*m.bp, nx=bassNextBar(nm,bi,ent,m); if(!nx) return null;
@@ -17316,8 +17538,8 @@ function panLeadAt(nm,bi,ent,m,bar){   // the line into the next bar, or null
   const FS=feelSteps(m,bi), kEnd=(Math.max(...FS.list.map(x=>x.beat))+1)*4;
   const posK=k=>{ const x=FS.list.find(y=>y.k===k); return x&&Math.abs(x.at-Math.round(x.at))<1e-6?Math.round(x.at):null; };
   const firstT=Math.min(...bar.map(e=>e.t)), fits=F=>{ const ps=F.map(q=>posK(kEnd-q)); return ps.some(p=>p==null)?null:ps.filter(p=>p>firstT); };
-  let fig=BF?fits(BF.pos):null; if(fig&&fig.length<2) fig=null;
-  const FIGS=(change&&idx%4!==0)?PAN_LEAD_MID:PAN_LEAD_END, r=passDraw("pan",place,1);
+  let fig=BF?fits(BF.part?BF.pos.slice(BF.part[0],BF.part[1]):BF.pos):null;   /* its part of the passage (patches/jam-passages.py) */ if(fig&&fig.length<2) fig=null;
+  const FIGS=((change&&idx%4!==0)?PAN_LEAD_MID:PAN_LEAD_END).concat(panLv===3?jamPos(idx%4===0,true):[])   /* Jam: the jam's rhythms too (patches/jam-rhythms.py) */, r=passDraw("pan",place,1);
   for(let j=0;j<FIGS.length&&!fig;j++){ const ps=fits(FIGS[(Math.floor(r*FIGS.length)+j)%FIGS.length]); if(ps&&ps.length>=2) fig=ps; }
   if(!fig) return null;
   const C2=panCands(), T=tg.mi, iT=C2.findIndex(c=>c.midi===T); if(iT<0) return null;
@@ -17337,6 +17559,14 @@ function panBarPlay(nm,bi,ent,m){   // the bar this pass plays, or null for the 
   if(panLv>=2&&passDraw("panl",place,0)<(panLv===3?0.25:0.15)) bar=panListenFig(nm,bi,m,home);
   if(!bar&&passDraw("pans",place,0)<(pos===1||pos===3?0.35:0.15)){ const j0=Math.floor(passDraw("pans",place,1)*PAN_SMALL.length);
     for(let j=0;j<PAN_SMALL.length&&!bar;j++) bar=panSmall(home,PAN_SMALL[(j0+j)%PAN_SMALL.length],m,bi,ent,passDraw("pans",place,2),pos); }
+  { const T=panLv===3?tihaiAt(nm,m):null, b0=bi*m.bp, b1=b0+m.bp;   /* THE TIHAI (patches/jam-tihai.py): the line on the pan's nearest notes */
+    if(T&&T.mem.includes("pan")&&T.from<b1-1e-6&&T.lim>b0+1e-6){ const C2=panCands(); if(C2.length){ const cut=Math.max(0,T.from-b0), mid=C2[Math.floor(C2.length/2)].midi;
+      const L=tihaiLine(ent,m,T)||bandLine(tihaiChordAt(ent,m,T.from),tihaiChordAt(ent,m,T.from),{pos:new Array(T.n).fill(0)});
+      const near=x=>C2.reduce((a,b)=>Math.abs(b.midi-x)<Math.abs(a.midi-x)?b:a);
+      const Lp=L?bandShift(L,mid,C2[0].midi,C2[C2.length-1].midi).map(near):null;
+      if(Lp){ const out=(bar||home).filter(e=>e.t<cut||e.bass||e.run); let hand="R";
+        T.strokes.forEach(s=>{ if(s.rel<b0-1e-6||s.rel>=b1-1e-6) return; out.push({t:s.rel-b0,v:"field",f:Lp[s.x].f,hand,live:1}); hand=hand==="R"?"L":"R"; });
+        return panSort(out); } } } }
   return panLeadAt(nm,bi,ent,m,bar||home)||bar;
 }
 function panLiveRow(){ if(bassIsPlayer()) return "";
@@ -18393,6 +18623,7 @@ function stop(){
   for(const g of live){ try{ g.gain.setValueAtTime(g.gain.value,now);
     g.gain.linearRampToValueAtTime(0,now+.04);}catch(e){} }
   live=[];
+  if(typeof gtrFxHush==="function") gtrFxHush();   // the guitar's delay and tremolo stop with it (patches/guitar-fx.py)
   clearMarks();
   document.querySelectorAll(".chip.playing").forEach(el=>el.classList.remove("playing"));
   if(pendingStart!=null&&!editing){ if(!C) C=compile(piece); paintPulse(pendingStart); } // show where play will resume — not in an editor, which starts at its table's top
@@ -27053,7 +27284,7 @@ function staffSig(phone){ const b=staffBassOpts(phone), st=staffStaves(phone)||[
 /* WHAT THE STAVES PLAY (David, 2 Oct 2026: "a notation row changes the moment a new pattern is selected"; patches/staff-follows-style.py):
    every instrument's style settings, so a change of any redraws the staff */
 function staffStyleSig(){ try{ return [gtrStyle,gtrStrum,gtrPick,gtrDeg,gtrReg,gtrLead,gtrLive,pnoStyle,pnoWide,pnoReg,pnoJazz,pnoLead,pnoLive,pnoListen,gtrListen,pnoJam,gtrJam,synStyle,synReg,synVc,synSnd,
-    bassPieceStyle(),bassSound,bassLow,bassLead,bassLive,bassListen,panLv,rhyPick].join("/"); }catch(e){ return ""; } }
+    bassPieceStyle(),bassSound,bassLow,bassLead,bassLive,bassListen,bassJam,panLv,rhyPick].join("/"); }catch(e){ return ""; } }
 /* a click inside a menu - a pattern, a register, a degree - checks the staff too, once the menu has acted (patches/staff-follows-style.py) */
 document.addEventListener("click",e=>{ if(e.target.closest&&e.target.closest(".pop")) setTimeout(()=>{ try{ staffVoicesSync(); }catch(x){} },0); });
 /* every instrument button's paint calls this: redraw when the staves drawn would change (renderStaff records them) */
@@ -46716,7 +46947,7 @@ function boot(){
           +[["off","Off"],["notes",(GTR_PU_LABELS[cat0]||GTR_PU_LABELS.strum)[0]],["strums",(GTR_PU_LABELS[cat0]||GTR_PU_LABELS.strum)[1]]].map(([k,l])=>'<button class="bwseg'+(k===gtrLead?' on':'')+'" data-gl="'+k+'">'+l+'</button>').join("")+'</div></div>'
         +'<div class="ttl">Register</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(4,1fr)">'   // the guitar's register (29 Sep 2026): Auto | Open | Mid-neck | High (30 Sep 2026)
         +[["auto","Auto"],["open","Open"],["mid","Mid-neck"],["high","High"]].map(([k,l])=>'<button class="bwseg'+(k===gtrReg?' on':'')+'" data-gr="'+k+'">'+l+'</button>').join("")+'</div>'
-        +volRow("gtr",gtrVol,"Guitar volume")+mixRows("gtr");   // the menus' one order (30 Sep 2026)
+        +volRow("gtr",gtrVol,"Guitar volume")+mixRows("gtr")+'<div id="gtrFxBox">'+gtrFxHTML()+'</div>';   // the menus' one order (30 Sep 2026); the pedalboard (patches/guitar-fx.py)
       const apply=()=>{ gtrVol=Math.max(0,Math.min(150,+$("gtrVolR").value||0));
         $("gtrVolV").textContent=gtrVol+"%";
         try{ localStorage.setItem("hps.gtrvol",String(gtrVol)); }catch(e){}
@@ -46750,6 +46981,7 @@ function boot(){
           { const tb=pop.querySelector('[data-gt="third"]'); if(tb) tb.textContent=gtrSnLabel(); }
           { const g=pop.querySelector(".gdeg"); if(g) g.remove(); }
           choose("funk",GTR_ITEMS.funk.findIndex(it=>it[2]==="third")); return; }   // a degree chooses Single note
+        if(gtrFxClick(ev,pop)) return;   // a pedal or its setting (patches/guitar-fx.py)
         const gs=ev.target.closest("[data-gsnd]");
         if(gs){ gtrSound=GTR_SOUNDS.some(x=>x[0]===gs.dataset.gsnd)?gs.dataset.gsnd:"mf"; try{ localStorage.setItem("hps.gtrsound",gtrSound); }catch(e){}
           pop.querySelectorAll("[data-gsnd]").forEach(x=>x.classList.toggle("on",x===gs)); window.paintGtr(); return; }   // with the guitar on, the button dims till the set is in
