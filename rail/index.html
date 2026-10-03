@@ -1903,7 +1903,7 @@ body.phone:not(.tablet) .pop.card:has(>.dbar){top:calc(env(safe-area-inset-top,0
 .pop .cpage [data-ps="arpfl"]::after{content:"the bar's first and last"}
 .pop .cpage [data-ps="flow"]::after{content:"a flowing line"}
 .pop .cpage [data-ps="flowsp"]::after{content:"flowing, fewer notes"}
-.pop .cpage [data-ps="flowch"]::after{content:"sparse flow, a chord now and then"}
+.pop .cpage [data-ps="flowch"]::after{content:"sparse flow, a comping chord now and then"}
 .pop .cpage [data-bgg="basic"]::after{content:"root, fifth, walks"}
 .pop .cpage [data-bgg="latin"]::after{content:"tumbao, 3-3-2"}
 .pop .cpage [data-bgg="dbl"]::after{content:"twice as busy"}
@@ -14041,11 +14041,11 @@ function pnoPulse(p2,rel,m,sec,at,free){
      Held, Rolled, Pad and the rolled arpeggios keep to the counts and the groups */
   const rb=((rel%m.bp)+m.bp)%m.bp, onCount=rb%m.sub===0, pd=pulseDurOf(p2);
   const ticks16=feelTicks(m,rel,pd), ticks=ticks16.filter(t=>t.s%2===0);   // the piano's patterns move in eighths
-  if(!onCount&&!ticks.length&&!((PNO_JZ[pnoStyle]||pnoStyle==="jcomp")&&ticks16.length)) return;   // the jazz comping moves in sixteenths (patches/piano-jazz.py)
+  if(!onCount&&!ticks.length&&!((PNO_JZ[pnoStyle]||pnoStyle==="jcomp"||pnoStyle==="flowch")&&ticks16.length)) return;   // the jazz comping moves in sixteenths (patches/piano-jazz.py)
   if(!pnoReady()) return;
   if(PNO.ctx!==ctx||at<PNO.last-0.05||at-PNO.last>2.5){ PNO.chord=null; PNO.held=[]; PNO.ctx=ctx; PNO.vc=null; }   // a fresh start
   PNO.last=at;
-  if(rel===0&&(pnoStyle==="flow"||pnoStyle==="flowsp"||pnoStyle==="flowch")){ PNO.chord=null; PNO.vc=null; PNO.fbusy=0; PNO.fpairT=null; PNO.fcB=0; PNO.fcT=null; PNO.fcTop=null; PNO.fcFrom=null; }   // a table starts as the staff's run does (30 Sep 2026)
+  if(rel===0&&(pnoStyle==="flow"||pnoStyle==="flowsp"||pnoStyle==="flowch")){ PNO.chord=null; PNO.vc=null; PNO.fbusy=0; PNO.fpairT=null; PNO.fcB=0; PNO.fcTop=null; }   // a table starts as the staff's run does (30 Sep 2026)
   const name=chordInForceAt(p2,sec,m);   // the chord the row shows, as the guitar reads it
   if(!name){ if(PNO.chord){ pnoRelease(at); PNO.chord=null; } return; }
   const pcs=(pnoJazz&&jazzColourPCs(name))||chordPCs(name); if(!pcs) return;   // Colour Jazz: the 7th and the 9th from the key (patches/piano-jazz.py)
@@ -14138,48 +14138,44 @@ function pnoPulse(p2,rel,m,sec,at,free){
     const fB=Math.min(1,PH.cs.length/4);   // a shorter bar, fewer chances: about as many rolls per four beats in any metre
     const pool=[...new Set([low].concat(ch,ch.slice(0,3).map(x=>x+12)))].sort((x,y)=>x-y);
     if((PNO.fbusy||0)-at>4){ PNO.fbusy=0; PNO.fpairT=null; }
-    if((PNO.fcB||0)-at>4||(PNO.fcT!=null&&PNO.fcT>at+4)){ PNO.fcB=0; PNO.fcT=null; PNO.fcTop=null; PNO.fcFrom=null; }   // and a chord's (patches/piano-flow-chords.py)    // a timer left from another start
+    if((PNO.fcB||0)-at>4){ PNO.fcB=0; PNO.fcTop=null; }   // and a chord's (patches/piano-flow-comp.py)    // a timer left from another start
     /* A NEW TAKE EACH PASS (the pass rule, patches/piano-pass-rule.py): the dice are this place's in the table and PLAYPASS,
        which the scheduler counts for every instrument - a table begun again, the jam's loop coming round - and the staff's
        silent run reads; staffPassRedraw draws the staff again as a new pass sounds (VARIES.pno) */
+
+    /* FLOW & CHORDS: THE CHORDS COMP (David, 4 Oct 2026: "in the style of the free comping on offbeats and other syncopated
+       places and not so much be directly connected to an arpeggio line before"; patches/piano-flow-comp.py) - flowch's comping:
+       a bar has a chord or none, at a step of its feel off the downbeat, an "and" most; never within six beats of the bar
+       before's; drawn on the place and the pass, so the staff writes what plays */
+    const fcBeat=m.bp/cs.length, fcBi=Math.floor(rel/m.bp+1e-9);
+    const fcRaw=b=>{ if(b<0||st!=="flowch") return null;
+      if(passDraw("pno",b*64,111)>=[0.6,0.35,0.5,0.4][Math.floor(b/PH.n)%4]*Math.min(1,cs.length/4)) return null;
+      const L=feelSteps(m,b).list.filter(x=>!x.first), W=L.map(x=>x.s===2?1:x.s===3?0.45:x.s===0?0.3:0.12);
+      let r=passDraw("pno",b*64,113)*W.reduce((a,w)=>a+w,0); for(let i=0;i<L.length;i++){ r-=W[i]; if(r<0) return L[i]; } return L[L.length-1]||null; };
+    const fcPlan=b=>{ const x=fcRaw(b); if(!x) return null;
+      for(const d of [1,2]){ const y=fcRaw(b-d); if(y&&d*m.bp+x.at-y.at<6*fcBeat-1e-6) return null; } return x; };
+    if(st==="flowch"){ const x=fcPlan(fcBi);
+      if(x) for(const tk of ticks16){ if(tk.k!==x.k) continue; tAt=at+tk.dt; if(PNO.puTo&&tAt>=PNO.puFrom-1e-4&&tAt<PNO.puTo-1e-4) break;
+        let v=ch, ant=false;
+        if(x.ci===cs.length-1&&x.s>=2){ const nR=rel-rb+m.bp, lim=(sec.bars||[]).length*m.bp; let to=null;   // the last beat's "and" or "a": the next chord, early
+          try{ to=chordInForceAt(p2+(m.bp-rb),sec,m); }catch(e){}
+          if(!to&&nR>=lim){ try{ to=chordInForceAt(p2-rel,sec,m); }catch(e){} }
+          const tp=to&&to!==name?((pnoJazz&&jazzColourPCs(to))||chordPCs(to)):null;
+          if(tp){ v=pnoVoicing(tp,lo,hi,ch); if(pnoWide&&v.length>=3){ const w=v[1]+12; v=v.slice(); v.splice(1,1); v.push(w); v.sort((a,b)=>a-b); } ant=true; } }
+        const T0=PNO.fcTop;   // the top voice by the smallest step: this voicing, its lowest note up, or its highest down
+        if(T0!=null&&v.length>1) v=[v.slice(1).concat([v[0]+12]),[v[v.length-1]-12].concat(v.slice(0,-1))].filter(y=>y[0]>=lo-3&&y[y.length-1]<=hi+5)
+          .reduce((b,y)=>Math.abs(y[y.length-1]-T0)<Math.abs(b[b.length-1]-T0)-1e-9?y:b,v);
+        const held=!ant&&passDraw("pno",fcBi*64+x.k,117)<1/3, len=ant?(m.bp-x.at+fcBeat)*pd:held?2*fcBeat*pd:1.5*s16;
+        pnoRelease(tAt); const t0=hum(), top=v.length-1;
+        v.forEach((n,k)=>pnoNote(n,t0+Math.random()*0.006,(ant?0.46:0.44)+(k===top?0.05:-0.03),len));
+        PNO.fcTop=v[top]; PNO.fcB=tAt+1.5*fcBeat*pd; break; } }
     for(const tk of ticks){ tAt=at+tk.dt;
       const pos=rb+tk.dt/pd, change=fresh&&tk.dt<1e-6;
       const R=j=>passDraw("pno",Math.floor(rel/m.bp+1e-9)*64+tk.k,j);   // this place's dice - the bar and the step in the table - this pass (the pass rule)
       /* the pedal comes up only when a new roll begins (David, 30 Sep 2026: "it sounds better when the notes are allowed to
          ring over chord changes"; patches/piano-flow-ring.py) - a chord change no longer lifts it */
       const pair=PNO.fpairT!=null&&Math.abs(tAt-PNO.fpairT)<0.02; if(pair) PNO.fpairT=null;   // the second of two in a row (30 Sep 2026)
-      /* FLOW & CHORDS (David, 3 Oct 2026: "Flow sparce with the occasional chord placed in a tasteful, musical way" - "block" -
-         "sometimes rolled"; patches/piano-flow-chords.py): a soft chord at the phrase's places - the downbeat of its first
-         and third bar most, a change on a beat, the "and" before the next phrase anticipating its chord - never two within a
-         bar and a half but at a change; the rolls wait a beat and a half after it */
-      if(st==="flowch"){ if(tAt<(PNO.fcB||0)-1e-3) continue;   // a chord rings: no roll, no chord
-        if(!pair&&(change||tAt>=(PNO.fbusy||0)-1e-3)){
-          const U=PH.n*m.bp, uS=U*pd, gap=PNO.fcT==null?1e9:tAt-PNO.fcT, u4=PH.idx%4, at0=PH.k*m.bp+pos, left=U-at0, e8=m.sub*(piece.unit||4)/8;
-          const down=PH.k===0&&pos<1e-6, mid=tk.s===0&&Math.abs(at0-U/2)<1e-6, far=gap>=1.5*uS-1e-3;
-          let pc=0, ant=null;
-          if(down) pc=far?[0.8,0.35,0.5,0.3][u4]:(change&&gap>=0.75*uS-1e-3)?0.35:0;   // a change there: as a change
-          else if(change&&tk.s===0) pc=gap>=0.75*uS-1e-3?0.35:0;
-          else if(mid) pc=far?0.12:0;
-          else if((u4===3||u4===1)&&far&&Math.abs(left-e8)<1e-6){   // the "and" before the next phrase: the next chord, early
-            const lim=(sec.bars||[]).length*m.bp, nR=rel-rb+m.bp; let to=null;
-            try{ to=chordInForceAt(p2+(m.bp-rb),sec,m); }catch(e){}
-            if(!to&&nR>=lim){ try{ to=chordInForceAt(p2-rel,sec,m); }catch(e){} }   // the table's end: into its start, as the loop goes
-            if(to&&to!==name){ ant=to; pc=u4===3?0.35:0.12; } }
-          let v=ch, lw=low;
-          if(pc>0&&ant){ const tp=(pnoJazz&&jazzColourPCs(ant))||chordPCs(ant);
-            if(!tp) pc=0;
-            else { v=pnoVoicing(tp,lo,hi,ch); if(pnoWide&&v.length>=3){ const w=v[1]+12; v=v.slice(); v.splice(1,1); v.push(w); v.sort((a,b)=>a-b); }
-              lw=lo-12; while(((lw%12)+12)%12!==tp[0]) lw++; } }
-          if(pc>0&&v.length&&R(11)<pc){
-            const T0=PNO.fcTop;   // the top voice by the smallest step: this voicing, its lowest note up, or its highest down
-            if(T0!=null) v=[v.slice(1).concat([v[0]+12]),[v[v.length-1]-12].concat(v.slice(0,-1))].filter(x=>x[0]>lw+4&&x[x.length-1]<=hi+5)
-              .reduce((b,x)=>Math.abs(x[x.length-1]-T0)<Math.abs(b[b.length-1]-T0)-1e-9?x:b,v);
-            const ns=[lw].concat(v), top=ns.length-1, base=ant?0.42:(change&&!down)?0.4:[0.46,0.38,0.43,0.4][u4];
-            const roll=R(12)<(ant||u4===3?0.4:0.2), sp=0.012+0.02*Math.random();   // the staff runs without chance: 12 ms, one moment
-            pnoRelease(tAt); const t0=hum();
-            ns.forEach((x,k)=>pnoNote(x,roll?t0+k*sp:t0+Math.random()*0.006,base+(k===top?0.06:k===0?0.02:-0.04)));
-            PNO.fcT=tAt; PNO.fcTop=v[v.length-1]; PNO.fcFrom=PNO.fcTop; PNO.fcB=tAt+1.5*(U/PH.cs.length)*pd;
-            continue; } } }
+      if(st==="flowch"&&tAt<(PNO.fcB||0)-1e-3) continue;   // a chord rings: the rolls wait (patches/piano-flow-comp.py)
       if(!change&&!pair&&tAt<(PNO.fbusy||0)-1e-3) continue;   // one roll at a time (a roll never runs past a change)
       const p=pair?1:(st==="flow"?1:0.35)*(change?0.5:fB*(tk.s===0?(((PH.k===0&&pos<1e-6)||(PH.k===PH.n-1&&Math.abs(pos-lastB)<1e-6))?0.4:0.25):0.12));   // sparse: 0.35, measured to give half the rolls (0.5 gave 69%: a roll blocks the chances after it)
       if(R(1)>=p) continue;
@@ -14193,10 +14189,10 @@ function pnoPulse(p2,rel,m,sec,at,free){
       if(room<need) continue;
       const n=Math.min(room,need+Math.floor(R(2)*(Math.max(need,6)-need+1))), up=R(3)<0.75, i0=Math.floor(R(4)*Math.max(1,pool.length-n+1));
       let ns=pool.slice(i0,i0+n); if(ns.length<n) ns=pool.slice(-n); if(!up) ns.reverse();
-      let fall=false; if(st==="flowch"&&PNO.fcFrom!=null){ const dn=pool.filter(x=>x<=PNO.fcFrom);   // after a chord: from its top, down (patches/piano-flow-chords.py)
-        if(R(13)<0.5&&dn.length>=n){ ns=dn.slice(-n).reverse(); fall=true; } PNO.fcFrom=null; }
+      if(st==="flowch"){ const endP=pos+n*s16/pd, cP=[0,1].map(d=>{ const x=fcPlan(fcBi+d); return x?d*m.bp+x.at:null; }).filter(c=>c!=null&&c>pos-1e-6);   // no roll ending less than a beat before a chord (patches/piano-flow-comp.py)
+        if(cP.length&&Math.min(...cP)-endP<fcBeat-1e-6) continue; }
       pnoRelease(tAt); const t0=hum(), L=Math.max(1,ns.length-1);
-      ns.forEach((x,k)=>pnoNote(x,t0+k*s16,(up&&!fall?0.42+0.08*k/L:0.5-0.1*k/L)+(k?0:0.06)));
+      ns.forEach((x,k)=>pnoNote(x,t0+k*s16,(up?0.42+0.08*k/L:0.5-0.1*k/L)+(k?0:0.06)));
       PNO.fbusy=t0+ns.length*s16+s16;                           // and a sixteenth's breath before the next
       /* TWO IN A ROW (David, 30 Sep 2026: "sometimes let's add 2 arpeggios in a row"): after one roll in four - not after a
          second - the next subdivision after it rolls too, if the bar and the chord go on */
@@ -28677,7 +28673,7 @@ function staffRecord(nm,k){
     GTR={chord:null,shape:null,seq:0,last:-9,ctx,str:[null,null,null,null,null,null],fol:[],fpos:null,pass:(sv.GTR&&sv.GTR.pass)||0};   /* the pass now sounding (patches/staff-follows-pass.py) */
     PNO={chord:null,held:[],last:-9,ctx,seq:0,vc:null}; SYN={chord:null,held:[],last:-9,ctx,vc:null};   // the pass being played is PLAYPASS (the pass rule, patches/piano-pass-rule.py)
     gtrNote=(s,f,t)=>notes.push({midi:GTR_OPEN[s]+f,t,s}); gtrChoke=(s,t)=>chokes.push({s,t});
-    pnoNote=(x,t,v,len)=>notes.push({midi:x,t,len,jz:!!(PNO_JZ[pnoStyle]||pnoStyle==="jcomp")&&!PNO.pu}); pnoRelease=()=>{};   // its length and whether it comps (patches/staff-comp-short.py)
+    pnoNote=(x,t,v,len)=>notes.push({midi:x,t,len,jz:!!(PNO_JZ[pnoStyle]||pnoStyle==="jcomp"||pnoStyle==="flowch")&&!PNO.pu}); pnoRelease=()=>{};   // its length and whether it comps (patches/staff-comp-short.py)
     synRelease=t=>{ for(const h of SYN.held) if(h.end>t) h.end=t; SYN.held=[]; };
     synNote=(x,t,v,len)=>{ notes.push({midi:x,t}); SYN.held.push({end:t+len,gt:{gain:{setValueAtTime:(lv,tt)=>{ if(tt>t+1e-3) notes.push({midi:x,t:tt}); },setTargetAtTime(){}}}}); };
     const fn=k==="gtr"?gtrPulse:k==="pno"?pnoPulse:synPulse;
