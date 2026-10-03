@@ -13925,7 +13925,7 @@ function pnoNote(midi,t,vel,len,fin){
   let e;
   if(PNO_PLAY==="grand"){ e=PNO_BUF[0]; for(const x of PNO_BUF) if(Math.abs(x.midi-midi)<Math.abs(e.midi-midi)) e=x; }
   else { const T=gtrTake(midi,vel,false,PNO_PLAY); if(!T.e) return; e={buf:T.e.buf,off:T.e.off,midi:T.c}; }   // an electric piano: its zone, layer and take (patches/piano-sounds.py)
-  const pk=PNO_PK*(pnoVol/100)*(0.7+0.3*vel); if(!(pk>0)) return;
+  const pk=PNO_PK*(pnoVol/100)*(0.7+0.3*vel)*(PNO.gk||1); if(!(pk>0)) return;   // PNO.gk: a trim the caller sets for its notes (patches/piano-flow-sustain.py)
   const st=Math.max(t,ctx.currentTime);
   const src=ctx.createBufferSource(); src.buffer=e.buf; src.playbackRate.value=Math.pow(2,(midi-e.midi)/12);
   const env=ctx.createGain();
@@ -14045,7 +14045,7 @@ function pnoPulse(p2,rel,m,sec,at,free){
   if(!pnoReady()) return;
   if(PNO.ctx!==ctx||at<PNO.last-0.05||at-PNO.last>2.5){ PNO.chord=null; PNO.held=[]; PNO.ctx=ctx; PNO.vc=null; }   // a fresh start
   PNO.last=at;
-  if(rel===0&&(pnoStyle==="flow"||pnoStyle==="flowsp"||pnoStyle==="flowch")){ PNO.chord=null; PNO.vc=null; PNO.fbusy=0; PNO.fpairT=null; PNO.fcB=0; PNO.fcTop=null; }   // a table starts as the staff's run does (30 Sep 2026)
+  if(rel===0&&(pnoStyle==="flow"||pnoStyle==="flowsp"||pnoStyle==="flowch")){ PNO.chord=null; PNO.vc=null; PNO.fbusy=0; PNO.fpairT=null; PNO.fcB=0; PNO.fcTop=null; PNO.fcV=null; PNO.fc2=null; }   // a table starts as the staff's run does (30 Sep 2026)
   const name=chordInForceAt(p2,sec,m);   // the chord the row shows, as the guitar reads it
   if(!name){ if(PNO.chord){ pnoRelease(at); PNO.chord=null; } return; }
   const pcs=(pnoJazz&&jazzColourPCs(name))||chordPCs(name); if(!pcs) return;   // Colour Jazz: the 7th and the 9th from the key (patches/piano-jazz.py)
@@ -14138,7 +14138,7 @@ function pnoPulse(p2,rel,m,sec,at,free){
     const fB=Math.min(1,PH.cs.length/4);   // a shorter bar, fewer chances: about as many rolls per four beats in any metre
     const pool=[...new Set([low].concat(ch,ch.slice(0,3).map(x=>x+12)))].sort((x,y)=>x-y);
     if((PNO.fbusy||0)-at>4){ PNO.fbusy=0; PNO.fpairT=null; }
-    if((PNO.fcB||0)-at>4){ PNO.fcB=0; PNO.fcTop=null; }   // and a chord's (patches/piano-flow-comp.py)    // a timer left from another start
+    if((PNO.fcB||0)-at>4){ PNO.fcB=0; PNO.fcTop=null; PNO.fcV=null; PNO.fc2=null; }   // and a chord's (patches/piano-flow-comp.py)    // a timer left from another start
     /* A NEW TAKE EACH PASS (the pass rule, patches/piano-pass-rule.py): the dice are this place's in the table and PLAYPASS,
        which the scheduler counts for every instrument - a table begun again, the jam's loop coming round - and the staff's
        silent run reads; staffPassRedraw draws the staff again as a new pass sounds (VARIES.pno) */
@@ -14154,21 +14154,30 @@ function pnoPulse(p2,rel,m,sec,at,free){
       let r=passDraw("pno",b*64,113)*W.reduce((a,w)=>a+w,0); for(let i=0;i<L.length;i++){ r-=W[i]; if(r<0) return L[i]; } return L[L.length-1]||null; };
     const fcPlan=b=>{ const x=fcRaw(b); if(!x) return null;
       for(const d of [1,2]){ const y=fcRaw(b-d); if(y&&d*m.bp+x.at-y.at<6*fcBeat-1e-6) return null; } return x; };
+    /* SUSTAINED, OR SHORT INTO SUSTAINED (David, 4 Oct 2026; patches/piano-flow-sustain.py): four times in ten a stab, then
+       the same chord sustained on the bar's next eighth - none left, sustained alone */
+    const fcNext=(b,x)=>feelSteps(m,b).list.find(z=>z.at>x.at+1e-6&&(z.s===0||z.s===2))||null, fcTwo=(b,x)=>passDraw("pno",b*64+x.k,119)<0.4?fcNext(b,x):null;
     if(st==="flowch"){ const x=fcPlan(fcBi);
       if(x) for(const tk of ticks16){ if(tk.k!==x.k) continue; tAt=at+tk.dt; if(PNO.puTo&&tAt>=PNO.puFrom-1e-4&&tAt<PNO.puTo-1e-4) break;
-        let v=ch, ant=false;
+        const [cLo,cHi]=PNO_WIN.around; let v=pnoVoicing(pcs,cLo,cHi,PNO.fcV||null), ant=false;   // around the pan, whatever the Register (patches/piano-flow-sustain.py)
+        if(pnoWide&&v.length>=3){ const w=v[1]+12; v=v.slice(); v.splice(1,1); v.push(w); v.sort((a,b)=>a-b); }
         if(x.ci===cs.length-1&&x.s>=2){ const nR=rel-rb+m.bp, lim=(sec.bars||[]).length*m.bp; let to=null;   // the last beat's "and" or "a": the next chord, early
           try{ to=chordInForceAt(p2+(m.bp-rb),sec,m); }catch(e){}
           if(!to&&nR>=lim){ try{ to=chordInForceAt(p2-rel,sec,m); }catch(e){} }
           const tp=to&&to!==name?((pnoJazz&&jazzColourPCs(to))||chordPCs(to)):null;
-          if(tp){ v=pnoVoicing(tp,lo,hi,ch); if(pnoWide&&v.length>=3){ const w=v[1]+12; v=v.slice(); v.splice(1,1); v.push(w); v.sort((a,b)=>a-b); } ant=true; } }
+          if(tp){ v=pnoVoicing(tp,cLo,cHi,v); if(pnoWide&&v.length>=3){ const w=v[1]+12; v=v.slice(); v.splice(1,1); v.push(w); v.sort((a,b)=>a-b); } ant=true; } }
         const T0=PNO.fcTop;   // the top voice by the smallest step: this voicing, its lowest note up, or its highest down
-        if(T0!=null&&v.length>1) v=[v.slice(1).concat([v[0]+12]),[v[v.length-1]-12].concat(v.slice(0,-1))].filter(y=>y[0]>=lo-3&&y[y.length-1]<=hi+5)
+        if(T0!=null&&v.length>1) v=[v.slice(1).concat([v[0]+12]),[v[v.length-1]-12].concat(v.slice(0,-1))].filter(y=>y[0]>=cLo-3&&y[y.length-1]<=cHi+5)
           .reduce((b,y)=>Math.abs(y[y.length-1]-T0)<Math.abs(b[b.length-1]-T0)-1e-9?y:b,v);
-        const held=!ant&&passDraw("pno",fcBi*64+x.k,117)<1/3, len=ant?(m.bp-x.at+fcBeat)*pd:held?2*fcBeat*pd:1.5*s16;
+        const y=ant?null:fcTwo(fcBi,x), bz=!ant&&!y&&passDraw("pno",fcBi*64+x.k,121)<0.3?fcNext(fcBi,x):null;   // a stab, then its sustained second hit; a broken chord, the root first; or sustained now
         pnoRelease(tAt); const t0=hum(), top=v.length-1;
-        v.forEach((n,k)=>pnoNote(n,t0+Math.random()*0.006,(ant?0.46:0.44)+(k===top?0.05:-0.03),len));
-        PNO.fcTop=v[top]; PNO.fcB=tAt+1.5*fcBeat*pd; break; } }
+        PNO.gk=0.6; try{ if(bz){ let rt=cLo-1; while(((rt%12)+12)%12!==pcs[0]) rt--; pnoNote(rt,t0,0.42); }   // the root under the chord, the rest on the next eighth (David, 4 Oct 2026: "broken chords, first root, then the other notes")
+          else v.forEach((n,k)=>pnoNote(n,t0+Math.random()*0.006,(ant?0.4:y?0.36:0.38)+(k===top?0.05:-0.03),y?1.5*s16:undefined)); } finally{ PNO.gk=1; }   // softer (David, 4 Oct 2026: "play the chords a bit softer")
+        PNO.fcTop=v[top]; PNO.fcV=v; PNO.fc2=y?{bi:fcBi,k:y.k}:bz?{bi:fcBi,k:bz.k,br:true}:null; PNO.fcB=tAt+1.5*fcBeat*pd; break; } }
+    /* the second hit - a stab's sustained chord, or a broken chord's upper notes - in this pulse or a later one (after the first, so one pulse may hold both) */
+    if(st==="flowch"&&PNO.fc2&&PNO.fc2.bi===fcBi&&PNO.fcV) for(const tk of ticks16){ if(tk.k!==PNO.fc2.k) continue; tAt=at+tk.dt; const br=PNO.fc2.br; PNO.fc2=null;
+      if(!br) pnoRelease(tAt);   /* a broken chord's root rings on */ const t0=hum(), v=PNO.fcV, top=v.length-1; PNO.gk=0.6; try{ v.forEach((n,k)=>pnoNote(n,t0+Math.random()*0.006,0.4+(k===top?0.05:-0.03))); } finally{ PNO.gk=1; }
+      PNO.fcB=tAt+1.5*fcBeat*pd; break; }
     for(const tk of ticks){ tAt=at+tk.dt;
       const pos=rb+tk.dt/pd, change=fresh&&tk.dt<1e-6;
       const R=j=>passDraw("pno",Math.floor(rel/m.bp+1e-9)*64+tk.k,j);   // this place's dice - the bar and the step in the table - this pass (the pass rule)
