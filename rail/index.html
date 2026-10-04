@@ -13940,7 +13940,7 @@ function pnoNote(midi,t,vel,len,fin){
   if(PNO_PLAY==="grand"){ if(!PNO_LAY_DEC) pnoLayLoad(); const lv=vel-(pnoStyle==="flowcbg"?0.1:0), Ly=PNO_LAYS.find(l=>lv<l[2]&&PNO_LAY[l[0]]), B=Ly?PNO_LAY[Ly[0]]:PNO_BUF;   /* the layer its strength calls for (patches/piano-velocity-layers.py) */
     e=B[0]; for(const x of B) if(Math.abs(x.midi-midi)<Math.abs(e.midi-midi)) e=x; }
   else { const T=gtrTake(midi,vel,false,PNO_PLAY); if(!T.e) return; e={buf:T.e.buf,off:T.e.off,midi:T.c}; }   // an electric piano: its zone, layer and take (patches/piano-sounds.py)
-  const pk=PNO_PK*(pnoVol/100)*(0.7+0.3*vel)*(PNO.gk||1)*(pnoStyle==="flowcbg"?0.6:1)*(e.lg||1); if(!(pk>0)) return;   /* gentle: every note softer (patches/piano-flow-gentle.py) */   // PNO.gk: a trim the caller sets for its notes (patches/piano-flow-sustain.py)
+  const pk=PNO_PK*(pnoVol/100)*(0.7+0.3*vel)*(PNO.gk||1)*(pnoStyle==="flowcbg"?1.2:1)*(e.lg||1); if(!(pk>0)) return;   /* gentle 1.2 (was 0.6): its softness is the softer layers and the darker tone, not the level (David, 4 Oct 2026: "a little louder, but only in volume ... at 150 it's still very soft") */   /* gentle: every note softer (patches/piano-flow-gentle.py) */   // PNO.gk: a trim the caller sets for its notes (patches/piano-flow-sustain.py)
   const st=Math.max(t,ctx.currentTime);
   const src=ctx.createBufferSource(); src.buffer=e.buf; src.playbackRate.value=Math.pow(2,(midi-e.midi)/12);
   const env=ctx.createGain();
@@ -14176,14 +14176,30 @@ function pnoPulse(p2,rel,m,sec,at,free){
       const half=cs.map(c=>c.start).reduce((a,x)=>Math.abs(x-m.bp/2)<Math.abs(a-m.bp/2)?x:a,m.bp);
       const D=kind==="echo"&&half>0&&half<m.bp&&r<0.2?half:m.bp;
       return {kind,D,L:D}; };
-    const fpDraw=b=>{ const y=fpRaw(b-1); if(y&&y.kind==="echo"&&y.D+y.L>m.bp+1e-6) return null; return fpRaw(b); };   // a bar an echo reaches into draws none of its own
+    /* LONGER PHRASES (David, 4 Oct 2026: "a longer phrase from the Handpan over several bars" - "sometimes keep unison longer
+       or for the whole phrase ... make it musical, and not the same, like a real pianist would play" - "chords may sometimes
+       play at the same time and the pianist may play rolls around the phrase"; patches/piano-flow-long-phrases.py): the
+       table's phrases planned once a pass, bar by bar - two in five that are not woven run two to four bars with a shape for
+       the whole of it; an echo that reaches into the next bar keeps it */
+    const fpShape=(n,r)=>{ const W=(w,k)=>Array(Math.max(0,k)).fill(w), e=n>3?2:1;
+      const S=[[0.3,W("whole",n)],[0.16,W("whole",n-e).concat(W("harm",e))],[0.12,W("harm",n)],[0.12,W("echo",n)],
+        [n>=3?0.1:0,["whole"].concat(W("harm",n-2),["whole"])],[0.1,["echo"].concat(W("whole",n-1))],[0.1,["arp"].concat(W("whole",n-1))]];
+      let x=r*S.reduce((a,s)=>a+s[0],0); for(const [w,ways] of S){ x-=w; if(x<0) return ways; } return S[0][1]; };
+    const fpPlanAll=()=>{ const nb=(((piece.sections[sec.name]||{}).bars)||[]).length, key=(sec.name||"")+"|"+PLAYPASS+"|"+nb+"|"+m.bp+"|"+st;
+      if(PNO.fpK===key) return PNO.fpP; const plan=new Array(nb).fill(null);
+      for(let b=0;b<nb;b++){ const P=fpRaw(b); if(!P) continue;
+        const g=passDraw("pnolong",b*64,1), n=Math.min(nb-b,2+Math.floor(passDraw("pnolen",b*64,1)*3));
+        if(P.kind!=="woven"&&n>=2&&g<0.4){ const ways=fpShape(n,g/0.4); for(let i=0;i<n;i++) plan[b+i]={kind:"long",i,n,way:ways[i]}; b+=n-1; continue; }
+        plan[b]=P; if(P.kind==="echo"&&P.D+P.L>m.bp+1e-6&&b+1<nb){ plan[b+1]={kind:"spill"}; b++; } }
+      PNO.fpK=key; PNO.fpP=plan; return plan; };
+    const fpDraw=b=>{ if(b<0) return null; const pl=fpPlanAll(); return b<pl.length?pl[b]:null; };   /* the bar's phrase: a short one, a long one's bar, or an echo's spill */
     const fpFirst=b=>{ for(let q=0;q<m.bp;q++) if(panTones(p2-rel+b*m.bp+q).length) return q; return null; };   // the bar's first pitched stroke
-    const fpWin=b=>{ const P=fpDraw(b); if(!P) return null;   // where its notes sound, in pulses from bar b's start
+    const fpWin=b=>{ const P=fpDraw(b); if(!P||P.kind==="long"||P.kind==="spill") return null;   // where its notes sound, in pulses from bar b's start
       if(P.kind==="echo") return [P.D,P.D+P.L];
       if(P.kind==="double") return [0,m.bp];
       const f=fpFirst(b); return f==null?null:[f,Math.min(m.bp,f+5*s16/pd)]; };
     const fcRaw=b=>{ if(b<0||!FC) return null;
-      if(fpDraw(b)){ return null; } { const y=fpDraw(b-1); if(y&&y.kind==="echo"&&y.D+y.L>m.bp+1e-6) return null; }   /* a phrase's bar has no chord */
+      { const P=fpDraw(b); if(P&&!(P.kind==="long"&&passDraw("pnolong",b*64,7)<0.5)) return null; } { const y=fpDraw(b-1); if(y&&y.kind==="echo"&&y.D+y.L>m.bp+1e-6) return null; }   /* a phrase's bar has no chord */
       if(passDraw("pno",b*64,111)>=[0.6,0.35,0.5,0.4][Math.floor(b/PH.n)%4]*Math.min(1,cs.length/4)) return null;
       const L=feelSteps(m,b).list.filter(x=>!x.first), W=L.map(x=>x.s===2?1:x.s===3?0.45:x.s===0?0.3:0.12);
       let r=passDraw("pno",b*64,113)*W.reduce((a,w)=>a+w,0); for(let i=0;i<L.length;i++){ r-=W[i]; if(r<0) return L[i]; } return L[L.length-1]||null; };
@@ -14217,7 +14233,7 @@ function pnoPulse(p2,rel,m,sec,at,free){
       /* THREE WAYS (David, 4 Oct 2026: "it may be the complete phrase ... a harmonization of the melody (fitting to the
          current chord) or only the rhythm of the phrase integrated into an arpeggio"; patches/piano-flow-phrase-ways.py) */
       const fpWay=b=>{ const r=passDraw("pnophr",b*64,1); return r<0.4?"whole":r<0.7?"harm":"arp"; }, md=v=>((v%12)+12)%12;
-      const fpPlay=(src,v0,b,s0)=>{ const T=panTones(src); if(!T.length) return; const t0=hum(), way=fpWay(b);
+      const fpPlay=(src,v0,b,s0,w)=>{ const T=panTones(src); if(!T.length) return; const t0=hum(), way=w||fpWay(b);
         const vel=e=>Math.min(0.56,v0+0.1*Math.min(1,e.g||0)), len=e=>e.stac?1.2*s16:fcBeat*pd*0.9;
         if(way==="arp"){ let k=0; for(let s=s0;s<src;s++) if(panTones(s).length) k++;   /* the phrase's k-th stroke: the arpeggio's k-th note, up and back down */
           const L=pool.length, per=Math.max(1,2*L-2), i=k%per; pnoNote(pool[i<L?i:per-i],t0,vel(T[0]),len(T[0])); }
@@ -14228,7 +14244,8 @@ function pnoPulse(p2,rel,m,sec,at,free){
         PNO.fbusy=Math.max(PNO.fbusy||0,at+s16); };
       for(const b of [fcBi-1,fcBi]){ const P=fpDraw(b); if(!P) continue; const q=rel-b*m.bp;
         if(P.kind==="echo"){ if(q>=P.D-1e-6&&q<P.D+P.L-1e-6) fpPlay(p2-P.D,0.4,b,p2-rel+b*m.bp); }
-        else if(b!==fcBi) continue;
+        else if(b!==fcBi||P.kind==="spill") continue;
+        else if(P.kind==="long"){ if(P.way==="echo") fpPlay(p2-m.bp,0.4,b,p2-rel+(b-1)*m.bp,"whole"); else fpPlay(p2,0.38,b,p2-rel+b*m.bp,P.way); }   /* a long phrase's bar, its way (patches/piano-flow-long-phrases.py) */
         else if(P.kind==="double") fpPlay(p2,0.38,b,p2-rel+b*m.bp);
         else if(fpFirst(b)===rb){ const ps=[];   // woven: the pan's first notes, then on through the chord
           for(let q2=rb;q2<m.bp&&ps.length<3;q2++) for(const e of panTones(p2-rb+q2)){ const x=e.midi+12; if(ps[ps.length-1]!==x) ps.push(x); if(ps.length>=3) break; }
@@ -14305,7 +14322,10 @@ function pnoPulse(p2,rel,m,sec,at,free){
       if(FC){ const endP=pos+n*s16/pd, cP=[0,1].map(d=>{ const x=fcPlan(fcBi+d); return x?d*m.bp+x.at:null; }).filter(c=>c!=null&&c>pos-1e-6);   // no roll ending less than a beat before a chord (patches/piano-flow-comp.py)
         if(cP.length&&Math.min(...cP)-endP<fcBeat-1e-6) continue;
         const fW=[-1,0,1].map(d=>{ const w=fpWin(fcBi+d); return w?[w[0]+d*m.bp,w[1]+d*m.bp]:null; }).filter(Boolean);   // nor into a phrase of the pan's (patches/piano-flow-pan-phrases.py)
-        if(fW.some(w=>pos<w[1]-1e-6&&endP>w[0]-1e-6)) continue; }
+        if(fW.some(w=>pos<w[1]-1e-6&&endP>w[0]-1e-6)) continue;
+        { const LP=fpDraw(fcBi); if(LP&&LP.kind==="long"){ const off=LP.way==="echo"?m.bp:0; let hit=false;   /* around a long phrase: a roll only in a gap of it (patches/piano-flow-long-phrases.py) */
+            for(let q=Math.ceil(pos-1e-6);q<endP-1e-6&&q<m.bp&&!hit;q++) if(panTones(p2-rb+q-off).length) hit=true;
+            if(hit) continue; } } }
       pnoRelease(tAt); const t0=hum(), L=Math.max(1,ns.length-1);
       ns.forEach((x,k)=>pnoNote(x,t0+k*s16,(up?0.42+0.08*k/L:0.5-0.1*k/L)+(k?0:0.06)));
       PNO.fbusy=t0+ns.length*s16+s16;                           // and a sixteenth's breath before the next
