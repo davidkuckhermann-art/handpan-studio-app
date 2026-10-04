@@ -1906,6 +1906,8 @@ body.phone:not(.tablet) .pop.card:has(>.dbar){top:calc(env(safe-area-inset-top,0
 .pop .cpage [data-ps="flowch"]::after{content:"sparse flow, chords, the pan's phrases"}
 .pop .cpage [data-ps="flowcb"]::after{content:"flow, chords and a bass line"}
 .pop .cpage [data-ps="flowcbg"]::after{content:"the same, softer and darker"}
+.pop.bandpop .bdact{margin:0 0 14px}
+.pop.bandpop .bdact .note{margin-top:6px; max-width:none; font-size:12px; color:var(--ink3,#8a8178)}
 .pop .cpage [data-bgg="basic"]::after{content:"root, fifth, walks"}
 .pop .cpage [data-bgg="latin"]::after{content:"tumbao, 3-3-2"}
 .pop .cpage [data-bgg="dbl"]::after{content:"twice as busy"}
@@ -12714,9 +12716,26 @@ function bandFig(inst,nm,bi,m){ try{
     const s16p=m.sub*(piece.unit||4)/16, r=Array(16).fill(".");
     for(const e of ev){ if(e.f==="p:C5"||e.f==="p:B4"){ const k=Math.round(e.t/s16p); if(k>=0&&k<16) r[k]="x"; } } return r.join(""); }
   }catch(e){} return null; }
+/* THE BAND'S ACTIVITY (David, 4 Oct 2026: "the activity slider that controls how active the jam and variation algorhythms
+   are. Current activity level should be at around 80%" - "one for the band ... only the instruments that have freedom level
+   above 0. 100% should be 130% of what we have now"; ACTIVITY-PLAN.md, patches/activity.py): every draw that decides
+   whether something varies goes through actP - 0 at 0%, today at 80%, 130% at 100% - for an instrument whose Freedom is
+   above 0; Freedom still says what may happen */
+var bandAct=(()=>{ let v=80; try{ const s=localStorage.getItem("hps.activity"); if(s!=null) v=+s; }catch(e){} return [20,50,80,90,100].includes(v)?v:80; })();
+const ACT_STEPS=[[20,"Calm"],[50,"Settled"],[80,"Natural"],[90,"Lively"],[100,"Wild"]];
+function actF(){ return bandAct<=80?bandAct/80:1+0.3*(bandAct-80)/20; }
+function actP(inst,p){ const on=inst==="gtr"?gtrLive:inst==="pno"?pnoLive:inst==="bass"?bassLive===true:inst==="pan"?panLv>0:true;
+  return on?Math.min(1,p*actF()):p; }
+function actHTML(){ return '<div class="bdact"><div class="ttl">Activity</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(5,1fr)">'
+    +ACT_STEPS.map(([v,l])=>'<button type="button" class="bwseg'+(v===bandAct?" on":"")+'" data-bdact="'+v+'" aria-pressed="'+(v===bandAct)+'">'+l+'</button>').join("")
+    +'</div><div class="note">How often the band varies - for the instruments whose Freedom is above 0</div></div>'; }
+function actSet(v){ if(!ACT_STEPS.some(s=>s[0]===v)) return; bandAct=v; try{ localStorage.setItem("hps.activity",String(v)); }catch(e){}
+  try{ BAND_MEMO.clear(); JAMB_MEMO.clear(); TIHAI_MEMO.clear(); PANPLAN=null; }catch(e){}
+  try{ document.querySelectorAll(".pop.bandpop [data-bdact]").forEach(b=>{ const on=+b.dataset.bdact===v; b.classList.toggle("on",on); b.setAttribute("aria-pressed",String(on)); }); }catch(e){}
+  try{ if(typeof renderStaff==="function") renderStaff(); }catch(e){} }
 const BAND_MEMO=new Map();   // a bar's pick, asked on every pulse, worked out once
 function bandPickAt(inst,nm,bi,m){ if(!(inst==="gtr"?gtrLive&&gtrListen:pnoLive&&pnoListen)) return null;
-  if(passDraw("band"+inst,bi,5)>=((inst==="gtr"?gtrJam:pnoJam)?0.25:0.15)) return null;   // Jam one bar in four, Listen one in seven (patches/band-jam.py)                               // about one bar in seven (patches/band-less-together.py)
+  if(passDraw("band"+inst,bi,5)>=actP(inst,(inst==="gtr"?gtrJam:pnoJam)?0.25:0.15)) return null;   // Jam one bar in four, Listen one in seven (patches/band-jam.py)                               // about one bar in seven (patches/band-less-together.py)
   const key=[inst,nm,bi,m.bp,PLAYPASS,gtrOn,pnoOn,rhyOn,gtrLive,pnoLive,gtrVisit,pnoVisit,gtrStyle,gtrStrum,gtrPick,pnoStyle].join("|");
   if(BAND_MEMO.has(key)) return BAND_MEMO.get(key); if(BAND_MEMO.size>400) BAND_MEMO.clear();
   const S=["gtr","pno","drm"].filter(s=>s!==inst).map(s=>bandFig(s,nm,bi,m)).filter(r=>{ const n=r?(r.match(/x/g)||[]).length:0; return n>=2&&n<=6; });
@@ -12734,8 +12753,8 @@ function jamOnList(){ const L=[]; try{ if(gtrOn&&gtrLive&&gtrJam) L.push("gtr");
 const JAMB_MEMO=new Map();
 function jamPassage(N){ const J=jamOnList(); if(J.length<2) return undefined;   // fewer than two on Jam: the band as before
   const key=N+"|"+PLAYPASS+"|"+J.join(","); if(JAMB_MEMO.has(key)) return JAMB_MEMO.get(key); if(JAMB_MEMO.size>400) JAMB_MEMO.clear();
-  let v=null; const r=passDraw("band",N,7);
-  if(r<0.7){ let rel=r<0.25?"unison":r<0.45?"thirds":r<0.6?"rhythm":"call";
+  let v=null; const r=passDraw("band",N,7), RA=actP("band",0.7);
+  if(r<RA){ const q=r*0.7/RA; let rel=q<0.25?"unison":q<0.45?"thirds":q<0.6?"rhythm":"call";   /* the kind kept in proportion (patches/activity.py) */
     const mem=jamMembers(J,"jamb",N);
     if(rel==="call"&&!(mem.includes("gtr")&&mem.includes("pno"))) rel="rhythm";   // a call is the guitar's, answered by the piano
     const V=GTR_PU_NOTES.concat(jamFigs(false)), F0=V[Math.floor(passDraw("band",N,101)*V.length)], nf=F0.pos.length;
@@ -12768,7 +12787,7 @@ function tihaiAt(nm,m){ const J=jamOnList(); if(J.length<2) return null; const s
   const nb=(sec.bars||[]).length, lim=nb*m.bp; if(!nb) return null;
   const key=nm+"|"+PLAYPASS+"|"+J.join(",")+"|"+m.bp+"|"+m.sub; if(TIHAI_MEMO.has(key)) return TIHAI_MEMO.get(key); if(TIHAI_MEMO.size>200) TIHAI_MEMO.clear();
   let v=null;
-  if(passDraw("tihai"+nm,lim,0)<Math.min(1,m.bp/(m.sub*(piece.unit||4)/4)/4)/6){   /* in short bars rarer: the odds by the bar's length in quarters over four (David, 4 Oct 2026: "take into account short time signatures"; patches/tihai-gentler-rarer.py) */   /* about one table in six (David, 2 Oct 2026: "it can happen a bit more often, one time in 6 tables"; was one in eight) */
+  if(passDraw("tihai"+nm,lim,0)<actP("band",Math.min(1,m.bp/(m.sub*(piece.unit||4)/4)/4)/6)){   /* in short bars rarer: the odds by the bar's length in quarters over four (David, 4 Oct 2026: "take into account short time signatures"; patches/tihai-gentler-rarer.py) */   /* about one table in six (David, 2 Oct 2026: "it can happen a bit more often, one time in 6 tables"; was one in eight) */
     const x16=m.sub*(piece.unit||4)/16, sp=(Math.abs(x16-Math.round(x16))<1e-6&&x16>=1)?x16:2*x16, span=Math.max(1,Math.min(nb,Math.round(4*m.sub*(piece.unit||4)/4/m.bp))), barS=Math.round(m.bp/sp)*span;   /* a short bar's tihai spans several - as many bars as make about four quarters (David, 4 Oct 2026: "Tihai may move over several short bars"; patches/tihai-short-bars.py) */   // a slot: a sixteenth, or an eighth where the grid has none
     const two=nb>=2*span&&passDraw("tihai"+nm,lim,1)<0.33;
     let C=two?tihaiShapes(barS+2,2*barS+1,TIHAI_P2,true):[]; if(!C.length) C=tihaiShapes(Math.ceil(barS/2)+1,barS+1,TIHAI_P1,false);
@@ -12804,7 +12823,7 @@ function bandShift(L,ref,lo,hi){ const last=L[L.length-1]; let k=Math.round((ref
 function bandThird(L,to){ const pc=chordPCs(to), m12=x=>((x%12)+12)%12; let sc=null; try{ if(typeof myPan!=="undefined"&&myPan) sc=new Set(panMidis(myPan).map(m12)); }catch(e){}
   if(!sc||sc.size<5) sc=new Set([0,2,4,5,7,9,11].map(i=>m12((pc?pc[0]:0)+i)));
   return L.map(v=>{ let x=v, n=0; while(n<2){ x++; if(sc.has(m12(x))) n++; } return x; }); }   // two steps of the key up
-function bandPuProb(N,P){ const i=Math.round(N/P); return i%4===0?0.8:i%2===0?0.5:0.2; }
+function bandPuProb(N,P){ const i=Math.round(N/P); return actP("band",i%4===0?0.8:i%2===0?0.5:0.2); }
 /* the call a phrase ago, if one sounded: its figure - in this pass, or at the end of the pass before (a call into the table's
    start is answered in the next pass's first phrase) */
 /* LIVE WITH HANDPAN (David, 2 Oct 2026: "the live modes should also apply when 'handpan' is selected as pattern for piano and
@@ -12812,7 +12831,7 @@ function bandPuProb(N,P){ const i=Math.round(N/P); return i%4===0?0.8:i%2===0?0.
    beats alone - and the instrument leads into chord changes with notes at the musical odds, the doubling giving way in the
    pickup's window; Listen and Jam link as for the patterns. Pure draws on place and pass, as everything here. */
 function folVar(inst,rel,m){ const U=phraseAt(m,rel).n*m.bp, u=Math.floor(rel/U+1e-9), blk=Math.floor(u/4), r=passDraw("fol"+inst,blk,3), pos=u%4;
-  const span=r<0.05?[2,3]:r<0.35?[3]:null; if(!span||!span.includes(pos)) return null;
+  const span=r<actP(inst,0.05)?[2,3]:r<actP(inst,0.35)?[3]:null; if(!span||!span.includes(pos)) return null;
   return {kind:["octave","thirds","sparse"][Math.floor(passDraw("fol"+inst,blk,11)*3)],onBeat:(((rel%m.bp)+m.bp)%m.bp)%m.sub===0}; }
 function folThird(x){ const m12=v=>((v%12)+12)%12; let sc=null; try{ if(typeof myPan!=="undefined"&&myPan) sc=new Set(panMidis(myPan).map(m12)); }catch(e){}
   if(!sc||sc.size<5) return x+4; let y=x, n=0; while(n<2){ y++; if(sc.has(m12(y))) n++; } return y; }   // two steps of the key up
@@ -12891,7 +12910,7 @@ const GTR_TOUCH={strum:[[["M","D"]],[["L","D"],["L+","U"]],[["P+","U"],["M","D"]
   arp:[[["M","A"]],[["L","T"]],[["M","T"],["L","A"]]]};
 function gtrLiveAt(rel,m){ const home=gtrStyle==="strum"?"strum|"+gtrStrum:gtrStyle==="pick"?"pick|"+gtrPick:gtrStyle+"|", R=GTR_LIVE_REL[home]; if(!R||!R.length) return null;
   const U=phraseAt(m,rel).n*m.bp, u=Math.floor(rel/U+1e-9), seed=Math.floor(u/4)*131+7919*PLAYPASS+3, r=gtrPuHash(seed), pos=u%4;
-  const span=r<0.05?[2,3]:r<0.35?[3]:null;   /* bars 3-4 rarely, bar 4 about one block in three (patches/guitar-live-short.py) */ if(!span||!span.includes(pos)) return null;
+  const span=r<actP("gtr",0.05)?[2,3]:r<actP("gtr",0.35)?[3]:null;   /* bars 3-4 rarely, bar 4 about one block in three (patches/guitar-live-short.py) */ if(!span||!span.includes(pos)) return null;
   const nb=R[Math.floor(gtrPuHash(seed+11)*R.length)].split("|"); return nb[1]?{y:nb[0],p:nb[1]}:{y:nb[0]}; }
 function gtrLeadNotes(from,to,lo,n,chrom,encl,aim,turn){ const pc=chordPCs(to); if(!pc) return null; const pf=from&&chordPCs(from), m12=x=>((x%12)+12)%12, r=m12(pc[0]);
   let sc=null; try{ if(typeof myPan!=="undefined"&&myPan) sc=new Set(panMidis(myPan).map(m12)); }catch(e){}
@@ -13672,10 +13691,10 @@ function gtrPulse(p2,rel,m,sec,at,free){
   { const pk=gtrPuKind(p2,m);
     const ld=!gtrLive?"off":gtrLead==="both"?"auto":gtrLead;   /* Freedom 1+: every pattern, as the row says (patches/freedom-five-levels.py) */   /* Live leads in by itself, notes or strums by draw (patches/guitar-live.py) */
     if(pk&&ld!=="off"&&onCount&&!TH){ const P=phraseAt(m,rel).n*m.bp, N=(Math.floor(rel/P)+1)*P, x16=m.sub*(piece.unit||4)/16, ahead=N-rel, idx=Math.round(N/P);
-      const seed=N+7919*PLAYPASS, prob=idx%4===0?0.8:idx%2===0?0.5:0.2;   // into the bar after a fourth, a second, a first or third
+      const seed=N+7919*PLAYPASS, prob=actP("gtr",idx%4===0?0.8:idx%2===0?0.5:0.2);   // into the bar after a fourth, a second, a first or third
       const BR=bandPuRel(N,"gtr"), lead=BR&&BR!=="rhythm"?"notes":ld==="auto"?(gtrPuHash(seed+57)<0.5?"notes":"strums"):ld;   // a shared line is notes (patches/band-listen-lines.py)
       const JM=gtrLive&&gtrJam, FIGS=(lead==="notes"?(pk==="jazz"?GTR_PU_JAZZ:GTR_PU_NOTES):(pk==="jazz"?GTR_PU_PUSH:GTR_PU_STRUMS)).concat(JM?jamFigs(idx%4===0):[]);   // Jam: the jam's rhythms too (patches/jam-rhythms.py)
-      const FIG=(f=>JM&&!BR&&gtrPuHash(seed+307)<0.2?jamAnt(f):f)(bandPuFig(N,"gtr")||FIGS[Math.floor(gtrPuHash(seed+101)*FIGS.length)]), nf=FIG.pos.length, p0=FIG.pos[0]*x16;   // Jam: one in five anticipates (patches/jam-rhythms.py)
+      const FIG=(f=>JM&&!BR&&gtrPuHash(seed+307)<actP("gtr",0.2)?jamAnt(f):f)(bandPuFig(N,"gtr")||FIGS[Math.floor(gtrPuHash(seed+101)*FIGS.length)]), nf=FIG.pos.length, p0=FIG.pos[0]*x16;   // Jam: one in five anticipates (patches/jam-rhythms.py)
       const SCR=JM&&pk==="strum"&&lead!=="notes"&&gtrPuHash(seed+401)<0.5;   // Jam, the Strumming patterns: about one strum pickup in two scratched (David: "only for the strumming styles")   // listening, one figure for the band (patches/band-listen.py)
       if(ahead>=p0-1e-6&&ahead-p0<m.sub-1e-6&&!bandPrevCall(N,P,sec.pulses||(sec.bars||[]).length*m.bp)&&(BR?passDraw("band",N,0):gtrPuHash(seed))<prob){   // after its call, the piano answers (patches/band-listen-lines.py)   // the count at or before the figure's start schedules all of it - a step between counts never reaches the player in /8
         const lim=(sec.bars||[]).length*m.bp; let to=null; try{ to=chordInForceAt(p2+ahead,sec,m); }catch(e){}
@@ -14091,8 +14110,8 @@ function pnoPulse(p2,rel,m,sec,at,free){
     const ld=!pnoLive?"off":pnoLead==="both"?"auto":pnoLead;   /* Freedom 1+ (patches/freedom-five-levels.py) */   /* Live leads in by itself, notes or the style's option by draw (patches/piano-live.py) */
     if(pk&&ld!=="off"&&onCount&&!TH){ const P=PH.n*m.bp, N=(Math.floor(rel/P)+1)*P, x16=m.sub*(piece.unit||4)/16, ahead=N-rel, idx=Math.round(N/P);
       const BR=bandPuRel(N,"pno"), CALL=bandPrevCall(N,P,sec.pulses||(sec.bars||[]).length*m.bp), ANS=!!CALL;   /* the guitar called a phrase ago: the piano answers (patches/band-listen-lines.py) */
-      const prob=idx%4===0?0.8:idx%2===0?0.5:0.2, lead=ANS||(BR&&BR!=="rhythm")?"notes":ld==="auto"?(passDraw("pno",N,57)<0.5?"notes":"strums"):ld, JM=pnoLive&&pnoJam, FIGS=(lead==="notes"?(pk==="jazz"?GTR_PU_JAZZ:GTR_PU_NOTES):(pk==="jazz"?GTR_PU_PUSH:GTR_PU_STRUMS)).concat(JM?jamFigs(idx%4===0):[]);   // Jam: the jam's rhythms too (patches/jam-rhythms.py)
-      const FIG=(f=>JM&&!CALL&&!BR&&passDraw("pno",N,307)<0.2?jamAnt(f):f)((CALL||bandPuFig(N,"pno"))||FIGS[Math.floor(passDraw("pno",N,101)*FIGS.length)]), nf=FIG.pos.length, p0=FIG.pos[0]*x16;   // Jam: one in five anticipates (patches/jam-rhythms.py)   // listening, one figure for the band (patches/band-listen.py); an answer in the call's rhythm
+      const prob=actP("pno",idx%4===0?0.8:idx%2===0?0.5:0.2), lead=ANS||(BR&&BR!=="rhythm")?"notes":ld==="auto"?(passDraw("pno",N,57)<0.5?"notes":"strums"):ld, JM=pnoLive&&pnoJam, FIGS=(lead==="notes"?(pk==="jazz"?GTR_PU_JAZZ:GTR_PU_NOTES):(pk==="jazz"?GTR_PU_PUSH:GTR_PU_STRUMS)).concat(JM?jamFigs(idx%4===0):[]);   // Jam: the jam's rhythms too (patches/jam-rhythms.py)
+      const FIG=(f=>JM&&!CALL&&!BR&&passDraw("pno",N,307)<actP("pno",0.2)?jamAnt(f):f)((CALL||bandPuFig(N,"pno"))||FIGS[Math.floor(passDraw("pno",N,101)*FIGS.length)]), nf=FIG.pos.length, p0=FIG.pos[0]*x16;   // Jam: one in five anticipates (patches/jam-rhythms.py)   // listening, one figure for the band (patches/band-listen.py); an answer in the call's rhythm
       if(ahead>=p0-1e-6&&ahead-p0<m.sub-1e-6&&BR!=="call"&&(ANS||(BR?passDraw("band",N,0):passDraw("pno",N,0))<prob)){   // the count at or before the figure's start schedules all of it; at a call the guitar alone, an answer always
         const lim=(sec.bars||[]).length*m.bp; let to=null; try{ to=chordInForceAt(p2+ahead,sec,m); }catch(e){}
         if(!to&&N>=lim){ try{ to=chordInForceAt(p2-rel,sec,m); }catch(e){} }   // the table's end: into its start, as the loop goes
@@ -14173,7 +14192,7 @@ function pnoPulse(p2,rel,m,sec,at,free){
        adjust in length to half the amount of bars / half bars"; patches/piano-flow-long-meters.py): longer than four
        quarters; its middle the beat nearest half way */
     const fpLong=m.bp/(m.sub*(piece.unit||4)/4)>4+1e-6, fpH=cs.map(c=>c.start).reduce((a,x)=>Math.abs(x-m.bp/2)<Math.abs(a-m.bp/2)?x:a,m.bp);
-    const fpRaw=b=>{ if(b<0||!FC) return null; const pp=Math.min(1,cs.length/4)/8, d=passDraw("pno",b*64,131); if(d>=pp) return null;
+    const fpRaw=b=>{ if(b<0||!FC) return null; const pp=actP("pno",Math.min(1,cs.length/4)/8), d=passDraw("pno",b*64,131); if(d>=pp) return null;
       const r=d/pp, kind=r<0.4?"echo":r<0.7?"double":"woven";   // one draw, read again inside its odds: the kind does not lean on the odds (neighbouring salts did)
       const half=cs.map(c=>c.start).reduce((a,x)=>Math.abs(x-m.bp/2)<Math.abs(a-m.bp/2)?x:a,m.bp);
       const D=kind==="echo"&&half>0&&half<m.bp&&(r<0.2||fpLong)?half:m.bp, hs=kind==="double"&&fpLong?(passDraw("pnohalf",b*64,1)<0.5?0:half):null;   /* a long bar: the echo of its first half, a doubling of one half */
@@ -14187,17 +14206,17 @@ function pnoPulse(p2,rel,m,sec,at,free){
       const S=[[0.3,W("whole",n)],[0.16,W("whole",n-e).concat(W("harm",e))],[0.12,W("harm",n)],[0.12,W("echo",n)],
         [n>=3?0.1:0,["whole"].concat(W("harm",n-2),["whole"])],[0.1,["echo"].concat(W("whole",n-1))],[0.1,["arp"].concat(W("whole",n-1))]];
       let x=r*S.reduce((a,s)=>a+s[0],0); for(const [w,ways] of S){ x-=w; if(x<0) return ways; } return S[0][1]; };
-    const fpPlanAll=()=>{ const nb=(((piece.sections[sec.name]||{}).bars)||[]).length, key=(sec.name||"")+"|"+PLAYPASS+"|"+nb+"|"+m.bp+"|"+st;
+    const fpPlanAll=()=>{ const nb=(((piece.sections[sec.name]||{}).bars)||[]).length, key=(sec.name||"")+"|"+PLAYPASS+"|"+nb+"|"+m.bp+"|"+st+"|"+bandAct;
       if(PNO.fpK===key) return PNO.fpP; const plan=new Array(nb).fill(null);
       for(let b=0;b<nb;b++){ const P=fpRaw(b); if(!P) continue;
         if(fpLong){ const g=passDraw("pnolong",b*64,1), mid=b%2===0&&passDraw("pnohalf",b*64,2)<0.5, bars=mid?2:1;   /* a long bar: two halves (a bar) or three (from the middle of a two-bar block's first bar to its end) */
-          if(P.kind!=="woven"&&b+bars<=nb&&g<0.4){ const w=fpShape(mid?3:2,g/0.4);
+          if(P.kind!=="woven"&&b+bars<=nb&&g<actP("pno",0.4)){ const w=fpShape(mid?3:2,g/actP("pno",0.4));
             if(mid){ plan[b]={kind:"long",i:0,n:2,from:fpH,ways:[null,w[0]],way:w[0]}; plan[b+1]={kind:"long",i:1,n:2,from:0,ways:[w[1],w[2]],way:w[1]}; b++; }
             else plan[b]={kind:"long",i:0,n:1,from:0,ways:[w[0],w[1]],way:w[0]};
             continue; }
           plan[b]=P; if(P.kind==="echo"&&P.D+P.L>m.bp+1e-6&&b+1<nb){ plan[b+1]={kind:"spill"}; b++; } continue; }
         const g=passDraw("pnolong",b*64,1), pos=Math.floor(b/PH.n)%4, k=pos===1?3:(pos===0||pos===2)?2:0, n=k*PH.n;   /* three phrase bars at most - bars 2-4 of a four-bar phrase; two - its first half or its second (David, 4 Oct 2026: "3 bars tops ... bars 2-4 of a 4 bar phrase"; patches/piano-flow-long-bars.py) */
-        if(P.kind!=="woven"&&k>=2&&b%PH.n===0&&b+n<=nb&&g<0.4){ const ways=fpShape(k,g/0.4); for(let i=0;i<n;i++) plan[b+i]={kind:"long",i,n,way:ways[Math.floor(i/PH.n)]}; b+=n-1; continue; }
+        if(P.kind!=="woven"&&k>=2&&b%PH.n===0&&b+n<=nb&&g<actP("pno",0.4)){ const ways=fpShape(k,g/actP("pno",0.4)); for(let i=0;i<n;i++) plan[b+i]={kind:"long",i,n,way:ways[Math.floor(i/PH.n)]}; b+=n-1; continue; }
         plan[b]=P; if(P.kind==="echo"&&P.D+P.L>m.bp+1e-6&&b+1<nb){ plan[b+1]={kind:"spill"}; b++; } }
       PNO.fpK=key; PNO.fpP=plan; return plan; };
     const fpDraw=b=>{ if(b<0) return null; const pl=fpPlanAll(); return b<pl.length?pl[b]:null; };
@@ -14216,14 +14235,14 @@ function pnoPulse(p2,rel,m,sec,at,free){
       for(const d of [1,2]){ const y=fcRaw(b-d); if(y&&d*m.bp+x.at-y.at<6*fcBeat-1e-6) return null; } return x; };
     /* SUSTAINED, OR SHORT INTO SUSTAINED (David, 4 Oct 2026; patches/piano-flow-sustain.py): four times in ten a stab, then
        the same chord sustained on the bar's next eighth - none left, sustained alone */
-    const fcNext=(b,x)=>feelSteps(m,b).list.find(z=>z.at>x.at+1e-6&&(z.s===0||z.s===2))||null, fcTwo=(b,x)=>passDraw("pno",b*64+x.k,119)<0.4?fcNext(b,x):null;
+    const fcNext=(b,x)=>feelSteps(m,b).list.find(z=>z.at>x.at+1e-6&&(z.s===0||z.s===2))||null, fcTwo=(b,x)=>passDraw("pno",b*64+x.k,119)<actP("pno",0.4)?fcNext(b,x):null;
     /* THE CHORDS TAKE UP THE HANDPAN'S PHRASING (David, 4 Oct 2026: "The phrasing for the chords can sometimes adapt to the
        phrasing of the Handpan pattern (any part of the Handpan pattern, bass part or melody)"; patches/piano-flow-chords-follow-pan.py):
        one chord bar in three in Flow, chords & bass plays its chords on the pan's strokes of one part - its bass (the
        ding and up to a third above) or its melody - up to three, short but the last */
-    const fcAdapt=b=>{ if(!(st==="flowcb"||st==="flowcbg")||b<0) return null; const key=(sec.name||"")+"|"+b+"|"+PLAYPASS+"|"+st+"|"+m.bp;
+    const fcAdapt=b=>{ if(!(st==="flowcb"||st==="flowcbg")||b<0) return null; const key=(sec.name||"")+"|"+b+"|"+PLAYPASS+"|"+st+"|"+m.bp+"|"+bandAct;
       if(!PNO.fcAd||Object.keys(PNO.fcAd).length>400) PNO.fcAd={}; if(key in PNO.fcAd) return PNO.fcAd[key];
-      let L=null; if(fcPlan(b)&&passDraw("pnoad",b*64,1)<1/3){ const B0=p2-rel+b*m.bp, d=(typeof myPan!=="undefined"&&myPan&&myPan.ding)||50, lo=[], hi=[];
+      let L=null; if(fcPlan(b)&&passDraw("pnoad",b*64,1)<actP("pno",1/3)){ const B0=p2-rel+b*m.bp, d=(typeof myPan!=="undefined"&&myPan&&myPan.ding)||50, lo=[], hi=[];
         for(let q=0;q<m.bp;q++){ const T=panTones(B0+q); if(!T.length) continue; (Math.min(...T.map(e=>e.midi))<=d+4?lo:hi).push(q); }
         const pr=passDraw("pnoad",b*64,2)<0.5?[lo,hi]:[hi,lo], A=pr[0].length?pr[0]:pr[1];
         if(A.length) L=A.length<=3?A:[A[0],A[Math.floor(A.length/2)],A[A.length-1]]; }
@@ -14241,7 +14260,7 @@ function pnoPulse(p2,rel,m,sec,at,free){
         const T0=PNO.fcTop;   // the top voice by the smallest step: this voicing, its lowest note up, or its highest down
         if(T0!=null&&v.length>1) v=[v.slice(1).concat([v[0]+12]),[v[v.length-1]-12].concat(v.slice(0,-1))].filter(y=>y[0]>=cLo-3&&y[y.length-1]<=cHi+5)
           .reduce((b,y)=>Math.abs(y[y.length-1]-T0)<Math.abs(b[b.length-1]-T0)-1e-9?y:b,v);
-        const y=ant||x.adapt?null:fcTwo(fcBi,x), bz=!x.adapt&&!PB&&!ant&&!y&&passDraw("pno",fcBi*64+x.k,121)<0.3?fcNext(fcBi,x):null;   // a stab, then its sustained second hit; a broken chord, the root first; or sustained now
+        const y=ant||x.adapt?null:fcTwo(fcBi,x), bz=!x.adapt&&!PB&&!ant&&!y&&passDraw("pno",fcBi*64+x.k,121)<actP("pno",0.3)?fcNext(fcBi,x):null;   // a stab, then its sustained second hit; a broken chord, the root first; or sustained now
         pnoRelease(tAt); const t0=hum(), top=v.length-1;
         PNO.gk=0.6; try{ if(bz){ let rt=cLo-1; while(((rt%12)+12)%12!==pcs[0]) rt--; pnoNote(rt,t0,0.42); }   // the root under the chord, the rest on the next eighth (David, 4 Oct 2026: "broken chords, first root, then the other notes")
           else v.forEach((n,k)=>pnoNote(n,t0+Math.random()*0.006,(ant?0.4:y?0.36:0.38)+(k===top?0.05:-0.03),(y||(x.adapt&&!x.last))?1.5*s16:undefined)); } finally{ PNO.gk=1; }   // softer (David, 4 Oct 2026: "play the chords a bit softer")
@@ -14286,7 +14305,7 @@ function pnoPulse(p2,rel,m,sec,at,free){
       const S=cs.map(c=>c.start), E=[]; let prev=null;
       S.forEach((q,i)=>{ const c=cAt(q); if(c&&(i===0||c!==prev)){ const r=fbRoot(c); if(r!=null) E.push({q,midi:r,v:0.5,chg:i>0}); } prev=c; });
       const mi=Math.floor(S.length/2), mq=S[mi];
-      if(mi>0&&E.length&&E[0].q<mq&&!E.some(e=>Math.abs(e.q-mq)<1e-6)&&passDraw("pno",b*64,141)<1/3){ const r=E.filter(e=>e.q<mq).pop().midi;
+      if(mi>0&&E.length&&E[0].q<mq&&!E.some(e=>Math.abs(e.q-mq)<1e-6)&&passDraw("pno",b*64,141)<actP("pno",1/3)){ const r=E.filter(e=>e.q<mq).pop().midi;
         E.push({q:mq,midi:passDraw("pno",b*64,143)<0.6?(r+7>48?r-5:r+7):r+12,v:0.4}); }
       /* INTO THE NEXT CHORD, AS THE BAND'S BASS PLAYS IT, LESS OFTEN (David, 4 Oct 2026: "some more baseline transitions?
          Similar to what the bass player does? Not as many, but more than are currently played"; patches/piano-flow-bass-fills.py):
@@ -14296,7 +14315,7 @@ function pnoPulse(p2,rel,m,sec,at,free){
       const T=E.filter(e=>e.chg).map(e=>({q:e.q,midi:e.midi,pr:0.45}));
       if(nx&&(b+1)%n0===0){ const idx=(b+1)/n0, chg=nx!==cl, r=fbRoot(nx); if(r!=null) T.push({q:m.bp,midi:r,end:idx%4===0,pr:chg?(idx%4===0?0.7:idx%2===0?0.55:0.45):(idx%4===0?0.4:0)}); }
       else if(nx&&nx!==cl){ const r=fbRoot(nx); if(r!=null) T.push({q:m.bp,midi:r,pr:0.45}); }
-      for(const t of T){ const pl=b*64+Math.round(t.q); if(!(passDraw("pno",pl,145)<t.pr)) continue;
+      for(const t of T){ const pl=b*64+Math.round(t.q); if(!(passDraw("pno",pl,145)<actP("pno",t.pr))) continue;
         const FIGS=t.end?[[4,2],[8,4],[6,4,2],[6,4,2],[12,8,4],[12,8,4],[4,3,2,1]]:[[4],[2],[4,2],[4,2],[8,4],[6,4,2]], r1=passDraw("pno",pl,147);
         const floor=Math.max(-1,...E.filter(e=>e.v===0.5&&e.q<t.q-1e-6).map(e=>e.q)); let fig=null;
         for(let j=0;j<FIGS.length&&!fig;j++){ const ps=FIGS[(Math.floor(r1*FIGS.length)+j)%FIGS.length].map(d=>t.q-d*p16);
@@ -16568,7 +16587,7 @@ function bassPuAt(nm,bi,ent,m){
   if(!tgt||tgt.rest||tgt.midi==null) return null;
   const home=bassBarVaried(nm,bi,ent,m).filter(o=>!o.rest&&o.midi!=null); if(!home.length) return null;
   const last=home[home.length-1], to=tgt.chord||null, change=(to||"")!==(last.chord||"");
-  const prob=change?(idx%4===0?0.8:idx%2===0?0.5:0.2):(idx%4===0?0.5:0);   // into the bar after a fourth, a second, a first or third; on one chord a block's end
+  const prob=actP("bass",change?(idx%4===0?0.8:idx%2===0?0.5:0.2):(idx%4===0?0.5:0));   // into the bar after a fourth, a second, a first or third; on one chord a block's end
   const BF=change?bassBandFig(place):null;   // on Listen: with the band, when guitar and piano lead in together (patches/bass-live.py)
   if(!((BF?passDraw("band",place,0):passDraw("bass",place,0))<prob)) return null;
   const FS=feelSteps(m,bi), kEnd=(Math.max(...FS.list.map(x=>x.beat))+1)*4;
@@ -16628,7 +16647,7 @@ const BASS_TUMBAOS=new Set(["tumbao","332t","tumbaox2","332tx2"]);
 function bassLiveVisit(bi,m,style){   // the pattern this bar visits, or null - per four-bar block (a pair a bar in a short metre)
   const R=(BASS_LIVE_FAM.find(f=>f.includes(style))||[]).filter(x=>x!==style); if(!R.length) return null;
   const n=phraseAt(m,bi*m.bp).n, u=Math.floor(bi/n), blk=Math.floor(u/4), pos=u%4, r=passDraw("bassv",blk,0);
-  const span=r<0.05?[2,3]:r<0.35?[3]:null; if(!span||!span.includes(pos)) return null;
+  const span=r<actP("bass",0.05)?[2,3]:r<actP("bass",0.35)?[3]:null; if(!span||!span.includes(pos)) return null;
   return R[Math.floor(passDraw("bassv",blk,1)*R.length)];
 }
 function bassLiveGrid(m,bi){ return feelSteps(m,bi).list.filter(x=>Math.abs(x.at-Math.round(x.at))<1e-6).map(x=>({k:x.k,s:x.s,t:Math.round(x.at)})); }   // the pattern's steps on the table's grid
@@ -16680,8 +16699,8 @@ function bassBarVaried(nm,bi,ent,m){   // the bar as Live plays it, before the p
        next bar does not strike again */
     if(tail) v=v.filter(o=>o.t<tail.t).map(o=>o.t+o.len>tail.t?{...o,len:tail.t-o.t,ring:tail.t-o.t}:o).concat([tail]);
     if(!one||v.some(o=>o.t===0)) return v; const len=v.length?v[0].t:m.bp; return [{...one,len,ring:Math.min(one.ring||one.len,len)}].concat(v); }
-  if(bassListen&&passDraw("bassl",place,0)<(bassJam?0.25:0.15)){ const L=bassListenFig(nm,bi,m,base); if(L) return L; }
-  if(passDraw("basss",place,0)<(pos===1||pos===3?0.35:0.15)){ const K=BASS_LIVE_SMALL[style]||[], j0=Math.floor(passDraw("basss",place,1)*K.length);
+  if(bassListen&&passDraw("bassl",place,0)<actP("bass",bassJam?0.25:0.15)){ const L=bassListenFig(nm,bi,m,base); if(L) return L; }
+  if(passDraw("basss",place,0)<actP("bass",pos===1||pos===3?0.35:0.15)){ const K=BASS_LIVE_SMALL[style]||[], j0=Math.floor(passDraw("basss",place,1)*K.length);
     for(let j=0;j<K.length;j++){ const r=bassLiveSmall(base,K[(j0+j)%K.length],m,bi,style,passDraw("basss",place,2),pos); if(r) return r; } }
   return base;
 }
@@ -16689,7 +16708,7 @@ function bassBarVaried(nm,bi,ent,m){   // the bar as Live plays it, before the p
    response), AT LISTEN'S RATE whatever theirs (David, 2 Oct 2026: "as soon as 2 instruments are in jam mode, they can go for
    unisons and everything freely among themselves"): the band's own draw under .32, Listen's unison + thirds + same rhythm */
 function bassBandFig(place){ try{ if(!(bassLive===true&&bassListen)) return null; const r=bandPuRel(place,"bass");
-  return (r==="unison"||r==="thirds"||r==="rhythm")&&(bassJam||passDraw("band",place,7)<0.32)?bandPuFig(place,"bass"):null; }catch(e){ return null; } }
+  return (r==="unison"||r==="thirds"||r==="rhythm")&&(bassJam||passDraw("band",place,7)<actP("bass",0.32))?bandPuFig(place,"bass"):null; }catch(e){ return null; } }
 function bassBarPlay(nm,bi,at){
   const base=bassBarPlan(nm,bi,at); if(!bassPuOn()||!piece) return base;
   const sec=piece.sections[nm], m=SM(piece,nm), ent=at||bassEnt(nm); if(!sec||!ent) return base;
@@ -17795,7 +17814,7 @@ const PNO_LIVE_REL={}; for(const f of PNO_LIVE_FAM) for(const k of f) PNO_LIVE_R
 let PNO_LIVE_IN=false;
 function pnoLiveAt(rel,m){ const R=PNO_LIVE_REL[pnoStyle]; if(!R||!R.length) return null;
   const U=phraseAt(m,rel).n*m.bp, u=Math.floor(rel/U+1e-9), blk=Math.floor(u/4), r=passDraw("pnolive",blk,3), pos=u%4;
-  const span=r<0.05?[2,3]:r<0.35?[3]:null; if(!span||!span.includes(pos)) return null;
+  const span=r<actP("pno",0.05)?[2,3]:r<actP("pno",0.35)?[3]:null; if(!span||!span.includes(pos)) return null;
   return R[Math.floor(passDraw("pnolive",blk,11)*R.length)]; }
 let pnoLead=(()=>{ let v=null; try{ v=localStorage.getItem("hps.pnolead"); }catch(e){} return ["notes","strums","both"].includes(v)?v:"both"; })();   /* A | B | Both (patches/freedom-five-levels.py) */   /* the piano's Pickup (patches/piano-pickup.py) */
 /* the kind of pickup a piano style plays, and its options' names (patches/piano-pickup.py) */
@@ -18407,14 +18426,14 @@ function panListenFig(nm,bi,m,bar){   // another's rhythm on the bar's own notes
   return panSort(out);
 }
 function panBandFig(place){ try{ if(panLv<2) return null; const r=bandPuRel(place,"pan"); if(!(r==="unison"||r==="thirds"||r==="rhythm")) return null;
-  if(panLv===2&&passDraw("band",place,7)>=0.32) return null; return bandPuFig(place,"pan"); }catch(e){ return null; } }   // Listen at Listen's rate; Jam whenever they link
+  if(panLv===2&&passDraw("band",place,7)>=actP("pan",0.32)) return null; return bandPuFig(place,"pan"); }catch(e){ return null; } }   // Listen at Listen's rate; Jam whenever they link
 function panLeadAt(nm,bi,ent,m,bar){   // the line into the next bar, or null
   const n=phraseAt(m,bi*m.bp).n; if((bi+1)%n||bar.some(e=>e.run)) return null;   // a jam's own run leads in already
   const idx=(bi+1)/n, place=(bi+1)*m.bp, nx=bassNextBar(nm,bi,ent,m); if(!nx) return null;
   const nb=(piece.sections[nx.nm].bars||[])[nx.bi]||[];
   const tg=nb.filter(e=>e.t===0&&e.v==="field"&&!e.flam).map(e=>({e,mi:evPitch(e)})).filter(o=>o.mi!=null).sort((a,b)=>b.mi-a.mi)[0]; if(!tg) return null;
   let from=null, to=null; try{ from=chordInForceAt(ent.pulse+(bi+1)*m.bp-1,ent,m); to=chordInForceAt(nx.ent.pulse+nx.bi*nx.m.bp,nx.ent,nx.m); }catch(e){}
-  const change=!!(from||to)&&from!==to, prob=change?(idx%4===0?0.8:idx%2===0?0.5:0.2):(idx%4===0?0.5:0), BF=change?panBandFig(place):null;
+  const change=!!(from||to)&&from!==to, prob=actP("pan",change?(idx%4===0?0.8:idx%2===0?0.5:0.2):(idx%4===0?0.5:0)), BF=change?panBandFig(place):null;
   if(!((BF?passDraw("band",place,0):passDraw("pan",place,0))<prob)) return null;
   const FS=feelSteps(m,bi), kEnd=(Math.max(...FS.list.map(x=>x.beat))+1)*4;
   const posK=k=>{ const x=FS.list.find(y=>y.k===k); return x&&Math.abs(x.at-Math.round(x.at))<1e-6?Math.round(x.at):null; };
@@ -18437,8 +18456,8 @@ function panBarPlay(nm,bi,ent,m){   // the bar this pass plays, or null for the 
   const sec=piece.sections[nm], home=sec&&sec.bars&&sec.bars[bi]; if(!home||!home.length) return null;
   const n=phraseAt(m,bi*m.bp).n, pos=Math.floor(bi/n)%4, place=bi*m.bp+1;
   let bar=null;
-  if(panLv>=2&&passDraw("panl",place,0)<(panLv===3?0.25:0.15)) bar=panListenFig(nm,bi,m,home);
-  if(!bar&&passDraw("pans",place,0)<(pos===1||pos===3?0.35:0.15)){ const j0=Math.floor(passDraw("pans",place,1)*PAN_SMALL.length);
+  if(panLv>=2&&passDraw("panl",place,0)<actP("pan",panLv===3?0.25:0.15)) bar=panListenFig(nm,bi,m,home);
+  if(!bar&&passDraw("pans",place,0)<actP("pan",pos===1||pos===3?0.35:0.15)){ const j0=Math.floor(passDraw("pans",place,1)*PAN_SMALL.length);
     for(let j=0;j<PAN_SMALL.length&&!bar;j++) bar=panSmall(home,PAN_SMALL[(j0+j)%PAN_SMALL.length],m,bi,ent,passDraw("pans",place,2),pos); }
   { const T=panLv===3?tihaiAt(nm,m):null, b0=bi*m.bp, b1=b0+m.bp;   /* THE TIHAI (patches/jam-tihai.py): the line on the pan's nearest notes */
     if(T&&T.mem.includes("pan")&&T.from<b1-1e-6&&T.lim>b0+1e-6){ const C2=panCands(); if(C2.length){ const cut=Math.max(0,T.from-b0), mid=C2[Math.floor(C2.length/2)].midi;
@@ -21857,16 +21876,17 @@ function bandRender(pop){ pop=pop||document.querySelector(".pop.card.bandpop"); 
       :'<div class="bdempty">Set the band up as you like it - who plays, their settings, the mix - then <b>Save as my band</b>: it is kept here, under its own name.</div>'; }
   else L.innerHTML=BAND_PRESETS.map(([g,B],gi)=>'<div class="bdgrp">'+g+'</div><div class="bdl">'+B.map((b,i)=>row(gi+":"+i,{n:b[0],s:b[1],on:b[2].on})).join("")+'</div>').join("");
   L.scrollTop=st;
-  if(!MXD) pop.querySelector(":scope>.bdmix").innerHTML=mxHTML(!wide);
+  if(!MXD) pop.querySelector(":scope>.bdmix").innerHTML=actHTML()+mxHTML(!wide);   /* the band's Activity (patches/activity.py) */
   const f=pop.querySelector(":scope>.bdfoot"); f.querySelector("[data-bdback]").disabled=!ed; f.querySelector("[data-bdsave]").classList.toggle("amb",ed||!cur);
   try{ localStorage.setItem("hps.bandview",pop.dataset.bv); }catch(e){} }
-document.addEventListener("click",e=>{ const t=e.target.closest&&e.target.closest("#bandBtn,#bandChip,.pop.bandpop [data-bdv],.pop.bandpop [data-bdk],.pop.bandpop [data-bdx],.pop.bandpop [data-bdplay],.pop.bandpop [data-bdback],.pop.bandpop [data-bdsave]"); if(!t) return;
+document.addEventListener("click",e=>{ const t=e.target.closest&&e.target.closest("#bandBtn,#bandChip,.pop.bandpop [data-bdv],.pop.bandpop [data-bdk],.pop.bandpop [data-bdx],.pop.bandpop [data-bdplay],.pop.bandpop [data-bdback],.pop.bandpop [data-bdsave],.pop.bandpop [data-bdact]"); if(!t) return;
   if(t.id==="bandBtn"||t.id==="bandChip"){ e.stopPropagation(); openBand(); return; }
   const pop=t.closest(".pop");
   if(t.dataset.bdx!=null){ e.stopPropagation(); bandDelete(+t.dataset.bdx); return; }
   if(t.dataset.bdv){ pop.dataset.bv=t.dataset.bdv; bandRender(pop); return; }
   if(t.dataset.bdk){ bandApply(t.dataset.bdk); return; }
   if(t.hasAttribute("data-bdplay")){ if(typeof cardPreviewEnd==="function") cardPreviewEnd(); Promise.resolve(togglePlay()).finally(()=>setTimeout(()=>bandRender(),250)); return; }
+  if(t.dataset.bdact){ actSet(+t.dataset.bdact); return; }   /* the band's Activity (patches/activity.py) */
   if(t.hasAttribute("data-bdback")){ const k=bandLast(); if(k) bandApply(k); return; }
   if(t.hasAttribute("data-bdsave")) bandSave(); });
 window.addEventListener("resize",()=>{ const p=document.querySelector(".pop.card.bandpop"); if(p) bandRender(p); });
