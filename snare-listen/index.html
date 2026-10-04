@@ -1,0 +1,46 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Hip-hop snares</title>
+<style>
+:root{--bg:#f6f2ea;--card:#fffdf8;--ink:#2b2620;--ink2:#5c5348;--ink3:#8a8073;--rule:#e4dccf;--amber:#d98e2b}
+@media (prefers-color-scheme:dark){:root{--bg:#1d1a16;--card:#27231e;--ink:#f1ebe2;--ink2:#cfc5b7;--ink3:#9a8f80;--rule:#3a342c;color-scheme:dark}}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 -apple-system,"Helvetica Neue",Arial,sans-serif;padding:16px;padding-bottom:40px}
+h1{font-size:20px;margin:6px 0 4px}p{color:var(--ink2);margin:4px 0 12px;font-size:13.5px}
+.bar{display:flex;gap:10px;align-items:center;margin:10px 0 14px;flex-wrap:wrap}
+.seg{display:inline-flex;background:var(--rule);padding:3px;border-radius:10px;gap:2px}
+.seg button{border:0;background:none;padding:6px 12px;border-radius:8px;font:inherit;font-size:13px;color:var(--ink2)}
+.seg button.on{background:var(--card);color:var(--ink);font-weight:600;box-shadow:0 1px 2px #0002}
+.row{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;margin:8px 0}
+.row .t{flex:1;min-width:0}.row .n{font-weight:600;font-size:14px}.row .s{font-size:12px;color:var(--ink3)}
+.row button{width:44px;height:44px;border-radius:50%;border:1px solid var(--rule);background:var(--card);color:var(--ink);font-size:15px;flex:none}
+.row button.on{background:var(--amber);color:#fff;border-color:var(--amber)}
+.row.now{border-color:var(--amber)}
+.num{display:inline-block;width:22px;color:var(--ink3);font-variant-numeric:tabular-nums}
+</style></head><body>
+<h1>Hip-hop snares</h1>
+<p>Each snare in a boom-bap groove on the hip-hop kit's own kick and hats. ● plays the groove with it, ◦ one hit. All CC0; levelled to the same peak. Tell me the numbers you like.</p>
+<div class="bar"><span class="seg" id="bpm"><button data-b="80">80</button><button data-b="90" class="on">90</button><button data-b="100">100</button></span>
+<span class="seg" id="sw"><button data-s="0">Straight</button><button data-s="1" class="on">Swung</button></span></div>
+<div id="list"></div>
+<script>
+let ctx=null,B={},bpm=90,swing=1,cur=null,timer=null,next=0,step=0,META=[];
+const $=id=>document.getElementById(id);
+async function load(n){ if(B[n]) return B[n]; const ab=await (await fetch(n+".mp3")).arrayBuffer(); return B[n]=await ctx.decodeAudioData(ab); }
+function hit(b,t,g){ const s=ctx.createBufferSource(),v=ctx.createGain(); s.buffer=b; v.gain.value=g; s.connect(v); v.connect(ctx.destination); s.start(t); }
+const KICK="X.........X.....|..........X.....".replace(/\|/g,""), SN="....X.......X...|....X.......X...".replace(/\|/g,"");
+async function ensure(){ if(!ctx) ctx=new (window.AudioContext||window.webkitAudioContext)(); if(ctx.state!=="running") await ctx.resume(); await Promise.all(["kick","hh1","hh2"].map(load)); }
+function stepT(i){ const s=60/bpm/4; return (i%2&&swing)?s*1.33:(swing?s*0.67:s); }
+function tick(){ while(next<ctx.currentTime+0.25){ const i=step%32; 
+  if(KICK[i]==="X") hit(B.kick,next,0.9);
+  if(i%2===0) hit(i%4?B.hh2:B.hh1,next,i%4?0.22:0.32);
+  if(SN[i]==="X"&&B[cur]) hit(B[cur],next,0.85);
+  next+=stepT(i); step++; } }
+async function play(id){ await ensure(); await load(id);
+  if(cur===id&&timer){ clearInterval(timer); timer=null; cur=null; paint(); return; }
+  cur=id; if(!timer){ next=ctx.currentTime+0.1; step=0; timer=setInterval(tick,40); } paint(); }
+async function one(id){ await ensure(); hit(await load(id),ctx.currentTime+0.02,0.85); }
+function paint(){ document.querySelectorAll(".row").forEach(r=>{ const on=r.dataset.id===cur&&!!timer; r.classList.toggle("now",on); r.querySelector(".g").classList.toggle("on",on); }); }
+$("bpm").onclick=e=>{ const b=e.target.closest("button"); if(!b) return; bpm=+b.dataset.b; $("bpm").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b)); };
+$("sw").onclick=e=>{ const b=e.target.closest("button"); if(!b) return; swing=+b.dataset.s; $("sw").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b)); };
+fetch("index.json").then(r=>r.json()).then(m=>{ META=m; $("list").innerHTML=m.map((x,k)=>'<div class="row" data-id="'+x.id+'"><div class="t"><div class="n"><span class="num">'+(k+1)+'</span>'+x.title.replace(/ by .*$/,"").replace(/\.wav$/,"")+'</div><div class="s">'+(x.title.includes(" by ")?"by "+x.title.split(" by ").pop()+" · Freesound CC0":x.src)+'</div></div><button class="o" aria-label="One hit">◦</button><button class="g" aria-label="In the groove">●</button></div>').join("");
+  $("list").onclick=e=>{ const r=e.target.closest(".row"); if(!r) return; if(e.target.closest(".o")) one(r.dataset.id); else if(e.target.closest(".g")) play(r.dataset.id); }; });
+</script></body></html>
