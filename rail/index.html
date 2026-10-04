@@ -12769,8 +12769,8 @@ function tihaiAt(nm,m){ const J=jamOnList(); if(J.length<2) return null; const s
   const key=nm+"|"+PLAYPASS+"|"+J.join(",")+"|"+m.bp+"|"+m.sub; if(TIHAI_MEMO.has(key)) return TIHAI_MEMO.get(key); if(TIHAI_MEMO.size>200) TIHAI_MEMO.clear();
   let v=null;
   if(passDraw("tihai"+nm,lim,0)<Math.min(1,m.bp/(m.sub*(piece.unit||4)/4)/4)/6){   /* in short bars rarer: the odds by the bar's length in quarters over four (David, 4 Oct 2026: "take into account short time signatures"; patches/tihai-gentler-rarer.py) */   /* about one table in six (David, 2 Oct 2026: "it can happen a bit more often, one time in 6 tables"; was one in eight) */
-    const x16=m.sub*(piece.unit||4)/16, sp=(Math.abs(x16-Math.round(x16))<1e-6&&x16>=1)?x16:2*x16, barS=Math.round(m.bp/sp);   // a slot: a sixteenth, or an eighth where the grid has none
-    const two=nb>=2&&passDraw("tihai"+nm,lim,1)<0.33;
+    const x16=m.sub*(piece.unit||4)/16, sp=(Math.abs(x16-Math.round(x16))<1e-6&&x16>=1)?x16:2*x16, span=Math.max(1,Math.min(nb,Math.round(4*m.sub*(piece.unit||4)/4/m.bp))), barS=Math.round(m.bp/sp)*span;   /* a short bar's tihai spans several - as many bars as make about four quarters (David, 4 Oct 2026: "Tihai may move over several short bars"; patches/tihai-short-bars.py) */   // a slot: a sixteenth, or an eighth where the grid has none
+    const two=nb>=2*span&&passDraw("tihai"+nm,lim,1)<0.33;
     let C=two?tihaiShapes(barS+2,2*barS+1,TIHAI_P2,true):[]; if(!C.length) C=tihaiShapes(Math.ceil(barS/2)+1,barS+1,TIHAI_P1,false);
     if(C.length&&Math.abs(sp-Math.round(sp))<1e-6){ const T=C[Math.floor(passDraw("tihai"+nm,lim,2)*C.length)], st=[];
       for(let k=0;k<3;k++){ let xi=0; for(let i=0;i<T.P.length;i++) if(T.P[i]==="x"){ st.push({rel:lim-(T.S-1-(k*(T.P.length+T.g)+i))*sp,k,x:xi}); xi++; } }
@@ -13853,6 +13853,18 @@ function gtrPulse(p2,rel,m,sec,at,free){
    THE SAMPLES are piano/salamander/ beside bank.js - Salamander Grand Piano by Alexander Holm, CC BY 3.0, the subset Tone.js
    publishes (one per minor third, A1-C7); the credit stands in the piano's menu. Nothing is fetched until it is on. */
 const PNO_SMP=["A1","C2","Ds2","Fs2","A2","C3","Ds3","Fs3","A3","C4","Ds4","Fs4","A4","C5","Ds5","Fs5","A5","C6","Ds6","Fs6","A6","C7"];
+/* THE GRAND'S SOFTER VELOCITY LAYERS (David, 4 Oct 2026: "Yes, please add some softer velocity layers";
+   patches/piano-velocity-layers.py): velocities 3 and 6 of the Salamander's 16 beside the 8 it has always played - Salamander
+   Grand Piano V3 by Alexander Holm, CC BY 3.0 - piano/salamander-v3/ and -v6/. Softer than 0.36 the softest, softer than
+   0.44 the soft, the rest as before; levelled as every sample, then set back as they sound (0.6, 0.85); loaded after the
+   Grand, which never waits for them */
+const PNO_LAYS=[[3,0.6,0.36],[6,0.85,0.44]], PNO_LAY={}; let PNO_LAY_DEC=null;
+function pnoLayLoad(){ if(PNO_LAY_DEC||!ctx) return;
+  PNO_LAY_DEC=Promise.all(PNO_LAYS.map(([v,g])=>Promise.all(PNO_SMP.map(n=>fetch(pnoURL(n).replace("/salamander/","/salamander-v"+v+"/"))
+      .then(r=>{ if(!r.ok) throw new Error(n+" v"+v+": "+r.status); return r.arrayBuffer(); })
+      .then(ab=>new Promise((res,rej)=>ctx.decodeAudioData(ab,b=>res([n,b]),rej)))))
+    .then(bs=>{ PNO_LAY[v]=bs.map(([n,b])=>{ pnoLevel(b); return {midi:gtrSmpMidi(n),buf:b,off:gtrOnset(b),lg:g}; }); })))
+    .catch(()=>{ PNO_LAY_DEC=null; }); }
 const PNO_STYLES=[["held","Held"],["block","Block"],["ballad","Ballad"],["arp","Arpeggio"],["alberti","Broken chord"],["off","Off-beat"],
   ["pop8","Pop eighths"],["rolled","Rolled"],["stride","Stride"],["synco","Syncopated"],["montuno","Montuno"],["pad","Pad"],["332","3-3-2"],
   ["arp1","Single arpeggio"],["offarp","Off-beat arpeggio"],["arp2","Arpeggio on 2nd beat"],["arpfl","Arpeggio first & last"],["flow","Arpeggio flow"],["arp2fall","Arpeggio on 2nd beat & fall"],["flowsp","Arpeggio flow, sparse"],["flowch","Arpeggio flow & chords"],["flowcb","Arpeggio flow, chords & bass"],["flowcbg","Arpeggio flow, chords & bass, gentle"],["pan","Handpan"],["jcharl","Charleston"],["jrev","Reverse Charleston"],["jpush","Push"],["joff","Off-beat comp"],["ja","“a” anticipation"],["jlate","Late push"],["jdbl","Double stab"],["j16ch","Sixteenth Charleston"],["jmod","Modern comp"],["jcomp","Free comping"]];   // two more (30 Sep 2026)   // flow (30 Sep 2026)
@@ -13906,7 +13918,7 @@ function pnoReady(){ const k=pnoSound;
     if(PNO_BUF){ PNO_PLAY="grand"; return true; }
     if(ctx&&!PNO_DEC){
       PNO_DEC=pnoFetch().then(list=>Promise.all(list.map(([n,ab])=>new Promise((res,rej)=>ctx.decodeAudioData(ab.slice(0),b=>res([n,b]),rej)))))
-        .then(bs=>{ PNO_BUF=bs.map(([n,b])=>{ pnoLevel(b); return {midi:gtrSmpMidi(n),buf:b,off:gtrOnset(b)}; }); if(pnoSound==="grand") PNO_PLAY="grand"; })
+        .then(bs=>{ PNO_BUF=bs.map(([n,b])=>{ pnoLevel(b); return {midi:gtrSmpMidi(n),buf:b,off:gtrOnset(b)}; }); if(pnoSound==="grand") PNO_PLAY="grand"; pnoLayLoad(); })
         .catch(()=>{ PNO_DEC=null; });
     }
     return !!PNO_PLAY;   // the sound it had plays on while the Grand loads
@@ -13925,9 +13937,10 @@ function pnoRelease(t){ for(const v of PNO.held){ try{ v.env.gain.cancelSchedule
 function pnoNote(midi,t,vel,len,fin){
   if(!ctx||!PNO_PLAY) return;
   let e;
-  if(PNO_PLAY==="grand"){ e=PNO_BUF[0]; for(const x of PNO_BUF) if(Math.abs(x.midi-midi)<Math.abs(e.midi-midi)) e=x; }
+  if(PNO_PLAY==="grand"){ if(!PNO_LAY_DEC) pnoLayLoad(); const lv=vel-(pnoStyle==="flowcbg"?0.1:0), Ly=PNO_LAYS.find(l=>lv<l[2]&&PNO_LAY[l[0]]), B=Ly?PNO_LAY[Ly[0]]:PNO_BUF;   /* the layer its strength calls for (patches/piano-velocity-layers.py) */
+    e=B[0]; for(const x of B) if(Math.abs(x.midi-midi)<Math.abs(e.midi-midi)) e=x; }
   else { const T=gtrTake(midi,vel,false,PNO_PLAY); if(!T.e) return; e={buf:T.e.buf,off:T.e.off,midi:T.c}; }   // an electric piano: its zone, layer and take (patches/piano-sounds.py)
-  const pk=PNO_PK*(pnoVol/100)*(0.7+0.3*vel)*(PNO.gk||1)*(pnoStyle==="flowcbg"?0.6:1); if(!(pk>0)) return;   /* gentle: every note softer (patches/piano-flow-gentle.py) */   // PNO.gk: a trim the caller sets for its notes (patches/piano-flow-sustain.py)
+  const pk=PNO_PK*(pnoVol/100)*(0.7+0.3*vel)*(PNO.gk||1)*(pnoStyle==="flowcbg"?0.6:1)*(e.lg||1); if(!(pk>0)) return;   /* gentle: every note softer (patches/piano-flow-gentle.py) */   // PNO.gk: a trim the caller sets for its notes (patches/piano-flow-sustain.py)
   const st=Math.max(t,ctx.currentTime);
   const src=ctx.createBufferSource(); src.buffer=e.buf; src.playbackRate.value=Math.pow(2,(midi-e.midi)/12);
   const env=ctx.createGain();
@@ -14201,13 +14214,22 @@ function pnoPulse(p2,rel,m,sec,at,free){
       if(!br) pnoRelease(tAt);   /* a broken chord's root rings on */ const t0=hum(), v=PNO.fcV, top=v.length-1; PNO.gk=0.6; try{ v.forEach((n,k)=>pnoNote(n,t0+Math.random()*0.006,0.4+(k===top?0.05:-0.03))); } finally{ PNO.gk=1; }
       PNO.fcB=tAt+1.5*fcBeat*pd; break; }
     if(FC){ tAt=at;   /* the phrases sound (patches/piano-flow-pan-phrases.py) */
-      const fpPlay=(src,v0)=>{ const T=panTones(src); if(!T.length) return; const t0=hum();
-        T.forEach(e=>pnoNote(e.midi+12,t0+Math.random()*0.006,Math.min(0.56,v0+0.1*Math.min(1,e.g||0)),e.stac?1.2*s16:fcBeat*pd*0.9));
+      /* THREE WAYS (David, 4 Oct 2026: "it may be the complete phrase ... a harmonization of the melody (fitting to the
+         current chord) or only the rhythm of the phrase integrated into an arpeggio"; patches/piano-flow-phrase-ways.py) */
+      const fpWay=b=>{ const r=passDraw("pnophr",b*64,1); return r<0.4?"whole":r<0.7?"harm":"arp"; }, md=v=>((v%12)+12)%12;
+      const fpPlay=(src,v0,b,s0)=>{ const T=panTones(src); if(!T.length) return; const t0=hum(), way=fpWay(b);
+        const vel=e=>Math.min(0.56,v0+0.1*Math.min(1,e.g||0)), len=e=>e.stac?1.2*s16:fcBeat*pd*0.9;
+        if(way==="arp"){ let k=0; for(let s=s0;s<src;s++) if(panTones(s).length) k++;   /* the phrase's k-th stroke: the arpeggio's k-th note, up and back down */
+          const L=pool.length, per=Math.max(1,2*L-2), i=k%per; pnoNote(pool[i<L?i:per-i],t0,vel(T[0]),len(T[0])); }
+        else if(way==="harm"){ const e=T.reduce((a,x)=>x.midi>a.midi?x:a,T[0]), x=e.midi+12;   /* the top note the melody, two chord tones under it */
+          pnoNote(x,t0+Math.random()*0.006,vel(e)+0.04,len(e));
+          if(pcs.includes(md(x))){ let n=0; for(let y=x-1;y>=x-12&&n<2;y--) if(pcs.includes(md(y))&&md(y)!==md(x)){ pnoNote(y,t0+Math.random()*0.006,vel(e)-0.06,len(e)); n++; } } }
+        else T.forEach(e=>pnoNote(e.midi+12,t0+Math.random()*0.006,vel(e),len(e)));
         PNO.fbusy=Math.max(PNO.fbusy||0,at+s16); };
       for(const b of [fcBi-1,fcBi]){ const P=fpDraw(b); if(!P) continue; const q=rel-b*m.bp;
-        if(P.kind==="echo"){ if(q>=P.D-1e-6&&q<P.D+P.L-1e-6) fpPlay(p2-P.D,0.4); }
+        if(P.kind==="echo"){ if(q>=P.D-1e-6&&q<P.D+P.L-1e-6) fpPlay(p2-P.D,0.4,b,p2-rel+b*m.bp); }
         else if(b!==fcBi) continue;
-        else if(P.kind==="double") fpPlay(p2,0.38);
+        else if(P.kind==="double") fpPlay(p2,0.38,b,p2-rel+b*m.bp);
         else if(fpFirst(b)===rb){ const ps=[];   // woven: the pan's first notes, then on through the chord
           for(let q2=rb;q2<m.bp&&ps.length<3;q2++) for(const e of panTones(p2-rb+q2)){ const x=e.midi+12; if(ps[ps.length-1]!==x) ps.push(x); if(ps.length>=3) break; }
           const nPan=ps.length, up=ps.length<2||ps[ps.length-1]>=ps[ps.length-2], cp=[...new Set((PB?[]:[low]).concat(ch,ch.map(x=>x+12),ch.map(x=>x-12)))].sort((x,y)=>x-y);
