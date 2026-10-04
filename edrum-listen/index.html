@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Electronic drums listening</title>
+<!-- Listening page for electronic drums (David, 4 Oct 2026: "Please look for free electronic drum samples" - "create that
+     page with a wide selection of samples" - "It should cover hiphop and various EDM styles").
+     Three sources, all free to put inside the app:
+       Freesound - 136 one-shots, every one marked CC0 by its uploader (search filtered to Creative Commons 0), the most
+         downloaded per role over ~45 searches (808, 909, trap, boom bap, house, techno, dubstep, drum & bass, lo-fi ...);
+         these are Freesound's HQ previews (128 kbps mp3) - the app would take the original files.
+       Sonic Pi - 92 drum and percussion samples bundled with Sonic Pi, CC0 (etc/samples/README.md), FLAC converted to mp3.
+       Synthesised - 808-, 909- and EDM/trap-style voices made here with the Web Audio API: no samples, no licence.
+     Levels: every sample is normalised to the same peak when it loads. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f7f3ec;--card:#fffdf9;--ink:#2b2622;--ink2:#6f665d;--rule:#e6ddd0;--amb:#d9902f;--amb-soft:#fbefdc;--track:#efe8dd}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 Figtree,"Helvetica Neue",Arial,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:28px 16px 60px}
+h1{font-size:26px;margin:0 0 4px} h2{font-size:17px;margin:0 0 10px}
+.sub{color:var(--ink2);margin:0 0 22px;max-width:76ch}
+.card{background:var(--card);border:1px solid var(--rule);border-radius:16px;padding:18px;margin:0 0 18px}
+.seg{display:inline-flex;flex-wrap:wrap;gap:2px;background:var(--track);border-radius:10px;padding:3px}
+.seg button{border:0;background:none;border-radius:8px;padding:7px 12px;font:600 14px Figtree,sans-serif;color:var(--ink2);cursor:pointer}
+.seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:0 0 12px}
+.lbl{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);min-width:72px}
+.play{width:48px;height:48px;border-radius:50%;border:0;background:var(--amb);color:#fff;font-size:18px;cursor:pointer}
+.play.on{background:var(--ink)}
+input[type=range]{accent-color:var(--amb)}
+.note{color:var(--ink2);font-size:13px}
+.roles{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px 14px}
+.roles label{display:flex;align-items:center;gap:8px;font-size:13px}
+.roles label b{min-width:78px;font-weight:700}
+.roles select{flex:1;min-width:0;font:13px Figtree,sans-serif;padding:5px;border:1px solid var(--rule);border-radius:8px;background:#fff}
+.roles .aud{border:1px solid var(--rule);background:#fff;border-radius:8px;width:30px;height:28px;cursor:pointer;color:var(--ink2)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px}
+.pad{position:relative;text-align:left;border:1px solid var(--rule);background:#fff;border-radius:10px;padding:7px 9px 6px;cursor:pointer;font:13px Figtree,sans-serif;color:var(--ink);min-width:0}
+.pad b{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:26px}
+.pad small{display:block;color:var(--ink2);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pad.hit{background:var(--amb-soft);border-color:var(--amb)}
+.pad .use{position:absolute;right:5px;top:5px;border:1px solid var(--rule);background:#fff;border-radius:6px;font:700 10px Figtree,sans-serif;color:var(--ink2);padding:2px 5px;cursor:pointer}
+.pad.inkit{border-color:var(--amb)}
+h3{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);margin:16px 0 6px}
+.steps{font:12px/1.5 ui-monospace,Menlo,monospace;color:var(--ink2);white-space:pre;overflow-x:auto;margin-top:8px}
+.steps i{font-style:normal;color:var(--amb)}
+a{color:var(--ink2)}
+</style>
+</head>
+<body>
+<main>
+<h1>Electronic drums</h1>
+<p class="sub">Hip-hop and EDM drums from three free sources: <b>Freesound</b> (136 one-shots, each marked CC0 by its uploader),
+<b>Sonic Pi</b> (92 samples, CC0) and <b>synthesised</b> 808, 909 and EDM/trap voices made right here, with no samples at all.
+Pick a style and a kit and press play; change any drum in the kit below, or audition every sample further down and put it in
+the kit with <b>use</b>. Every sample is levelled to the same peak.</p>
+
+<div class="card">
+  <h2>Grooves</h2>
+  <div class="row"><span class="lbl">Style</span><div class="seg" id="styles"></div></div>
+  <div class="row"><span class="lbl">Kit</span><div class="seg" id="kits"></div></div>
+  <div class="row"><button class="play" id="play" title="Play / stop">▶</button>
+    <span class="lbl" style="min-width:0">Tempo</span><input type="range" id="bpm" min="60" max="180" value="90"><b id="bpmv">90</b>
+    <span class="lbl" style="min-width:0;margin-left:10px">Swing</span><input type="range" id="swing" min="50" max="70" value="50"><b id="swv">0%</b>
+    <span class="lbl" style="min-width:0;margin-left:10px">Volume</span><input type="range" id="vol" min="0" max="100" value="80"></div>
+  <div class="note" id="sdesc"></div>
+  <div class="steps" id="steps"></div>
+</div>
+
+<div class="card">
+  <h2>The kit</h2>
+  <p class="note" style="margin:0 0 10px">Choose any sound for each drum - from any source. ▸ plays it alone.</p>
+  <div class="roles" id="roles"></div>
+</div>
+
+<div class="card">
+  <h2>Every sample</h2>
+  <div class="row"><div class="seg" id="srcs"></div><span class="note" id="srcnote"></span></div>
+  <div id="browse"></div>
+</div>
+</main>
+
+<script>
+/* ---------- the sounds ---------- */
+const ROLES=[["kick","Kick"],["snare","Snare"],["clap","Clap"],["chh","Closed hat"],["ohh","Open hat"],["tom","Tom"],["perc","Perc"],["cym","Cymbal"]];
+const RN=Object.fromEntries(ROLES);
+let SOUNDS={};   // id -> {id,src,role,name,sub,link}
+const ctx=new (window.AudioContext||window.webkitAudioContext)();
+const master=ctx.createGain(); master.gain.value=.8; const comp=ctx.createDynamicsCompressor(); comp.threshold.value=-10; comp.ratio.value=3;
+master.connect(comp); comp.connect(ctx.destination);
+const BUF={};
+async function load(id){ if(BUF[id]) return BUF[id]; const s=SOUNDS[id]; if(!s||s.src==="syn") return null;
+  BUF[id]=(async()=>{ const r=await fetch(s.file); const b=await ctx.decodeAudioData(await r.arrayBuffer());
+    let pk=0; for(let c=0;c<b.numberOfChannels;c++){ const d=b.getChannelData(c); for(let i=0;i<d.length;i++){ const a=Math.abs(d[i]); if(a>pk) pk=a; } }
+    b._g=pk>0?0.9/pk:1; return b; })(); return BUF[id]; }
+function spRole(n){ if(/^bd_|kick/.test(n)) return "kick"; if(/^sn_|snare/.test(n)) return "snare"; if(/snap/.test(n)) return "clap";
+  if(/hat_.*(open)|cymbal_open/.test(n)) return "ohh"; if(/^hat_|cymbal_closed|cymbal_pedal|elec_tick/.test(n)) return "chh"; if(/tom/.test(n)) return "tom";
+  if(/cymbal|splash|swash|elec_cymbal/.test(n)) return "cym"; return "perc"; }
+
+/* ---------- synthesised voices: 808, 909, EDM/trap ---------- */
+let NOISE=null; function noise(){ if(NOISE) return NOISE; const n=ctx.createBuffer(1,ctx.sampleRate*2,ctx.sampleRate), d=n.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1; return NOISE=n; }
+function env(g,t,a,peak,dec){ g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(peak,t+a); g.gain.exponentialRampToValueAtTime(0.0001,t+a+dec); }
+function osc(type,f,t,dur,out){ const o=ctx.createOscillator(); o.type=type; o.frequency.setValueAtTime(f,t); o.connect(out); o.start(t); o.stop(t+dur+.05); return o; }
+function nz(t,dur,out){ const s=ctx.createBufferSource(); s.buffer=noise(); s.connect(out); s.start(t,Math.random()); s.stop(t+dur+.05); return s; }
+function filt(type,f,q){ const b=ctx.createBiquadFilter(); b.type=type; b.frequency.value=f; if(q!=null) b.Q.value=q; return b; }
+function gainN(v){ const g=ctx.createGain(); g.gain.value=v; return g; }
+function shaper(k){ const w=ctx.createWaveShaper(), n=1024, c=new Float32Array(n); for(let i=0;i<n;i++){ const x=i*2/(n-1)-1; c[i]=Math.tanh(k*x)/Math.tanh(k); } w.curve=c; return w; }
+const METAL=[205.3,304.4,369.6,522.7,540,800];
+function metal(t,dec,v,out,hp){ const g=ctx.createGain(), b=filt("bandpass",10000,.8), h=filt("highpass",hp||7000); for(const f of METAL) osc("square",f*1.0,t,dec,g); g.connect(b); b.connect(h); const e=ctx.createGain(); h.connect(e); e.connect(out); env(e,t,.001,v*.35,dec); }
+const SYN={
+  "808":{
+    kick:(t,v,o)=>{ const s=osc("sine",160,t,1.2,null); const g=ctx.createGain(); s.disconnect(); s.connect(g); g.connect(o); s.frequency.exponentialRampToValueAtTime(52,t+.06); env(g,t,.002,v,1.1); },
+    snare:(t,v,o)=>{ const g=ctx.createGain(); g.connect(o); osc("triangle",185,t,.2,g); osc("triangle",330,t,.2,g); env(g,t,.001,v*.5,.12);
+      const n=ctx.createGain(), h=filt("highpass",2000); n.connect(h); h.connect(o); nz(t,.25,n); env(n,t,.001,v*.55,.2); },
+    clap:(t,v,o)=>{ const b=filt("bandpass",1100,1.2), g=ctx.createGain(); b.connect(g); g.connect(o); nz(t,.4,b);
+      g.gain.setValueAtTime(0.0001,t); for(let i=0;i<3;i++){ const tt=t+i*.011; g.gain.setValueAtTime(v*.9,tt); g.gain.exponentialRampToValueAtTime(.05,tt+.009); } g.gain.setValueAtTime(v*.8,t+.034); g.gain.exponentialRampToValueAtTime(.0001,t+.3); },
+    chh:(t,v,o)=>metal(t,.05,v,o), ohh:(t,v,o)=>metal(t,.42,v,o),
+    tom:(t,v,o)=>{ const g=ctx.createGain(); g.connect(o); const s=osc("sine",130,t,.5,g); s.frequency.exponentialRampToValueAtTime(95,t+.25); env(g,t,.002,v*.9,.45); },
+    perc:(t,v,o)=>{ const g=ctx.createGain(), b=filt("bandpass",2640,1.5); g.connect(b); b.connect(o); osc("square",540,t,.4,g); osc("square",800,t,.4,g); env(g,t,.001,v*.35,.3); },
+    cym:(t,v,o)=>metal(t,1.4,v*.8,o,5000)},
+  "909":{
+    kick:(t,v,o)=>{ const g=ctx.createGain(), w=shaper(2.2); w.connect(g); g.connect(o); const s=osc("sine",300,t,.7,w); s.frequency.exponentialRampToValueAtTime(48,t+.03); env(g,t,.001,v*.9,.5);
+      const c=ctx.createGain(), h=filt("highpass",3000); c.connect(h); h.connect(o); nz(t,.02,c); env(c,t,.0005,v*.4,.015); },
+    snare:(t,v,o)=>{ const g=ctx.createGain(); g.connect(o); const a=osc("sine",190,t,.2,g), b=osc("sine",340,t,.2,g); a.frequency.exponentialRampToValueAtTime(160,t+.1); env(g,t,.001,v*.45,.1);
+      const n=ctx.createGain(), h=filt("highpass",1500), l=filt("lowpass",9000); n.connect(h); h.connect(l); l.connect(o); nz(t,.3,n); env(n,t,.001,v*.7,.24); },
+    clap:(t,v,o)=>SYN["808"].clap(t,v*1.05,o),
+    chh:(t,v,o)=>{ const n=ctx.createGain(), h=filt("highpass",8000), b=filt("peaking",10500,1); b.gain.value=6; n.connect(h); h.connect(b); b.connect(o); nz(t,.08,n); env(n,t,.001,v*.5,.06); },
+    ohh:(t,v,o)=>{ const n=ctx.createGain(), h=filt("highpass",7500); n.connect(h); h.connect(o); nz(t,.5,n); env(n,t,.002,v*.42,.4); metal(t,.4,v*.4,o,8000); },
+    tom:(t,v,o)=>{ const g=ctx.createGain(); g.connect(o); const s=osc("sine",180,t,.5,g); s.frequency.exponentialRampToValueAtTime(115,t+.2); env(g,t,.001,v*.9,.35); },
+    perc:(t,v,o)=>{ const g=ctx.createGain(); g.connect(o); osc("triangle",1700,t,.06,g); env(g,t,.0005,v*.6,.035); nz(t,.02,g); },
+    cym:(t,v,o)=>{ const n=ctx.createGain(), h=filt("highpass",6000); n.connect(h); h.connect(o); nz(t,1.8,n); env(n,t,.002,v*.35,1.6); metal(t,1.6,v*.5,o,6000); }},
+  "edm":{
+    kick:(t,v,o)=>{ const g=ctx.createGain(), w=shaper(3); w.connect(g); g.connect(o); const s=osc("sine",180,t,.6,w); s.frequency.exponentialRampToValueAtTime(46,t+.045); env(g,t,.001,v,.42);
+      const c=ctx.createGain(), h=filt("highpass",2500); c.connect(h); h.connect(o); nz(t,.015,c); env(c,t,.0005,v*.5,.01); },
+    snare:(t,v,o)=>{ SYN["909"].snare(t,v,o); SYN["808"].clap(t,v*.6,o); },
+    clap:(t,v,o)=>{ const b=filt("bandpass",1500,.9), r=filt("highpass",600), g=ctx.createGain(); b.connect(r); r.connect(g); g.connect(o); nz(t,.5,b);
+      g.gain.setValueAtTime(0.0001,t); for(let i=0;i<4;i++){ const tt=t+i*.008; g.gain.setValueAtTime(v,tt); g.gain.exponentialRampToValueAtTime(.08,tt+.007); } g.gain.setValueAtTime(v*.9,t+.033); g.gain.exponentialRampToValueAtTime(.0001,t+.45); },
+    chh:(t,v,o)=>SYN["909"].chh(t,v,o), ohh:(t,v,o)=>SYN["909"].ohh(t,v*.9,o),
+    tom:(t,v,o)=>{ /* the trap 808: a long sub with a little drive, tuned to D */ const g=ctx.createGain(), w=shaper(1.6); w.connect(g); g.connect(o); const s=osc("sine",90,t,1.8,w); s.frequency.exponentialRampToValueAtTime(36.7,t+.05); env(g,t,.003,v*.9,1.6); },
+    perc:(t,v,o)=>{ const g=ctx.createGain(), b=filt("bandpass",3000,4); g.connect(b); b.connect(o); nz(t,.05,g); env(g,t,.0005,v*.9,.03); },
+    cym:(t,v,o)=>SYN["909"].cym(t,v,o)}};
+const SYN_NAME={"808":"808 style","909":"909 style","edm":"EDM / trap"};
+const SYN_SUB={tom:{edm:"trap 808 (long sub, D)"}};
+
+/* ---------- playing one sound ---------- */
+async function hit(id,t,v){ const s=SOUNDS[id]; if(!s) return; v=v==null?1:v;
+  if(s.src==="syn"){ SYN[s.kit][s.role](t,v,master); return; }
+  const b=await load(id); if(!b) return; const src=ctx.createBufferSource(), g=ctx.createGain(); src.buffer=b; g.gain.value=b._g*v*.9; src.connect(g); g.connect(master); src.start(Math.max(t,ctx.currentTime)); }
+function audition(id){ if(ctx.state!=="running") ctx.resume(); hit(id,ctx.currentTime+.02,1); }
+
+/* ---------- the styles: 2 bars of 16ths; X accent, x normal, g ghost, r a roll (two 32nds) ---------- */
+const STYLES={
+  boombap:{n:"Boom bap",bpm:90,sw:58,kit:"fs",d:"East-coast hip-hop: a dusty kick, a cracking snare on 2 and 4, swung 16th hats.",
+    p:{kick:"X......x..x.....X.....x...x.....", snare:"....X.......X.......X.......X..g", chh:"x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.", ohh:"..............x.................", perc:"........................g......."}},
+  lofi:{n:"Lo-fi",bpm:78,sw:62,kit:"sp-hh",d:"Lazy lo-fi hip-hop: soft kick, rimmy snare, behind-the-beat hats.",
+    p:{kick:"X.........x.....X.......x..x....", snare:"....X.......X.......X.......X...", chh:"x.xgx.x.x.xgx.x.x.xgx.x.x.xgx.x.", perc:"......g...............g........."}},
+  trap:{n:"Trap",bpm:140,sw:50,kit:"syn-edm",d:"Half-time trap: long 808 under the kick, snare/clap on 3, 16th hats with rolls.",
+    p:{kick:"X......x..x.........X..x........", tom:"X......x..x.........X..x........", snare:"........X...............X.......", clap:"........X...............X.......", chh:"x.x.x.x.x.x.xrx.x.x.x.x.rrx.x.rr", ohh:"..............................x."}},
+  house:{n:"House",bpm:124,sw:52,kit:"syn-909",d:"Four on the floor, clap on 2 and 4, open hats on the off-beats.",
+    p:{kick:"X...X...X...X...X...X...X...X...", clap:"....X.......X.......X.......X...", chh:"x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.", ohh:"..x...x...x...x...x...x...x...x.", perc:"...........g...........g...g...."}},
+  techno:{n:"Techno",bpm:130,sw:50,kit:"sp-techno",d:"Driving techno: steady kick, 16th hats, a sparse clap, a ride.",
+    p:{kick:"X...X...X...X...X...X...X...X...", clap:"....x...........................", chh:"gxgxgxgxgxgxgxgxgxgxgxgxgxgxgxgx", ohh:"..x...x...x...x...x...x...x...x.", cym:"x.......x.......x.......x.......", perc:"......g.......g.......g...g....."}},
+  trance:{n:"Trance",bpm:138,sw:50,kit:"syn-edm",d:"Uplifting trance: four on the floor, off-beat open hats, clap on 2 and 4.",
+    p:{kick:"X...X...X...X...X...X...X...X...", clap:"....X.......X.......X.......X...", ohh:"..X...X...X...X...X...X...X...X.", chh:"x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.", cym:"X..............................."}},
+  dnb:{n:"Drum & bass",bpm:174,sw:50,kit:"fs",d:"Two-step d&b: kick on 1 and the & of 3, snare on 2 and 4, ghost notes.",
+    p:{kick:"X.........X.......X.......x.....", snare:"....X..g....X.g.....X..g....X...", chh:"x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.", ohh:"......x...............x........."}},
+  dubstep:{n:"Dubstep",bpm:140,sw:50,kit:"fs",d:"Half-time dubstep: kick on 1, a huge snare on 3, triplet-feel hats.",
+    p:{kick:"X...........x.......X...........", snare:"........X...............X.......", chh:"x..x..x..x..x..xx..x..x..x..x..x", perc:"..............g..............g.."}},
+  garage:{n:"UK garage",bpm:132,sw:62,kit:"sp-house",d:"2-step garage: the kick skips the 2 and 4, heavy swing.",
+    p:{kick:"X.....x...x.....X.....x.....x...", snare:"....X.......X.......X.......X...", chh:"..x...x...x...x...x...x...x...x.", ohh:"......x.......x.......x.......x.", perc:".x.........x.........x........."}},
+  electro:{n:"Electro",bpm:125,sw:50,kit:"syn-808",d:"Electro / breakbeat on the 808: syncopated kick, clap and snare together, cowbell.",
+    p:{kick:"X.....x...x.....X.....x...X.x...", snare:"....X.......X.......X.......X...", clap:"....X.......X.......X.......X...", chh:"x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.", perc:"..x.......x.......x.......x.....", tom:"..........................x.x..."}}};
+
+/* ---------- kits ---------- */
+let FS=[], SP=[];
+const SPKIT={"sp-hh":{kick:"bd_boom",snare:"sn_dub",clap:"perc_snap",chh:"hat_cats",ohh:"hat_bdu",tom:"elec_fuzz_tom",perc:"elec_wood",cym:"drum_cymbal_soft"},
+  "sp-house":{kick:"bd_haus",snare:"sn_generic",clap:"perc_snap2",chh:"hat_gnu",ohh:"hat_zild",tom:"drum_tom_lo_soft",perc:"elec_tick",cym:"drum_splash_soft"},
+  "sp-techno":{kick:"bd_tek",snare:"sn_zome",clap:"perc_snap",chh:"hat_metal",ohh:"hat_psych",tom:"elec_fuzz_tom",perc:"elec_plip",cym:"elec_cymbal"},
+  "sp-electro":{kick:"bd_808",snare:"elec_hi_snare",clap:"perc_snap2",chh:"hat_bdu",ohh:"hat_zan",tom:"elec_hollow_kick",perc:"elec_blip",cym:"elec_cymbal"}};
+const KITS=[["syn-808","Synth 808"],["syn-909","Synth 909"],["syn-edm","Synth EDM/trap"],["sp-hh","Sonic Pi hip-hop"],["sp-house","Sonic Pi house"],["sp-techno","Sonic Pi techno"],["sp-electro","Sonic Pi electro"],["fs","Freesound, for the style"],["custom","Custom"]];
+/* the Freesound kit for a style: per drum, the most downloaded sound found by that style's own search, else the nearest */
+const FSQ={boombap:["boom bap","lofi","808"],lofi:["lofi","boom bap","808"],trap:["trap","808"],house:["house","909","edm"],techno:["techno","909"],trance:["edm","909","house"],
+  dnb:["drum and bass","dubstep","edm"],dubstep:["dubstep","drum and bass","edm"],garage:["house","909","edm"],electro:["808","909"]};
+function fsKit(st){ const K={}; for(const [r] of ROLES){ const L=FS.filter(s=>s.role===r||(r==="perc"&&s.role==="rim")); let pick=null;
+    for(const w of FSQ[st]){ pick=L.find(s=>s.q.includes(w)); if(pick) break; } pick=pick||L[0]; if(pick) K[r]="fs:"+pick.id; } return K; }
+function kitOf(k,st){ if(k.startsWith("syn-")){ const kk=k.slice(4); return Object.fromEntries(ROLES.map(([r])=>[r,"syn:"+kk+":"+r])); }
+  if(SPKIT[k]) return Object.fromEntries(Object.entries(SPKIT[k]).map(([r,n])=>[r,"sp:"+n])); if(k==="fs") return fsKit(st); return null; }
+
+/* ---------- state and UI ---------- */
+const st={style:"boombap",kit:"fs",cur:{}};
+const $=id=>document.getElementById(id);
+function seg(el,items,on,cb){ el.innerHTML=items.map(([k,l])=>'<button data-k="'+k+'" class="'+(k===on?"on":"")+'">'+l+'</button>').join(""); el.onclick=e=>{ const b=e.target.closest("button"); if(b) cb(b.dataset.k); }; }
+function optionsFor(role){ const all=Object.values(SOUNDS), mine=all.filter(s=>s.role===role||(role==="perc"&&s.role==="rim")), rest=all.filter(s=>!mine.includes(s));
+  const grp=(lbl,L)=>'<optgroup label="'+lbl+'">'+L.map(s=>'<option value="'+s.id+'">'+s.name.replace(/</g,"&lt;")+(s.src==="fs"?" ("+s.user+")":"")+'</option>').join("")+'</optgroup>';
+  return grp("Synthesised",mine.filter(s=>s.src==="syn"))+grp("Sonic Pi",mine.filter(s=>s.src==="sp"))+grp("Freesound",mine.filter(s=>s.src==="fs"))+grp("Anything else",rest); }
+function drawRoles(){ $("roles").innerHTML=ROLES.map(([r,l])=>'<label><b>'+l+'</b><select data-r="'+r+'">'+optionsFor(r)+'</select><button class="aud" data-a="'+r+'" title="Play">▸</button></label>').join("");
+  for(const [r] of ROLES){ const s=$("roles").querySelector('[data-r="'+r+'"]'); if(st.cur[r]) s.value=st.cur[r]; } }
+$("roles").addEventListener("change",e=>{ const s=e.target.closest("select"); if(!s) return; st.cur[s.dataset.r]=s.value; st.kit="custom"; drawKits(); audition(s.value); markKit(); });
+$("roles").addEventListener("click",e=>{ const b=e.target.closest("[data-a]"); if(b&&st.cur[b.dataset.a]) audition(st.cur[b.dataset.a]); });
+function setKit(k){ st.kit=k; const K=kitOf(k,st.style); if(K) st.cur=K; drawKits(); for(const [r] of ROLES){ const s=$("roles").querySelector('[data-r="'+r+'"]'); if(s&&st.cur[r]) s.value=st.cur[r]; } markKit(); preload(); }
+function drawKits(){ seg($("kits"),KITS,st.kit,setKit); }
+function setStyle(k){ st.style=k; const S=STYLES[k]; $("bpm").value=S.bpm; $("bpmv").textContent=S.bpm; $("swing").value=S.sw; $("swv").textContent=Math.round((S.sw-50)*2)+"%";
+  seg($("styles"),Object.entries(STYLES).map(([k,s])=>[k,s.n]),k,setStyle); $("sdesc").textContent=S.d+" Suggested kit: "+(KITS.find(x=>x[0]===S.kit)||[])[1]+".";
+  $("steps").innerHTML=ROLES.filter(([r])=>S.p[r]).map(([r,l])=>(l+"          ").slice(0,11)+S.p[r].replace(/([XxgR r])/g,c=>c==="."?c:"<i>"+c+"</i>")).join("\n");
+  setKit(st.kit==="custom"?"custom":S.kit); }
+function preload(){ for(const id of Object.values(st.cur)) load(id); }
+function markKit(){ const set=new Set(Object.values(st.cur)); document.querySelectorAll(".pad").forEach(p=>p.classList.toggle("inkit",set.has(p.dataset.id))); }
+
+/* ---------- the sample browser ---------- */
+let SRC="fs";
+function drawBrowse(){ const L=Object.values(SOUNDS).filter(s=>s.src===SRC);
+  $("srcnote").innerHTML=SRC==="fs"?'Each marked CC0 by its uploader on <a href="https://freesound.org" target="_blank">Freesound</a>; click a name\'s link to see the sound\'s page.':SRC==="sp"?'Bundled with <a href="https://github.com/sonic-pi-net/sonic-pi/blob/dev/etc/samples/README.md" target="_blank">Sonic Pi</a>, CC0.':"Made here with the Web Audio API - no samples, no licence.";
+  $("browse").innerHTML=ROLES.concat([["rim","Rim"]]).map(([r,l])=>{ const M=L.filter(s=>s.role===r); if(!M.length) return "";
+    return '<h3>'+l+' · '+M.length+'</h3><div class="grid">'+M.map(s=>'<div class="pad" data-id="'+s.id+'"><b title="'+s.name.replace(/"/g,"&quot;")+'">'+s.name.replace(/</g,"&lt;")+'</b><small>'+s.sub+'</small><button class="use" data-use="'+s.id+'" title="Put it in the kit">use</button></div>').join("")+'</div>'; }).join("");
+  markKit(); }
+$("browse").addEventListener("click",e=>{ const u=e.target.closest("[data-use]"); if(u){ const s=SOUNDS[u.dataset.use], r=s.role==="rim"?"perc":s.role; st.cur[r]=s.id; st.kit="custom"; drawKits(); const sel=$("roles").querySelector('[data-r="'+r+'"]'); if(sel) sel.value=s.id; markKit(); audition(s.id); return; }
+  const a=e.target.closest("a"); if(a) return; const p=e.target.closest(".pad"); if(!p) return; p.classList.add("hit"); setTimeout(()=>p.classList.remove("hit"),250); audition(p.dataset.id); });
+
+/* ---------- the groove ---------- */
+let timer=null, step=0, nextT=0;
+function sched(){ const S=STYLES[st.style], bpm=+$("bpm").value, sw=(+$("swing").value)/100, s16=60/bpm/4;
+  while(nextT<ctx.currentTime+.12){ const i=step%32, pair=Math.floor(i/2)*2, off=(i%2)?(sw*2-1)*s16:0, t=nextT+off;
+    for(const [r] of ROLES){ const pat=S.p[r]; if(!pat) continue; const c=pat[i]; if(!c||c===".") continue; const id=st.cur[r]; if(!id) continue;
+      const v=c==="X"?1:c==="g"?.35:.75;
+      if(c==="r"){ hit(id,t,.6); hit(id,t+s16/2,.5); } else hit(id,t,r==="chh"&&c==="x"?.6:v); }
+    step++; nextT+=s16; } }
+$("play").onclick=()=>{ if(timer){ clearInterval(timer); timer=null; $("play").classList.remove("on"); $("play").textContent="▶"; return; }
+  ctx.resume(); step=0; nextT=ctx.currentTime+.1; timer=setInterval(sched,25); sched(); $("play").classList.add("on"); $("play").textContent="■"; };
+$("bpm").oninput=e=>$("bpmv").textContent=e.target.value;
+$("swing").oninput=e=>$("swv").textContent=Math.round((e.target.value-50)*2)+"%";
+$("vol").oninput=e=>master.gain.value=e.target.value/100*1;
+
+/* ---------- start ---------- */
+(async()=>{ const [fs,sp]=await Promise.all([fetch("fs/index.json").then(r=>r.json()),fetch("sp/index.json").then(r=>r.json())]);
+  FS=fs; SP=sp;
+  for(const k of ["808","909","edm"]) for(const [r,l] of ROLES) SOUNDS["syn:"+k+":"+r]={id:"syn:"+k+":"+r,src:"syn",kit:k,role:r,name:SYN_NAME[k]+" "+((SYN_SUB[r]&&SYN_SUB[r][k])||l.toLowerCase()),sub:"synthesised"};
+  for(const n of sp) SOUNDS["sp:"+n]={id:"sp:"+n,src:"sp",role:spRole(n),name:n,sub:"Sonic Pi · CC0",file:"sp/"+n+".mp3"};
+  for(const s of fs) SOUNDS["fs:"+s.id]={id:"fs:"+s.id,src:"fs",role:s.role,name:s.title.replace(/\.(wav|aif|aiff|mp3|flac)$/i,""),user:s.user,
+    sub:'<a href="https://freesound.org/s/'+s.id+'/" target="_blank">'+s.user+'</a> · '+s.dur+' s · '+s.dl+' downloads',file:"fs/"+s.id+".mp3",q:s.q};
+  FS=fs.map(s=>({id:s.id,role:s.role,q:s.q}));
+  const SRCS=[["fs","Freesound · "+fs.length],["sp","Sonic Pi · "+sp.length],["syn","Synthesised · 24"]];
+  const pickSrc=k=>{ SRC=k; seg($("srcs"),SRCS,SRC,pickSrc); drawBrowse(); }; seg($("srcs"),SRCS,SRC,pickSrc);
+  drawRoles(); setStyle("boombap"); drawBrowse(); })();
+</script>
+</body>
+</html>
