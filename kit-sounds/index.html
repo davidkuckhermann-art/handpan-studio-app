@@ -30,6 +30,9 @@ h1{font-size:21px;margin:4px 0 2px}p.lead{color:var(--ink2);margin:2px 0 12px;fo
 .opt .t{flex:1;min-width:0}.opt .n{font-size:13.5px;font-weight:600}.opt .s{font-size:11.5px;color:var(--ink3)}
 .opt.sel{background:var(--amberSoft)}
 .opt .pb{width:34px;height:34px;font-size:12px}
+.xb{flex:none;border:1px solid var(--rule);background:var(--card);color:var(--ink2);border-radius:8px;font:inherit;font-size:12px;font-weight:650;padding:6px 8px;white-space:nowrap}
+.xb.on{background:var(--ink);border-color:var(--ink);color:var(--card)}
+.xc{font-size:10.5px;font-weight:700;color:var(--ink3);margin-left:6px}
 .grp{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);padding:8px 8px 2px}
 .out{margin-top:18px;background:var(--card);border:1px solid var(--rule);border-radius:12px;padding:12px}
 .out pre{white-space:pre-wrap;font:12.5px/1.45 ui-monospace,Menlo,monospace;margin:6px 0 10px;color:var(--ink);max-height:280px;overflow:auto}
@@ -39,22 +42,24 @@ h1{font-size:21px;margin:4px 0 2px}p.lead{color:var(--ink2);margin:2px 0 12px;fo
 .note{font-size:12.5px;color:var(--ink3);margin-top:6px}
 </style></head><body>
 <h1>Kit sounds</h1>
-<p class="lead">Every kit's sounds now, and the alternatives for each. Open a category, tap a sound to choose it (▶ hears it alone); play the kit's groove to hear your choice in it. Your choices stay on this phone; send me the list at the bottom.</p>
+<p class="lead">Every kit's sounds now, and the alternatives for each. Open a category and tap a sound to make it the kit's main sound (▶ hears it alone; play the kit's groove to hear it in place). "+ Extra" adds a sound to your library for custom kits - shared by all kits. Your choices stay on this phone; send me the list at the bottom.</p>
 <div class="lbl">Kit</div><div class="seg" id="kits" style="grid-template-columns:repeat(4,1fr)"></div>
 <div class="bar"><select id="groove" aria-label="Groove"></select><button class="play" id="play">▶ Groove</button></div>
 <div class="lbl">Tempo</div><div class="seg" id="tempo" style="grid-template-columns:repeat(3,1fr)"><button data-t="-1">Slower</button><button data-t="0" class="on">Its tempo</button><button data-t="1">Faster</button></div>
 <div class="lbl">Sounds</div><div class="cats" id="cats"></div>
 <div class="out"><div class="lbl" style="margin-top:0">Your choices</div><pre id="sum">Nothing changed yet.</pre>
-<div class="row"><button class="main" id="copy">Copy the list</button><button id="reset">Reset this kit</button></div><div class="note" id="copied"></div></div>
+<div class="row"><button class="main" id="copy">Copy the list</button><button id="reset">Reset this kit's main sounds</button><button id="resetx">Clear the extras</button></div><div class="note" id="copied"></div></div>
 <script>
 const $=id=>document.getElementById(id);
 const VEL={g:.35,x:.7,X:1}, GAIN={kick:1,snare:.85,clap:.75,rimshot:.5,sidestick:.5,hh_closed:.32,hh_half:.32,hh_open:.3,hh_pedal:.28,ride:.3,ride_bell:.3,crash:.4,tom_low:.7,tom_high:.65,perc:.4,bass808:.9};
 const PC={bd:"kick",sn:"snare",rs:"rimshot",ss:"sidestick",hh:"hh_closed",hf:"hh_half",ho:"hh_open",hp:"hh_pedal",rd:"ride",rb:"ride_bell",cr:"crash",tl:"tom_low",th:"tom_high",cp:"clap",pc:"perc",b8:"bass808"};
 const FB={clap:"snare",perc:"ride_bell",hh_half:"hh_open",hh_pedal:"hh_closed",ride:"hh_closed",ride_bell:"perc",sidestick:"rimshot",rimshot:"snare",crash:"ride",tom_low:"tom_high",tom_high:"tom_low"};   // what the app borrows today
 const BPM={natural:96,e808:104,e909:124,eedm:140,ehiphop:90,ehouse:122,etechno:128,eelectro:112};
-let D=null, kit="natural", open=null, filt={}, ctx=null, B={}, play=null, tempo=0, CH={};
+let D=null, kit="natural", open=null, filt={}, ctx=null, B={}, play=null, tempo=0, CH={}, EX={};
 try{ CH=JSON.parse(localStorage.getItem("ks.choices")||"{}"); }catch(e){ CH={}; }
-const save=()=>{ try{ localStorage.setItem("ks.choices",JSON.stringify(CH)); }catch(e){} };
+try{ EX=JSON.parse(localStorage.getItem("ks.extras")||"{}"); }catch(e){ EX={}; }   // role -> [sound ids]: the library for custom kits, shared by all kits
+const save=()=>{ try{ localStorage.setItem("ks.choices",JSON.stringify(CH)); localStorage.setItem("ks.extras",JSON.stringify(EX)); }catch(e){} };
+const isEx=(r,id)=>!!(EX[r]&&EX[r].includes(id));
 const K=()=>D.kits.find(k=>k.id===kit);
 function chosen(kid,role){ const k=D.kits.find(x=>x.id===kid); return (CH[kid]&&CH[kid][role])||k.now[role]||null; }
 function soundFor(role){ let r=role; for(let i=0;i<4&&r;i++){ const c=chosen(kit,r); if(c) return c; r=FB[r]; } return null; }
@@ -86,23 +91,31 @@ function paint(){
 function paintCats(){ const k=K();
   $("cats").innerHTML=D.roles.map(([r,l])=>{ const c=chosen(kit,r), changed=CH[kit]&&CH[kit][r]&&CH[kit][r]!==k.now[r];
     const borrow=!c?(()=>{ let x=FB[r],i=0; while(x&&i<4){ const cc=chosen(kit,x); if(cc) return "none - borrows the "+(D.roles.find(q=>q[0]===x)||[])[1].toLowerCase(); x=FB[x]; i++; } return "none"; })():"";
-    let h='<div class="cat" data-r="'+r+'"><div class="ch" data-open="'+r+'"><span class="chev">'+(open===r?"▾":"▸")+'</span><div class="t"><div class="n">'+l+(changed?'<span class="badge">changed</span>':'')+'</div><div class="s'+(c?"":" miss")+'">'+(c?esc(D.c[c].n)+' · '+esc(D.c[c].src==="now"?"as it is":D.c[c].src):borrow)+'</div></div>'+(c?'<button class="pb" data-hear="'+c+'" data-role="'+r+'" aria-label="Hear it">▶</button>':'')+'</div>';
+    let h='<div class="cat" data-r="'+r+'"><div class="ch" data-open="'+r+'"><span class="chev">'+(open===r?"▾":"▸")+'</span><div class="t"><div class="n">'+l+(changed?'<span class="badge">changed</span>':'')+((EX[r]||[]).length?'<span class="xc">+'+EX[r].length+' extra</span>':'')+'</div><div class="s'+(c?"":" miss")+'">'+(c?esc(D.c[c].n)+' · '+esc(D.c[c].src==="now"?"as it is":D.c[c].src):borrow)+'</div></div>'+(c?'<button class="pb" data-hear="'+c+'" data-role="'+r+'" aria-label="Hear it">▶</button>':'')+'</div>';
     if(open===r){ const f=filt[r]||famOf(); const all=Object.entries(D.c).filter(([id,x])=>x.r.includes(r)), list=all.filter(([id,x])=>f==="all"||x.fam===f||id.startsWith("now"));
       h+='<div class="panel"><div class="seg" style="grid-template-columns:repeat(3,1fr)">'+[["acoustic","Acoustic"],["electronic","Electronic"],["all","All"]].map(([v,t])=>'<button class="'+(f===v?"on":"")+'" data-filt="'+v+'">'+t+'</button>').join("")+'</div>';
       const groups=[["Now",([id])=>id.startsWith("now")],["Virtuosity",([,x])=>/^Virtuosity/.test(x.src)],["Swirly Drums",([,x])=>x.src==="Swirly Drums"],["Sonic Pi",([,x])=>x.src==="Sonic Pi"],["Freesound",([,x])=>/^Freesound/.test(x.src)],["Snare library",([,x])=>/library/.test(x.n)&&!/^Freesound/.test(x.src)]];
       const seen=new Set();
       for(const [gn,test] of groups){ const items=list.filter(e=>!seen.has(e[0])&&test(e)); if(!items.length) continue; items.forEach(e=>seen.add(e[0]));
-        h+='<div class="grp">'+gn+' · '+items.length+'</div>'+items.map(([id,x])=>'<div class="opt'+(id===c?" sel":"")+'" data-pick="'+id+'"><div class="t"><div class="n">'+esc(x.n)+'</div><div class="s">'+esc(x.src==="now"?"in the app now":x.src)+'</div></div><button class="pb" data-hear="'+id+'" data-role="'+r+'" aria-label="Hear it">▶</button></div>').join(""); }
-      const rest=list.filter(e=>!seen.has(e[0])); if(rest.length) h+='<div class="grp">Other</div>'+rest.map(([id,x])=>'<div class="opt'+(id===c?" sel":"")+'" data-pick="'+id+'"><div class="t"><div class="n">'+esc(x.n)+'</div><div class="s">'+esc(x.src)+'</div></div><button class="pb" data-hear="'+id+'" data-role="'+r+'">▶</button></div>').join("");
+        h+='<div class="grp">'+gn+' · '+items.length+'</div>'+items.map(([id,x])=>optHTML(id,x,r,c)).join(""); }
+      const rest=list.filter(e=>!seen.has(e[0])); if(rest.length) h+='<div class="grp">Other</div>'+rest.map(([id,x])=>optHTML(id,x,r,c)).join("");
       h+='</div>'; }
     return h+'</div>'; }).join(""); }
+function optHTML(id,x,r,c){ const ex=isEx(r,id);
+  return '<div class="opt'+(id===c?" sel":"")+'" data-pick="'+id+'"><div class="t"><div class="n">'+esc(x.n)+(id===c?' <span class="badge">main</span>':'')+'</div><div class="s">'+esc(x.src==="now"?"in the app now":x.src)+'</div></div>'
+    +'<button class="xb'+(ex?" on":"")+'" data-ex="'+id+'" aria-pressed="'+ex+'" title="Include it in your library for custom kits">'+(ex?"✓ Extra":"+ Extra")+'</button>'
+    +'<button class="pb" data-hear="'+id+'" data-role="'+r+'" aria-label="Hear it">▶</button></div>'; }
 function paintSum(){ const lines=[];
   for(const k of D.kits){ const c=CH[k.id]||{}; const ch=Object.entries(c).filter(([r,id])=>id!==k.now[r]); if(!ch.length) continue;
     lines.push(k.n+":"); for(const [r,id] of ch){ const x=D.c[id]; lines.push("  "+(D.roles.find(q=>q[0]===r)||[])[1]+": "+x.n+" ("+(x.src==="now"?"now":x.src)+", "+id+")"); } }
-  $("sum").textContent=lines.length?lines.join("\n"):"Nothing changed yet."; }
+  const ex=D.roles.filter(([r])=>(EX[r]||[]).length);
+  if(ex.length){ if(lines.length) lines.push(""); lines.push("Extra sounds for custom kits:");
+    for(const [r,l] of ex){ lines.push("  "+l+":"); for(const id of EX[r]){ const x=D.c[id]; lines.push("    "+x.n+" ("+(x.src==="now"?"now":x.src)+", "+id+")"); } } }
+  $("sum").textContent=lines.length?lines.join("\n"):"Nothing chosen yet."; }
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 document.addEventListener("click",async e=>{ const t=e.target.closest("button,[data-pick],[data-open]"); if(!t) return;
   if(t.dataset.k){ kit=t.dataset.k; open=null; const was=!!play; stopPlay(); paint(); if(was) startPlay(); return; }
+  if(t.dataset.ex){ e.stopPropagation(); const r=open, id=t.dataset.ex, L=EX[r]=EX[r]||[]; const i=L.indexOf(id); if(i>=0) L.splice(i,1); else L.push(id); if(!L.length) delete EX[r]; save(); paintCats(); paintSum(); return; }
   if(t.dataset.hear){ e.stopPropagation(); one(t.dataset.hear,t.dataset.role); return; }
   if(t.dataset.filt){ filt[open]=t.dataset.filt; paintCats(); return; }
   if(t.dataset.pick){ (CH[kit]=CH[kit]||{})[open]=t.dataset.pick; if(CH[kit][open]===K().now[open]) delete CH[kit][open]; save(); one(t.dataset.pick,open); if(play) buf(t.dataset.pick); paintCats(); paintSum(); return; }
@@ -110,6 +123,7 @@ document.addEventListener("click",async e=>{ const t=e.target.closest("button,[d
   if(t.dataset.t!=null){ tempo=+t.dataset.t; $("tempo").querySelectorAll("button").forEach(b=>b.classList.toggle("on",b===t)); return; }
   if(t.id==="play"){ if(play) stopPlay(); else startPlay(); return; }
   if(t.id==="reset"){ delete CH[kit]; save(); paintCats(); paintSum(); return; }
+  if(t.id==="resetx"){ EX={}; save(); paintCats(); paintSum(); return; }
   if(t.id==="copy"){ const s=$("sum").textContent; try{ await navigator.clipboard.writeText(s); $("copied").textContent="Copied - paste it to me."; }catch(x){ const r=document.createRange(); r.selectNodeContents($("sum")); const sel=getSelection(); sel.removeAllRanges(); sel.addRange(r); $("copied").textContent="Selected - copy it and paste it to me."; } } });
 $("groove").addEventListener("change",()=>{ if(play){ stopPlay(); startPlay(); } });
 fetch("index.json").then(r=>r.json()).then(d=>{ D=d; paint(); });
