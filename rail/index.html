@@ -12345,7 +12345,7 @@ let live=[];
    that was already wrong; a burst is the app shouting at a student. */
 const LATE_DROP=0.25, BURST_WIN=0.025, BURST_MAX=12;
 let burstAt=-1, burstN=0;
-function fire(buf,at,gain){
+function fire(buf,at,gain,rate){
   if(!buf) return;
   /* a TAP after an interruption never passes through start(), so it would
      hit a suspended context and vanish (1 Sep). The nudge is free — one
@@ -12354,7 +12354,7 @@ function fire(buf,at,gain){
      next press of play, which is where reviveAudio lives. */
   if(!playing&&ctx.state!=="running"){ try{ ctx.resume(); }catch(e){} }
   if(at<ctx.currentTime-LATE_DROP) return;
-  const src=ctx.createBufferSource(); src.buffer=buf;
+  const src=ctx.createBufferSource(); src.buffer=buf; if(rate&&rate!==1) src.playbackRate.value=rate;   /* a tak tuned to the ding (patches/tak-tuned.py) */
   const g=ctx.createGain(); g.gain.value=gain;
   src.connect(g);
   if(buf.__click){ g.connect(dry); g.connect(send); } else g.connect(fxIn("hand"));   /* through its pedalboard to handBus (patches/instrument-fx.py) */   // the handpan's own level, pan, reverb (28 Sep 2026)
@@ -14169,11 +14169,15 @@ function pnoPulse(p2,rel,m,sec,at,free){
        in the same bar; patches/piano-flow-pan-phrases.py): a bar draws one now and then - an ECHO of its first half or of all
        of it, half a bar or a bar later; a DOUBLING of it; a roll WOVEN from the pan's first notes in it - and the chords give
        it room, a roll may not run into it */
+    /* A LONG BAR COUNTS IN HALVES (David, 4 Oct 2026: "In long time signatures, the pitched up phrases by the piano should
+       adjust in length to half the amount of bars / half bars"; patches/piano-flow-long-meters.py): longer than four
+       quarters; its middle the beat nearest half way */
+    const fpLong=m.bp/(m.sub*(piece.unit||4)/4)>4+1e-6, fpH=cs.map(c=>c.start).reduce((a,x)=>Math.abs(x-m.bp/2)<Math.abs(a-m.bp/2)?x:a,m.bp);
     const fpRaw=b=>{ if(b<0||!FC) return null; const pp=Math.min(1,cs.length/4)/8, d=passDraw("pno",b*64,131); if(d>=pp) return null;
       const r=d/pp, kind=r<0.4?"echo":r<0.7?"double":"woven";   // one draw, read again inside its odds: the kind does not lean on the odds (neighbouring salts did)
       const half=cs.map(c=>c.start).reduce((a,x)=>Math.abs(x-m.bp/2)<Math.abs(a-m.bp/2)?x:a,m.bp);
-      const D=kind==="echo"&&half>0&&half<m.bp&&r<0.2?half:m.bp;
-      return {kind,D,L:D}; };
+      const D=kind==="echo"&&half>0&&half<m.bp&&(r<0.2||fpLong)?half:m.bp, hs=kind==="double"&&fpLong?(passDraw("pnohalf",b*64,1)<0.5?0:half):null;   /* a long bar: the echo of its first half, a doubling of one half */
+      return {kind,D,L:D,hs}; };
     /* LONGER PHRASES (David, 4 Oct 2026: "a longer phrase from the Handpan over several bars" - "sometimes keep unison longer
        or for the whole phrase ... make it musical, and not the same, like a real pianist would play" - "chords may sometimes
        play at the same time and the pianist may play rolls around the phrase"; patches/piano-flow-long-phrases.py): the
@@ -14186,15 +14190,22 @@ function pnoPulse(p2,rel,m,sec,at,free){
     const fpPlanAll=()=>{ const nb=(((piece.sections[sec.name]||{}).bars)||[]).length, key=(sec.name||"")+"|"+PLAYPASS+"|"+nb+"|"+m.bp+"|"+st;
       if(PNO.fpK===key) return PNO.fpP; const plan=new Array(nb).fill(null);
       for(let b=0;b<nb;b++){ const P=fpRaw(b); if(!P) continue;
+        if(fpLong){ const g=passDraw("pnolong",b*64,1), mid=b%2===0&&passDraw("pnohalf",b*64,2)<0.5, bars=mid?2:1;   /* a long bar: two halves (a bar) or three (from the middle of a two-bar block's first bar to its end) */
+          if(P.kind!=="woven"&&b+bars<=nb&&g<0.4){ const w=fpShape(mid?3:2,g/0.4);
+            if(mid){ plan[b]={kind:"long",i:0,n:2,from:fpH,ways:[null,w[0]],way:w[0]}; plan[b+1]={kind:"long",i:1,n:2,from:0,ways:[w[1],w[2]],way:w[1]}; b++; }
+            else plan[b]={kind:"long",i:0,n:1,from:0,ways:[w[0],w[1]],way:w[0]};
+            continue; }
+          plan[b]=P; if(P.kind==="echo"&&P.D+P.L>m.bp+1e-6&&b+1<nb){ plan[b+1]={kind:"spill"}; b++; } continue; }
         const g=passDraw("pnolong",b*64,1), pos=Math.floor(b/PH.n)%4, k=pos===1?3:(pos===0||pos===2)?2:0, n=k*PH.n;   /* three phrase bars at most - bars 2-4 of a four-bar phrase; two - its first half or its second (David, 4 Oct 2026: "3 bars tops ... bars 2-4 of a 4 bar phrase"; patches/piano-flow-long-bars.py) */
         if(P.kind!=="woven"&&k>=2&&b%PH.n===0&&b+n<=nb&&g<0.4){ const ways=fpShape(k,g/0.4); for(let i=0;i<n;i++) plan[b+i]={kind:"long",i,n,way:ways[Math.floor(i/PH.n)]}; b+=n-1; continue; }
         plan[b]=P; if(P.kind==="echo"&&P.D+P.L>m.bp+1e-6&&b+1<nb){ plan[b+1]={kind:"spill"}; b++; } }
       PNO.fpK=key; PNO.fpP=plan; return plan; };
-    const fpDraw=b=>{ if(b<0) return null; const pl=fpPlanAll(); return b<pl.length?pl[b]:null; };   /* the bar's phrase: a short one, a long one's bar, or an echo's spill */
+    const fpDraw=b=>{ if(b<0) return null; const pl=fpPlanAll(); return b<pl.length?pl[b]:null; };
+    const fpWayAt=(P,q)=>P.ways?((q<fpH-1e-6?P.ways[0]:P.ways[1])||P.way):P.way;   /* a long phrase's way at a place - its half's in a long bar */   /* the bar's phrase: a short one, a long one's bar, or an echo's spill */
     const fpFirst=b=>{ for(let q=0;q<m.bp;q++) if(panTones(p2-rel+b*m.bp+q).length) return q; return null; };   // the bar's first pitched stroke
     const fpWin=b=>{ const P=fpDraw(b); if(!P||P.kind==="long"||P.kind==="spill") return null;   // where its notes sound, in pulses from bar b's start
       if(P.kind==="echo") return [P.D,P.D+P.L];
-      if(P.kind==="double") return [0,m.bp];
+      if(P.kind==="double") return P.hs==null?[0,m.bp]:[P.hs,P.hs?m.bp:fpH];
       const f=fpFirst(b); return f==null?null:[f,Math.min(m.bp,f+5*s16/pd)]; };
     const fcRaw=b=>{ if(b<0||!FC) return null;
       { const P=fpDraw(b); if(P&&!(P.kind==="long"&&passDraw("pnolong",b*64,7)<0.5)) return null; } { const y=fpDraw(b-1); if(y&&y.kind==="echo"&&y.D+y.L>m.bp+1e-6) return null; }   /* a phrase's bar has no chord */
@@ -14206,7 +14217,19 @@ function pnoPulse(p2,rel,m,sec,at,free){
     /* SUSTAINED, OR SHORT INTO SUSTAINED (David, 4 Oct 2026; patches/piano-flow-sustain.py): four times in ten a stab, then
        the same chord sustained on the bar's next eighth - none left, sustained alone */
     const fcNext=(b,x)=>feelSteps(m,b).list.find(z=>z.at>x.at+1e-6&&(z.s===0||z.s===2))||null, fcTwo=(b,x)=>passDraw("pno",b*64+x.k,119)<0.4?fcNext(b,x):null;
-    if(FC){ const x=fcPlan(fcBi);
+    /* THE CHORDS TAKE UP THE HANDPAN'S PHRASING (David, 4 Oct 2026: "The phrasing for the chords can sometimes adapt to the
+       phrasing of the Handpan pattern (any part of the Handpan pattern, bass part or melody)"; patches/piano-flow-chords-follow-pan.py):
+       one chord bar in three in Flow, chords & bass plays its chords on the pan's strokes of one part - its bass (the
+       ding and up to a third above) or its melody - up to three, short but the last */
+    const fcAdapt=b=>{ if(!(st==="flowcb"||st==="flowcbg")||b<0) return null; const key=(sec.name||"")+"|"+b+"|"+PLAYPASS+"|"+st+"|"+m.bp;
+      if(!PNO.fcAd||Object.keys(PNO.fcAd).length>400) PNO.fcAd={}; if(key in PNO.fcAd) return PNO.fcAd[key];
+      let L=null; if(fcPlan(b)&&passDraw("pnoad",b*64,1)<1/3){ const B0=p2-rel+b*m.bp, d=(typeof myPan!=="undefined"&&myPan&&myPan.ding)||50, lo=[], hi=[];
+        for(let q=0;q<m.bp;q++){ const T=panTones(B0+q); if(!T.length) continue; (Math.min(...T.map(e=>e.midi))<=d+4?lo:hi).push(q); }
+        const pr=passDraw("pnoad",b*64,2)<0.5?[lo,hi]:[hi,lo], A=pr[0].length?pr[0]:pr[1];
+        if(A.length) L=A.length<=3?A:[A[0],A[Math.floor(A.length/2)],A[A.length-1]]; }
+      return (PNO.fcAd[key]=L); };
+    if(FC){ const AD=fcAdapt(fcBi), t00=ticks16.find(t=>t.dt<1e-6);
+      const x=AD?(AD.includes(rb)&&t00?{k:t00.k,s:0,ci:-1,at:rb,adapt:true,last:rb===AD[AD.length-1]}:null):fcPlan(fcBi);
       if(x) for(const tk of ticks16){ if(tk.k!==x.k) continue; tAt=at+tk.dt; if(PNO.puTo&&tAt>=PNO.puFrom-1e-4&&tAt<PNO.puTo-1e-4) break;
         const [cLo,cHi]=PNO_WIN.around; let v=pnoVoicing(pcs,cLo,cHi,PNO.fcV||null), ant=false;   // around the pan, whatever the Register (patches/piano-flow-sustain.py)
         if(pnoWide&&v.length>=3){ const w=v[1]+12; v=v.slice(); v.splice(1,1); v.push(w); v.sort((a,b)=>a-b); }
@@ -14218,10 +14241,10 @@ function pnoPulse(p2,rel,m,sec,at,free){
         const T0=PNO.fcTop;   // the top voice by the smallest step: this voicing, its lowest note up, or its highest down
         if(T0!=null&&v.length>1) v=[v.slice(1).concat([v[0]+12]),[v[v.length-1]-12].concat(v.slice(0,-1))].filter(y=>y[0]>=cLo-3&&y[y.length-1]<=cHi+5)
           .reduce((b,y)=>Math.abs(y[y.length-1]-T0)<Math.abs(b[b.length-1]-T0)-1e-9?y:b,v);
-        const y=ant?null:fcTwo(fcBi,x), bz=!PB&&!ant&&!y&&passDraw("pno",fcBi*64+x.k,121)<0.3?fcNext(fcBi,x):null;   // a stab, then its sustained second hit; a broken chord, the root first; or sustained now
+        const y=ant||x.adapt?null:fcTwo(fcBi,x), bz=!x.adapt&&!PB&&!ant&&!y&&passDraw("pno",fcBi*64+x.k,121)<0.3?fcNext(fcBi,x):null;   // a stab, then its sustained second hit; a broken chord, the root first; or sustained now
         pnoRelease(tAt); const t0=hum(), top=v.length-1;
         PNO.gk=0.6; try{ if(bz){ let rt=cLo-1; while(((rt%12)+12)%12!==pcs[0]) rt--; pnoNote(rt,t0,0.42); }   // the root under the chord, the rest on the next eighth (David, 4 Oct 2026: "broken chords, first root, then the other notes")
-          else v.forEach((n,k)=>pnoNote(n,t0+Math.random()*0.006,(ant?0.4:y?0.36:0.38)+(k===top?0.05:-0.03),y?1.5*s16:undefined)); } finally{ PNO.gk=1; }   // softer (David, 4 Oct 2026: "play the chords a bit softer")
+          else v.forEach((n,k)=>pnoNote(n,t0+Math.random()*0.006,(ant?0.4:y?0.36:0.38)+(k===top?0.05:-0.03),(y||(x.adapt&&!x.last))?1.5*s16:undefined)); } finally{ PNO.gk=1; }   // softer (David, 4 Oct 2026: "play the chords a bit softer")
         PNO.fcTop=v[top]; PNO.fcV=v; PNO.fc2=y?{bi:fcBi,k:y.k}:bz?{bi:fcBi,k:bz.k,br:true}:null; PNO.fcB=tAt+1.5*fcBeat*pd; break; } }
     /* the second hit - a stab's sustained chord, or a broken chord's upper notes - in this pulse or a later one (after the first, so one pulse may hold both) */
     if(FC&&PNO.fc2&&PNO.fc2.bi===fcBi&&PNO.fcV) for(const tk of ticks16){ if(tk.k!==PNO.fc2.k) continue; tAt=at+tk.dt; const br=PNO.fc2.br; PNO.fc2=null;
@@ -14243,8 +14266,9 @@ function pnoPulse(p2,rel,m,sec,at,free){
       for(const b of [fcBi-1,fcBi]){ const P=fpDraw(b); if(!P) continue; const q=rel-b*m.bp;
         if(P.kind==="echo"){ if(q>=P.D-1e-6&&q<P.D+P.L-1e-6) fpPlay(p2-P.D,0.4,b,p2-rel+b*m.bp); }
         else if(b!==fcBi||P.kind==="spill") continue;
-        else if(P.kind==="long"){ if(P.way==="echo") fpPlay(p2-m.bp,0.4,b,p2-rel+(b-1)*m.bp,"whole"); else fpPlay(p2,0.38,b,p2-rel+b*m.bp,P.way); }   /* a long phrase's bar, its way (patches/piano-flow-long-phrases.py) */
-        else if(P.kind==="double") fpPlay(p2,0.38,b,p2-rel+b*m.bp);
+        else if(P.kind==="long"){ if(rb>=(P.from||0)-1e-6){ const w=fpWayAt(P,rb), back=fpLong?fpH:m.bp, s0=p2-rel+b*m.bp+(fpLong&&rb>=fpH?fpH:0);   /* a long phrase's bar, its way - in a long bar its half's, a canon half a bar behind (patches/piano-flow-long-phrases.py, piano-flow-long-meters.py) */
+            if(w==="echo") fpPlay(p2-back,0.4,b,s0-back,"whole"); else fpPlay(p2,0.38,b,s0,w); } }
+        else if(P.kind==="double"){ if(P.hs==null||(rb>=P.hs-1e-6&&rb<(P.hs?m.bp:fpH)-1e-6)) fpPlay(p2,0.38,b,p2-rel+b*m.bp+(P.hs||0)); }
         else if(fpFirst(b)===rb){ const ps=[];   // woven: the pan's first notes, then on through the chord
           for(let q2=rb;q2<m.bp&&ps.length<3;q2++) for(const e of panTones(p2-rb+q2)){ const x=e.midi+12; if(ps[ps.length-1]!==x) ps.push(x); if(ps.length>=3) break; }
           const nPan=ps.length, up=ps.length<2||ps[ps.length-1]>=ps[ps.length-2], cp=[...new Set((PB?[]:[low]).concat(ch,ch.map(x=>x+12),ch.map(x=>x-12)))].sort((x,y)=>x-y);
@@ -14317,12 +14341,12 @@ function pnoPulse(p2,rel,m,sec,at,free){
       if(room<need) continue;
       const n=Math.min(room,need+Math.floor(R(2)*(Math.max(need,6)-need+1))), up=R(3)<0.75, i0=Math.floor(R(4)*Math.max(1,pool.length-n+1));
       let ns=pool.slice(i0,i0+n); if(ns.length<n) ns=pool.slice(-n); if(!up) ns.reverse();
-      if(FC){ const endP=pos+n*s16/pd, cP=[0,1].map(d=>{ const x=fcPlan(fcBi+d); return x?d*m.bp+x.at:null; }).filter(c=>c!=null&&c>pos-1e-6);   // no roll ending less than a beat before a chord (patches/piano-flow-comp.py)
+      if(FC){ const endP=pos+n*s16/pd, cP=[0,1].flatMap(d=>{ const A=fcAdapt(fcBi+d); if(A) return A.map(q=>d*m.bp+q); const x=fcPlan(fcBi+d); return x?[d*m.bp+x.at]:[]; }).filter(c=>c>pos-1e-6);   // no roll ending less than a beat before a chord (patches/piano-flow-comp.py)
         if(cP.length&&Math.min(...cP)-endP<fcBeat-1e-6) continue;
         const fW=[-1,0,1].map(d=>{ const w=fpWin(fcBi+d); return w?[w[0]+d*m.bp,w[1]+d*m.bp]:null; }).filter(Boolean);   // nor into a phrase of the pan's (patches/piano-flow-pan-phrases.py)
         if(fW.some(w=>pos<w[1]-1e-6&&endP>w[0]-1e-6)) continue;
-        { const LP=fpDraw(fcBi); if(LP&&LP.kind==="long"){ const off=LP.way==="echo"?m.bp:0; let hit=false;   /* around a long phrase: a roll only in a gap of it (patches/piano-flow-long-phrases.py) */
-            for(let q=Math.ceil(pos-1e-6);q<endP-1e-6&&q<m.bp&&!hit;q++) if(panTones(p2-rb+q-off).length) hit=true;
+        { const LP=fpDraw(fcBi); if(LP&&LP.kind==="long"){ let hit=false;   /* around a long phrase: a roll only in a gap of it (patches/piano-flow-long-phrases.py) */
+            for(let q=Math.ceil(pos-1e-6);q<endP-1e-6&&q<m.bp&&!hit;q++){ if(q<(LP.from||0)-1e-6) continue; const off=fpWayAt(LP,q)==="echo"?(fpLong?fpH:m.bp):0; if(panTones(p2-rb+q-off).length) hit=true; }
             if(hit) continue; } } }
       pnoRelease(tAt); const t0=hum(), L=Math.max(1,ns.length-1);
       ns.forEach((x,k)=>pnoNote(x,t0+k*s16,(up?0.42+0.08*k/L:0.5-0.1*k/L)+(k?0:0.06)));
@@ -18434,14 +18458,19 @@ function panLiveRow(){ if(bassIsPlayer()) return "";
 document.addEventListener("click",e=>{ const b=e.target.closest&&e.target.closest("#handPop [data-hlv]"); if(!b||!jamOn) return;
   panLv=+b.dataset.hlv; try{ localStorage.setItem("hps.panlive",String(panLv)); }catch(x){} PANPLAN=null;
   b.parentElement.querySelectorAll("[data-hlv]").forEach(x=>x.classList.toggle("on",x===b)); try{ renderStaff(); }catch(x){} });
+/* THE TAK TUNED WITH THE DING (David, 4 Oct 2026: "the tak sound should be tuned alongside the ding for all scales";
+   patches/tak-tuned.py): the percussion was recorded on a D Kurd (ding D3, make_bank.py) - a tak plays at the rate that
+   moves D3 to this pan's ding; the slap and the knock as recorded */
+function takRate(s){ if(s!=="tak") return 1; const d=(typeof myPan!=="undefined"&&myPan&&myPan.ding)||50; return Math.pow(2,(d-50)/12); }
 function fireEvent(ev,at){
   if(ev.v==="ghost") return;   // ghosts are notated, not sounded (David, 26 Aug: silent for now)
   if(ev.v==="perc"){
     const hand=ev.hand==="R"?"L":"R";       // the bank's names are the old tokens: the right hand's sample is "…L"
     const buf=bankBuf("p_"+ev.s+hand)||percBuf(ev.s==="tak"?"tak":ev.s);
-    if(ev.flam){ fire(buf,at-FLAM_EARLY,evGain(ev)*FLAM_GAIN); return; }
-    if(ev.roll) fire(bankBuf("p_"+ev.s+otherHand(hand))||buf,at-0.045,evGain(ev)*0.45);   // grace before the accent
-    fire(buf,at,evGain(ev)); return;
+    const tr=takRate(ev.s);   /* a tak tuned to the ding (patches/tak-tuned.py) */
+    if(ev.flam){ fire(buf,at-FLAM_EARLY,evGain(ev)*FLAM_GAIN,tr); return; }
+    if(ev.roll) fire(bankBuf("p_"+ev.s+otherHand(hand))||buf,at-0.045,evGain(ev)*0.45,tr);   // grace before the accent
+    fire(buf,at,evGain(ev),tr); return;
   }
   const midi=evPitch(ev);   // the one reading of a stroke's pitch (29 Sep 2026, patches/follow-the-handpan.py)
   if(midi===null||midi===undefined) return;   // field missing on this pan
@@ -19574,8 +19603,10 @@ function exportVoice(ev,trans){
     :(ev.roll?[{buf:gbuf||buf,off:-0.045,gain:g*0.45},{buf,off:0,gain:g}]:[{buf,off:0,gain:g}]);
   if(ev.v==="perc"){
     const hand=ev.hand==="R"?"L":"R";       // the bank's names are the old tokens (see fireEvent)
-    return pair(bankBuf("p_"+ev.s+hand)||percBuf(ev.s==="tak"?"tak":ev.s),
+    const vs=pair(bankBuf("p_"+ev.s+hand)||percBuf(ev.s==="tak"?"tak":ev.s),
                 bankBuf("p_"+ev.s+otherHand(hand)));                    // the roll's grace: the other hand
+    const tr=takRate(ev.s); if(vs&&tr!==1) vs.forEach(v=>{ v.rate=tr; });   /* a tak tuned to the ding (patches/tak-tuned.py) */
+    return vs;
   }
   let f=ev.f, midi=null;
   { const fo=foreignOf(ev); if(fo){ if(fo.pos===null) midi=fo.midi; else f=fo.pos; }
@@ -19624,7 +19655,7 @@ function exportPlan(pulses){
   const out=[]; const trans=!!(mode==="trans"&&MAP);
   const end=exportWalk(pulses,(ev,at)=>{
     const vs=exportVoice(ev,trans);
-    if(vs) for(const v of vs) out.push({buf:v.buf,at:Math.max(0,at+v.off),gain:v.gain});
+    if(vs) for(const v of vs) out.push({buf:v.buf,at:Math.max(0,at+v.off),gain:v.gain,rate:v.rate});
   });
   return {evs:out,end};
 }
@@ -19676,7 +19707,7 @@ async function exportRender(pulses,fade,onStage){
     om.gain.linearRampToValueAtTime(0,total);
   }
   for(const e of plan.evs){
-    const s=oc.createBufferSource(); s.buffer=e.buf;
+    const s=oc.createBufferSource(); s.buffer=e.buf; if(e.rate) s.playbackRate.value=e.rate;
     const g=oc.createGain(); g.gain.value=e.gain;
     s.connect(g); g.connect(od); g.connect(os);
     s.start(e.at);
@@ -26813,7 +26844,7 @@ function panSoundBottom(i){
 }
 function panSoundPerc(s,id){
   wakeAudio(); preloadBank();
-  fire(bankBuf("p_"+s+"R")||percBuf(s),ctx.currentTime+0.01,0.9);
+  fire(bankBuf("p_"+s+"R")||percBuf(s),ctx.currentTime+0.01,0.9,takRate(s));
   pvFlashId(id||("pvp-"+s),["hT"]);
 }
 /* POCKET ZONES fix (David, 31 Aug: "the pan tab triggers tone fields when I
@@ -32139,6 +32170,11 @@ function loadPiece(p){
   if((piece.syncMap||[]).length&&!videoSeen) setSyncMode(true);
   if(videoSeen)updateSyncUI(); loadOv();
   if(playing) stop();
+  /* THE VIEW AFTER THE STOP (David, 4 Oct 2026, the phone: "the new piece is playing from the middle";
+     patches/load-starts-at-top.py): stop() paints the old piece's last pulse, and on the phone the view follows the paint -
+     onto a table in the middle of the NEW piece, whose top play then started from. The first table again, after the stop,
+     and the old playhead let go, its marker with it */
+  viewSec=piece.arrangement[0]; selAi=0; viewPin=null; lastPaint=-1; nextPulse=0;
   pendingStart=null;                     // a fresh piece starts at its top
   refresh();
 }
@@ -44712,7 +44748,7 @@ function rqPlay(pat,voice,o){
         const at=base+e.p*step;
         // a stack sums, so scale by 1/√n — app.html's equal-power rule
         const g=(e.acc?RQACC:(ducks.has(e.p)?RQLEAD:RQFILL))/Math.sqrt(byP.get(e.p)||1);
-        if(e.kind==="perc") fire(bankBuf("p_tak"+(e.hand==="R"?"L":"R"))||percBuf("tak"),at,.9*g);   // the bank's names are the old tokens
+        if(e.kind==="perc") fire(bankBuf("p_tak"+(e.hand==="R"?"L":"R"))||percBuf("tak"),at,.9*g,takRate("tak"));   // the bank's names are the old tokens
         else{ const m=myPan.midiFor(e.f);
               fire(bankBuf("o"+m)||synthBuf(m,"open"),at,g); }
       }
