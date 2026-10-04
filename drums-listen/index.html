@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Drum kit listening</title>
+<!-- Listening page for a drum set (David, 4 Oct 2026: "Can you check for free drum set libraries?" - "Yes, download them").
+     Two CC0 kits, both from the sfzinstruments GitHub mirrors (licence files checked):
+       Virtuosity Drums - Versilian Studios with Karoryfer Samples; a contemporary jazz kit played with sticks (Austin
+       McMahon), the snare, toms and kick recorded "wave" style - up to 36 dynamic levels.
+       Swirly Drums - Karoryfer Samples; everything played with brushes (a 20" marching kick, snare, hats, cymbals, toms).
+     Each hit here is three of its recorded levels (soft, medium, loud), the kit's microphones summed as its basic kit plays
+     them (Virtuosity: kick mic + snare mic + overheads; Swirly: top + bottom on snare and kick), trimmed, levelled per piece
+     with the dynamics kept. The handpan line under the grooves is the app's own D Kurd samples (../bank.js). -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f7f3ec;--card:#fffdf9;--ink:#2b2622;--ink2:#6f665d;--rule:#e6ddd0;--amb:#d9902f;--track:#efe8dd}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 Figtree,"Helvetica Neue",Arial,sans-serif}
+main{max-width:1060px;margin:0 auto;padding:28px 16px 60px}
+h1{font-size:26px;margin:0 0 4px} h2{font-size:17px;margin:0 0 10px}
+.sub{color:var(--ink2);margin:0 0 22px;max-width:70ch}
+.card{background:var(--card);border:1px solid var(--rule);border-radius:16px;padding:18px;margin:0 0 18px}
+.seg{display:inline-grid;grid-auto-flow:column;gap:2px;background:var(--track);border-radius:10px;padding:3px}
+.seg button{border:0;background:none;border-radius:8px;padding:7px 14px;font:600 14px Figtree,sans-serif;color:var(--ink2);cursor:pointer}
+.seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:0 0 12px}
+.lbl{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);min-width:72px}
+table{width:100%;border-collapse:collapse}
+th,td{padding:7px 6px;border-top:1px solid var(--rule);text-align:left;vertical-align:middle}
+th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);font-weight:600}
+td.k{font-weight:600;white-space:nowrap}
+.hits{display:flex;gap:4px}
+.hit{border:1px solid var(--rule);background:#fff;border-radius:8px;padding:5px 9px;font:600 12px Figtree,sans-serif;cursor:pointer;color:var(--ink)}
+.hit:active,.hit.flash{background:var(--amb);color:#fff;border-color:var(--amb)}
+.play{border:0;background:var(--amb);color:#fff;border-radius:999px;padding:10px 22px;font:700 15px Figtree,sans-serif;cursor:pointer}
+.play.on{background:var(--ink)}
+input[type=range]{width:160px}
+.note{color:var(--ink2);font-size:13px;margin-top:8px}
+.wrap{overflow-x:auto}
+@media (max-width:640px){ .lbl{min-width:0;width:100%} }
+</style>
+</head>
+<body>
+<main>
+<h1>Drum kit listening</h1>
+<p class="sub">Two free drum kits (both CC0, free to ship in the app): <b>Virtuosity Drums</b>, a contemporary jazz kit played with sticks, and <b>Swirly Drums</b>, everything played with brushes. Tap any hit, or play a groove on either kit with the handpan underneath.</p>
+
+<div class="card">
+  <h2>Grooves</h2>
+  <div class="row"><span class="lbl">Kit</span><div class="seg" id="kitSeg"><button data-kit="virtuosity" class="on">Virtuosity (sticks)</button><button data-kit="swirly">Swirly (brushes)</button></div></div>
+  <div class="row"><span class="lbl">Groove</span><div class="seg" id="grvSeg"><button data-g="pop" class="on">Pop</button><button data-g="ballad">Ballad</button><button data-g="jazz">Jazz</button><button data-g="soft">Soft</button></div></div>
+  <div class="row"><span class="lbl">Handpan</span><div class="seg" id="panSeg"><button data-p="1" class="on">With</button><button data-p="0">Without</button></div>
+    <span class="lbl" style="min-width:0;margin-left:12px">Tempo</span><input type="range" id="bpm" min="60" max="130" value="90"><b id="bpmv">90</b></div>
+  <div class="row"><button class="play" id="play">▶ Play</button><span class="note" id="status">Loading…</span></div>
+  <div class="note">Pop: kick on 1 and 3, snare on 2 and 4, eighth-note hats. Ballad: sidestick (on Swirly the brushed snare edge) on 2 and 4, ride in quarters. Jazz: the swung ride pattern, hi-hat foot on 2 and 4, a feathered kick. Soft: quiet snare and hats, the kick on 1.</div>
+</div>
+
+<div class="card">
+  <h2>Single hits</h2>
+  <div class="wrap"><table id="hitTable"><thead><tr><th>Piece</th><th>Virtuosity (sticks)</th><th>Swirly (brushes)</th></tr></thead><tbody></tbody></table></div>
+  <div class="note">Each hit is three of its recorded levels. Virtuosity: kick mic, snare mic and overheads together. Swirly: top and bottom mics on snare and kick. Both trimmed, each piece levelled with its dynamics kept.</div>
+</div>
+</main>
+<script src="../bank.js"></script>
+<script>
+const PIECES=[["kick","Kick"],["snare","Snare"],["sidestick","Sidestick"],["snare_edge","Snare edge (brush)"],["hh_closed","Hi-hat closed"],["hh_open","Hi-hat open"],["hh_pedal","Hi-hat foot"],["ride","Ride"],["ride_bell","Ride bell"],["crash","Crash"],["tom_low","Low tom"],["tom_high","High tom"]];
+const LV=["soft","medium","loud"];
+let ctx=null, master=null, IDX=null; const BUF={}; const PAN={};
+/* THE PHONE'S SOUND STARTS INSIDE THE TAP, as on the bass page: the session declared "playback" (the ringer switch no longer
+   silences it), the context resumed and one silent sample played at once - before anything slow */
+function ac(){ try{ if(navigator.audioSession) navigator.audioSession.type="playback"; }catch(e){}
+  if(!ctx){ ctx=new (window.AudioContext||window.webkitAudioContext)(); master=ctx.createGain(); master.gain.value=0.9; master.connect(ctx.destination); }
+  try{ if(ctx.state!=="running") ctx.resume(); const b=ctx.createBuffer(1,1,ctx.sampleRate), s=ctx.createBufferSource(); s.buffer=b; s.connect(ctx.destination); s.start(0); }catch(e){}
+  return ctx; }
+async function loadIdx(){ IDX=await (await fetch("index.json")).json(); }
+async function buf(kit,key,lvl){ const k=kit+"/"+key+"_"+lvl; if(BUF[k]) return BUF[k];
+  const ab=await (await fetch(k+".mp3")).arrayBuffer(); BUF[k]=await ac().decodeAudioData(ab); return BUF[k]; }
+function hit(b,t,g){ if(!b) return; const s=ctx.createBufferSource(); s.buffer=b; const v=ctx.createGain(); v.gain.value=g==null?1:g; s.connect(v); v.connect(master); s.start(t); return s; }
+function has(kit,key){ return IDX&&IDX[kit]&&IDX[kit][key]; }
+/* the table of hits */
+function table(){ const tb=document.querySelector("#hitTable tbody"); tb.innerHTML="";
+  for(const [key,name] of PIECES){ const tr=document.createElement("tr"); tr.innerHTML='<td class="k">'+name+'</td>';
+    for(const kit of ["virtuosity","swirly"]){ const td=document.createElement("td");
+      if(has(kit,key)){ const d=document.createElement("div"); d.className="hits";
+        for(const l of IDX[kit][key]){ const b=document.createElement("button"); b.className="hit"; b.textContent=l; b.onclick=async()=>{ ac(); const x=await buf(kit,key,l); hit(x,ctx.currentTime+0.01); b.classList.add("flash"); setTimeout(()=>b.classList.remove("flash"),180); }; d.appendChild(b); }
+        td.appendChild(d); } else td.innerHTML='<span class="note">—</span>';
+      tr.appendChild(td); }
+    tb.appendChild(tr); } }
+/* the handpan: the app's D Kurd (bank.js, base64 m4a) */
+async function panBuf(m){ if(PAN[m]) return PAN[m]; const B=window.HPS_BANK&&HPS_BANK.samples; const b64=B&&B["o"+m]; if(!b64) return null;
+  const bin=atob(b64), u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+  PAN[m]=await ac().decodeAudioData(u.buffer); return PAN[m]; }
+const PANLINE=[[0,50],[2,62],[3,57],[4,65],[6,62],[7,69],[8,50],[10,64],[11,57],[12,62],[14,60],[15,57]];   // 16ths: the ding, then the scale
+/* grooves in sixteenths, a bar of 16 steps: [piece, level, gain] per step; jazz is swung */
+const G={
+  pop:{ swing:0, s:i=>{ const o=[]; if(i===0||i===8) o.push(["kick",i===0?"loud":"medium"]); if(i===4||i===12) o.push(["snare","loud"]); if(i%2===0) o.push(["hh_closed",i%4===0?"medium":"soft"]); if(i===14) o.push(["kick","soft"]); return o; } },
+  ballad:{ swing:0, s:i=>{ const o=[]; if(i===0) o.push(["kick","medium"]); if(i===10) o.push(["kick","soft"]); if(i===4||i===12) o.push(["sidestick","medium"]); if(i%4===0) o.push(["ride",i===0?"medium":"soft"]); return o; } },
+  jazz:{ swing:1, s:i=>{ const o=[]; if(i%4===0) o.push(["ride",i===0||i===8?"medium":"soft"]); if(i===6||i===14) o.push(["ride","soft"]); if(i===4||i===12) o.push(["hh_pedal","medium"]); if(i%4===0) o.push(["kick","soft",0.35]); if(i===10) o.push(["snare","soft",0.6]); return o; } },
+  soft:{ swing:0, s:i=>{ const o=[]; if(i===0) o.push(["kick","soft"]); if(i===4||i===12) o.push(["snare","soft"]); if(i%2===0) o.push(["hh_closed","soft",0.7]); if(i===8) o.push(["hh_pedal","soft"]); return o; } }
+};
+let kit="virtuosity", grv="pop", withPan=true, timer=null, step=0, nextT=0;
+function sub(k,key){ if(has(k,key)) return key; if(key==="sidestick"&&has(k,"snare_edge")) return "snare_edge"; if(key==="ride_bell") return "ride"; return null; }
+async function preload(){ const keys=new Set(); for(const g of Object.values(G)) for(let i=0;i<16;i++) for(const [p] of g.s(i)) keys.add(p);
+  const jobs=[]; for(const k of ["virtuosity","swirly"]) for(const p of keys){ const q=sub(k,p); if(q) for(const l of IDX[k][q]) jobs.push(buf(k,q,l)); }
+  for(const [,m] of PANLINE) jobs.push(panBuf(m)); await Promise.all(jobs); }
+function sched(){ const bpm=+document.getElementById("bpm").value, s16=60/bpm/4, g=G[grv];
+  while(nextT<ctx.currentTime+0.15){ const i=step%16, swing=g.swing&&i%4===2?s16*0.33:0, t=nextT+swing;
+    for(const [p,l,gain] of g.s(i)){ const q=sub(kit,p); if(!q) continue; const lv=IDX[kit][q].includes(l)?l:IDX[kit][q][0]; hit(BUF[kit+"/"+q+"_"+lv],t,gain==null?1:gain); }
+    if(withPan) for(const [s,m] of PANLINE) if(s===i){ const b=PAN[m]; if(b) hit(b,t,0.55); }
+    nextT+=s16; step++; } }
+let PRE=false;
+async function play(){ const b=document.getElementById("play");
+  if(timer){ clearInterval(timer); timer=null; b.textContent="▶ Play"; b.classList.remove("on"); return; }
+  ac(); if(!PRE){ const st=document.getElementById("status"); st.textContent="Loading sounds…"; await preload(); PRE=true; st.textContent=""; }
+  step=0; nextT=ctx.currentTime+0.08; timer=setInterval(sched,25); sched(); b.textContent="■ Stop"; b.classList.add("on"); }
+function seg(id,fn){ const el=document.getElementById(id); el.addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; el.querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b)); fn(b.dataset); }); }
+seg("kitSeg",d=>kit=d.kit); seg("grvSeg",d=>grv=d.g); seg("panSeg",d=>withPan=d.p==="1");
+document.getElementById("bpm").oninput=e=>document.getElementById("bpmv").textContent=e.target.value;
+document.getElementById("play").onclick=play;
+(async()=>{ try{ await loadIdx(); table(); document.getElementById("status").textContent="Ready - the first press loads the sounds";
+}catch(e){ document.getElementById("status").textContent="Could not load: "+e.message; } })();
+</script>
+</body>
+</html>
