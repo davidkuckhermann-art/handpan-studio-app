@@ -13940,7 +13940,7 @@ function pnoNote(midi,t,vel,len,fin){
   if(PNO_PLAY==="grand"){ if(!PNO_LAY_DEC) pnoLayLoad(); const lv=vel-(pnoStyle==="flowcbg"?0.1:0), Ly=PNO_LAYS.find(l=>lv<l[2]&&PNO_LAY[l[0]]), B=Ly?PNO_LAY[Ly[0]]:PNO_BUF;   /* the layer its strength calls for (patches/piano-velocity-layers.py) */
     e=B[0]; for(const x of B) if(Math.abs(x.midi-midi)<Math.abs(e.midi-midi)) e=x; }
   else { const T=gtrTake(midi,vel-(pnoStyle==="flowcbg"?0.1:0),false,PNO_PLAY); if(!T.e) return; e={buf:T.e.buf,off:T.e.off,midi:T.c}; }   // an electric piano: its zone, layer and take (patches/piano-sounds.py)
-  const pk=PNO_PK*(pnoVol/100)*(0.7+0.3*vel)*(PNO.gk||1)*(pnoStyle==="flowcbg"?1.7:1)*(e.lg||1); if(!(pk>0)) return;   /* gentle 1.7 (4 Oct 2026: "a little louder ... about half way" - measured: at 1.2 its average level already matched Flow, chords & bass (every sample is levelled to one peak), so its quietness is the softer recordings' tone; +3 dB, half the natural gap between velocity 3 and 8) */   /* gentle 1.2 (was 0.6): its softness is the softer layers and the darker tone, not the level (David, 4 Oct 2026: "a little louder, but only in volume ... at 150 it's still very soft") */   /* gentle: every note softer (patches/piano-flow-gentle.py) */   // PNO.gk: a trim the caller sets for its notes (patches/piano-flow-sustain.py)
+  const pk=PNO_PK*(pnoVol/100)*(0.7+0.3*vel)*(PNO.gk||1)*(pnoStyle==="flowcbg"?1.46:1)*(e.lg||1); if(!(pk>0)) return;   /* gentle 1.46: 86% of 1.7 (David, 4 Oct 2026: "bring it to 86% of what it is now"; patches/piano-gentle-balance.py) */   /* gentle 1.7 (4 Oct 2026: "a little louder ... about half way" - measured: at 1.2 its average level already matched Flow, chords & bass (every sample is levelled to one peak), so its quietness is the softer recordings' tone; +3 dB, half the natural gap between velocity 3 and 8) */   /* gentle 1.2 (was 0.6): its softness is the softer layers and the darker tone, not the level (David, 4 Oct 2026: "a little louder, but only in volume ... at 150 it's still very soft") */   /* gentle: every note softer (patches/piano-flow-gentle.py) */   // PNO.gk: a trim the caller sets for its notes (patches/piano-flow-sustain.py)
   const st=Math.max(t,ctx.currentTime);
   const src=ctx.createBufferSource(); src.buffer=e.buf; src.playbackRate.value=Math.pow(2,(midi-e.midi)/12);
   const env=ctx.createGain();
@@ -14231,7 +14231,7 @@ function pnoPulse(p2,rel,m,sec,at,free){
       /* THREE WAYS (David, 4 Oct 2026: "it may be the complete phrase ... a harmonization of the melody (fitting to the
          current chord) or only the rhythm of the phrase integrated into an arpeggio"; patches/piano-flow-phrase-ways.py) */
       const fpWay=b=>{ const r=passDraw("pnophr",b*64,1); return r<0.4?"whole":r<0.7?"harm":"arp"; }, md=v=>((v%12)+12)%12;
-      const fpPlay=(src,v0,b,s0,w)=>{ const T=panTones(src); if(!T.length) return; const t0=hum(), way=w||fpWay(b);
+      const fpPlay=(src,v0,b,s0,w)=>{ const T=panTones(src); if(!T.length) return; const t0=hum(), way=w||fpWay(b); PNO.gk=st==="flowcbg"?0.7:1;   /* the gentle's melodies nearer the accompaniment (patches/piano-gentle-balance.py) */
         const vel=e=>Math.min(0.56,v0+0.1*Math.min(1,e.g||0)), len=e=>e.stac?1.2*s16:fcBeat*pd*0.9;
         if(way==="arp"){ let k=0; for(let s=s0;s<src;s++) if(panTones(s).length) k++;   /* the phrase's k-th stroke: the arpeggio's k-th note, up and back down */
           const L=pool.length, per=Math.max(1,2*L-2), i=k%per; pnoNote(pool[i<L?i:per-i],t0,vel(T[0]),len(T[0])); }
@@ -14239,7 +14239,7 @@ function pnoPulse(p2,rel,m,sec,at,free){
           pnoNote(x,t0+Math.random()*0.006,vel(e)+0.04,len(e));
           if(pcs.includes(md(x))){ let n=0; for(let y=x-1;y>=x-12&&n<2;y--) if(pcs.includes(md(y))&&md(y)!==md(x)){ pnoNote(y,t0+Math.random()*0.006,vel(e)-0.06,len(e)); n++; } } }
         else T.forEach(e=>pnoNote(e.midi+12,t0+Math.random()*0.006,vel(e),len(e)));
-        PNO.fbusy=Math.max(PNO.fbusy||0,at+s16); };
+        PNO.gk=1; PNO.fbusy=Math.max(PNO.fbusy||0,at+s16); };
       for(const b of [fcBi-1,fcBi]){ const P=fpDraw(b); if(!P) continue; const q=rel-b*m.bp;
         if(P.kind==="echo"){ if(q>=P.D-1e-6&&q<P.D+P.L-1e-6) fpPlay(p2-P.D,0.4,b,p2-rel+b*m.bp); }
         else if(b!==fcBi||P.kind==="spill") continue;
