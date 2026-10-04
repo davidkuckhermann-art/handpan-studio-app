@@ -1905,6 +1905,7 @@ body.phone:not(.tablet) .pop.card:has(>.dbar){top:calc(env(safe-area-inset-top,0
 .pop .cpage [data-ps="flowsp"]::after{content:"flowing, fewer notes"}
 .pop .cpage [data-ps="flowch"]::after{content:"sparse flow, chords, the pan's phrases"}
 .pop .cpage [data-ps="flowcb"]::after{content:"flow, chords and a bass line"}
+.pop .cpage [data-ps="flowcbg"]::after{content:"the same, softer and darker"}
 .pop .cpage [data-bgg="basic"]::after{content:"root, fifth, walks"}
 .pop .cpage [data-bgg="latin"]::after{content:"tumbao, 3-3-2"}
 .pop .cpage [data-bgg="dbl"]::after{content:"twice as busy"}
@@ -12686,7 +12687,7 @@ const GTR_PU_PUSH=[{pos:[2]},{pos:[2]},{pos:[3,2]},{pos:[6,2]}];
    it varies. A new improvising style: draw through passDraw, add its line to VARIES. */
 let PLAYPASS=0, PLAYPREV=null;
 const VARIES={pan:()=>panLiveOn(),bass:()=>bassPuOn(),gtr:()=>gtrLive||(gtrStyle==="strum"&&gtrStrum==="jzfree"),   /* the bass's Pickup (patches/bass-pickup.py) */
-  pno:()=>pnoStyle==="flow"||pnoStyle==="flowsp"||pnoStyle==="flowch"||pnoStyle==="flowcb"||pnoStyle==="jcomp"||pnoLive};   /* the piano's Flow and Comping (patches/piano-pass-rule.py) */
+  pno:()=>pnoStyle==="flow"||pnoStyle==="flowsp"||pnoStyle==="flowch"||pnoStyle==="flowcb"||pnoStyle==="flowcbg"||pnoStyle==="jcomp"||pnoLive};   /* the piano's Flow and Comping (patches/piano-pass-rule.py) */
 function passHash(x){ let h=Math.imul((Math.round(x*16)|0)^0x9e3779b9,2654435761)>>>0; h^=h>>>15; h=Math.imul(h,2246822519)>>>0; h^=h>>>13; return (h>>>0)/4294967296; }
 function passDraw(key,place,salt){ let k=0; for(const c of String(key)) k=(k*31+c.charCodeAt(0))|0; return passHash(place*7+(salt||0)*131+k*0.37+7919*PLAYPASS); }
 /* THE BAND LISTENS (David, 2 Oct 2026: "let's continue with the plan from earlier to get the band coordinated. This should be
@@ -12767,7 +12768,7 @@ function tihaiAt(nm,m){ const J=jamOnList(); if(J.length<2) return null; const s
   const nb=(sec.bars||[]).length, lim=nb*m.bp; if(!nb) return null;
   const key=nm+"|"+PLAYPASS+"|"+J.join(",")+"|"+m.bp+"|"+m.sub; if(TIHAI_MEMO.has(key)) return TIHAI_MEMO.get(key); if(TIHAI_MEMO.size>200) TIHAI_MEMO.clear();
   let v=null;
-  if(passDraw("tihai"+nm,lim,0)<1/6){   /* about one table in six (David, 2 Oct 2026: "it can happen a bit more often, one time in 6 tables"; was one in eight) */
+  if(passDraw("tihai"+nm,lim,0)<Math.min(1,m.bp/(m.sub*(piece.unit||4)/4)/4)/6){   /* in short bars rarer: the odds by the bar's length in quarters over four (David, 4 Oct 2026: "take into account short time signatures"; patches/tihai-gentler-rarer.py) */   /* about one table in six (David, 2 Oct 2026: "it can happen a bit more often, one time in 6 tables"; was one in eight) */
     const x16=m.sub*(piece.unit||4)/16, sp=(Math.abs(x16-Math.round(x16))<1e-6&&x16>=1)?x16:2*x16, barS=Math.round(m.bp/sp);   // a slot: a sixteenth, or an eighth where the grid has none
     const two=nb>=2&&passDraw("tihai"+nm,lim,1)<0.33;
     let C=two?tihaiShapes(barS+2,2*barS+1,TIHAI_P2,true):[]; if(!C.length) C=tihaiShapes(Math.ceil(barS/2)+1,barS+1,TIHAI_P1,false);
@@ -13667,7 +13668,7 @@ function gtrPulse(p2,rel,m,sec,at,free){
     TH.strokes.forEach((s,j)=>{ const t=at+(s.rel-rel)*pd, nt=at+((j+1<TH.strokes.length?TH.strokes[j+1].rel:TH.lim)-rel)*pd, v=Math.min(1,0.5+0.12*s.k);
       if(Lg){ const q=gtrPlaceNote(Lg[s.x],home); if(q){ gtrNote(q[0],q[1],t,v); gtrChoke(q[0],t+(nt-t)*0.95,0.015); } return; }
       const cn=tihaiChordAt(e0,m,s.rel)||name, sh=shapes[cn]||(shapes[cn]=gtrPuShape(pk0,cn)); if(!sh) return;
-      sh.s.forEach((x,i)=>gtrNote(x,sh.f[x],t+i*0.007+Math.random()*0.002,v*(1-0.03*i))); }); }
+      sh.s.forEach((x,i)=>gtrNote(x,sh.f[x],t+i*0.007+Math.random()*0.002,Math.min(0.6,0.4+0.06*s.k)*(1-0.03*i))); }); }   /* the tihai's chord hits, gentler (David, 4 Oct 2026; patches/tihai-gentler-rarer.py) */
   { const pk=gtrPuKind(p2,m);
     const ld=!gtrLive?"off":gtrLead==="both"?"auto":gtrLead;   /* Freedom 1+: every pattern, as the row says (patches/freedom-five-levels.py) */   /* Live leads in by itself, notes or strums by draw (patches/guitar-live.py) */
     if(pk&&ld!=="off"&&onCount&&!TH){ const P=phraseAt(m,rel).n*m.bp, N=(Math.floor(rel/P)+1)*P, x16=m.sub*(piece.unit||4)/16, ahead=N-rel, idx=Math.round(N/P);
@@ -13854,12 +13855,12 @@ function gtrPulse(p2,rel,m,sec,at,free){
 const PNO_SMP=["A1","C2","Ds2","Fs2","A2","C3","Ds3","Fs3","A3","C4","Ds4","Fs4","A4","C5","Ds5","Fs5","A5","C6","Ds6","Fs6","A6","C7"];
 const PNO_STYLES=[["held","Held"],["block","Block"],["ballad","Ballad"],["arp","Arpeggio"],["alberti","Broken chord"],["off","Off-beat"],
   ["pop8","Pop eighths"],["rolled","Rolled"],["stride","Stride"],["synco","Syncopated"],["montuno","Montuno"],["pad","Pad"],["332","3-3-2"],
-  ["arp1","Single arpeggio"],["offarp","Off-beat arpeggio"],["arp2","Arpeggio on 2nd beat"],["arpfl","Arpeggio first & last"],["flow","Arpeggio flow"],["arp2fall","Arpeggio on 2nd beat & fall"],["flowsp","Arpeggio flow, sparse"],["flowch","Arpeggio flow & chords"],["flowcb","Arpeggio flow, chords & bass"],["pan","Handpan"],["jcharl","Charleston"],["jrev","Reverse Charleston"],["jpush","Push"],["joff","Off-beat comp"],["ja","“a” anticipation"],["jlate","Late push"],["jdbl","Double stab"],["j16ch","Sixteenth Charleston"],["jmod","Modern comp"],["jcomp","Free comping"]];   // two more (30 Sep 2026)   // flow (30 Sep 2026)
+  ["arp1","Single arpeggio"],["offarp","Off-beat arpeggio"],["arp2","Arpeggio on 2nd beat"],["arpfl","Arpeggio first & last"],["flow","Arpeggio flow"],["arp2fall","Arpeggio on 2nd beat & fall"],["flowsp","Arpeggio flow, sparse"],["flowch","Arpeggio flow & chords"],["flowcb","Arpeggio flow, chords & bass"],["flowcbg","Arpeggio flow, chords & bass, gentle"],["pan","Handpan"],["jcharl","Charleston"],["jrev","Reverse Charleston"],["jpush","Push"],["joff","Off-beat comp"],["ja","“a” anticipation"],["jlate","Late push"],["jdbl","Double stab"],["j16ch","Sixteenth Charleston"],["jmod","Modern comp"],["jcomp","Free comping"]];   // two more (30 Sep 2026)   // flow (30 Sep 2026)
 /* THE PIANO'S STYLE ROW IS FOUR GROUPS, each with its Pattern selector (David, 30 Sep 2026; patches/menus-and-flow.py) */
 const PNO_GROUPS=[["sus","Sustained",[["held","Held"],["pad","Pad"],["rolled","Rolled"],["ballad","Ballad"]]],
   ["rhy","Rhythm",[["block","Block"],["off","Off-beat"],["pop8","Pop eighths"],["synco","Syncopated"],["332","3-3-2"],["stride","Stride"],["montuno","Montuno"],
     ["jcharl","Charleston"],["jrev","Reverse Charleston"],["jpush","Push"],["joff","Off-beat comp"],["ja","“a” anticipation"],["jlate","Late push"],["jdbl","Double stab"],["j16ch","Sixteenth Charleston"],["jmod","Modern comp"],["jcomp","Free comping"]]],
-  ["arp","Arpeggio",[["arp","Up & down"],["alberti","Broken chord"],["arp1","Single"],["offarp","Off-beat"],["arp2","On 2nd beat"],["arp2fall","On 2nd & fall"],["arpfl","First & last"],["flow","Flow"],["flowsp","Flow sparse"],["flowch","Flow & chords"],["flowcb","Flow, chords & bass"]]],
+  ["arp","Arpeggio",[["arp","Up & down"],["alberti","Broken chord"],["arp1","Single"],["offarp","Off-beat"],["arp2","On 2nd beat"],["arp2fall","On 2nd & fall"],["arpfl","First & last"],["flow","Flow"],["flowsp","Flow sparse"],["flowch","Flow & chords"],["flowcb","Flow, chords & bass"],["flowcbg","Flow, chords & bass, gentle"]]],
   ["pan","Handpan",null]];
 function pnoGroupOf(k){ const g=PNO_GROUPS.find(g=>g[2]?g[2].some(x=>x[0]===k):g[0]===k); return g?g[0]:"sus"; }   // on the 2nd beat (30 Sep 2026)   // as the guitar plays them; first & last (29 Sep 2026)   // six more, and 3-3-2 (28 Sep 2026, patches/piano-styles-b.py)
 const PNO_REGS=[["below","Below the pan"],["around","Around it"],["above","Above the pan"]];
@@ -13926,13 +13927,16 @@ function pnoNote(midi,t,vel,len,fin){
   let e;
   if(PNO_PLAY==="grand"){ e=PNO_BUF[0]; for(const x of PNO_BUF) if(Math.abs(x.midi-midi)<Math.abs(e.midi-midi)) e=x; }
   else { const T=gtrTake(midi,vel,false,PNO_PLAY); if(!T.e) return; e={buf:T.e.buf,off:T.e.off,midi:T.c}; }   // an electric piano: its zone, layer and take (patches/piano-sounds.py)
-  const pk=PNO_PK*(pnoVol/100)*(0.7+0.3*vel)*(PNO.gk||1); if(!(pk>0)) return;   // PNO.gk: a trim the caller sets for its notes (patches/piano-flow-sustain.py)
+  const pk=PNO_PK*(pnoVol/100)*(0.7+0.3*vel)*(PNO.gk||1)*(pnoStyle==="flowcbg"?0.6:1); if(!(pk>0)) return;   /* gentle: every note softer (patches/piano-flow-gentle.py) */   // PNO.gk: a trim the caller sets for its notes (patches/piano-flow-sustain.py)
   const st=Math.max(t,ctx.currentTime);
   const src=ctx.createBufferSource(); src.buffer=e.buf; src.playbackRate.value=Math.pow(2,(midi-e.midi)/12);
   const env=ctx.createGain();
   if(fin){ env.gain.setValueAtTime(0.0001,st); env.gain.linearRampToValueAtTime(pk,st+fin); } else env.gain.setValueAtTime(pk,st);   // Pad fades in
   const g=ctx.createGain(); g.gain.value=1;               // `live`'s gain, apart from the envelope, as the bass and the guitar keep it
-  src.connect(env); env.connect(g); g.connect(fxIn("pno"));   // through its pedalboard to its voice bus (patches/instrument-fx.py)
+  src.connect(env);
+  if(pnoStyle==="flowcbg"){ const lp=ctx.createBiquadFilter(), f0=440*Math.pow(2,(midi-69)/12); lp.type="lowpass"; lp.Q.value=0.5;   /* gentle: a soft touch is darker - a low-pass by the pitch (patches/piano-flow-gentle.py) */
+    lp.frequency.value=Math.max(1800,Math.min(8000,4*f0+1200)); env.connect(lp); lp.connect(g); } else env.connect(g);
+  g.connect(fxIn("pno"));   // through its pedalboard to its voice bus (patches/instrument-fx.py)
   const dur=(e.buf.duration-e.off)/src.playbackRate.value;
   if(len){ env.gain.setValueAtTime(pk,st+len); env.gain.setTargetAtTime(0,st+len,0.08); }
   src.start(st,e.off); src.stop(st+Math.min(dur,len?len+0.7:dur)+0.05);
@@ -14042,11 +14046,11 @@ function pnoPulse(p2,rel,m,sec,at,free){
      Held, Rolled, Pad and the rolled arpeggios keep to the counts and the groups */
   const rb=((rel%m.bp)+m.bp)%m.bp, onCount=rb%m.sub===0, pd=pulseDurOf(p2);
   const ticks16=feelTicks(m,rel,pd), ticks=ticks16.filter(t=>t.s%2===0);   // the piano's patterns move in eighths
-  if(!onCount&&!ticks.length&&!((PNO_JZ[pnoStyle]||pnoStyle==="jcomp"||pnoStyle==="flowch"||pnoStyle==="flowcb")&&ticks16.length)) return;   // the jazz comping moves in sixteenths (patches/piano-jazz.py)
+  if(!onCount&&!ticks.length&&!((PNO_JZ[pnoStyle]||pnoStyle==="jcomp"||pnoStyle==="flowch"||pnoStyle==="flowcb"||pnoStyle==="flowcbg")&&ticks16.length)) return;   // the jazz comping moves in sixteenths (patches/piano-jazz.py)
   if(!pnoReady()) return;
   if(PNO.ctx!==ctx||at<PNO.last-0.05||at-PNO.last>2.5){ PNO.chord=null; PNO.held=[]; PNO.ctx=ctx; PNO.vc=null; }   // a fresh start
   PNO.last=at;
-  if(rel===0&&(pnoStyle==="flow"||pnoStyle==="flowsp"||pnoStyle==="flowch"||pnoStyle==="flowcb")){ PNO.chord=null; PNO.vc=null; PNO.fbusy=0; PNO.fpairT=null; PNO.fcB=0; PNO.fcTop=null; PNO.fcV=null; PNO.fc2=null; }   // a table starts as the staff's run does (30 Sep 2026)
+  if(rel===0&&(pnoStyle==="flow"||pnoStyle==="flowsp"||pnoStyle==="flowch"||pnoStyle==="flowcb"||pnoStyle==="flowcbg")){ PNO.chord=null; PNO.vc=null; PNO.fbusy=0; PNO.fpairT=null; PNO.fcB=0; PNO.fcTop=null; PNO.fcV=null; PNO.fc2=null; }   // a table starts as the staff's run does (30 Sep 2026)
   const name=chordInForceAt(p2,sec,m);   // the chord the row shows, as the guitar reads it
   if(!name){ if(PNO.chord){ pnoRelease(at); PNO.chord=null; } return; }
   const pcs=(pnoJazz&&jazzColourPCs(name))||chordPCs(name); if(!pcs) return;   // Colour Jazz: the 7th and the 9th from the key (patches/piano-jazz.py)
@@ -14070,7 +14074,7 @@ function pnoPulse(p2,rel,m,sec,at,free){
     try{ TH.strokes.forEach((s,j)=>{ const t=at+(s.rel-rel)*pd, len=Math.max(0.08,((j+1<TH.strokes.length?TH.strokes[j+1].rel:TH.lim)-s.rel)*pd*0.9), v=Math.min(1,0.45+0.12*s.k);
         if(Lp){ pnoNote(Lp[s.x],t,v,len); return; }
         const cn=tihaiChordAt(e0,m,s.rel)||name, tp=(pnoJazz&&jazzColourPCs(cn))||chordPCs(cn), vc=vs[cn]||(vs[cn]=tp?pnoVoicing(tp,lo,hi,ch):ch);
-        (vc&&vc.length?vc:ch).forEach(x=>pnoNote(x,t+Math.random()*0.006,v,len)); }); }
+        PNO.gk=0.65; try{ (vc&&vc.length?vc:ch).forEach(x=>pnoNote(x,t+Math.random()*0.006,Math.min(0.6,0.38+0.06*s.k),len)); } finally{ PNO.gk=1; } }); }   /* the tihai's chord hits, gentler (David, 4 Oct 2026; patches/tihai-gentler-rarer.py) */
     finally{ PNO.pu=false; } }
   { const pk=pnoPuKind();
     const ld=!pnoLive?"off":pnoLead==="both"?"auto":pnoLead;   /* Freedom 1+ (patches/freedom-five-levels.py) */   /* Live leads in by itself, notes or the style's option by draw (patches/piano-live.py) */
@@ -14134,7 +14138,7 @@ function pnoPulse(p2,rel,m,sec,at,free){
      chance to start a roll - a beat 0.25, the first and the last 0.4, an "and" 0.12 - never while one sounds; at a chord change
      one in two; 3-6 notes in sixteenths, three in four rising, ending before the bar line or the next chord. The dice are
      keyed to the place in the piece, so the staff, which runs this silently, writes what plays. */
-  if(st==="flow"||st==="flowsp"||st==="flowch"||st==="flowcb"){ const FC=st==="flowch"||st==="flowcb", PB=st==="flowcb"&&!bassOn;   /* Flow, chords & bass is Flow & chords and a bass line - the band's bass playing, none (patches/piano-flow-bass.py) */   // Flow & chords: Flow sparse and its chords (patches/piano-flow-chords.py)   // Flow sparse: half the rolls (David, 30 Sep 2026: "about half the amount of arpeggios")
+  if(st==="flow"||st==="flowsp"||st==="flowch"||st==="flowcb"||st==="flowcbg"){ const FC=st==="flowch"||st==="flowcb"||st==="flowcbg", PB=(st==="flowcb"||st==="flowcbg")&&!bassOn;   /* Flow, chords & bass is Flow & chords and a bass line - the band's bass playing, none (patches/piano-flow-bass.py) */   // Flow & chords: Flow sparse and its chords (patches/piano-flow-chords.py)   // Flow sparse: half the rolls (David, 30 Sep 2026: "about half the amount of arpeggios")
     const s16=pd*m.sub*((piece.unit||4)/16), cs=cellsOf(m), lastB=cs[cs.length-1].start;
     const fB=Math.min(1,PH.cs.length/4);   // a shorter bar, fewer chances: about as many rolls per four beats in any metre
     const pool=[...new Set((PB?[]:[low]).concat(ch,ch.slice(0,3).map(x=>x+12)))].sort((x,y)=>x-y);
@@ -14223,11 +14227,36 @@ function pnoPulse(p2,rel,m,sec,at,free){
       const mi=Math.floor(S.length/2), mq=S[mi];
       if(mi>0&&E.length&&E[0].q<mq&&!E.some(e=>Math.abs(e.q-mq)<1e-6)&&passDraw("pno",b*64,141)<1/3){ const r=E.filter(e=>e.q<mq).pop().midi;
         E.push({q:mq,midi:passDraw("pno",b*64,143)<0.6?(r+7>48?r-5:r+7):r+12,v:0.4}); }
-      const T=E.filter(e=>e.chg).map(e=>({q:e.q,midi:e.midi})), nx=cAt(m.bp);
-      if(nx&&nx!==cAt(S[S.length-1])){ const r=fbRoot(nx); if(r!=null) T.push({q:m.bp,midi:r}); }   /* the next bar's change too */
-      for(const t of T){ const j=S.findIndex(x=>x>=t.q-1e-6), pq=j>0?S[j-1]:(j<0?S[S.length-1]:null);
-        if(pq==null||E.some(e=>Math.abs(e.q-pq)<1e-6)||passDraw("pno",b*64+Math.round(t.q),145)>=0.5) continue;
-        E.push({q:pq,midi:passDraw("pno",b*64+Math.round(t.q),147)<0.5?t.midi-1:t.midi+2,v:0.38}); }
+      /* INTO THE NEXT CHORD, AS THE BAND'S BASS PLAYS IT, LESS OFTEN (David, 4 Oct 2026: "some more baseline transitions?
+         Similar to what the bass player does? Not as many, but more than are currently played"; patches/piano-flow-bass-fills.py):
+         bassPuAt's rule at lower odds - a figure before the change, one note mid-block, longer at a block's end; scalar,
+         chromatic, dominant, arpeggio or octave, built from the target toward the side the line is on */
+      const n0=phraseAt(m,b*m.bp).n, p16=m.sub*(piece.unit||4)/16, m12=x=>((x%12)+12)%12, cl=cAt(S[S.length-1]), nx=cAt(m.bp);
+      const T=E.filter(e=>e.chg).map(e=>({q:e.q,midi:e.midi,pr:0.45}));
+      if(nx&&(b+1)%n0===0){ const idx=(b+1)/n0, chg=nx!==cl, r=fbRoot(nx); if(r!=null) T.push({q:m.bp,midi:r,end:idx%4===0,pr:chg?(idx%4===0?0.7:idx%2===0?0.55:0.45):(idx%4===0?0.4:0)}); }
+      else if(nx&&nx!==cl){ const r=fbRoot(nx); if(r!=null) T.push({q:m.bp,midi:r,pr:0.45}); }
+      for(const t of T){ const pl=b*64+Math.round(t.q); if(!(passDraw("pno",pl,145)<t.pr)) continue;
+        const FIGS=t.end?[[4,2],[8,4],[6,4,2],[6,4,2],[12,8,4],[12,8,4],[4,3,2,1]]:[[4],[2],[4,2],[4,2],[8,4],[6,4,2]], r1=passDraw("pno",pl,147);
+        const floor=Math.max(-1,...E.filter(e=>e.v===0.5&&e.q<t.q-1e-6).map(e=>e.q)); let fig=null;
+        for(let j=0;j<FIGS.length&&!fig;j++){ const ps=FIGS[(Math.floor(r1*FIGS.length)+j)%FIGS.length].map(d=>t.q-d*p16);
+          if(ps.some(p=>Math.abs(p-Math.round(p))>1e-6)) continue;   // off the table's grid
+          const keep=ps.filter(p=>p>floor+1e-6); if(keep.length) fig=keep; }
+        if(!fig) continue;
+        const nf=fig.length, w0=(E.filter(e=>e.q<fig[0]-1e-6).pop()||{}).midi, Tm=t.midi, to=cAt(t.q<m.bp?t.q:m.bp), lv=cAt(fig[0]);
+        const iv=bassIvs(to), sc=new Set([1,2,3,4,5,6,7].map(d=>m12(Tm+iv[d]))), ct=new Set((lv&&chordPCs(lv))||[]); sc.add(m12(Tm));
+        const kinds=["scale","scale","scale","chrom","chrom","chrom","dom","dom","arp","oct"].filter(k=>k==="oct"?nf===1:k==="dom"?nf<=2:k==="arp"?nf>=2&&ct.size:true);
+        const kind=kinds[Math.floor(passDraw("pno",pl,149)*kinds.length)];
+        const line=up=>{ const d=up?-1:1, L=[]; let x=Tm;
+          if(kind==="oct") return [Tm+(up?-12:12)];
+          if(kind==="dom") return nf===1?[up?Tm-5:Tm+7]:(up?[Tm-5,Tm-1]:[Tm+7,Tm+2]);
+          if(kind==="chrom"){ x=Tm+d; L.unshift(x); }
+          const pool=kind==="arp"?ct:sc; let guard=0;
+          while(L.length<nf&&guard++<48){ do{ x+=d; guard++; }while(!pool.has(m12(x))&&guard<48); L.unshift(x); }
+          return L; };
+        let up=w0==null||w0===Tm?passDraw("pno",pl,151)<0.6:w0<Tm, L=line(up);
+        if(Math.min(...L)<31||Math.max(...L)>52){ up=!up; L=line(up); if(Math.min(...L)<31||Math.max(...L)>52) continue; }   // the other side, inside the range
+        for(let i=E.length-1;i>=0;i--) if(E[i].v!==0.5&&E[i].q>=fig[0]-1e-6&&E[i].q<t.q-1e-6) E.splice(i,1);   // the fill takes the fifth's place
+        fig.forEach((q,j)=>E.push({q,midi:L[j],v:0.36+0.04*(j+1)/nf})); }
       E.sort((x,y)=>x.q-y.q); E.forEach((e,i)=>{ e.len=(i+1<E.length?E[i+1].q:m.bp)-e.q; }); return E; };
     if(PB&&onCount){ const E=fbBar(fcBi).filter(e=>Math.abs(e.q-rb)<1e-6);
       if(E.length){ PNO.gk=0.75; try{ E.forEach(e=>pnoNote(e.midi,at+Math.random()*0.004,e.v,e.len*pd*0.98)); } finally{ PNO.gk=1; } } }
@@ -28737,7 +28766,7 @@ function staffRecord(nm,k){
     GTR={chord:null,shape:null,seq:0,last:-9,ctx,str:[null,null,null,null,null,null],fol:[],fpos:null,pass:(sv.GTR&&sv.GTR.pass)||0};   /* the pass now sounding (patches/staff-follows-pass.py) */
     PNO={chord:null,held:[],last:-9,ctx,seq:0,vc:null}; SYN={chord:null,held:[],last:-9,ctx,vc:null};   // the pass being played is PLAYPASS (the pass rule, patches/piano-pass-rule.py)
     gtrNote=(s,f,t)=>notes.push({midi:GTR_OPEN[s]+f,t,s}); gtrChoke=(s,t)=>chokes.push({s,t});
-    pnoNote=(x,t,v,len)=>notes.push({midi:x,t,len,jz:!!(PNO_JZ[pnoStyle]||pnoStyle==="jcomp"||pnoStyle==="flowch"||pnoStyle==="flowcb")&&!PNO.pu}); pnoRelease=()=>{};   // its length and whether it comps (patches/staff-comp-short.py)
+    pnoNote=(x,t,v,len)=>notes.push({midi:x,t,len,jz:!!(PNO_JZ[pnoStyle]||pnoStyle==="jcomp"||pnoStyle==="flowch"||pnoStyle==="flowcb"||pnoStyle==="flowcbg")&&!PNO.pu}); pnoRelease=()=>{};   // its length and whether it comps (patches/staff-comp-short.py)
     synRelease=t=>{ for(const h of SYN.held) if(h.end>t) h.end=t; SYN.held=[]; };
     synNote=(x,t,v,len)=>{ notes.push({midi:x,t}); SYN.held.push({end:t+len,gt:{gain:{setValueAtTime:(lv,tt)=>{ if(tt>t+1e-3) notes.push({midi:x,t:tt}); },setTargetAtTime(){}}}}); };
     const fn=k==="gtr"?gtrPulse:k==="pno"?pnoPulse:synPulse;
