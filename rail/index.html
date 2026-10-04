@@ -13939,16 +13939,14 @@ function pnoNote(midi,t,vel,len,fin){
   let e;
   if(PNO_PLAY==="grand"){ if(!PNO_LAY_DEC) pnoLayLoad(); const lv=vel-(pnoStyle==="flowcbg"?0.1:0), Ly=PNO_LAYS.find(l=>lv<l[2]&&PNO_LAY[l[0]]), B=Ly?PNO_LAY[Ly[0]]:PNO_BUF;   /* the layer its strength calls for (patches/piano-velocity-layers.py) */
     e=B[0]; for(const x of B) if(Math.abs(x.midi-midi)<Math.abs(e.midi-midi)) e=x; }
-  else { const T=gtrTake(midi,vel,false,PNO_PLAY); if(!T.e) return; e={buf:T.e.buf,off:T.e.off,midi:T.c}; }   // an electric piano: its zone, layer and take (patches/piano-sounds.py)
-  const pk=PNO_PK*(pnoVol/100)*(0.7+0.3*vel)*(PNO.gk||1)*(pnoStyle==="flowcbg"?1.2:1)*(e.lg||1); if(!(pk>0)) return;   /* gentle 1.2 (was 0.6): its softness is the softer layers and the darker tone, not the level (David, 4 Oct 2026: "a little louder, but only in volume ... at 150 it's still very soft") */   /* gentle: every note softer (patches/piano-flow-gentle.py) */   // PNO.gk: a trim the caller sets for its notes (patches/piano-flow-sustain.py)
+  else { const T=gtrTake(midi,vel-(pnoStyle==="flowcbg"?0.1:0),false,PNO_PLAY); if(!T.e) return; e={buf:T.e.buf,off:T.e.off,midi:T.c}; }   // an electric piano: its zone, layer and take (patches/piano-sounds.py)
+  const pk=PNO_PK*(pnoVol/100)*(0.7+0.3*vel)*(PNO.gk||1)*(pnoStyle==="flowcbg"?1.7:1)*(e.lg||1); if(!(pk>0)) return;   /* gentle 1.7 (4 Oct 2026: "a little louder ... about half way" - measured: at 1.2 its average level already matched Flow, chords & bass (every sample is levelled to one peak), so its quietness is the softer recordings' tone; +3 dB, half the natural gap between velocity 3 and 8) */   /* gentle 1.2 (was 0.6): its softness is the softer layers and the darker tone, not the level (David, 4 Oct 2026: "a little louder, but only in volume ... at 150 it's still very soft") */   /* gentle: every note softer (patches/piano-flow-gentle.py) */   // PNO.gk: a trim the caller sets for its notes (patches/piano-flow-sustain.py)
   const st=Math.max(t,ctx.currentTime);
   const src=ctx.createBufferSource(); src.buffer=e.buf; src.playbackRate.value=Math.pow(2,(midi-e.midi)/12);
   const env=ctx.createGain();
   if(fin){ env.gain.setValueAtTime(0.0001,st); env.gain.linearRampToValueAtTime(pk,st+fin); } else env.gain.setValueAtTime(pk,st);   // Pad fades in
   const g=ctx.createGain(); g.gain.value=1;               // `live`'s gain, apart from the envelope, as the bass and the guitar keep it
-  src.connect(env);
-  if(pnoStyle==="flowcbg"){ const lp=ctx.createBiquadFilter(), f0=440*Math.pow(2,(midi-69)/12); lp.type="lowpass"; lp.Q.value=0.5;   /* gentle: a soft touch is darker - a low-pass by the pitch (patches/piano-flow-gentle.py) */
-    lp.frequency.value=Math.max(1800,Math.min(8000,4*f0+1200)); env.connect(lp); lp.connect(g); } else env.connect(g);
+  src.connect(env); env.connect(g);   /* gentle: no low-pass - the softer layers are its tone, a tenth softer on every sound that has them (David, 4 Oct 2026; patches/piano-gentle-layers.py) */
   g.connect(fxIn("pno"));   // through its pedalboard to its voice bus (patches/instrument-fx.py)
   const dur=(e.buf.duration-e.off)/src.playbackRate.value;
   if(len){ env.gain.setValueAtTime(pk,st+len); env.gain.setTargetAtTime(0,st+len,0.08); }
@@ -14188,8 +14186,8 @@ function pnoPulse(p2,rel,m,sec,at,free){
     const fpPlanAll=()=>{ const nb=(((piece.sections[sec.name]||{}).bars)||[]).length, key=(sec.name||"")+"|"+PLAYPASS+"|"+nb+"|"+m.bp+"|"+st;
       if(PNO.fpK===key) return PNO.fpP; const plan=new Array(nb).fill(null);
       for(let b=0;b<nb;b++){ const P=fpRaw(b); if(!P) continue;
-        const g=passDraw("pnolong",b*64,1), n=Math.min(nb-b,2+Math.floor(passDraw("pnolen",b*64,1)*3));
-        if(P.kind!=="woven"&&n>=2&&g<0.4){ const ways=fpShape(n,g/0.4); for(let i=0;i<n;i++) plan[b+i]={kind:"long",i,n,way:ways[i]}; b+=n-1; continue; }
+        const g=passDraw("pnolong",b*64,1), pos=Math.floor(b/PH.n)%4, k=pos===1?3:(pos===0||pos===2)?2:0, n=k*PH.n;   /* three phrase bars at most - bars 2-4 of a four-bar phrase; two - its first half or its second (David, 4 Oct 2026: "3 bars tops ... bars 2-4 of a 4 bar phrase"; patches/piano-flow-long-bars.py) */
+        if(P.kind!=="woven"&&k>=2&&b%PH.n===0&&b+n<=nb&&g<0.4){ const ways=fpShape(k,g/0.4); for(let i=0;i<n;i++) plan[b+i]={kind:"long",i,n,way:ways[Math.floor(i/PH.n)]}; b+=n-1; continue; }
         plan[b]=P; if(P.kind==="echo"&&P.D+P.L>m.bp+1e-6&&b+1<nb){ plan[b+1]={kind:"spill"}; b++; } }
       PNO.fpK=key; PNO.fpP=plan; return plan; };
     const fpDraw=b=>{ if(b<0) return null; const pl=fpPlanAll(); return b<pl.length?pl[b]:null; };   /* the bar's phrase: a short one, a long one's bar, or an echo's spill */
