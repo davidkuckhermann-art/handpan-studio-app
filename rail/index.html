@@ -5566,6 +5566,7 @@ body.phone .edhint{max-width:292px}
 .bsov{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:2px 10px 2px; font-size:12.5px; font-weight:600; color:var(--ink2)}
 .bsov .bwseg{padding:4px 10px; font-size:12px}
 .pal.bwsw{display:inline-flex; padding:3px; gap:2px; background:var(--rule2); border-radius:10px}
+.pal.bwsw .bwseg.via{outline:1.5px dashed var(--ink3); outline-offset:-4px; color:var(--ink)}   /* the sound Auto plays (patches/auto-sounds.py) */
 .bwseg{font:inherit; font-size:12.5px; font-weight:600; padding:6px 14px; border:none; border-radius:8px; background:none; color:var(--ink2); cursor:pointer}
 .bwseg.on{background:var(--card); color:var(--ink); box-shadow:0 1px 3px rgba(var(--sh),.18)}
 .bkpan{display:flex; flex-direction:column; gap:8px; justify-content:center}
@@ -12619,7 +12620,7 @@ function fireBassElectro(midi,st,ring,duck,art,dur,pk){
   oscs[0].onended=()=>{ const i=live.indexOf(g); if(i>=0) live.splice(i,1); };
 }
 function fireBass(name,at,dur,crowd,note){
-  if(!ctx||!dry) return;
+  if(!ctx||!dry) return; sndAutoApply("bass");   /* its style's sound (patches/auto-sounds.py) */
   /* a WRITTEN note carries its degree (or, heard from the picker, its pitch) - 28 Sep 2026 */
   const midi=note?(note.midi!=null?note.midi:bassWrittenMidi(note,name)):bassMidi(name); if(midi==null) return;   // a written pitch (28 Sep 2026)
   if(at<ctx.currentTime-LATE_DROP) return;
@@ -13708,6 +13709,7 @@ function gtrArp16(st,tk,S,pluck,fr){ const s=tk.s, b=tk.beat, k=tk.k, B=S[0], T=
   else if(st==="a16x") x=(k===0||fr)?B:T[(k-1)%3];   // three against four
   if(x!=null) pluck(x,v(x)); }
 function gtrPulse(p2,rel,m,sec,at,free){
+  if(!free) sndAutoApply("gtr");   /* its style's sound (patches/auto-sounds.py) */
   { const T=gtrTuning(); if(T.some((x,i)=>x!==GTR_OPEN[i])){ for(let i=0;i<6;i++) GTR_OPEN[i]=T[i]; GTR.chord=null; GTR.shape=null; GTR.alt=null; } }   /* Metal tuned to the key, standard otherwise (patches/guitar-metal-low.py); the tuning it was found for: a retune shapes the chord in hand again (patches/guitar-tuning-cache.py) */
   if(!free){ const W=wtBar("gtr",sec,rel,m); if(W){ gtrPlayWritten(p2,rel,m,sec,at,W); return; }
     const S=wtStyleAt("gtr",sec,rel,m); if(S){ wtAsStyle("gtr",S,()=>gtrPulse(p2,rel,m,sec,at,true)); return; } }   // a written bar plays what is written (30 Sep 2026)
@@ -14144,6 +14146,7 @@ function pnoPlayWritten(p2,rel,m,sec,at,W){
     else ns.forEach(y=>pnoNote(y,t0+Math.random()*0.006,0.5,len)); }
 }
 function pnoPulse(p2,rel,m,sec,at,free){
+  if(!free) sndAutoApply("pno");   /* its style's sound (patches/auto-sounds.py) */
   if(!free){ const W=wtBar("pno",sec,rel,m); if(W){ pnoPlayWritten(p2,rel,m,sec,at,W); return; }
     const S=wtStyleAt("pno",sec,rel,m); if(S){ wtAsStyle("pno",S,()=>pnoPulse(p2,rel,m,sec,at,true)); return; } }   // a written bar plays what is written (30 Sep 2026)
   if(pnoListen&&pnoLive&&!PNO_LIVE_IN){ const R=bandPickAt("pno",sec&&sec.name,Math.floor(rel/m.bp+1e-9),m);   /* LISTEN: a figure picked up (patches/band-listen.py) */
@@ -16698,6 +16701,30 @@ function bassBarPlan(nm,bi,at,sty){   // sty: a style visited by Live (patches/b
 const BASS_STYLES=[["root","Root"],["beats","Root on the beats"],["r8","Root 8ths"],["r16","Root 16ths"],["push3","Push to 3"],["r5","Root–5th"],["oct","Octaves"],["arp","Arpeggio"],["walk","Walking"],["kick","Follow kick"],
   ["tumbao","Tumbao"],["332","3-3-2"],   // two more (David, 29 Sep 2026: "a tumbao and a 3-3-2 figure")
   ["332t","3-3-2 tumbao"],["332x2","3-3-2 double"],["332tx2","3-3-2 tumbao double"],["tumbaox2","Tumbao double"]];   // four more (29 Sep 2026, patches/bass-332-tumbao-double.py)
+/* AUTO SOUNDS (David, 5 Oct 2026: "an auto setting for the sounds page, where the sound is selected according to the style
+   ... auto should show as selected and the currently active sound as well" - "for other instruments as well. Drums already
+   has it"; patches/auto-sounds.py). ONE RULE: with Auto on (the default) an instrument plays the sound its style calls for,
+   asked as it plays, so a style however chosen brings its sound; choosing a sound yourself turns Auto off. The card shows
+   Auto chosen and the sound in play outlined. The synth keeps its sound */
+const SND_AUTO={}; for(const k of ["gtr","pno","bass"]){ let v=null; try{ v=localStorage.getItem("hps."+k+"sndauto"); }catch(e){} SND_AUTO[k]=v!=="0"; }
+function sndAutoSet(k,on){ SND_AUTO[k]=!!on; try{ localStorage.setItem("hps."+k+"sndauto",on?"1":"0"); }catch(e){} if(on) sndAutoApply(k); }
+function gtrAutoSound(){ const I=gtrItemOf(gtrStyle,gtrStrum,gtrPick), c=I?I.c:"strum";
+  if(c==="jazz") return "black"; if(c==="funk") return "clean"; if(c==="rock"||c==="metal") return "metal";
+  if(c==="strum"&&/^(pop|chk|reggae)/.test(gtrStrum||"")) return "clean"; return "mf"; }
+function pnoAutoSound(){ const s=pnoStyle||"";
+  if(s==="pad") return "dx7"; if(/^j/.test(s)||s==="synco") return "rhodes"; if(["pop8","block","off","332"].includes(s)) return "wurli"; return "grand"; }
+function bassAutoSound(){ const s=bassPieceStyle(); if(s==="walk"||s==="arp") return "dbass"; if(s==="oct"||s==="r16") return "electro"; return "ebass"; }
+function sndAutoApply(k){ if(!SND_AUTO[k]) return;
+  try{
+    if(k==="gtr"){ const w=gtrAutoSound(); if(w!==gtrSound){ gtrSound=w; gtrFetch(gtrSetOf(w)); gtrReady(); } }
+    else if(k==="pno"){ const w=pnoAutoSound(); if(w!==pnoSound){ pnoSound=w; pnoLoad(); pnoReady(); } }
+    else if(k==="bass"){ const w=bassAutoSound(); if(w!==bassSound){ bassSound=w; if(BASS_SETS[w]) bassSmpReady(w); } }
+  }catch(e){} }
+function sndAutoPaint(pop,k){ if(!pop) return; const A={gtr:["gsnd",gtrSound],pno:["psnd",pnoSound],bass:["bsnd",bassSound]}[k]; if(!A) return; const auto=SND_AUTO[k];
+  pop.querySelectorAll("[data-"+A[0]+"]").forEach(b=>{ const v=b.dataset[A[0]]; b.classList.toggle("on",auto?v==="auto":v===A[1]); b.classList.toggle("via",auto&&v===A[1]); });
+  if(k==="pno"){ const cr=pop.querySelector("#pnoCredit"); if(cr) cr.textContent=PNO_CREDIT[pnoSound]; } }
+document.addEventListener("click",e=>{ const pop=e.target.closest&&e.target.closest(".pop[data-ck]"); if(!pop) return; const k=pop.dataset.ck;
+  if(!SND_AUTO.hasOwnProperty(k)) return; sndAutoApply(k); sndAutoPaint(pop,k); });   // after the card's own handlers: a style chosen brings its sound
 function bassStyleName(k){ const s=BASS_STYLES.find(x=>x[0]===k); return s?s[1]:"Root"; }
 function bassNextChord(ent,bi,m){
   try{ const tot=(C&&C.total)||1, pe=(ent.pulse+(bi+1)*m.bp)%tot, e2=secOfPulse(pe); return voiceChordAt(pe,e2,SM(piece,e2.name)); }
@@ -17775,6 +17802,7 @@ document.addEventListener("click",e=>{
 /* the bass's Sound (30 Sep 2026, patches/bass-double.py): the samples start loading the moment the double bass is chosen */
 document.addEventListener("click",e=>{
   const b=e.target&&e.target.closest&&e.target.closest("#bassPop [data-bsnd]"); if(!b) return;
+  if(b.dataset.bsnd==="auto"){ sndAutoSet("bass",true); sndAutoPaint(b.closest(".pop"),"bass"); return; } sndAutoSet("bass",false);   /* (patches/auto-sounds.py) */
   bassSound=(BASS_SETS[b.dataset.bsnd]||b.dataset.bsnd==="electro")?b.dataset.bsnd:"synth"; try{ localStorage.setItem("hps.basssound",bassSound); }catch(x){}
   b.parentElement.querySelectorAll("[data-bsnd]").forEach(x=>x.classList.toggle("on",x===b));
   if(BASS_SETS[bassSound]) bassSmpReady(bassSound);
@@ -49067,7 +49095,8 @@ function boot(){
       /* TWO SLIDERS AND A SENTENCE. The lowest note is chosen by name — the
          slider walks semitones — and the line underneath says the whole range
          it makes, because "C2" alone does not tell you where the B♭ will land. */
-      pop.innerHTML=playRow("bass")+staffRow("bass")+'<div class="ttl">Sound</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(2,1fr)">'   // the double bass and the electric (30 Sep 2026): three across
+      pop.innerHTML=playRow("bass")+staffRow("bass")+'<div class="ttl">Sound</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(3,1fr)">'   // the double bass and the electric (30 Sep 2026): three across
+        +'<button class="bwseg" data-bsnd="auto">Auto</button>'   /* (patches/auto-sounds.py) */
         +'<button class="bwseg'+(bassSound==="synth"?' on':'')+'" data-bsnd="synth">Synth</button>'
         +'<button class="bwseg'+(bassSound==="dbass"?' on':'')+'" data-bsnd="dbass">Double bass</button>'
         +'<button class="bwseg'+(bassSound==="ebass"?' on':'')+'" data-bsnd="ebass">Electric</button>'
@@ -49094,7 +49123,7 @@ function boot(){
         mixRead("bass"); };
       pop.addEventListener("input",apply);
       pop.addEventListener("change",apply);
-      openPop(pop,bb);
+      openPop(pop,bb); sndAutoPaint(pop,"bass");
     };
     /* The right-click's own pointerdown must not ALSO arm the long press, or
        the timer would fire 480 ms later and close the popup it had just
@@ -49293,8 +49322,8 @@ function boot(){
          chooses nothing; a pattern chooses (GTR_ITEMS) */
       const cur=gtrItemOf(gtrStyle,gtrStrum,gtrPick), cat0=cur?cur.c:"strum";
       pop.innerHTML=playRow("gtr")+staffRow("gtr")
-        +'<div class="ttl">Sound</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(3,1fr)">'   // the guitar's Sound, as the bass's (patches/guitar-sound.py)
-        +GTR_SOUNDS.map(([k,l])=>'<button class="bwseg'+(k===gtrSound?' on':'')+'" data-gsnd="'+k+'">'+l+'</button>').join("")+'</div>'
+        +'<div class="ttl">Sound</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(5,1fr)">'   // the guitar's Sound, as the bass's (patches/guitar-sound.py)
+        +[["auto","Auto"]].concat(GTR_SOUNDS).map(([k,l])=>'<button class="bwseg'+(k===gtrSound?' on':'')+'" data-gsnd="'+k+'">'+l+'</button>').join("")+'</div>'
         +'<div class="ttl">Style</div><div class="pal bwsw gsty" id="gtrStyleRow">'
         +GTR_CATS.map(([c,l])=>'<button class="bwseg'+(c===cat0?' on':'')+'" data-gc="'+c+'">'+l+'</button>').join("")+'</div>'
         +GTR_CATS.map(([c])=>'<div data-gcb="'+c+'"'+(c===cat0?'':' hidden')+'><div class="ttl">Variation</div><div class="pal bwsw gsty">'
@@ -49342,7 +49371,8 @@ function boot(){
           choose("funk",GTR_ITEMS.funk.findIndex(it=>it[2]==="third")); return; }   // a degree chooses Single note
         if(ev.target.closest("[data-fxk]")) return;   // a pedal or its setting: the boards' own handler (patches/instrument-fx.py)
         const gs=ev.target.closest("[data-gsnd]");
-        if(gs){ gtrSound=GTR_SOUNDS.some(x=>x[0]===gs.dataset.gsnd)?gs.dataset.gsnd:"mf"; try{ localStorage.setItem("hps.gtrsound",gtrSound); }catch(e){}
+        if(gs&&gs.dataset.gsnd==="auto"){ sndAutoSet("gtr",true); window.paintGtr(); return; }   /* (patches/auto-sounds.py) */
+        if(gs){ sndAutoSet("gtr",false); gtrSound=GTR_SOUNDS.some(x=>x[0]===gs.dataset.gsnd)?gs.dataset.gsnd:"mf"; try{ localStorage.setItem("hps.gtrsound",gtrSound); }catch(e){}
           pop.querySelectorAll("[data-gsnd]").forEach(x=>x.classList.toggle("on",x===gs)); window.paintGtr(); return; }   // with the guitar on, the button dims till the set is in
         const gdd=ev.target.closest("[data-gdd]");
         if(gdd){ gtrTune=gdd.dataset.gdd; GTR.chord=null; GTR.alt=null; try{ localStorage.setItem("hps.gtrtune",gtrTune); }catch(e){}
@@ -49360,7 +49390,7 @@ function boot(){
         const gi=ev.target.closest("[data-gi]"); if(!gi) return;
         const q=gi.dataset.gi.split(":"); choose(q[0],+q[1]);
       });
-      openPop(pop,gb);
+      openPop(pop,gb); sndAutoPaint(pop,"gtr");
     };
     gb.addEventListener("contextmenu",e=>{ e.preventDefault(); e.stopPropagation(); clearTimeout(lt); openGtr(); });
     gb.addEventListener("pointerdown",e=>{ if(e.button!==0) return;
@@ -49396,8 +49426,8 @@ function boot(){
          group should not select a style yet"; patches/menus-and-flow.py); Handpan is a style of its own */
       const og=pnoGroupOf(pnoStyle);
       pop.innerHTML=playRow("pno")+staffRow("pno")
-        +'<div class="ttl">Sound</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(4,1fr)">'   // the piano's Sound (patches/piano-sounds.py)
-        +PNO_SOUNDS.map(([k,l])=>'<button class="bwseg'+(k===pnoSound?' on':'')+'" data-psnd="'+k+'">'+l+'</button>').join("")+'</div>'
+        +'<div class="ttl">Sound</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(5,1fr)">'   // the piano's Sound (patches/piano-sounds.py)
+        +[["auto","Auto"]].concat(PNO_SOUNDS).map(([k,l])=>'<button class="bwseg'+(k===pnoSound?' on':'')+'" data-psnd="'+k+'">'+l+'</button>').join("")+'</div>'
         +'<div class="ttl">Style</div><div class="pal bwsw gsty" id="pnoGroupRow" style="grid-template-columns:repeat(4,1fr)">'
         +PNO_GROUPS.map(([g,l,ps])=>'<button class="bwseg'+(g===og?' on':'')+'" data-pg="'+g+'"'+(ps?'':' data-ps="'+g+'"')+'>'+l+'</button>').join("")+'</div>'
         +PNO_GROUPS.filter(g=>g[2]).map(([g,l,ps])=>'<div data-pgb="'+g+'"'+(g===og?'':' hidden')+'><div class="ttl">Variation</div><div class="pal bwsw gsty">'
@@ -49421,7 +49451,8 @@ function boot(){
       pop.addEventListener("input",apply); pop.addEventListener("change",apply);
       pop.addEventListener("click",ev=>{
         const ps0=ev.target.closest("[data-psnd]");
-        if(ps0){ pnoSound=PNO_SOUNDS.some(x=>x[0]===ps0.dataset.psnd)?ps0.dataset.psnd:"grand"; try{ localStorage.setItem("hps.pnosound",pnoSound); }catch(e){}
+        if(ps0&&ps0.dataset.psnd==="auto"){ sndAutoSet("pno",true); window.paintPno(); return; }   /* (patches/auto-sounds.py) */
+        if(ps0){ sndAutoSet("pno",false); pnoSound=PNO_SOUNDS.some(x=>x[0]===ps0.dataset.psnd)?ps0.dataset.psnd:"grand"; try{ localStorage.setItem("hps.pnosound",pnoSound); }catch(e){}
           pop.querySelectorAll("[data-psnd]").forEach(x=>x.classList.toggle("on",x===ps0)); const cr=pop.querySelector("#pnoCredit"); if(cr) cr.textContent=PNO_CREDIT[pnoSound];
           window.paintPno(); return; }   // with the piano on, the button dims till the sound is in (patches/piano-sounds.py)
         const w=ev.target.closest("[data-pw]");
@@ -49449,7 +49480,7 @@ function boot(){
         else if(r){ pnoReg=r.dataset.pr; try{ localStorage.setItem("hps.pnoreg",pnoReg); }catch(e){}
           pop.querySelectorAll("[data-pr]").forEach(x=>x.classList.toggle("on",x.dataset.pr===pnoReg)); PNO.chord=null; }
       });
-      openPop(pop,pb);
+      openPop(pop,pb); sndAutoPaint(pop,"pno");
     };
     pb.addEventListener("contextmenu",e=>{ e.preventDefault(); e.stopPropagation(); clearTimeout(lt); openPno(); });
     pb.addEventListener("pointerdown",e=>{ if(e.button!==0) return;
