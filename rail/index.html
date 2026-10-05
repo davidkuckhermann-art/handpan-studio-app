@@ -13151,7 +13151,7 @@ const GTR_STRUMS=[["straight","Straight"],["folk","Folk"],["pop","Pop chuck"],["
    can (four strings), the tightest hand nearest the 8th fret */
 const GTR_HIGH={};
 function gtrHighShape(name,strs,reg){   // reg: the register's hand - Open about the 3rd fret, Mid-neck and Auto the 8th, High the 12th (30 Sep 2026)
-  strs=strs||[3,4,5]; const R=({open:[1,5,3],high:[9,14,12]})[reg]||[5,10,8], key=name+"|"+strs.join("")+"|"+R[2]; if(!name) return null; if(GTR_HIGH[key]!==undefined) return GTR_HIGH[key];
+  strs=strs||[3,4,5]; const R=({open:[1,5,3],high:[9,14,12]})[reg]||[5,10,8], key=GTR_OPEN.join(".")+"|"+name+"|"+strs.join("")+"|"+R[2]; if(!name) return null; if(GTR_HIGH[key]!==undefined) return GTR_HIGH[key];
   const pcs=chordPCs(name); let best=null;
   const walk=(i,b,fr)=>{ if(i===strs.length){
       const pc=fr.map((f,j)=>(GTR_OPEN[strs[j]]+f)%12), set=new Set(pc), span=Math.max(...fr)-Math.min(...fr), mid=fr.reduce((x,y)=>x+y,0)/fr.length;
@@ -13269,7 +13269,7 @@ const GTR_VC=new Map();
 const GTR_POS={open:{lo:0,hi:4,open:true},mid:{lo:3,hi:10,open:false,floor:50,top:72},high:{lo:5,hi:17,open:false,floor:57,top:79}};   // and where it sounds: Mid from D3, the top under C5; High from A3, under G5 (30 Sep 2026)
 function gtrVoicing(name,prev,full,win){
   const pcs=chordPCs(name); if(!pcs) return null;
-  const key=name+"|"+(prev?prev.f.join(","):"")+(full?"|F":"")+(win?"|W"+win.lo+"-"+win.hi+(win.open?"o":""):"");
+  const key=GTR_OPEN.join(".")+"|"+name+"|"+(prev?prev.f.join(","):"")   /* with the tuning it was found for (patches/guitar-tuning-cache.py) */+(full?"|F":"")+(win?"|W"+win.lo+"-"+win.hi+(win.open?"o":""):"");
   if(GTR_VC.has(key)) return GTR_VC.get(key);
   const root=pcs[0], set=new Set(pcs), fifth=(root+7)%12;
   const need=pcs.filter((pc,i)=>!(i===2&&pcs.length>=4&&pc===fifth));
@@ -13409,8 +13409,14 @@ function gtrStac(n,t){ const B=n.B; if(!ctx||!B||!B.stac||n.at==null||t-n.at>GTR
   src.connect(a); a.connect(n.lp); src.start(n.at,e.off); src.stop(n.at+(e.buf.duration-e.off)/src.playbackRate.value+0.05);
   src.onended=()=>{ const i=live.indexOf(n.g); if(i>=0) live.splice(i,1); };
   n.src=src; }
+/* THE MUTED STROKES (David, 5 Oct 2026: "the muted strokes are too loud for hollow and clean"; patches/guitar-mute-level.py):
+   a stroke damped within 60 ms of its start is a mute, and sounds at its sound's trim - a mute as far under an open stroke
+   as on Nylon (measured: Nylon 7.1 dB, Clean 5.1, Hollow 0.4 - its staccato takes levelled up to a full note) */
+const GTR_MUTE_TRIM={black:Math.pow(10,-6.7/20),clean:Math.pow(10,-2/20)};
 function gtrChoke(s,t,tc,re){ const st=GTR.str[s]; if(!st) return; GTR.str[s]=null;   // re: a re-pluck of the string, not a damping
   if(!re) gtrStac(st,t);
+  if(!re&&st.pk&&st.at!=null&&t-st.at<0.06){ const k=Object.keys(GTR_BUFS).find(x=>GTR_BUFS[x]===st.B), tr=GTR_MUTE_TRIM[k];
+    if(tr&&st.at>ctx.currentTime){ try{ st.env.gain.cancelScheduledValues(st.at); st.env.gain.setValueAtTime(st.pk*tr,st.at); }catch(x){} } }
   try{ st.env.gain.cancelScheduledValues(t); st.env.gain.setTargetAtTime(0,t,tc||0.012); st.src.stop(t+0.3); }catch(e){} }
 function gtrDampAll(t){ for(let s=0;s<6;s++) gtrChoke(s,t,0.03); GTR.chord=null; GTR.shape=null; }
 /* THE PEDALBOARD FOR EVERY INSTRUMENT (David, 2 Oct 2026: "B is great. Lets go and implement it with all the FX from the
@@ -13579,7 +13585,7 @@ function gtrNote(s,fret,t,vel,pm){
   src.start(st,e.off); src.stop(st+len+0.05);
   g.__at=st; live.push(g); if(live.length>120) live.splice(0,40);
   src.onended=()=>{ const i=live.indexOf(g); if(i>=0) live.splice(i,1); };
-  GTR.str[s]={src,env,fret,at:st,midi,vel,e,lp,g,B:GTR_BUF};   // what a damping at once needs to swap it (patches/guitar-stac.py)
+  GTR.str[s]={src,env,fret,at:st,midi,vel,e,lp,g,B:GTR_BUF,pk};   // what a damping at once needs to swap it (patches/guitar-stac.py)
 }
 /* where the next subdivision of the bar starts (the bar's end after the last), in pulses */
 /* A ROLL STEPS IN SIXTEENTHS AND STOPS WHERE ITS CHORD ENDS (David, 30 Sep 2026: "When the arpeggio holds more notes, those
@@ -13702,7 +13708,7 @@ function gtrArp16(st,tk,S,pluck,fr){ const s=tk.s, b=tk.beat, k=tk.k, B=S[0], T=
   else if(st==="a16x") x=(k===0||fr)?B:T[(k-1)%3];   // three against four
   if(x!=null) pluck(x,v(x)); }
 function gtrPulse(p2,rel,m,sec,at,free){
-  { const T=gtrTuning(); for(let i=0;i<6;i++) GTR_OPEN[i]=T[i]; }   /* Metal tuned to the key, standard otherwise (patches/guitar-metal-low.py) */
+  { const T=gtrTuning(); if(T.some((x,i)=>x!==GTR_OPEN[i])){ for(let i=0;i<6;i++) GTR_OPEN[i]=T[i]; GTR.chord=null; GTR.shape=null; GTR.alt=null; } }   /* Metal tuned to the key, standard otherwise (patches/guitar-metal-low.py); the tuning it was found for: a retune shapes the chord in hand again (patches/guitar-tuning-cache.py) */
   if(!free){ const W=wtBar("gtr",sec,rel,m); if(W){ gtrPlayWritten(p2,rel,m,sec,at,W); return; }
     const S=wtStyleAt("gtr",sec,rel,m); if(S){ wtAsStyle("gtr",S,()=>gtrPulse(p2,rel,m,sec,at,true)); return; } }   // a written bar plays what is written (30 Sep 2026)
   /* the pass: PLAYPASS, counted in the scheduler for every instrument (the pass rule, patches/pass-rule.py) */
@@ -18275,6 +18281,14 @@ function kitBarPlan(G,m,bi,nb){
     if(d<pf) return {hits:kitFill(G,m,base,tEnd||u%4===0,d/pf,passDraw("kitf",place,0)),fill:true}; }
   if(kitLv>=2){ const s4=Math.floor(q/n)%4, pt=actP("kit",s4===3?0.5:s4===1?0.15:0.05), d=passDraw("kitt",place,0);   /* the end of four bars (David, 5 Oct 2026; patches/kit-vary-at-four.py) */ if(d<pt) return {hits:kitTouch(G,base,d/pt,passDraw("kitu",place,0)),fill:false}; }
   return {hits:base,fill:false}; }
+/* THE HATS FOLLOW THE TABLE'S SUBDIVISION IN EIGHTHS METRES (David, 5 Oct 2026; patches/kit-hats-sub.py): in 5/8, 7/8, 9/8 ...
+   the eighth is the kit's step; at "2 per count" each hat on a count gets a softer one a sixteenth after it - unless the
+   groove already plays between the counts */
+function kitHatsSub(plan,G,m){ if(!plan||(m.den||4)<8||m.sub<2||G.den<8) return plan;
+  if(plan._dbl&&plan._dbl.sub===m.sub) return plan._dbl.out;
+  const H=plan.filter(h=>h.k==="hh_closed"), between=H.some(h=>Math.abs(h.pos-Math.round(h.pos))>1e-6);
+  const out=between?plan:plan.concat(H.filter(h=>h.pos+0.5<G.L-1e-6||G.L%1).map(h=>({k:"hh_closed",pos:h.pos+0.5,v:Math.min(h.v,0.5)}))).sort((a,b)=>a.pos-b.pos);
+  plan._dbl={sub:m.sub,out}; return out; }
 function kitPulse(p2,rel,m,sec,at){
   const G0=kitSwung(kitGroove(m,sec&&sec.name)); if(!G0) return; if(!kitReady(kitFolder(G0))) return;   // the groove's kit under Auto (patches/kit-electronic.py); the table's own, the swing (patches/kit-own-card.py)
   const G=kitParse(G0); if(!G) return;
@@ -18290,7 +18304,7 @@ function kitPulse(p2,rel,m,sec,at){
     KIT.plan=KIT.crashNow?P.hits.filter(h=>!(h.pos<1e-6&&KIT_HATS.has(h.k))).concat([{k:"crash",pos:0,v:0.9}],P.hits.some(h=>h.k==="kick"&&h.pos<1e-6)?[]:[{k:"kick",pos:0,v:0.8}]):P.hits;
   }
   if(KIT.play&&KIT.play.bass808){ let nm=null; try{ nm=chordInForceAt(p2,sec,m); }catch(e){} const pcs=nm&&chordPCs(nm); if(pcs&&pcs.length) KIT.root=29+((((pcs[0]-29)%12)+12)%12); }   // the 808 on the chord's root, F1 to E2 (patches/kit-electronic.py)
-  const bar=KIT.plan, w0=(inBar*span)%G.L;   // this pulse in the groove's counts
+  const bar=kitHatsSub(KIT.plan,G,m), w0=(inBar*span)%G.L;   // this pulse in the groove's counts; the hats doubled in an eighths metre at 2 per count (patches/kit-hats-sub.py)
   for(const wrap of (w0+span>G.L+1e-6?[0,G.L]:[0])) for(const h of bar){ const d=h.pos+wrap-w0; if(d>-1e-6&&d<span-1e-6) kitHit(h.k,h.v,at+d/span*pd); }
 }
 function kitSwitch(on){ kitOn=!!on; voicesSave(); if(kitOn) kitFetch(kitFolderNow());
