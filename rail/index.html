@@ -1483,7 +1483,8 @@ body:not(.phone):not(.tablet) .pop.card.bandpop>.dbar button{display:flex; align
 body:not(.phone):not(.tablet) .pop.card.bandpop>.cpchosen{grid-area:chosen; margin:0; padding:10px 16px}
 body:not(.phone):not(.tablet) .pop.card.bandpop>.bdlist{grid-area:list; display:block!important; padding:8px 12px 12px; border-right:1px solid var(--rule)}
 body:not(.phone):not(.tablet) .pop.card.bandpop>.bdfoot{grid-area:foot; display:flex!important; padding:10px 14px; border-top:1px solid var(--rule); border-right:1px solid var(--rule)}
-body:not(.phone):not(.tablet) .pop.card.bandpop>.bdmix{grid-area:mix; display:block!important; padding:14px 16px; background:var(--paper)}
+body:not(.phone):not(.tablet) .pop.card.bandpop>.bdmix{grid-area:mix; display:flex!important; flex-direction:column; padding:14px 16px; background:var(--paper)}
+body:not(.phone):not(.tablet) .pop.card.bandpop>.bdmix>.mxs.v{flex:1 1 auto; height:auto; min-height:0}   /* Activity above, the strips in the height left (David, 4 Oct 2026: "fit the mixer ... onto one page vertically") */
 }
 /* THE MIXER (patches/band-card.py): an upright strip per instrument, or one line per instrument on the narrow card */
 .mxs.v{display:grid; grid-template-columns:repeat(7,minmax(0,1fr));   /* seven with the Kit (patches/kit-player.py) */ gap:8px; height:100%; min-height:0}
@@ -4319,6 +4320,8 @@ body.rail.dg:not(.dgx):not(.dgy) #railArr::before,body.rail.dg:not(.dgx):not(.dg
 #dkEd .dksrc{width:104px; flex:none; height:22px; padding:0 4px; font-size:11px; border:1px solid var(--rule); border-radius:6px; background:var(--card); color:var(--ink2)}
 #dkEd .dktrim{width:48px; flex:none; height:22px; padding:0 2px; font-size:11px; border:1px solid var(--rule); border-radius:6px; background:var(--card); color:var(--ink2)}
 #dkEd .dkkitrow input{width:160px}
+#dkEd .dkpitch{width:54px; flex:none; height:22px; padding:0 2px; font-size:11px; border:1px solid var(--rule); border-radius:6px; background:var(--card); color:var(--ink2)}
+#dkEd #dkSwing{width:130px; vertical-align:middle; accent-color:var(--dixie,#d98e2b)}
 #dkEd .dkmu.on{background:var(--ink2); color:#fff; border-color:var(--ink2)}
 #dkEd .dkc{height:30px; border:0; border-right:1px solid var(--rule2); background:var(--card); position:relative; padding:0; cursor:pointer}
 #dkEd .dkc.b{background:#FAF8F4}
@@ -15147,12 +15150,12 @@ const DK_MORE=[["rimshot","Rimshot","rs"],["sidestick","Sidestick","ss"],["hh_pe
 const DK={mode:(()=>{ try{ return localStorage.getItem("hps.dgmode")==="drums"?"drums":"perc"; }catch(e){ return "perc"; } })(),G:null,page:0,more:false,mute:{},play:null,ph:-1,bpm:0,mounted:false};
 function dkMode(){ return dgOn&&DK.mode==="drums"; }
 function dkPer(){ return DK.G.beats*DK.G.g; }
-function dkBlank(beats,g,bars){ const n=beats*g*bars, c={}; for(const [k] of DK_ROWS.concat(DK_MORE)) c[k]=Array(n).fill(""); return {id:null,src:null,name:"My groove",beats,g,bars,kit:"",cells:c}; }
+function dkBlank(beats,g,bars){ const n=beats*g*bars, c={}; for(const [k] of DK_ROWS.concat(DK_MORE)) c[k]=Array(n).fill(""); return {id:null,src:null,name:"My groove",beats,g,bars,kit:"",sw:50,cells:c}; }
 /* a library groove into the grid, its own grid read onto sixteenths or triplets */
 function dkFromGroove(G){
   const g=G.g%3===0?3:4, beats=G.m[0], per=beats*g, lines=Object.entries(G.p).map(([k,s])=>[KIT_PC[k],s.replace(/[|\s]/g,"")]);
   const nb=Math.max(1,Math.min(4,Math.max(...lines.map(([,s])=>Math.round(s.length/(beats*G.g)))))), mine=G.f==="Yours";   // its longest line
-  const D=dkBlank(beats,g,nb); D.kit=G.kit||""; D.name=mine?G.n:G.n+" (copy)"; D.id=mine?G.id:null; D.src=mine?null:G.id;
+  const D=dkBlank(beats,g,nb); D.kit=G.kit||""; D.sw=(g===4&&G.sw)||50;   /* (patches/drum-swing.py) */ D.name=mine?G.n:G.n+" (copy)"; D.id=mine?G.id:null; D.src=mine?null:G.id;
   for(const [k,s] of lines){ const a=D.cells[k]; if(!a) continue;
     for(let b=0;b<nb;b++) for(let j=0;j<beats*G.g;j++){ const ch=s[(b*beats*G.g+j)%s.length]; if(!ch||ch===".") continue;
       const pos=Math.round(j*g/G.g); if(pos<per) a[b*per+pos]=ch==="X"?"X":ch==="g"?"g":"x"; } }
@@ -15160,7 +15163,7 @@ function dkFromGroove(G){
 function dkToGroove(D){ const code=Object.fromEntries(DK_ROWS.concat(DK_MORE).map(([k,,c])=>[k,c])), p={};
   for(const [k,a] of Object.entries(D.cells)) if(a.some(Boolean)) p[code[k]]=a.map(v=>v||".").join("");
   if(!Object.keys(p).length) p.hh=".".repeat(D.beats*D.g*D.bars);
-  const G={id:D.id,n:D.name,f:"Yours",m:[D.beats,4],g:D.g,p}; if(D.kit) G.kit=D.kit;
+  const G={id:D.id,n:D.name,f:"Yours",m:[D.beats,4],g:D.g,p}; if(D.kit) G.kit=D.kit; if(D.g===4&&D.sw>50) G.sw=D.sw;   /* (patches/drum-swing.py) */
   const mu=Object.keys(DK.mute).filter(k=>DK.mute[k]&&D.cells[k]&&D.cells[k].some(Boolean)); if(mu.length) G.mute=mu;   // a muted row is saved muted (patches/drum-editor-mute.py)
   return G; }
 /* the grid reshaped: a new metre, grid or length keeps what still fits */
@@ -15185,7 +15188,8 @@ async function dkPlay(){ if(DK.play){ dkStop(); dkPaint(); return; }
   const P={step:0,next:ctx.currentTime+0.08}; DK.play=P; dkPaint();
   const tick=()=>{ if(DK.play!==P) return; const D=DK.G, per=dkPer(), n=per*D.bars, sd=60/(DK.bpm||bpm||96)/D.g;
     while(P.next<ctx.currentTime+0.15){ const i=P.step%n;
-      for(const [k] of DK_ROWS.concat(DK_MORE)){ const v=D.cells[k][i]; if(v&&!DK.mute[k]) kitHit(k,KIT_V[v],P.next); }
+      const sw=(D.g===4&&i%2&&D.sw>50)?(D.sw-50)/50*sd:0;   /* the swung sixteenth (patches/drum-swing.py) */
+      for(const [k] of DK_ROWS.concat(DK_MORE)){ const v=D.cells[k][i]; if(v&&!DK.mute[k]) kitHit(k,KIT_V[v],P.next+sw); }
       const at=P.next; setTimeout(()=>{ if(DK.play===P){ DK.ph=i; dkPh(); } },Math.max(0,(at-ctx.currentTime)*1000)); P.step++; P.next+=sd; } };
   P.iv=setInterval(tick,25); tick(); }
 function dkStop(){ const P=DK.play; DK.play=null; DK.ph=-1; if(P) clearInterval(P.iv); dkPh(); }
@@ -15200,7 +15204,8 @@ function dkMount(){ const w=$("dgwrap"); if(!w) return; const grid=w.querySelect
     const E=document.createElement("section"); E.id="dkEd"; E.setAttribute("aria-label","The drum groove"); grid.append(L,E);
     const head=w.querySelector(".dged .dghead"); if(head){ const s=document.createElement("span"); s.className="pal bwsw dkmodesw"; head.prepend(s); }
     w.addEventListener("click",dkClick); w.addEventListener("contextmenu",dkCtx); w.addEventListener("change",dkChange);
-    w.addEventListener("input",e=>{ if(e.target.id==="dkName"&&DK.G) DK.G.name=e.target.value; }); }
+    w.addEventListener("input",e=>{ if(e.target.id==="dkName"&&DK.G) DK.G.name=e.target.value;
+      if(e.target.id==="dkSwing"&&DK.G){ DK.G.sw=+e.target.value; const v=$("dkSwingV"); if(v) v.textContent=DK.G.sw+"%"; } });   /* (patches/drum-swing.py) */ }
   if(!DK.G) DK.G=dkBlank(4,4,1);
   dkModeSet(DK.mode); }
 function dkModeSet(m){ DK.mode=m==="drums"?"drums":"perc"; try{ localStorage.setItem("hps.dgmode",DK.mode); }catch(e){}
@@ -15222,6 +15227,7 @@ function dkPaint(){ if(!dkMode()) return; dkList(); const D=DK.G, E=$("dkEd"); i
     +'<div class="dgopts"><span class="dgopt"><span class="bstyle-l">Bars</span>'+seg("dkbars",[[1,"1"],[2,"2"],[3,"3"],[4,"4"]],D.bars)+'</span>'
     +'<span class="dgopt"><span class="bstyle-l">Metre</span><select class="ctl dgsel" id="dkMetre">'+[[2,"2/4"],[3,"3/4"],[4,"4/4"],[5,"5/4"]].map(([v,l])=>'<option value="'+v+'"'+(v===D.beats?" selected":"")+'>'+l+'</option>').join("")+'</select></span>'
     +'<span class="dgopt"><span class="bstyle-l">Steps</span>'+seg("dksteps",[[4,"Sixteenths"],[3,"Triplets"]],D.g)+'</span>'
+    +(D.g===4?'<span class="dgopt" title="Where the second sixteenth of each pair falls: 50% straight, 67% a triplet feel"><span class="bstyle-l">Swing</span><input type="range" id="dkSwing" min="50" max="95" step="1" value="'+(D.sw||50)+'" aria-label="Swing"><span class="dkmeta" id="dkSwingV">'+(D.sw||50)+'%</span></span>':'')
     +'<span class="dgopt"><span class="bstyle-l">Kit</span><select class="ctl dgsel" id="dkKit" title="The kit this groove plays on under Auto"><option value="">Acoustic</option>'
     +KIT_EKITS.map(([v,l])=>'<option value="'+v+'"'+(v===D.kit?" selected":"")+'>'+l+'</option>').join("")
     +(kitMineKits().length?'<optgroup label="Yours">'+kitMineKits().map(k=>'<option value="'+rgEsc(k.id)+'"'+(k.id===D.kit?" selected":"")+'>'+rgEsc(k.name)+'</option>').join("")+'</optgroup>':'')
@@ -15231,14 +15237,15 @@ function dkPaint(){ if(!dkMode()) return; dkList(); const D=DK.G, E=$("dkEd"); i
       +'<button class="ctl" type="button" data-dkkitsave>Save kit</button>'+((D.kit!=="work"||K.of)?'<button class="ctl" type="button" data-dkkitdel>Delete kit</button>':'')
       +'<span class="dkmeta">'+(D.kit==="work"?"Not saved yet - each row chooses its drum's sound":"Each row chooses its drum's sound")+'</span></div>'; }
   if(D.bars>1) h+='<div class="dgopts"><span class="dgopt"><span class="bstyle-l">Editing bar</span>'+seg("dkpage",Array.from({length:D.bars},(_,i)=>[i,"Bar "+(i+1)]),DK.page)+'</span><button class="ctl" type="button" data-dkcopy>Copy to the next bar</button></div>';
-  const tmpl='grid-template-columns:290px repeat('+per+',minmax(0,1fr))';   /* the drum's sound and trim (patches/kit-custom.py) */
+  const tmpl='grid-template-columns:350px repeat('+per+',minmax(0,1fr))';   /* the drum's sound and trim (patches/kit-custom.py) */
   h+='<div class="dkgrid"><div class="dkl dkhd" style="'+tmpl+'"><span></span>';
   for(let j=0;j<per;j++){ const s=j%D.g; h+='<span class="'+(s?"":"cnt")+'" data-dkh="'+j+'">'+(s?sub[s]:(j/D.g+1))+'</span>'; }
   h+='</div>';
   const rows=DK.more?DK_ROWS.concat(DK_MORE):DK_ROWS;
   for(const [k,l] of rows){ h+='<div class="dkl'+(DK.mute[k]?" mute":"")+'" style="'+tmpl+'"><div class="dkrl"><button type="button" class="dknm" data-dkaud="'+k+'" title="Hear it">▸ '+l+'</button>'
       +(R=>'<select class="dksrc" data-dksrc="'+k+'" title="The kit this drum comes from">'+dkSrcOpts(k,R?(R.src[k]||"acoustic"):(D.kit||"acoustic"))+'</select>'
-        +'<select class="dktrim" data-dktrim="'+k+'" title="Its level">'+KIT_TRIMS.map(v=>'<option value="'+v+'"'+(v===((R&&R.trim&&R.trim[k])||0)?" selected":"")+'>'+(v>0?"+"+v:v===0?"0 dB":"−"+(-v))+'</option>').join("")+'</select>')(kitIsMine(D.kit)?kitRecipe(D.kit):null)
+        +'<select class="dktrim" data-dktrim="'+k+'" title="Its level">'+KIT_TRIMS.map(v=>'<option value="'+v+'"'+(v===((R&&R.trim&&R.trim[k])||0)?" selected":"")+'>'+(v>0?"+"+v:v===0?"0 dB":"−"+(-v))+'</option>').join("")+'</select>'
+        +'<select class="dkpitch" data-dkpitch="'+k+'" title="Its pitch, in semitones">'+KIT_PITCHES.map(v=>'<option value="'+v+'"'+(v===((R&&R.pitch&&R.pitch[k])||0)?" selected":"")+'>'+(v>0?"+"+v:v===0?"0 st":"−"+(-v))+'</option>').join("")+'</select>')(kitIsMine(D.kit)?kitRecipe(D.kit):null)
       +'<button type="button" class="dkmu'+(DK.mute[k]?" on":"")+'" data-dkmute="'+k+'" title="Mute it - saved with the groove, so it stays silent where the groove plays">M</button></div>';
     for(let j=0;j<per;j++){ const i=DK.page*per+j, v=D.cells[k][i];
       h+='<button type="button" class="dkc'+(Math.floor(j/D.g)%2?" b":"")+((j+1)%D.g===0?" cs":"")+(v==="x"?" n":v==="X"?" a":v==="g"?" g":"")+'" data-dkk="'+k+'" data-dki="'+i+'" aria-label="'+l+', step '+(j+1)+'"><i></i></button>'; }
@@ -15278,8 +15285,8 @@ function dkChange(e){ if(!dkMode()||!DK.G) return; const id=e.target.id, D=DK.G;
   if(id==="dkMetre") dkReshape(+e.target.value,D.g,D.bars);
   else if(id==="dkKit"){ D.kit=e.target.value; if(DK.play){ dkStop(); dkPlay(); } }
   else if(id==="dkBpm"){ DK.bpm=Math.max(30,Math.min(240,+e.target.value||96)); return; }
-  else if(e.target.dataset.dksrc||e.target.dataset.dktrim){ const W=dkWork(), pc=e.target.dataset.dksrc||e.target.dataset.dktrim;   /* (patches/kit-custom.py) */
-    if(e.target.dataset.dksrc) W.src[pc]=e.target.value; else W.trim[pc]=+e.target.value;
+  else if(e.target.dataset.dksrc||e.target.dataset.dktrim||e.target.dataset.dkpitch){ const W=dkWork(), pc=e.target.dataset.dksrc||e.target.dataset.dktrim||e.target.dataset.dkpitch;   /* (patches/kit-custom.py) */
+    if(e.target.dataset.dksrc) W.src[pc]=e.target.value; else if(e.target.dataset.dkpitch) (W.pitch=W.pitch||{})[pc]=+e.target.value; else W.trim[pc]=+e.target.value;
     D.kit="work"; kitFetch("work"); kitReady("work"); if(!DK.play) dkAudition(pc,"X"); }
   else if(id==="dkKitName"){ if(D.kit==="work"&&DK.work) DK.work.name=e.target.value; return; }
   else return;
@@ -18099,7 +18106,7 @@ const KIT_PARSED=new Map(), KIT_GEN=new Map();
 function kitParse(G){ if(!G) return null; let P=KIT_PARSED.get(G); if(P) return P;
   const per=G.m[0]*G.g, lines=Object.entries(G.p).filter(([k])=>!(G.mute&&G.mute.includes(KIT_PC[k]))).map(([k,s])=>[k,s.replace(/[|\s]/g,"")]);   // a row saved muted stays silent (patches/drum-editor-mute.py)
   const nb=Math.max(1,...lines.map(([,s])=>Math.round(s.length/per))), bars=Array.from({length:nb},()=>[]);
-  for(const [k,s] of lines) for(let b=0;b<nb;b++) for(let j=0;j<per;j++){ const v=KIT_V[s[(b*per+j)%s.length]]; if(v) bars[b].push({k:KIT_PC[k],pos:j/G.g,v}); }
+  for(const [k,s] of lines) for(let b=0;b<nb;b++) for(let j=0;j<per;j++){ const v=KIT_V[s[(b*per+j)%s.length]]; if(v) bars[b].push({k:KIT_PC[k],pos:(j+(G.g===4&&G.sw>50&&j%2?(G.sw-50)/50:0))/G.g,v}); }   /* swing (patches/drum-swing.py) */
   for(const b of bars) b.sort((a,c)=>a.pos-c.pos);
   P={L:G.m[0],den:G.m[1],g:G.g,bars,roll:!!G.roll}; KIT_PARSED.set(G,P); return P; }
 function kitFits(G,m){ const gr=groupsOf(m); return !!G&&G.m[0]===m.beats&&G.m[1]===(m.den||4)&&(!G.gr||!gr||String(G.gr)===String(gr)); }
@@ -18140,6 +18147,7 @@ function kitFetch(mix){
 const KIT_SNARES=[["fs509601","Boom bap"],["fs511957","Dusty"],["fs561529","Oldschool hip-hop"],["fs523171","Lo-fi"],["fs503790","Lo-fi 2"],
   ["fs99809","Fierce lo-fi"],["fs319502","Vinyl"],["sp_drum_snare_hard","Hard"],["sp_sn_generic","Generic"],["sp_sn_dolf","Dolf"]];   // drumkit/snares/map.json (make_edrum.py)
 const KIT_TRIMS=[-9,-6,-3,0,3,6];
+const KIT_PITCHES=Array.from({length:25},(_,i)=>i-12);   /* semitones (patches/kit-pitch.py) */
 function kitAllPc(){ return DK_ROWS.concat(DK_MORE).map(r=>r[0]); }
 function kitMineKits(){ try{ const a=JSON.parse(localStorage.getItem("hps.kits")||"[]"); return Array.isArray(a)?a.filter(k=>k&&k.id&&k.src):[]; }catch(e){ return []; } }
 function kitMineKitsPut(L){ try{ localStorage.setItem("hps.kits",JSON.stringify(L)); return true; }catch(e){ toast("The kit could not be saved"); return false; } }
@@ -18151,15 +18159,15 @@ function kitName(id){ if(!id||id==="acoustic") return "Acoustic"; const e=KIT_EK
   if(id.startsWith("snares/")){ const s=KIT_SNARES.find(x=>"snares/"+x[0]===id); return "Snare · "+(s?s[1]:id.slice(7)); }
   const R=kitRecipe(id); return R?(id==="work"?"Custom (not saved)":R.name):"Acoustic"; }
 function kitCompose(id){ const R=kitRecipe(id); if(!R) return null;
-  const key=kitMix+"|"+JSON.stringify(R.src)+"|"+JSON.stringify(R.trim||{}), C=KIT.buf[id]; if(C&&C.key===key) return C;
+  const key=kitMix+"|"+JSON.stringify(R.src)+"|"+JSON.stringify(R.trim||{})+"|"+JSON.stringify(R.pitch||{}), C=KIT.buf[id]; if(C&&C.key===key) return C;
   if(!kitSources(id).every(f=>KIT.buf[f])) return null;
-  const S={key,trim:Object.assign({},R.trim||{})};
+  const S={key,trim:Object.assign({},R.trim||{}),pitch:Object.assign({},R.pitch||{})};
   for(const [pc,s] of Object.entries(R.src)){ const B=KIT.buf[kitSrcFolder(s)], P=s.startsWith("snares/")?B[s.slice(7)]:(B[pc]||B[KIT_FB[pc]]); if(P) S[pc]=P; }
   KIT.buf[id]=S; return S; }
 function kitDecode(f){ if(KIT.buf[f]) return Promise.resolve(KIT.buf[f]); if(!ctx) return Promise.reject(new Error("no audio"));
   if(!KIT.dec[f]) KIT.dec[f]=kitFetch(f).then(list=>Promise.all(list.map(([k,l,v,ab])=>new Promise((res,rej)=>ctx.decodeAudioData(ab.slice(0),b=>res([k,l,v,b]),rej)))))
     .then(bs=>{ const S={}; for(const [k,l,v,b] of bs){ const P=S[k]=S[k]||[]; (P[l-1]=P[l-1]||[])[v-1]=b; }
-      for(const P of Object.values(S)) P.db=P.map(V=>kitRms(V[0]));   // each level's loudness
+      for(const P of Object.values(S)){ P.db=P.map(V=>kitRms(V[0])); if(KIT_ESET.has(f)) P.one=true; }   // each level's loudness; an electronic kit's "takes" are different samples - its first only (patches/kit-hats-one.py)
       KIT.buf[f]=S; return S; })
     .catch(e=>{ KIT.dec[f]=null; throw e; });
   return KIT.dec[f]; }
@@ -18179,13 +18187,13 @@ function kitUkSet(id){ if(!kitRecipe(id)) return; kitUk=id; try{ localStorage.se
 /* the editor: the recipe being made - from the groove's kit, all of it, the first time a row changes */
 function dkWork(){ const D=DK.G; if(D.kit==="work"&&DK.work) return DK.work;
   const S=kitIsMine(D.kit)?kitRecipe(D.kit):null;
-  DK.work=S?{of:S.id,name:S.name,src:Object.assign({},S.src),trim:Object.assign({},S.trim||{})}
-    :{of:null,name:"My kit",src:Object.fromEntries(kitAllPc().map(pc=>[pc,D.kit||"acoustic"])),trim:{}};
+  DK.work=S?{of:S.id,name:S.name,src:Object.assign({},S.src),trim:Object.assign({},S.trim||{}),pitch:Object.assign({},S.pitch||{})}
+    :{of:null,name:"My kit",src:Object.fromEntries(kitAllPc().map(pc=>[pc,D.kit||"acoustic"])),trim:{},pitch:{}};
   return DK.work; }
 function kitSaveWork(){ const D=DK.G, nm=$("dkKitName"), name=((nm&&nm.value)||"").trim();
   const L=kitMineKits();
   if(D.kit!=="work"){ const K=L.find(k=>k.id===D.kit); if(!K) return null; if(name) K.name=name; if(kitMineKitsPut(L)) toast("Kit saved: "+K.name); return K.id; }
-  const W=DK.work; if(!W) return null; const id=W.of||("uk"+Date.now().toString(36)), K={id,name:name||W.name||"My kit",src:W.src,trim:W.trim};
+  const W=DK.work; if(!W) return null; const id=W.of||("uk"+Date.now().toString(36)), K={id,name:name||W.name||"My kit",src:W.src,trim:W.trim,pitch:W.pitch||{}};
   const i=L.findIndex(k=>k.id===id); if(i>=0) L[i]=K; else L.unshift(K);
   if(!kitMineKitsPut(L)) return null; delete KIT.buf[id]; D.kit=id; DK.work=null; toast("Kit saved: "+K.name); return id; }
 function dkSrcOpts(pc,cur){ const o=[["acoustic","Acoustic"]].concat(KIT_EKITS).concat(/^(snare|clap|rimshot|sidestick)$/.test(pc)?KIT_SNARES.map(([k,l])=>["snares/"+k,"Snare · "+l]):[]);
@@ -18202,12 +18210,15 @@ const KIT_HATS=new Set(["hh_closed","hh_half","hh_open","hh_pedal"]);
 function kitHit(pc,v,t){
   const P=KIT.play&&(KIT.play[pc]||KIT.play[KIT_FB[pc]]); if(!P||!ctx||t<ctx.currentTime-LATE_DROP) return;   // a missing piece borrows its nearest (patches/kit-electronic.py)
   const vv=Math.max(0.05,Math.min(1,v+(Math.random()-0.5)*0.06)), top=Math.max(...P.db), want=top+kitDb(vv);
-  let li=0; P.db.forEach((d,i)=>{ if(Math.abs(d-want)<Math.abs(P.db[li]-want)) li=i; }); const V=P[li], gdb=Math.max(-9,Math.min(6,want-P.db[li]));
-  const n=KIT.rr[pc]=((KIT.rr[pc]||0)+1)%V.length, st=Math.max(t,ctx.currentTime);
+  let li=0; P.db.forEach((d,i)=>{ if(Math.abs(d-want)<Math.abs(P.db[li]-want)) li=i; });
+  if(KIT_HATS.has(pc)) li=P.db.indexOf(top);   /* a hat's soft recordings are another sound: its loudest, softer by gain (patches/kit-hats-one.py) */
+  const V=P[li], gdb=Math.max(KIT_HATS.has(pc)?-18:-9,Math.min(6,want-P.db[li]));
+  const n=P.one?0:(KIT.rr[pc]=((KIT.rr[pc]||0)+1)%V.length), st=Math.max(t,ctx.currentTime);
   if(KIT_HATS.has(pc)){ const o=KIT.hho; if(o&&o.t<st-1e-4){ try{ o.g.gain.setTargetAtTime(0,st,0.025); }catch(e){} } KIT.hho=null; }   // the next hat chokes an open one
   const g=ctx.createGain(); g.gain.value=KIT_PK*(kitVol/100)*Math.pow(10,(gdb+((KIT.play.trim&&KIT.play.trim[pc])||0))/20);   /* a recipe's trim (patches/kit-custom.py) */
   const src=ctx.createBufferSource(); src.buffer=V[n]||V[0]; src.connect(g); g.connect(kitBus());   /* the kit's compressor (patches/kit-bus.py) */
   if(pc==="bass808"){ src.playbackRate.value=Math.pow(2,((KIT.root||38)-36)/12); const o=KIT.b8; if(o&&o.t<st-1e-4){ try{ o.g.gain.setTargetAtTime(0,st,0.02); }catch(e){} } KIT.b8={g,t:st}; }   // recorded on C2, played on the root; mono (patches/kit-electronic.py)
+  { const ps=KIT.play.pitch&&KIT.play.pitch[pc]; if(ps) src.playbackRate.value*=Math.pow(2,ps/12); }   /* its pitch (patches/kit-pitch.py) */
   src.start(st);
   if(pc==="hh_open"||pc==="hh_half") KIT.hho={g,t:st};
   g.__at=st; live.push(g); if(live.length>120) live.splice(0,40); return g; }
