@@ -236,12 +236,31 @@ function beamRuns(items,sub,groupOf){
     if(!runs.has(k))runs.set(k,[]);runs.get(k).push(it)});
   return runs;
 }
+/* A CHORD'S HEADS AND ACCIDENTALS (David, 6 Oct 2026, a screenshot: "notes in staff still overlap sometimes" - a chord's
+   two sharps drawn in one place, a stem-down second's upper head moved left onto the lower one's sharp;
+   patches/staff-chord-accidentals.py). ONE LAYOUT for the drawing and for spacing(), so the room left is the room drawn:
+   - a second: the higher head always on the right - stem up, the upper one steps right of the stem; stem down, the
+     lower one steps left of it;
+   - accidentals top to bottom, each in the column nearest the heads that no accidental closer than a seventh holds,
+     all of them left of the leftmost head.
+   steps ascending, accs the glyph per head ("" for none). Returns dx (each head's offset) and ax (its accidental's x),
+   in staff spaces from the item's x, L: the ink left of x, R: a stepped head's reach right of a plain head. */
+function chordLayout(steps,accs,up){
+  const n=steps.length,dx=Array(n).fill(0),D=E.headW-E.stem;let prev=false;
+  if(up){for(let k=1;k<n;k++){if(steps[k]-steps[k-1]===1&&!prev){dx[k]=D;prev=true}else prev=false}}
+  else{for(let k=n-2;k>=0;k--){if(steps[k+1]-steps[k]===1&&!prev){dx[k]=-D;prev=true}else prev=false}}
+  const left=Math.min(0,...dx),ax=Array(n).fill(null),cols=[];
+  for(let k=n-1;k>=0;k--){if(!accs[k])continue;let c=0;while(cols[c]&&cols[c].some(s=>Math.abs(s-steps[k])<6))c++;
+    (cols[c]=cols[c]||[]).push(steps[k]);ax[k]=left-(E.accW+.25)-c*(E.accW+.3)}
+  return{dx,ax,L:cols.length?-left+(E.accW+.25)+(cols.length-1)*(E.accW+.3):-left,R:Math.max(0,...dx)};
+}
 function spacing(bars,ctx,keeps,avail,sp){
   const {names,key,sub,beats,ppb,pulse32,groupOf}=ctx;
   const per=bars.map((bar,bi)=>{
     const cols=new Map();const col=p=>{const k=p.toFixed(4);if(!cols.has(k))cols.set(k,{p,L:0,R:0});return cols.get(k)};
     for(const keep of keeps){
       const B=barItems(bar,bi,ctx,keep);if(B.empty)continue;
+      const accSt=new Map();   // the bar's signs as the staff draws them (accidentalInBar), per staff
       /* a note the pan cannot name is drawn as a rest by the staff (no head, no
          step); it is one here too, or a beam would be counted that the staff breaks */
       const items=B.items.map(it=>it.rest||it.notes.some(n=>n.v==="perc"||stepOf(nameOf(names,n.f))!=null)?it:{...it,rest:true});
@@ -254,7 +273,8 @@ function spacing(bars,ctx,keeps,avail,sp){
           R=E.headW+shift;
           if(it.dot)R=Math.max(R,E.headW+shift+.35+.4);
           if(it.den>=8&&!beamed.has(it))R=Math.max(R,E.stemUpSE[0]-E.stem+E.flagW);   // an unbeamed flag, reckoned stem-up (the wider reach)
-          if(!it.tie&&it.notes.some(n=>n.v!=="perc"&&n.f!=null&&accidentalFor(nameOf(names,n.f),key)))L=E.accW+.25;
+          { const hz=it.notes.filter(n=>n.v!=="perc"&&n.f!=null).map(n=>{const nm=nameOf(names,n.f),s=stepOf(nm),a=accidentalInBar(nm,key,accSt);return{s,a:a||(!it.tie&&accidentalFor(nm,key))||""}}).filter(h=>h.s!=null).sort((a,b)=>a.s-b.s);
+            const ss=hz.map(h=>h.s),as=hz.map(h=>h.a);L=Math.max(chordLayout(ss,as,true).L,chordLayout(ss,as,false).L); }   // patches/staff-chord-accidentals.py
           if(!it.tie&&it.notes.some(n=>n.flam))L=Math.max(L,1.9)}
         c.L=Math.max(c.L,L);c.R=Math.max(c.R,R)}
     }
@@ -360,12 +380,13 @@ function staff(bars,ctx,o){
       if(rE&&L===laid[rE.bi]&&it.p>=rE.p-1e-6)return;   // past the end repeat: the staff stops there (C)
       if(it.rest){g+=glyph(restGlyph(it.den),it.x,it.den===1?yW(topS-2):midY);if(it.dot)g+=glyph(G.dot,it.x+1.2*sp,midY-sp/2);return}
       const hs=it.heads,lo=hs[0].step,hi=hs[hs.length-1].step,up=it.up;const stemX=up?it.x+E.stemUpSE[0]*sp-E.stem*sp/2:it.x+E.stem*sp/2;
-      const lx=it.x-E.ledgerExt*sp,lw=(E.headW+2*E.ledgerExt)*sp;
+      const lay=chordLayout(hs.map(h=>h.step),hs.map(h=>h.acc),up),dl=Math.min(0,...lay.dx),dr=Math.max(0,...lay.dx);   // patches/staff-chord-accidentals.py
+      const lx=it.x+(dl-E.ledgerExt)*sp,lw=(E.headW+dr-dl+2*E.ledgerExt)*sp;
       for(let s=bottom-2;s>=lo+C.shift;s-=2)g+=rect(lx,yW(s)-E.ledger*sp/2,lw,E.ledger*sp,COL.line);
       for(let s=topS+2;s<=hi+C.shift;s+=2)g+=rect(lx,yW(s)-E.ledger*sp/2,lw,E.ledger*sp,COL.line);
-      hs.forEach((hd,k)=>{const cy=y(hd.step);const fill=(colour&&heads!==false)?(COL[hd.hand]||COL.ink):COL.ink;let hx=it.x;if(k>0&&hd.step-hs[k-1].step===1&&!hs[k-1].shifted){hx=up?it.x+(E.headW-E.stem)*sp:it.x-(E.headW-E.stem)*sp;hd.shifted=true}hd.x=hx;
+      hs.forEach((hd,k)=>{const cy=y(hd.step);const fill=(colour&&heads!==false)?(COL[hd.hand]||COL.ink):COL.ink;const hx=it.x+lay.dx[k]*sp;hd.shifted=lay.dx[k]!==0;hd.x=hx;
         const gl=(hd.perc||hd.xh)?G.x:it.den<=1?G.whole:it.den<=2?G.half:G.black;g+=glyph(gl,hx,cy,fill);
-        if(hd.acc)g+=glyph(hd.acc,hx-(E.accW+.25)*sp,cy);
+        if(hd.acc)g+=glyph(hd.acc,it.x+lay.ax[k]*sp,cy);
         if(C.line&&k===0&&!it.tie)hs.map(h=>h.ev&&h.ev.letter).filter(Boolean).reverse().forEach((l,j)=>{g+=text(l,hx+E.headW*sp/2,midY+3.4*sp+j*1.35*sp,1.25*sp,COL.ink,'text-anchor="middle"')});   // every letter of the chord, the highest first (30 Sep 2026)   // the drums' letters below their notes (30 Sep 2026)
         if(it.dot){const dy=((hd.step+C.shift)%2===0)?cy-sp/2:cy;g+=glyph(G.dot,hx+(E.headW+.35)*sp,dy)}
         if(hd.ev&&hd.ev.flam&&!it.tie){const gx=hx-1.7*sp,gy=cy+(up?-sp/2:sp/2);g+=glyph(G.black,gx,gy,fill,fs*.62);g+=rect(gx+E.headW*sp*.62-E.stem*sp/2,gy-2.2*sp,E.stem*sp,2.1*sp);g+=`<path d="M${(gx+.2*sp).toFixed(1)} ${(gy-1.2*sp).toFixed(1)}L${(gx+1.4*sp).toFixed(1)} ${(gy-2*sp).toFixed(1)}" stroke="${COL.ink}" stroke-width="${(.12*sp).toFixed(2)}"/>`}});
