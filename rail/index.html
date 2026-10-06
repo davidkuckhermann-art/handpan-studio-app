@@ -1692,7 +1692,8 @@ body.phone:not(.tablet) .pop .vxrow .vxb.v{display:none}
 .gfp.on .gfl{background:var(--dixie); box-shadow:0 0 6px 2px rgba(229,147,21,.7)}
 .gfp b{font-size:9px; font-weight:800; letter-spacing:.5px; text-transform:uppercase}
 .gfp span{font-size:9px; font-weight:600; color:var(--ink3); max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-.gfp .gfs{width:18px; height:18px; border-radius:50%; margin-top:5px; background:radial-gradient(circle at 40% 35%,#D9D2C6,#8E8576); box-shadow:0 1px 2px rgba(0,0,0,.4)}
+.gfp .gfs::before{content:""; position:absolute; inset:-9px; border-radius:50%}   /* the footswitch's tap area, 36 px */
+.gfp .gfs{position:relative; width:18px; height:18px; border-radius:50%; margin-top:5px; background:radial-gradient(circle at 40% 35%,#D9D2C6,#8E8576); box-shadow:0 1px 2px rgba(0,0,0,.4)}
 .gfp.sel{outline:2px solid var(--dixie); outline-offset:1px}
 /* THE DUST BAR (patches/card-pages.py): the card's pages - the dark bar's shape in the app's dust and ink, full-bleed under the
    head, uppercase words, an amber line under the page you are on */
@@ -10429,7 +10430,9 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
     <select class="ctl" id="staffBassSel" aria-label="Bass line on the staff" hidden><option value="off">Off</option><option value="below">Below</option><option value="instead">Instead</option></select></div>
   <div class="drow" id="swingRow"><span>Swing</span>
     <span style="display:flex;gap:9px;align-items:center">
-      <input type="range" id="swing" min="0" max="100" step="5" style="width:110px">
+      <input type="range" id="swing" min="0" max="100" step="4" list="swingMpc" style="width:110px"
+        title="Swing: 0 straight, 100 a triplet feel - MPC 54% at 24, MPC 58% at 48">
+      <datalist id="swingMpc"><option value="24" label="MPC 54%"></option><option value="48" label="MPC 58%"></option></datalist>
       <b id="swingVal" style="font-size:13px;font-variant-numeric:tabular-nums">0%</b></span></div>
   <!-- DAVID'S OWN TIMING (28 Aug), ported from the World Groove Grid feel
        study — see FEEL_MAP below. It replaces swing rather than joining it:
@@ -10975,7 +10978,18 @@ let ED_T=null; if(ED_Q.length&&!TESTV){ try{ if(window.parent!==window) ED_T=win
 const EDMODE=!!(ED_T&&ED_T.values&&ED_T.values[ED_Q[0]]&&Array.isArray(ED_T.features)), ED_ED=ED_Q[0]||"", ED_ADDS=ED_Q.slice(1);
 /* the switches checked for the editions so far - one batch at a time (the band first, 6 Oct); every other switch of
    the test version's stays on here until its batch has been gone through */
-const ED_READY=new Set(["drumset","drums","bass","guitar","piano","bandpresets","mixer","effects","freedom","handpanlive"]);
+const ED_READY=new Set(["drumset","drums","bass","guitar","piano","bandpresets","mixer","effects","freedom","handpanlive",
+  "tab","flow","staff","pantab","chordtab","fourpans","fullpan","markers","allskins","loops",
+  "jam","jamauto","jamown","jamchords","jambreaks","jamrecord",
+  "editor","articulations","foreignnotes","grooveeditor","bassline","tablegroove",
+  "listening","tablelisten","learn","plog","cp","cplisten","scales","quiz","quizlisten","tuner",
+  "drumgrooves","drumseteditor",
+  "library","coursepieces","courselink","panlib","custompans","turnpan","transpose","transadv","transcustom","foreignkeep",
+  "chordchart","files","print","export","midi","savelocal"]);   /* + the rest of Studio (patches/editions-studio.py) */
+/* where an edition means less than the test version's switch of the same name (patches/editions-studio.py) */
+const SW_ED_UI={transpose:["modeTrans","report","mModeRow"], files:["libIO","cpCode","cpLink"], print:["prRow","expPrRow"],
+  export:["^setExpBtn","expMp3","expWav"], library:["shareBtn","libBtn","mLib","railLib"]};
+function swOf(f){ return (EDMODE&&SW_ED_UI[f])||SW_UI[f]; }   /* + the Drum Grooves editor (patches/editions-dg.py) */   /* + the Practice group (patches/editions-practice.py) */   /* + the Editor group (patches/editions-editor.py) */   // + the Jam group (patches/editions-jam.py)   // + the Play group (patches/editions-play.py)
 function edHas(c,name){ const v=(((ED_T&&ED_T.values)||{})[c]||{})[name]; return v===true||v==="limited"; }
 function edAllowed(name){ if(!ED_READY.has(name)) return true; const f=ED_T.features.find(x=>x.id===name); if(!f) return true;
   if(!edHas(ED_ED,name)&&!ED_ADDS.some(c=>edHas(c,name))) return false;
@@ -10988,6 +11002,12 @@ function edClamp(){
   if(!allowed("freedom")){ try{ gtrLive=false; }catch(e){} try{ pnoLive=false; }catch(e){} try{ bassLive=false; }catch(e){}
     try{ gtrVisit=false; }catch(e){} try{ pnoVisit=false; }catch(e){} try{ bassVisit=false; }catch(e){} try{ kitLv=0; }catch(e){} }
   if(!allowed("handpanlive")){ try{ panLv=0; }catch(e){} }
+  /* the Play group: a side or a marker a device remembers from a fuller edition is put away - quietly, nothing written
+     (the partners' demo shares storage with the /rail/ app) */
+  try{ const q=sideQuiet; sideQuiet=true;
+    try{ if(!allowed("staff")&&staffOn) setStaff(false); if(!allowed("pantab")&&panOn) setPan(false);
+      if(!allowed("chordtab")&&chordRowOn) setChords(false); } finally{ sideQuiet=q; } }catch(e){}
+  if(!allowed("markers")){ try{ markMode="subdiv"; }catch(e){} }
   if(!edClamp.wrapped&&typeof presetApply==="function"&&typeof bandApply==="function"){ edClamp.wrapped=true;
     const pa=presetApply, ba=bandApply;
     presetApply=function(){ const r=pa.apply(this,arguments); edClamp(); return r; };
@@ -11035,28 +11055,38 @@ function allowed(name){
    what is built at run time (the phone's room dropdown is written as one string at boot). */
 const SW_UI={
   tab:["viewTab"], flow:["viewFlow","^flowMenuBtn","fszDn","fszUp"],
+  staff:["staffBtn"], pantab:["panBtn"], chordtab:["chordBtn"], fullpan:["coPanBig"], markers:["markBtn"], loops:["loopBtn","edLoopBar"],   // the Play group (patches/editions-play.py)
   transpose:["modePos","modeTrans","headMode","panSel","myPanBtn","report","mPanRow","mModeRow"],
   custompans:["pmCustom","pmSaveMine","ppMine"],
   library:["shareBtn","libBtn","mLib"], files:["libIO"], sharelinks:["cpCode","cpLink"],
   courselink:["linkBtn"],
-  jam:["navJam","jamModeBtn","jamVoices","jamSetBtn",'#roomDrop [data-r="1"]'], bass:["bassBtn"], drums:["drumBtn"], drumset:["kitBtn"], guitar:["gtrBtn"], piano:["pnoBtn","synBtn"],   // each instrument its switch; Piano/synth one row (patches/editions-band.py)
+  coursepieces:[], panlib:["railInst","mpInstRow"], turnpan:["pmTurnOff","pmTurnOn"], transadv:["~#report .repadv"],
+  transcustom:["~#report table.map th:last-child","~#report table.map td:last-child","~#report .resetrow"],
+  foreignkeep:["~#report .pinrow:has(.kfpills)"], chordchart:["railChords","myPanChords"], midi:["expMidi"], savelocal:["spSave"],   /* the Studio group (patches/editions-studio.py) */
+  jam:["navJam","railJam","jamModeBtn","jamVoices",'#roomDrop [data-r="1"]'],
+  jamauto:["genBtn"], jamown:["~#jamProg .jx","~#jamProg .jadd"], jamchords:["jamSetBtn"], jambreaks:["brkBtn"], jamrecord:["jamRecBtn"],   /* the Jam group (patches/editions-jam.py) */
+  bass:["bassBtn"], drums:["drumBtn"], drumset:["kitBtn"], guitar:["gtrBtn","~.bwseg[data-bw=\"gtr\"]"], piano:["pnoBtn","synBtn","~.bwseg[data-bw=\"pno\"]","~.bwseg[data-bw=\"syn\"]"],   // each instrument its switch; Piano/synth one row (patches/editions-band.py)
   bandpresets:["bandBtn","~#bandChip","~.pophead .phset [data-phk=\"band\"]"], mixer:["mixBtn","~.pop .mix2"], effects:["~.pop .fxbox","~.mxfx"],
   freedom:["~.bdact","~#bassLiveRow","~.ttl:has(+#bassLiveRow)","~#bassLiveRow+.note","~.pal:has([data-gv])","~.ttl:has(+.pal [data-gv])","~.pal:has([data-gv])+.note",
     "~.pal:has([data-pv])","~.ttl:has(+.pal [data-pv])","~.pal:has([data-pv])+.note","~.pal:has([data-klv])","~.ttl:has(+.pal [data-klv])","~#kitLvN"],
   handpanlive:["~#panLiveRow","~.ttl:has(+#panLiveRow)","~#panLiveRow+.note"],
-  editor:["editBtn","footEdit","navEdit","mNavEdit","libEdit","libNewBtn","spEdWrap","spGoWrap","csGoWrap","csToGroove",'#roomDrop [data-r="7"]','#roomDrop [data-r="8"]'],
-  learn:["navLearn","mNavLearn",'#roomDrop [data-r="9"]'],
+  editor:["editBtn","railArr","footEdit","navEdit","mNavEdit","libEdit","libNewBtn","spEdWrap","spGoWrap","csGoWrap","csToGroove",'#roomDrop [data-r="7"]','#roomDrop [data-r="8"]'],
+  articulations:["edFx"], foreignnotes:["edForeign","~#edForeignD"], grooveeditor:["railGrv","jeGroove"], tablegroove:["~.bwseg[data-bw=\"drm\"]"],   /* the Editor group (patches/editions-editor.py) */
+  learn:["navLearn","railLearn","mNavLearn",'#roomDrop [data-r="9"]'],
+  plog:["railLog","navLog","~#lcToday"], cp:["lcChord"], cplisten:["lcListen"], scales:["lcScale","pcScale"],
+  quiz:["lcQuiz","lcName","lcRhythm"], quizlisten:["lcListenQuiz"], tuner:["railTuner","navTuner"],
+  drumgrooves:["railDg"], drumseteditor:["~[data-dkmode=\"drums\"]"],   /* the Drum Grooves editor (patches/editions-dg.py) */   /* the Practice group (patches/editions-practice.py) */
   listening:["tpBtn","lsLabel","setListenRow","lcListen","lcListenQuiz","navTuner","railTuner"],
   export:["^setExpBtn"], print:["prRow"], video:["syncOpen","syncbar","mapbar"],
   allskins:['#themeSel option:not([value="auto"]):not([value="zones"]):not([value="zones-dark"])'],   // every skin but Studio and Studio Dark (David, 21 Sep); Auto stays, it only chooses between those two
   advancedsettings:["advToggle","advBox"],               // the door to the advanced settings — off: not there, and those settings take their defaults
-  fourpans:[], others:[]        // doors and readers only: four pans lives inside jam and chord practice, "others" is the library's third folder
+  fourpans:["~#panfour"], others:[]        // doors and readers only: four pans lives inside jam and chord practice, "others" is the library's third folder
 };
 function applyFeatures(){
   if(!TESTV&&!EDMODE) return;
   document.querySelectorAll("[data-foff]").forEach(el=>el.removeAttribute("data-foff"));
   for(const f in SW_UI){ if(allowed(f)) continue;
-    for(const sel of SW_UI[f]){
+    for(const sel of swOf(f)){
       if(sel[0]==="~") continue;   // a style rule, written below
       const els=sel[0]==="#"?[...document.querySelectorAll(sel)]:[document.getElementById(sel.replace(/^\^/,""))];
       for(let el of els){ if(el&&sel[0]==="^") el=el.closest(".drow")||el; if(!el) continue;
@@ -11065,13 +11095,14 @@ function applyFeatures(){
      option left goes (a lone toggle stays — that is a button), a heading with no rows goes, and two
      separators never meet. Only where a switch took something: an untouched group is never touched. */
   /* "~selector": a style rule, so what the cards build each time they open is switched off too (patches/editions-band.py) */
-  { let css=""; for(const f in SW_UI){ if(allowed(f)) continue; for(const s of SW_UI[f]) if(s[0]==="~") css+=s.slice(1)+"{display:none !important}\n"; }
+  { let css=""; for(const f in SW_UI){ if(allowed(f)) continue; for(const s of swOf(f)) if(s[0]==="~") css+=s.slice(1)+"{display:none !important}\n"; }
     let st=document.getElementById("swCss"); if(!st){ st=document.createElement("style"); st.id="swCss"; document.head.appendChild(st); } st.textContent=css; }
   /* an edition's limited cells: marked, for a note (the partners' demo shows it) */
   document.querySelectorAll("[data-flim]").forEach(el=>el.removeAttribute("data-flim"));
   if(EDMODE){ window.HPS_SW=Object.keys(SW_UI);
     for(const f in SW_UI){ if(!allowed(f)||!edLimited(f)) continue;
-      for(const s of SW_UI[f]){ if(s[0]==="~"||s[0]==="#") continue; const el=document.getElementById(s.replace(/^\^/,"")); if(el) el.setAttribute("data-flim",f); } }
+      for(const s of swOf(f)){ if(s[0]==="~"||s[0]==="#") continue; const el=document.getElementById(s.replace(/^\^/,"")); if(el) el.setAttribute("data-flim",f); } }
+    { const re=document.getElementById("railExport"); if(re&&!allowed("print")&&!allowed("export")&&!allowed("midi")) re.setAttribute("data-foff","export"); }   /* nothing to export (patches/editions-studio.py) */
     edClamp(); }
   const gone=el=>el.hasAttribute("data-foff")||el.hidden||el.classList.contains("hidden");
   document.querySelectorAll(".pills,.pgroup,.ctlgroup").forEach(g=>{
@@ -11521,7 +11552,8 @@ function panById(id){ id=panIdIn(id); return allPans().find(p=>p.id===id)
    card's setting) travels with the piece; the transposition card's fourth way (`TURN`) belongs to the map it
    was chosen on, so it counts ONLY while For my pan is showing one. Without that guard the turn survived
    leaving the mode and turned every pan in the app, the bench's included (20 Sep). */
-function panTurned(){ if((typeof panCustom!=="undefined"&&panCustom)
+function panTurned(){ if(!allowed("turnpan")) return false;   /* a turn saved with a piece stays saved, undrawn (patches/editions-studio.py) */
+  if((typeof panCustom!=="undefined"&&panCustom)
                      ||(typeof npCustom!=="undefined"&&npCustom)) return false;   // the layout is dragged on the pan AS BUILT,
                                                                                   // in the card's customiser and in the own-pan window alike
   return (TURN&&mode==="trans"&&!!MAP)||!!(piece&&piece.panTurn); }
@@ -13632,7 +13664,7 @@ const GFX_PEDALS=[["comp","Compressor","Comp",[["off","Off"],["light","Light"],[
   ["delay","Delay","Delay",[["off","Off"],["slap","Slapback"],["eighth","Eighth"],["dot","Dotted 8th"],["quarter","Quarter"],["ping","Ping-pong"],["amb","Ambient"]]]];
 function gtrFxLoad(key,dflt){ const d=Object.assign({},dflt); try{ const v=JSON.parse(localStorage.getItem(key)||"{}");
   for(const [k,,,o] of GFX_PEDALS) if(v&&o.some(x=>x[0]===v[k])) d[k]=v[k]; }catch(e){} return d; }
-const FX_OFF={comp:"off",wah:"off",drive:"off",eq:"off",chorus:"off",delay:"off"}, FX_LAST={comp:"medium",wah:"slow",drive:"dist",eq:"warm",chorus:"light",delay:"dot"};
+const FX_OFF={comp:"off",wah:"off",drive:"off",eq:"off",chorus:"off",delay:"off"}, FX_LAST={comp:"medium",wah:"slow",drive:"crunch",eq:"warm",chorus:"light",delay:"slap"};   /* what a pedal switches on to with no setting of its own yet - the mild one of each, a delay that suits every instrument (David, 6 Oct 2026: "Select a sensible default setting") */
 const FXS={};
 const fxKey=k=>k==="gtr"?["hps.gtrfx","hps.gtrfxlast"]:["hps.fx."+k,"hps.fx."+k+".last"];
 function fxOf(k){ if(!FXS[k]){ const K=fxKey(k); FXS[k]={set:gtrFxLoad(K[0],FX_OFF),last:gtrFxLoad(K[1],FX_LAST),sel:"drive",G:{ctx:null}}; } return FXS[k]; }
@@ -13701,14 +13733,16 @@ function fxHush(){ if(!ctx) return;
 /* THE CARD: the board of six stomp boxes, the selected one's setting below (mockup B) - in every instrument's card */
 function fxHTML(k){ const F=fxOf(k), P=GFX_PEDALS.find(p=>p[0]===F.sel)||GFX_PEDALS[1], o=P[3];
   return '<div class="ttl">'+(k==="kit"?"Kit effects":k==="drm"?"Percussion effects":"Effects")+'</div><div class="gfxb">'+GFX_PEDALS.map(([p,,s,opts])=>{ const on=F.set[p]!=="off";
-      return '<button type="button" class="gfp'+(on?' on':'')+(p===F.sel?' sel':'')+'" data-fxk="'+k+'" data-gfp="'+p+'" title="'+(p===F.sel?(on?"Switch off":"Switch on"):"Choose")+'"><i class="gfl"></i><b>'+s+'</b><span>'+(on?opts.find(x=>x[0]===F.set[p])[1]:"Off")+'</span><i class="gfs"></i></button>'; }).join("")+'</div>'
+      return '<button type="button" class="gfp'+(on?' on':'')+(p===F.sel?' sel':'')+'" data-fxk="'+k+'" data-gfp="'+p+'" title="'+(p===F.sel?(on?"Switch off":"Switch on"):"Choose")+'"><i class="gfl"></i><b>'+s+'</b><span>'+(on?opts.find(x=>x[0]===F.set[p])[1]:"Off")+'</span><i class="gfs" title="'+(on?"Switch off":"Switch on")+'"></i></button>'; }).join("")+'</div>'
     +'<div class="ttl">'+P[1]+'</div><div class="pal bwsw gsty" style="grid-template-columns:repeat('+Math.min(4,o.length)+',1fr)">'
     +o.map(([v,l])=>'<button class="bwseg'+(F.set[P[0]]===v?' on':'')+'" data-fxk="'+k+'" data-gfv="'+v+'">'+l+'</button>').join("")+'</div>'; }
 function fxBoxHTML(k){ return '<div class="fxbox" data-fxbox="'+k+'"'+(k==="gtr"?' id="gtrFxBox"':'')+'>'+fxHTML(k)+'</div>'; }
-/* one handler for every board: a tap selects a pedal, a tap on the selected one switches it (back to its last setting) */
+/* one handler for every board: a tap selects a pedal, a tap on the selected one switches it; a tap on a pedal's FOOTSWITCH
+   (.gfs) switches it whether chosen or not, and chooses it - on to its last setting, else FX_LAST (David, 6 Oct 2026: "I meant
+   only when you click ON THE BUTTON of the pedal, clicking on the pedal should behave as it was") */
 document.addEventListener("click",ev=>{ const b=ev.target.closest&&ev.target.closest("[data-fxk]"); if(!b) return;
   const k=b.dataset.fxk, F=fxOf(k);
-  if(b.dataset.gfp){ const p=b.dataset.gfp; if(p===F.sel){ if(F.set[p]!=="off"){ F.last[p]=F.set[p]; F.set[p]="off"; } else F.set[p]=F.last[p]; } F.sel=p; }
+  if(b.dataset.gfp){ const p=b.dataset.gfp, sw=!!ev.target.closest(".gfs"); if(sw||p===F.sel){ if(F.set[p]!=="off"){ F.last[p]=F.set[p]; F.set[p]="off"; } else F.set[p]=F.last[p]&&F.last[p]!=="off"?F.last[p]:FX_LAST[p]; } F.sel=p; }
   else if(b.dataset.gfv){ F.set[F.sel]=b.dataset.gfv; if(b.dataset.gfv!=="off") F.last[F.sel]=b.dataset.gfv; }
   fxSave(k); fxChain(k); const box=b.closest("[data-fxbox]"); if(box) box.innerHTML=fxHTML(k); });
 /* the guitar's names, kept: gtrNote, stop() and Metal use them */
@@ -13734,8 +13768,8 @@ const GTR_AMPS={v30:{l:"V30",ir:["v30-sm57-c","v30-sm57-b"]},rd:{l:"Rockdriver",
    hard left and right, then the pedals as after Metal's amp; a mono sound (Hollow) feeds both sides. Off is the dry sound.
    Each voicing's level matched to the dry DI (measured) */
 const GTR_CAMP_STD=[["highpass",75,0.7],["lowshelf",120,0.7,2],["peaking",500,0.7,-2],["highshelf",3200,0.7,2]];   // bass up, mids a little scooped, a touch of sparkle
-const GTR_CAMPS={funk:{l:"Funk",cab:"mar",trim:3.6,comp:[-24,4,6,0.004,0.12],tone:[["highpass",90,0.7],["lowshelf",120,0.7,-2],["peaking",450,0.8,-4],["peaking",3000,1,4],["highshelf",6000,0.7,2]]},   // bright and glassy: tight lows, scooped mids, the 3 kHz snap
-  mar:{l:"Marshall",cab:"mar",trim:1.85,tone:GTR_CAMP_STD},v30:{l:"V30",cab:"v30",trim:1.85,tone:GTR_CAMP_STD},rd:{l:"Rockdriver",cab:"rd",trim:1.85,tone:GTR_CAMP_STD}};
+const GTR_CAMPS={funk:{l:"Funk",cab:"mar",trim:2.01,comp:[-24,4,6,0.004,0.12],tone:[["highpass",90,0.7],["lowshelf",120,0.7,-2],["peaking",450,0.8,-4],["peaking",3000,1,4],["highshelf",6000,0.7,2]]},   // bright and glassy: tight lows, scooped mids, the 3 kHz snap - its compressor back (David, 6 Oct 2026: "let's bring back the comp for the funk amp, but make up for it by bringing its volume down to 80%"): trim 2.01 = 3.14 (the compressed Funk level-matched by meter) x 0.64, the Volume slider's 80 % (squared, -3.9 dB), set by his ear
+  mar:{l:"Marshall",cab:"mar",trim:2.06,tone:GTR_CAMP_STD},v30:{l:"V30",cab:"v30",trim:1.95,tone:GTR_CAMP_STD},rd:{l:"Rockdriver",cab:"rd",trim:2.09,tone:GTR_CAMP_STD}};   /* each at Off's level: +0.9, +0.4, +1.1 dB, the mean of five patterns (strum, pop, funk, chank, stabs; loudness-weighted) under the guitar without an amp (David, 6 Oct 2026: "please align the amp setting off with the other settings as well") */
 const GTR_CAMP_SND={black:0.81};   // Hollow sits 1.5-2 dB above the DI through any of them (measured): one correction per sound
 function gtrCabNow(){ return gtrSound==="clean"?gtrCleanCab:gtrSound==="black"?gtrHollowCab:gtrCab; }   // the sound's own amp: Clean's, Hollow's, or Metal's cabinet
 function gtrCleanAmpOn(){ return (gtrSound==="clean"||gtrSound==="black")&&!!GTR_CAMPS[gtrCabNow()]; }
@@ -15480,7 +15514,7 @@ function dgNew(){
 function dgAway(){ if(dgOn) leaveDg(); }
 function enterDg(opts){
   opts=opts||{};
-  if(PHONE||!allowed("bassline")) return;
+  if(PHONE||!((typeof EDMODE!=="undefined"&&EDMODE)?allowed("drumgrooves"):allowed("bassline"))) return;   /* an edition: the room's own row (patches/editions-dg.py) */
   let met=null;
   if(opts.table){ if(!piece||!piece.sections[opts.table]) return;
     met=dgMetreOf(SM(piece,opts.table));
@@ -15544,7 +15578,7 @@ function dkFromGroove(G){
 function dkToGroove(D){ const code=Object.fromEntries(DK_ROWS.concat(DK_MORE).map(([k,,c])=>[k,c])), p={};
   for(const [k,a] of Object.entries(D.cells)) if(a.some(Boolean)) p[code[k]]=a.map(v=>v||".").join("");
   if(!Object.keys(p).length) p.hh=".".repeat(D.beats*D.g*D.bars);
-  const G={id:D.id,n:D.name,f:"Yours",m:[D.beats,4],g:D.g,p}; if(D.kit) G.kit=D.kit; if(D.g===4&&D.sw>50) G.sw=D.sw;   /* (patches/drum-swing.py) */
+  const G={id:D.id,n:D.name,f:"Yours",m:[D.beats,4],g:D.g,p}; if(D.kit) G.kit=D.kit;   /* no swing of its own (patches/drum-swing-two.py) */
   const mu=Object.keys(DK.mute).filter(k=>DK.mute[k]&&D.cells[k]&&D.cells[k].some(Boolean)); if(mu.length) G.mute=mu;   // a muted row is saved muted (patches/drum-editor-mute.py)
   return G; }
 /* the grid reshaped: a new metre, grid or length keeps what still fits */
@@ -15569,7 +15603,7 @@ async function dkPlay(){ if(DK.play){ dkStop(); dkPaint(); return; }
   const P={step:0,next:ctx.currentTime+0.08}; DK.play=P; dkPaint();
   const tick=()=>{ if(DK.play!==P) return; const D=DK.G, per=dkPer(), n=per*D.bars, sd=60/(DK.bpm||bpm||96)/D.g;
     while(P.next<ctx.currentTime+0.15){ const i=P.step%n;
-      const sw=(D.g===4&&i%2&&D.sw>50)?(D.sw-50)/50*sd:0;   /* the swung sixteenth (patches/drum-swing.py) */
+      const sw=(D.g===4&&i%2)?(kitSwFrom==="own"&&kitSw!=null?(kitSw-50)/50:feelOn?0:swing/300)*sd:0;   /* the swung sixteenth: the Drums card's switch - Your own, or the app's slider (patches/drum-swing-two.py) */
       for(const [k] of DK_ROWS.concat(DK_MORE)){ const v=D.cells[k][i]; if(v&&!DK.mute[k]) kitHit(k,KIT_V[v],P.next+sw); }
       const at=P.next; setTimeout(()=>{ if(DK.play===P){ DK.ph=i; dkPh(); } },Math.max(0,(at-ctx.currentTime)*1000)); P.step++; P.next+=sd; } };
   P.iv=setInterval(tick,25); tick(); }
@@ -15586,10 +15620,11 @@ function dkMount(){ const w=$("dgwrap"); if(!w) return; const grid=w.querySelect
     const head=w.querySelector(".dged .dghead"); if(head){ const s=document.createElement("span"); s.className="pal bwsw dkmodesw"; head.prepend(s); }
     w.addEventListener("click",dkClick); w.addEventListener("contextmenu",dkCtx); w.addEventListener("change",dkChange);
     w.addEventListener("input",e=>{ if(e.target.id==="dkName"&&DK.G) DK.G.name=e.target.value;
-      if(e.target.id==="dkSwing"&&DK.G){ DK.G.sw=+e.target.value; const v=$("dkSwingV"); if(v) v.textContent=DK.G.sw+"%"; } });   /* (patches/drum-swing.py) */ }
+      });   /* the groove's Swing slider went (patches/drum-swing-two.py) */ }
   if(!DK.G) DK.G=dkBlank(4,4,1);
   dkModeSet(DK.mode); }
-function dkModeSet(m){ DK.mode=m==="drums"?"drums":"perc"; try{ localStorage.setItem("hps.dgmode",DK.mode); }catch(e){}
+function dkModeSet(m){ const lacks=!allowed("drumseteditor"); if(lacks) m="perc";   /* a DOOR: the drum set's grid - and an edition without it never writes the choice (patches/editions-dg.py) */
+  DK.mode=m==="drums"?"drums":"perc"; if(!lacks) try{ localStorage.setItem("hps.dgmode",DK.mode); }catch(e){}
   const w=$("dgwrap"); if(!w) return; w.classList.toggle("dkmode",DK.mode==="drums");
   w.querySelectorAll(".dkmodesw").forEach(s=>s.innerHTML=dkSwHTML());
   if(DK.mode==="drums"){ try{ dgStop(); }catch(e){} dkPaint(); } else { dkStop(); try{ dgPaint(); }catch(e){} } }
@@ -15608,7 +15643,7 @@ function dkPaint(){ if(!dkMode()) return; dkList(); const D=DK.G, E=$("dkEd"); i
     +'<div class="dgopts"><span class="dgopt"><span class="bstyle-l">Bars</span>'+seg("dkbars",[[1,"1"],[2,"2"],[3,"3"],[4,"4"]],D.bars)+'</span>'
     +'<span class="dgopt"><span class="bstyle-l">Metre</span><select class="ctl dgsel" id="dkMetre">'+[[2,"2/4"],[3,"3/4"],[4,"4/4"],[5,"5/4"]].map(([v,l])=>'<option value="'+v+'"'+(v===D.beats?" selected":"")+'>'+l+'</option>').join("")+'</select></span>'
     +'<span class="dgopt"><span class="bstyle-l">Steps</span>'+seg("dksteps",[[4,"Sixteenths"],[3,"Triplets"]],D.g)+'</span>'
-    +(D.g===4?'<span class="dgopt" title="Where the second sixteenth of each pair falls: 50% straight, 67% a triplet feel"><span class="bstyle-l">Swing</span><input type="range" id="dkSwing" min="50" max="95" step="1" value="'+(D.sw||50)+'" aria-label="Swing"><span class="dkmeta" id="dkSwingV">'+(D.sw||50)+'%</span></span>':'')
+    /* no Swing here: a groove carries none - the Drums card's switch swings it (patches/drum-swing-two.py) */
     +'<span class="dgopt"><span class="bstyle-l">Kit</span><select class="ctl dgsel" id="dkKit" title="The kit this groove plays on under Auto"><option value="">Acoustic</option>'
     +KIT_EKITS.map(([v,l])=>'<option value="'+v+'"'+(v===D.kit?" selected":"")+'>'+l+'</option>').join("")
     +(kitMineKits().length?'<optgroup label="Yours">'+kitMineKits().map(k=>'<option value="'+rgEsc(k.id)+'"'+(k.id===D.kit?" selected":"")+'>'+rgEsc(k.name)+'</option>').join("")+'</optgroup>':'')
@@ -15653,7 +15688,7 @@ function dkClick(e){ const t=e.target.closest&&e.target.closest("button"); if(!t
   else if(d.dkplay!=null){ dkPlay(); return; }
   else if(d.dkclear!=null){ const n=D.beats*D.g*D.bars; for(const k in D.cells) D.cells[k]=Array(n).fill(""); }
   else if(d.dksave!=null){ dkSave(); }
-  else if(d.dkuse!=null){ if(dkSave()){ kitPick=D.id; try{ localStorage.setItem("hps.kitpick",kitPick); }catch(x){} if(!kitOn) kitSwitch(true); const m=kitMeterNow(), G2=KIT_GROOVES.find(G=>G.id===D.id); toast("The kit plays "+D.name+(m&&G2&&!kitFits(G2,m)?" - in tables of "+D.beats+"/4":"")); } }
+  else if(d.dkuse!=null){ if(dkSave()){ kitPick=D.id; try{ localStorage.setItem("hps.kitpick",kitPick); }catch(x){} kitPickDefault(kitPick); if(!kitOn) kitSwitch(true); const m=kitMeterNow(), G2=KIT_GROOVES.find(G=>G.id===D.id); toast("The kit plays "+D.name+(m&&G2&&!kitFits(G2,m)?" - fitted to this metre":"")); } }
   else if(d.dkdel!=null){ if(!confirm('Delete "'+D.name+'"?')) return; kitMinePut(kitMineGet().filter(G=>G.id!==D.id)); if(kitPick===D.id){ kitPick="auto"; try{ localStorage.setItem("hps.kitpick","auto"); }catch(x){} } dkStop(); DK.G=dkBlank(4,4,1); DK.page=0; }
   else if(d.dkg){ const G=KIT_GROOVES.find(x=>x.id===d.dkg); if(!G) return; DK.G=dkFromGroove(G); DK.page=0;
     DK.mute=Object.fromEntries((G.f==="Yours"&&G.mute||[]).map(k=>[k,true]));   /* yours with its muted rows (patches/drum-editor-mute.py) */ DK.more=DK_MORE.some(([k])=>DK.G.cells[k].some(Boolean)); }
@@ -17088,7 +17123,7 @@ function bassFunkOdd(){ try{ return !!piece&&Object.values(piece.sections||{}).s
 function bassFunkSev(name,iv,scale,root){ const p=name?chordPCs(name):null, own=p&&p[3]!=null, has=d=>!scale.size||scale.has(((root+d)%12+12)%12);
   return own&&iv[7]===10?10:!own&&has(10)?10:has(9)?9:7; }
 /* the drums' swing on the e and the a, in sixteenths, while the drums play a sixteenth groove here */
-function bassFunkSwing(m,nm){ try{ if(!kitOn) return 0; const G=kitGroove(m,nm); if(!G||G.g!==4) return 0; const s=kitSw!=null?kitSw:(G.sw||50); return Math.max(0,(s-50)/50); }catch(e){ return 0; } }
+function bassFunkSwing(m,nm){ try{ if(!kitOn) return 0; const G=kitGroove(m,nm); if(!G||G.g!==4) return 0; const s=kitSwFrom==="own"&&kitSw!=null?kitSw:50; return Math.max(0,(s-50)/50);   /* with the app's, it rides the app's grid (patches/drum-swing-two.py) */ }catch(e){ return 0; } }
 /* THE FEEL: what a Funk bar sounds - its riff, Live's notes, the pickup's - takes loudness, length and swing from its place */
 function bassFunkFeel(pl,ent,bi,m){
   const sec=piece&&ent&&piece.sections[ent.name]; if(!sec||!BASS_FUNK[bassStyleFor(sec,bi)]||bassWrittenBar(sec,bi)) return pl;
@@ -17138,14 +17173,14 @@ function bassFollowHits(style,m,ent,bi){ const out=new Set(), nm=ent&&ent.name;
   try{
     if(style==="kitkick"){ const G0=kitGroove(m,nm), G=G0&&kitParse(kitSwung(G0)); if(!G||!G.bars.length) return [];
       const span=G.den/((m.den||4)*m.sub);   // the groove's counts in a pulse, as kitPulse reads them
-      for(const h of G.bars[bi%G.bars.length]) if(h.k==="kick"){ const p=Math.round(h.pos/span*1e6)/1e6; if(p<m.bp-1e-6) out.add(p); } }
+      for(const h of kitWindow(G,m,bi)) if(h.k==="kick"){ const p=Math.round(h.pos/span*1e6)/1e6; if(p<m.bp-1e-6) out.add(p); } }
     else if(style==="panlow"){ const sec=piece&&piece.sections&&piece.sections[nm], bars=(sec&&sec.bars)||[];
       const mi=e=>{ if(!e||e.v!=="field"||e.flam||e.bass||e.run) return null; let x=null; try{ x=tpMidi(e); }catch(_){} return x; };
       let low=Infinity; for(const b of bars) for(const e of b||[]){ const x=mi(e); if(x!=null&&x<low) low=x; }
       for(const e of bars[bi]||[]) if(mi(e)===low&&e.t<m.bp-1e-6) out.add(Math.round(e.t*1e6)/1e6); }
   }catch(e){}
   return [...out].sort((a,b)=>a-b); }
-function bassFollowKey(){ try{ return "|"+kitOn+"|"+mode+"|"+kitPick+"|"+kitSw+"|"+Object.values(piece.sections||{}).map(s=>(s&&s.kitGroove)||"").join(","); }catch(e){ return ""; } }   // what they follow, for the plan's cache
+function bassFollowKey(){ try{ return "|"+kitOn+"|"+mode+"|"+kitPick+"|"+kitSw+kitSwFrom+"|"+Object.values(piece.sections||{}).map(s=>(s&&s.kitGroove)||"").join(","); }catch(e){ return ""; } }   // what they follow, for the plan's cache
 function bassKickAt(rel,m,nm){
   const W=window.HPSWGG; if(!W||!W.loaded||!W.loaded()) return false;
   const id=rhyGrooveId(m,nm), g=(id&&id!=="none")?rgById(id):null, f=g&&rhyFit(m,g); if(!g||!f) return false;   // the table's groove (step d)
@@ -18244,6 +18279,7 @@ function renderBassBar(E){
 document.addEventListener("click",e=>{
   const b=e.target&&e.target.closest&&e.target.closest("#panbox [data-bw]"); if(!b) return;
   const U=bassUI(), t=b.dataset.bw; if(U.track===t) return;
+  if((t==="drm"&&!allowed("tablegroove"))||(t==="gtr"&&!allowed("guitar"))||((t==="pno"||t==="syn")&&!allowed("piano"))) return;   /* a DOOR: the edition's writing tabs (patches/editions-editor.py) */
   U.track=t; render(); renderEditbar();
 });
 /* the bass's Sound (30 Sep 2026, patches/bass-double.py): the samples start loading the moment the double bass is chosen */
@@ -18516,7 +18552,7 @@ const KIT_MIXES=[["close","Close"],["natural","Natural"],["room","Room"]];
    seven folders beside the acoustic mixes, each with its own map.json - 808, 909 and EDM/trap synthesised, Hip-hop, House,
    Techno and Electro cut from Sonic Pi (CC0). THE SOUND: Auto (the groove's own kit; a groove without one the acoustic
    mix), Acoustic (its mix) or Electronic (a kit) - kitFolder, one function */
-const KIT_EKITS=[["e808","808"],["e909","909"],["eedm","EDM/trap"],["ehiphop","Hip-hop"],["ehouse","House"],["etechno","Techno"],["eelectro","Electro"]];
+const KIT_EKITS=[["e808","808"],["e909","909"],["eedm","EDM"],["ehiphop","Hip-hop"],["ehouse","House"],["etechno","Techno"],["eelectro","Electro"]];
 const KIT_ESET=new Set(KIT_EKITS.map(x=>x[0]));
 var kitSrc=(()=>{ try{ const v=localStorage.getItem("hps.kitsrc"); return v==="acoustic"||v==="electronic"||v==="yours"?v:"auto"; }catch(e){ return "auto"; } })();
 var kitEk=(()=>{ try{ const v=localStorage.getItem("hps.kitek"); return KIT_ESET.has(v)?v:"e808"; }catch(e){ return "e808"; } })();
@@ -18525,7 +18561,7 @@ function kitFolder(G){ return kitSrc==="acoustic"?kitMix:kitSrc==="electronic"?k
 function kitFolderNow(){ let G=null; try{ const m=kitMeterNow(); if(m) G=kitGroove(m); }catch(e){} return kitFolder(G); }
 function kitSndNote(){ const f=kitFolderNow(); if(kitSrc==="yours") return kitMineKits().length?"Your kits - each drum from the kit you chose for it, made in Drum Grooves on the desktop.":"None yet - make one in Drum Grooves on the desktop: each drum's row chooses its sound; then Save kit.";
   const now=kitIsMine(f)?kitName(f)+", yours":KIT_ESET.has(f)?(KIT_EKITS.find(x=>x[0]===f)||[])[1]+" kit":"acoustic kit, "+((KIT_MIXES.find(x=>x[0]===f)||[])[1]||"").toLowerCase();
-  return kitSrc==="electronic"?"Synthesised: 808, 909, EDM/trap. From Sonic Pi: Hip-hop, House, Techno, Electro."
+  return kitSrc==="electronic"?"Synthesised: 808, 909, EDM. From Sonic Pi: Hip-hop, House, Techno, Electro."
     :kitSrc==="acoustic"?"Close: the drum mics. Natural: with the overheads. Room: the room mics in."
     :"Auto: each groove on its own kit - Hip-hop and EDM on their electronic kits, the rest on the acoustic one (its mic mix below). Now: "+now+"."; }
 /* A PIECE A KIT LACKS borrows its nearest; the 808 bass has no stand-in */
@@ -18545,7 +18581,7 @@ const KIT_GROOVES=[
   {id:"four",n:"Four on the floor",f:"Backbeat",m:[4,4],g:4,p:{hh:"x...|x...|x...|x...",ho:"..x.|..x.|..x.|..x.",sn:"....|X...|....|X...",bd:"X...|x...|X...|x..."}},
   {id:"ballad",n:"Ballad",f:"Backbeat",m:[4,4],g:4,p:{rd:"x.x.|x.x.|x.x.|x.x.",ss:"....|x...|....|x...",hp:"....|x...|....|x...",bd:"x...|....|x...|...."}},
   {id:"ghost",n:"Backbeat with ghost notes",f:"Backbeat",m:[4,4],g:4,p:{hh:"X.x.|X.x.|X.x.|X.x.",sn:"...g|X..g|.g..|X.g.",bd:"x...|....|x.x.|...."}},
-  {id:"funk16",n:"Funk sixteenths",f:"Funk",m:[4,4],g:4,sw:54,p:{hh:"XxXx|XxXx|XxXx|Xx.x",ho:"....|....|....|..x.",sn:"....|X..g|.g..|X..g",bd:"x..x|..x.|...x|...."}},   /* funk (David, 6 Oct 2026; patches/bass-funk.py) */
+  {id:"funk16",n:"Funk sixteenths",f:"Funk",m:[4,4],g:4,sw:54,trim:{hh_closed:-2},p:{hh:"XxXx|XxXx|XxXx|Xx.x",ho:"....|....|....|..x.",sn:"....|X..g|.g..|X..g",bd:"x..x|..x.|...x|...."}},   /* funk (David, 6 Oct 2026; patches/bass-funk.py) */
   {id:"nolafunk",n:"New Orleans funk",f:"Funk",m:[4,4],g:4,sw:54,p:{hh:"x.x.|x.x.|x.x.|x.x.",sn:"..g.|X.gg|.g.g|X.g.",bd:"x..x|..x.|x...|..x."}},
   {id:"funkhalf",n:"Funk half-time",f:"Funk",m:[4,4],g:4,sw:54,p:{hh:"XxXx|XxXx|XxXx|XxXx",sn:".g.g|..g.|X.g.|.g.g",bd:"x..x|....|..x.|.x.."}},
   {id:"discofunk",n:"Disco-funk",f:"Funk",m:[4,4],g:4,sw:54,p:{hh:"x...|x...|x...|x...",ho:"..x.|..x.|..x.|..x.",sn:"....|X..g|..g.|X...",bd:"x..x|..x.|x..x|..x."}},
@@ -18584,7 +18620,7 @@ const KIT_GROOVES=[
 ];
 const KIT_PC={bd:"kick",sn:"snare",rs:"rimshot",ss:"sidestick",hh:"hh_closed",hf:"hh_half",ho:"hh_open",hp:"hh_pedal",rd:"ride",rb:"ride_bell",cr:"crash",tl:"tom_low",th:"tom_high",cp:"clap",pc:"perc",b8:"bass808"};   // the electronic kits' pieces (patches/kit-electronic.py)
 kitMineLoad();   // your own drum grooves join the library as the family Yours (patches/drum-editor.py)
-const KIT_V={g:0.24,x:0.64,X:0.94}, KIT_PK=0.55*Math.pow(10,-2/20);   /* -2 dB of the cut to 40% before the compressor (David, 5 Oct 2026) */   /* into the gentle compressor (patches/kit-bus-gentle.py) */   /* +6 dB (David, 4 Oct 2026: "the drums need to be louder") */   // a stroke's strength; one stroke at full strength, volume 100 (the mix's loudest sample is at -1 dBFS)
+const KIT_V={g:0.24,x:0.64,X:0.94}, KIT_PK=0.55*Math.pow(10,-2/20), KIT_AC=Math.pow(10,2/20);   /* KIT_AC: the acoustic kit +2 dB (David, 6 Oct 2026: "the acoustic drum kit can be a little louder" - "the drum raise only for the acoustic kit") */   /* -2 dB of the cut to 40% before the compressor (David, 5 Oct 2026) */   /* into the gentle compressor (patches/kit-bus-gentle.py) */   /* +6 dB (David, 4 Oct 2026: "the drums need to be louder") */   // a stroke's strength; one stroke at full strength, volume 100 (the mix's loudest sample is at -1 dBFS)
 /* A STROKE'S STRENGTH IS A LOUDNESS, not a level number: the recordings' levels lie far apart and unevenly (the snare's six
    span 34 dB, the closed hat's top two 13), so a stroke aims at a loudness under its piece's loudest - an accent at it, a
    normal stroke 5 dB under, a ghost 16 under - takes the level whose loudness (RMS of its first 150 ms, measured as it
@@ -18598,7 +18634,7 @@ function kitParse(G){ if(!G) return null; let P=KIT_PARSED.get(G); if(P) return 
   const nb=Math.max(1,...lines.map(([,s])=>Math.round(s.length/per))), bars=Array.from({length:nb},()=>[]);
   for(const [k,s] of lines) for(let b=0;b<nb;b++) for(let j=0;j<per;j++){ const v=KIT_V[s[(b*per+j)%s.length]]; if(v) bars[b].push({k:KIT_PC[k],pos:(j+(G.g===4&&G.sw>50&&j%2?(G.sw-50)/50:0))/G.g,v}); }   /* swing (patches/drum-swing.py) */
   for(const b of bars) b.sort((a,c)=>a.pos-c.pos);
-  P={L:G.m[0],den:G.m[1],g:G.g,bars,roll:!!G.roll}; KIT_PARSED.set(G,P); return P; }
+  P={L:G.m[0],den:G.m[1],g:G.g,bars,roll:!!G.roll,f:G.f}; KIT_PARSED.set(G,P); return P; }
 function kitFits(G,m){ const gr=groupsOf(m); return !!G&&G.m[0]===m.beats&&G.m[1]===(m.den||4)&&(!G.gr||!gr||String(G.gr)===String(gr)); }
 /* a meter the library has no groove for: kick and snare take turns on the bar's cells, the snare on the last; the hat on
    every eighth. The cells are the bar's groups - or, with none (or one), its quarters (a count of eighths or finer gathered into
@@ -18614,8 +18650,8 @@ function kitAuto(m){ const tern=(m.den||4)===4&&m.sub%3===0, F=KIT_GROOVES.filte
 /* A TABLE'S OWN DRUMS GROOVE (David, 5 Oct 2026; patches/kit-table-band.py): sec.kitGroove - an id, or "none" */
 function kitTableGroove(nm){ if(!nm||bassInRoom()||!piece||!piece.sections) return null; const s=piece.sections[nm]; return (s&&s.kitGroove)||null; }
 function kitGroove(m,nm){ const own=kitTableGroove(nm); if(own==="none") return null;
-  const O=own&&KIT_GROOVES.find(G=>G.id===own); if(O&&kitFits(O,m)) return O;
-  const P=kitPick!=="auto"&&KIT_GROOVES.find(G=>G.id===kitPick); return P&&kitFits(P,m)?P:kitAuto(m); }
+  const O=own&&KIT_GROOVES.find(G=>G.id===own); if(O) return O;   /* fitted to the metre by kitWindow, never swapped (patches/kit-metre-fit.py) */
+  const P=kitPick!=="auto"&&KIT_GROOVES.find(G=>G.id===kitPick); return P||kitAuto(m); }
 function kitGrooveEl(nm){
   const own=kitTableGroove(nm), G=own&&own!=="none"?KIT_GROOVES.find(x=>x.id===own):null, el=document.createElement("span"); el.className="bstyle rgstyle";
   const lab=own==="none"?"No drums":G?G.n:own?String(own):"Drums card · "+kitMenuLabel();
@@ -18626,7 +18662,7 @@ function kitGrooveEl(nm){
 /* the samples: map.json names the pieces, their levels and variations; KIT.buf[mix][piece][level][variation] */
 const KIT={raw:{},dec:{},buf:{},play:null,rr:{},hho:null};
 function kitURL(f){ const b=document.querySelector('script[src*="bank.js"]'); const src=b?b.getAttribute("src"):"bank.js";
-  return src.replace(/bank\.js(\?.*)?$/,"drumkit/"+f+"?v=20261006b"); }   /* the samples' version: bump when drumkit/ changes (patches/kit-choices.py) */
+  return src.replace(/bank\.js(\?.*)?$/,"drumkit/"+f+"?v=20261006c"); }   /* the samples' version: bump when drumkit/ changes (patches/kit-choices.py) */
 function kitFetch(mix){
   if(kitIsMine(mix)) return Promise.all(kitSources(mix).map(kitFetch));   // yours: the folders they name (patches/kit-custom.py)
   if(mix==="snares"&&!KIT.raw.snares){ KIT.raw.snares=fetch(kitURL("snares/map.json")).then(r=>{ if(!r.ok) throw new Error("snares: "+r.status); return r.json(); })
@@ -18650,7 +18686,11 @@ const KIT_SNARES=[["fs509601","Boom bap"],["fs511957","Dusty"],["fs561529","Olds
   ["fs178668","Hanbaal"],["fs371860","Ganon"],["fs685867","AD"],["fs422679","80's power"],["fs693178","Drumhit 8"],["sp_drum_snare_soft","Soft"],
   ["vi_snare_stickshot2","Stick shot 2"],["vi_snare_stickshot1","Stick shot"],["vi_snare_muted","Muted"],["vi_snare_halfopen","Half-open"],
   ["vi_snare_offcenter","Off-centre"],["vi_kick_snoff","Wires off","kick"],["sw_marching_kick","Marching","kick"],
-  ["vi_hh_closed","Acoustic (Virtuosity)","hh_closed"],["vi_flatride_ride","Flat ride","ride"]];   // drumkit/snares/map.json (make_edrum.py, make_kitchoices.py) - [key, name, its drum (a snare when none)]
+  ["vi_hh_closed","Acoustic (Virtuosity)","hh_closed"],["vi_flatride_ride","Flat ride","ride"],
+  ["vp_agogo","Agogo","perc"],["vp_bongoh","Bongo high","perc"],["vp_bongol","Bongo low","perc"],["vp_cabasa","Cabasa","perc"],
+  ["vp_claves","Claves","perc"],["vp_conga","Conga","perc"],["vp_guiro","Guiro","perc"],["vp_shaker","Shaker","perc"],
+  ["vp_sleighbells","Sleigh bells","perc"],["vp_tambourine","Tambourine","perc"],["vp_triangle","Triangle","perc"],
+  ["vp_tumba","Tumba","perc"],["vp_vibraslap","Vibraslap","perc"]];   /* David, 6 Oct 2026 (patches/kit-choices-perc.py) */   // drumkit/snares/map.json (make_edrum.py, make_kitchoices.py) - [key, name, its drum (a snare when none)]
 /* THE LIBRARY (David, 6 Oct 2026; patches/kit-choices.py): a sound is offered on its own drum's row, a snare also on the rows
    that borrow the snare; its label is its drum and its name */
 function kitLibDrum(x){ return x[2]||"snare"; }
@@ -18717,7 +18757,7 @@ function kitBus(){ if(KIT.bus&&KIT.bus.ctx===ctx) return KIT.bus.inp;
   c.threshold.value=-20; c.knee.value=12; c.ratio.value=2; c.attack.value=0.005; c.release.value=1; mk.gain.value=Math.pow(10,4.5/20)*0.85*Math.pow(10,-6.55/20);   /* the kits to 40%: -2 dB before the compressor, -6.55 after - measured 37-41% across kits and grooves (David, 5 Oct 2026: "bring down the kits to 40% of what they are now, part of the reduction before the compressor") */   /* every kit 15% down (David, 5 Oct 2026: "make all drum kits 15% less loud") */   /* gentle: -30/10/3 ms/120 ms distorted the cymbal wash (David, 4 Oct 2026; patches/kit-bus-gentle.py) */
   c.connect(mk); mk.connect(fxIn("kit")); KIT.bus={ctx,inp:c}; return c; }
 const KIT_HATS=new Set(["hh_closed","hh_half","hh_open","hh_pedal"]);
-function kitHit(pc,v,t){
+function kitHit(pc,v,t,tdb){   /* tdb: the groove's own trim for this drum, dB (patches/kit-groove-trim.py) */
   const P=KIT.play&&(KIT.play[pc]||KIT.play[KIT_FB[pc]]); if(!P||!ctx||t<ctx.currentTime-LATE_DROP) return;   // a missing piece borrows its nearest (patches/kit-electronic.py)
   const vv=Math.max(0.05,Math.min(1,v+(Math.random()-0.5)*0.06)), top=Math.max(...P.db), want=top+kitDb(vv);
   let li=0; P.db.forEach((d,i)=>{ if(Math.abs(d-want)<Math.abs(P.db[li]-want)) li=i; });
@@ -18725,7 +18765,7 @@ function kitHit(pc,v,t){
   const V=P[li], gdb=Math.max(KIT_HATS.has(pc)||P.length===1?-18:-9,Math.min(6,want-P.db[li]));   /* a drum of one recording is softened by gain alone - to -18 like a hat (David, 6 Oct 2026) */
   const n=P.one?0:(KIT.rr[pc]=((KIT.rr[pc]||0)+1)%V.length), st=Math.max(t,ctx.currentTime);
   if(KIT_HATS.has(pc)){ const o=KIT.hho; if(o&&o.t<st-1e-4){ try{ o.g.gain.setTargetAtTime(0,st,0.025); }catch(e){} } KIT.hho=null; }   // the next hat chokes an open one
-  const g=ctx.createGain(); g.gain.value=KIT_PK*(kitVol/100)*Math.pow(10,(gdb+((KIT.play.trim&&KIT.play.trim[pc])||0))/20);   /* a recipe's trim (patches/kit-custom.py) */
+  const g=ctx.createGain(); g.gain.value=KIT_PK*(KIT_MIXES.some(x=>x[0]===KIT.want)?KIT_AC:1)*(kitVol/100)*Math.pow(10,(gdb+(tdb||0)+((KIT.play.trim&&KIT.play.trim[pc])||0))/20);   /* a recipe's trim (patches/kit-custom.py) */
   const src=ctx.createBufferSource(); src.buffer=V[n]||V[0]; src.connect(g); g.connect(kitBus());   /* the kit's compressor (patches/kit-bus.py) */
   if(pc==="bass808"){ src.playbackRate.value=Math.pow(2,((KIT.root||38)-36)/12); const o=KIT.b8; if(o&&o.t<st-1e-4){ try{ o.g.gain.setTargetAtTime(0,st,0.02); }catch(e){} } KIT.b8={g,t:st}; }   // recorded on C2, played on the root; mono (patches/kit-electronic.py)
   { const ps=KIT.play.pitch&&KIT.play.pitch[pc]; if(ps) src.playbackRate.value*=Math.pow(2,ps/12); }   /* its pitch (patches/kit-pitch.py) */
@@ -18763,12 +18803,48 @@ function kitTouch(G,base,r,r2){
   const rd=base.filter(h=>h.k==="ride"&&h.pos%1<1e-6); if(rd.length){ const o=rd[Math.floor(r2*rd.length)]; T.push(()=>base.map(h=>h===o?{k:"ride_bell",pos:h.pos,v:0.8}:h)); }
   if(G.roll){ const hs=base.filter(h=>h.k==="hh_closed"&&h.pos>=L/2); if(hs.length){ const rl=()=>{ const o=hs[Math.floor(r2*hs.length)], n=r2<0.5?2:3, add=[]; for(let i=1;i<n;i++) add.push({k:"hh_closed",pos:o.pos+i*(G.den>=8?1:1/g)/n,v:0.45}); return base.concat(add); }; T.push(rl,rl); } }   // a hat roll, twice as likely as another touch (patches/kit-electronic.py)
   return T.length?T[Math.floor(r*T.length)]().sort((a,b)=>a.pos-b.pos):base; }
+/* A GROOVE IN ANOTHER METRE (David, 6 Oct 2026; patches/kit-metre-fit.py) - see the patch's head for the whole rule.
+   kitWindow: what one bar of the table plays of the groove, in groove counts from the bar's start */
+const KIT_CYM=new Set(["hh_closed","hh_half","hh_open","hh_pedal","ride","ride_bell","crash","perc"]);
+const KIT_FIT_KEEP=new Set(["Swing","Latin & world","Other meters"]);   // their own lines, cut to the bar (David, 6 Oct 2026)
+const KIT_FIT={"5/8:3,2":{e:"2bar"},"12/8:3,3,3,3":{e:"KSKS",s:"KSKS"},"7/8:2,2,3":{s:"KKS"},"9/8:3,3,3":{s:"KSS"}};   // David's exceptions
+function kitFitRoles(m,cs,feel16,bi){
+  const T=KIT_FIT[m.beats+"/"+(m.den||4)+":"+cs.map(c=>c.counts).join(",")]||{}, t=feel16?T.s:T.e;
+  if(t==="2bar") return cs.map((c,i)=>i===0?(bi%2?"S":"K"):"-");
+  if(t) return t.split("");
+  if(feel16&&(m.den||4)>=8&&cs.length>=4) return cs.map((c,i)=>i%2?"S":"K");
+  const half=m.beats/2; let mi=cs.length>1?1:0;
+  cs.forEach((c,i)=>{ if(i&&Math.abs(c.c0-half)<Math.abs(cs[mi].c0-half)-1e-9) mi=i; });   // the group nearest the middle, the earlier on a tie
+  return cs.map((c,i)=>i===0?"K":i===mi?"S":"-"); }
+function kitWindow(G,m,bi){
+  const n=G.bars.length, span=G.den/((m.den||4)*m.sub), Lt=m.bp*span, cyc=G.L*n;
+  if(Math.abs(Lt-G.L)<1e-6) return G.bars[bi%n];                                   // the groove's own bar: as before
+  const walk=(s0,keep)=>{ const out=[]; for(let off=0;off<Lt-1e-9;){ const c=((s0+off)%cyc+cyc)%cyc, b=Math.floor(c/G.L+1e-9)%n, p0=c-b*G.L, take=Math.min(G.L-p0,Lt-off);
+      for(const h of G.bars[b]) if((!keep||keep(h))&&h.pos>=p0-1e-9&&h.pos<p0+take-1e-9) out.push({k:h.k,pos:h.pos-p0+off,v:h.v}); off+=take; } return out; };
+  const k=Math.round(cyc/Lt), r=Lt/cyc;
+  if(r>=1-1e-6&&Math.abs(r-Math.round(r))<1e-6) return walk(0);                    // the groove repeated in the bar
+  if(k>1&&Math.abs(k*Lt-cyc)<1e-6) return walk((bi%k)*Lt);                         // the bar a stretch of the groove (4/4 over 2/4)
+  const s0=(bi%n)*G.L;
+  if(G.den!==4||G.g!==4||KIT_FIT_KEEP.has(G.f)) return walk(s0);                   // cut at the bar's end, as the percussion
+  let cs=[]; try{ cs=cellsOf(m); }catch(e){} if(!cs.length) return walk(s0);
+  const B=G.bars[bi%n], out=walk(s0,h=>KIT_CYM.has(h.k)), feel16=out.some(h=>KIT_HATS.has(h.k)&&Math.abs(h.pos*2-Math.round(h.pos*2))>1e-6),
+    R=kitFitRoles(m,cs,feel16,bi), q=G.den/(m.den||4), four=R.length===4&&R.join("")==="KSKS";
+  let sb=1; for(let b=1;b<G.L;b++) if(B.some(h=>(h.k==="snare"||h.k==="clap")&&Math.abs(h.pos-b)<1e-6)){ sb=b; break; }   // the groove's first snare beat (2, or 3 in a half-time)
+  cs.forEach((c,i)=>{ const role=R[i]; if(role!=="K"&&role!=="S") return;
+    const src=four?Math.min(i,G.L-1):(role==="K"?0:sb), g0=c.c0*q, g16=Math.round(c.counts*q*4), main=role==="K"?"kick":"snare";
+    const hs=B.filter(h=>!KIT_CYM.has(h.k)&&h.pos>=src-1e-9&&h.pos<src+1-1e-9);
+    const mv=(B.find(h=>h.k===main&&Math.abs(h.pos-(role==="K"?0:sb))<1e-6)||{}).v||(role==="K"?0.64:0.94);   // the groove's own main stroke
+    if(!hs.some(h=>(h.k===main||(main==="snare"&&h.k==="clap"))&&Math.abs(h.pos-src)<1e-6)) hs.push({k:main,pos:src,v:mv});
+    for(const h of hs){ const x=(h.pos-src)*4; let j=Math.round(x); const fr=x-j; if(g16===6&&j===3) j=4;   // a group of three notes: the 4th sixteenth on its 3rd note
+      if(j<g16) out.push({k:h.k,pos:g0+(j+fr)/4,v:h.v}); } });
+  return out.filter(h=>h.pos<Lt-1e-9).sort((a,b)=>a.pos-b.pos); }
 function kitBarPlan(G,m,bi,nb){
-  const base=G.bars[bi%G.bars.length]; if(!kitLv) return {hits:base,fill:false};
+  const base=kitWindow(G,m,bi); if(!kitLv) return {hits:base,fill:false};
+  const Lt=m.bp*G.den/((m.den||4)*m.sub), W=Math.abs(Lt-G.L)<1e-6?G:Object.assign({},G,{L:Lt});   // fills and touches measure the table's bar
   const n=phraseAt(m,bi*m.bp).n, q=KIT.bar, place=q*8+bi, tEnd=nb>=2&&bi===nb-1;
   if(kitLv>=2&&((q+1)%n===0||tEnd)){ const u=Math.floor((q+1)/n), pf=actP("kit",tEnd?0.75:u%4===0?0.6:u%2===0?0.06:0.02), d=passDraw("kit",place,0);
-    if(d<pf) return {hits:kitFill(G,m,base,tEnd||u%4===0,d/pf,passDraw("kitf",place,0)),fill:true}; }
-  if(kitLv>=1){ const s4=Math.floor(q/n)%4, pt=actP("kit",s4===3?0.5:s4===1?0.15:0.05), d=passDraw("kitt",place,0);   /* the end of four bars (David, 5 Oct 2026; patches/kit-vary-at-four.py) */ if(d<pt) return {hits:kitTouch(G,base,d/pt,passDraw("kitu",place,0)),fill:false}; }
+    if(d<pf) return {hits:kitFill(W,m,base,tEnd||u%4===0,d/pf,passDraw("kitf",place,0)),fill:true}; }
+  if(kitLv>=1){ const s4=Math.floor(q/n)%4, pt=actP("kit",s4===3?0.5:s4===1?0.15:0.05), d=passDraw("kitt",place,0);   /* the end of four bars (David, 5 Oct 2026; patches/kit-vary-at-four.py) */ if(d<pt) return {hits:kitTouch(W,base,d/pt,passDraw("kitu",place,0)),fill:false}; }
   return {hits:base,fill:false}; }
 /* THE HATS IN EIGHTHS METRES FOLLOW THE GROUPS (David, 5 Oct 2026: "they play the first stroke of a subdivision and then if
    the subdivision is longer than 2, play each 2nd stroke inside that subdivision" - "the 2nd hihat inside one subdivision can
@@ -18786,6 +18862,7 @@ function kitHatsSub(plan,G,m){ if(!plan||(m.den||4)<8||G.den<8||m.sub>=2) return
       .map(h=>h.k==="hh_closed"&&inner.has(Math.round(h.pos))?{k:h.k,pos:h.pos,v:Math.min(h.v,0.45)}:h); }
   plan._h8={key,out}; return out; }
 function kitPulse(p2,rel,m,sec,at){
+  if(kitSwFrom!=="app") at-=gridBend(rel,m,pulseDurOf(p2)||0.12);   /* disconnected: the straight grid, its own swing (patches/swing-mpc-drums.py) */
   const G0=kitSwung(kitGroove(m,sec&&sec.name)); if(!G0) return; if(!kitReady(kitFolder(G0))) return;   // the groove's kit under Auto (patches/kit-electronic.py); the table's own, the swing (patches/kit-own-card.py)
   const G=kitParse(G0); if(!G) return;
   const pd=pulseDurOf(p2)||0.12, span=G.den/((m.den||4)*m.sub), inBar=((rel%m.bp)+m.bp)%m.bp, bi=Math.floor(Math.max(0,rel)/m.bp+1e-9);
@@ -18800,8 +18877,8 @@ function kitPulse(p2,rel,m,sec,at){
     KIT.plan=KIT.crashNow?P.hits.filter(h=>!(h.pos<1e-6&&KIT_HATS.has(h.k))).concat([{k:"crash",pos:0,v:0.9}],P.hits.some(h=>h.k==="kick"&&h.pos<1e-6)?[]:[{k:"kick",pos:0,v:0.8}]):P.hits;
   }
   if(KIT.play&&KIT.play.bass808){ let nm=null; try{ nm=chordInForceAt(p2,sec,m); }catch(e){} const pcs=nm&&chordPCs(nm); if(pcs&&pcs.length) KIT.root=29+((((pcs[0]-29)%12)+12)%12); }   // the 808 on the chord's root, F1 to E2 (patches/kit-electronic.py)
-  const bar=kitHatsSub(KIT.plan,G,m), w0=(inBar*span)%G.L;   // this pulse in the groove's counts; the hats doubled in an eighths metre at 2 per count (patches/kit-hats-sub.py)
-  for(const wrap of (w0+span>G.L+1e-6?[0,G.L]:[0])) for(const h of bar){ const d=h.pos+wrap-w0; if(d>-1e-6&&d<span-1e-6) kitHit(h.k,h.v,at+d/span*pd); }
+  const bar=kitHatsSub(KIT.plan,G,m), Lt=m.bp*span, w0=(inBar*span)%Lt;   // this pulse in the groove's counts; the hats doubled in an eighths metre at 2 per count (patches/kit-hats-sub.py)
+  for(const wrap of (w0+span>Lt+1e-6?[0,Lt]:[0])) for(const h of bar){ const d=h.pos+wrap-w0; if(d>-1e-6&&d<span-1e-6) kitHit(h.k,h.v,at+d/span*pd,G0.trim&&G0.trim[h.k]); }
 }
 function kitSwitch(on){ kitOn=!!on; voicesSave(); if(kitOn) kitFetch(kitFolderNow());
   try{ voicePaint(); }catch(e){} try{ mxPaintAll(); }catch(e){} try{ if(window.paintVoices) paintVoices(); }catch(e){} }
@@ -18813,24 +18890,33 @@ function kitMeta(G){ return G.m[0]+"/"+G.m[1]+" · "+(kitParse(G).bars.length>1?
 /* THE KIT'S SWING (David, 5 Oct 2026: "Swing control"; patches/kit-own-card.py): the groove's own swing (Drum Grooves) or
    your own, 50-95%, for every sixteenths groove the kit plays */
 var kitSw=(()=>{ try{ const v=localStorage.getItem("hps.kitsw"); return v==null||v===""?null:Math.max(50,Math.min(95,+v||50)); }catch(e){ return null; } })();
+/* the swing's source (David, 6 Oct 2026; patches/swing-mpc-drums.py): "app" the default - the app's swing or groove map, the
+   groove's own while the app is straight; "groove" / "own" disconnected. Before it, a set kitsw meant your own */
+var kitSwFrom=(()=>{ try{ const v=localStorage.getItem("hps.kitswfrom"); return v==="own"||(v==null&&kitSw!=null)?"own":"app"; }catch(e){ return "app"; } })();   // "groove" (6 Oct, briefly) reads as the app's
+function kitSwFromSet(v){ kitSwFrom=v==="own"?"own":"app"; try{ localStorage.setItem("hps.kitswfrom",kitSwFrom); }catch(e){} }
+/* A GROOVE'S DEFAULT (David, 6 Oct 2026: "for the funk groove, the default setting can be 54"; patches/drum-swing-two.py): a
+   groove carries no swing, but may name the switch's default - choosing it sets Your own at that, any other The app's */
+function kitPickDefault(id){ const G=KIT_GROOVES.find(x=>x.id===id); if(G&&G.g===4&&G.sw>50){ kitSwFromSet("own"); kitSwSet(G.sw); } else kitSwFromSet("app"); }
 const KIT_SWUNG=new Map();
-function kitSwung(G){ if(!G||kitSw==null||G.g!==4) return G; let C=KIT_SWUNG.get(G); if(!C||C.sw!==kitSw){ C=Object.assign({},G,{sw:kitSw}); KIT_SWUNG.set(G,C); } return C; }
+function kitSwung(G){ const sw=kitSwFrom==="own"&&kitSw!=null?kitSw:50;   // a groove's own sw is not played: Your own, or straight on the app's grid
+  if(!G||G.g!==4) return G; let C=KIT_SWUNG.get(G); if(!C||C.sw!==sw){ C=Object.assign({},G,{sw}); KIT_SWUNG.set(G,C); } return C; }
 function kitSwSet(v){ kitSw=v==null?null:Math.max(50,Math.min(95,Math.round(v))); try{ if(kitSw==null) localStorage.removeItem("hps.kitsw"); else localStorage.setItem("hps.kitsw",String(kitSw)); }catch(e){} }
 function kitSwGroove(){ const m=kitMeterNow(), G=m?kitGroove(m):null; return G&&G.g===4?(G.sw||50):null; }
 function kitSwNote(){ const gs=kitSwGroove(); if(gs==null) return "A triplets groove - swung already";
-  return kitSw!=null?"Every sixteenths groove at "+kitSw+"% - 50 straight, 67 a triplet feel":"The groove's own: "+(gs>50?gs+"%":"straight"); }
-function kitSwingHTML(){ const own=kitSw!=null, v=own?kitSw:(kitSwGroove()||50);
-  return '<div class="ttl">Swing</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(2,1fr)"><button class="bwseg'+(own?"":" on")+'" type="button" data-ksw="groove">The groove’s</button><button class="bwseg'+(own?" on":"")+'" type="button" data-ksw="own">Your own</button></div>'
+  if(kitSwFrom==="app") return gridBent()?"With the app's "+(feelOn?"groove map":"swing, "+swingLab(swing))+" (Settings)":"With the app's swing - straight now (Settings)";
+  return "Every sixteenths groove at "+kitSw+"% - 50 straight, 67 a triplet feel; apart from the app's swing"; }
+function kitSwingHTML(){ const own=kitSwFrom==="own", v=kitSw!=null?kitSw:(kitSwGroove()||50);
+  return '<div class="ttl">Swing</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(2,1fr)">'+[["app","The app’s"],["own","Your own"]].map(([k,l])=>'<button class="bwseg'+(kitSwFrom===k?" on":"")+'" type="button" data-ksw="'+k+'">'+l+'</button>').join("")+'</div>'
     +'<div class="vol" id="kitSwRow"'+(own?'':' style="display:none"')+'><input type="range" id="kitSwR" min="50" max="95" step="1" value="'+v+'" aria-label="Swing"><span class="val" id="kitSwV">'+v+'%</span></div>'
     +'<div class="note" id="kitSwN">'+kitSwNote()+'</div>'; }
 function kitCardPaint(pop){ if(!pop) return; kitPartsPaint(pop);
   pop.querySelectorAll("[data-kgp]").forEach(b=>b.classList.toggle("on",b.dataset.kgp===kitPick));
-  const own=kitSw!=null; pop.querySelectorAll("[data-ksw]").forEach(b=>b.classList.toggle("on",(b.dataset.ksw==="own")===own));
+  const own=kitSwFrom==="own"; pop.querySelectorAll("[data-ksw]").forEach(b=>b.classList.toggle("on",b.dataset.ksw===kitSwFrom));
   const r=pop.querySelector("#kitSwRow"); if(r) r.style.display=own?"":"none"; const n=pop.querySelector("#kitSwN"); if(n) n.textContent=kitSwNote();
   const s=pop.querySelector("#kitSwR"); if(s&&own){ s.value=kitSw; const v=pop.querySelector("#kitSwV"); if(v) v.textContent=kitSw+"%"; } }
 function kitPickSet(id){ kitPick=id||"auto"; try{ localStorage.setItem("hps.kitpick",kitPick); }catch(e){} }
 function kitMenuLabel(){ const m=kitMeterNow(); if(kitPick==="auto") return "Auto"+(m?" · "+kitAuto(m).n:"");
-  const G=KIT_GROOVES.find(x=>x.id===kitPick); if(!G) return "Auto"; return G.n+(m&&!kitFits(G,m)?" (Auto in this metre)":""); }
+  const G=KIT_GROOVES.find(x=>x.id===kitPick); if(!G) return "Auto"; return G.n+(m&&!kitFits(G,m)?" · fitted to "+m.beats+"/"+(m.den||4):""); }
 function kitOnOff(k,on){ return '<span class="pal bwsw kpsw"><button class="bwseg'+(on?"":" on")+'" type="button" data-kpo="'+k+'" data-v="0">Off</button>'
   +'<button class="bwseg'+(on?" on":"")+'" type="button" data-kpo="'+k+'" data-v="1">On</button></span>'; }
 function kitPartsPaint(pop){ if(!pop) return;
@@ -18867,7 +18953,7 @@ function kgPaint(){ const L=$("kgList"); if(!L) return; L.innerHTML=""; const q=
     S.innerHTML=[["one","This table"]].concat(peers.length>1?[["letter","Every "+L2]]:[]).concat([["all","Whole piece"]]).map(([k,l])=>'<button class="bwseg'+(k===KG.scope?" on":"")+'" type="button" data-ks="'+k+'">'+rgEsc(l)+'</button>').join(""); } }
   for(const f of ["Yours","Backbeat","Funk","Swing","Latin & world","Hip-hop","EDM","Other meters"]){ const gs=KIT_GROOVES.filter(G=>G.f===f&&(!q||G.n.toLowerCase().includes(q))); if(!gs.length) continue;
     L.insertAdjacentHTML("beforeend",'<div class="kggrp">'+rgEsc(f)+'</div>');
-    for(const G of gs) add(G.id,G.n,kitMeta(G)+(m&&!kitFits(G,m)?" · not this metre":""),true); } }
+    for(const G of gs) add(G.id,G.n,kitMeta(G)+(m&&!kitFits(G,m)?" · fitted to this metre":""),true); } }
 function kgMark(){ const L=$("kgList"); if(L) L.querySelectorAll("[data-kl]").forEach(b=>b.classList.toggle("on",!!KGP&&b.dataset.kl===KGP.id)); }
 function kgSelect(v){ KG.val=v; const L=$("kgList"); if(L) L.querySelectorAll(".rgrow").forEach(x=>x.classList.toggle("sel",x.dataset.kv===v));
   if(playing&&!KG.nm){ kitPick=v; } }   // while playing it is heard at once (the card's, not a table's)
@@ -18883,7 +18969,7 @@ function kgWire(){ if(KG.wired) return; KG.wired=true; const d=$("kgDlg"), L=$("
 function kgChoose(){ if(KG.nm){ const v=KG.val, nm=KG.nm, names=KG.scope==="all"?Object.keys(piece.sections):KG.scope==="letter"?rgPeers(nm):[nm];   /* a table's own (patches/kit-table-band.py) */
     KG.chosen=true; snapshot(); for(const n of names){ const s=piece.sections[n]; if(!s) continue; if(v) s.kitGroove=v; else delete s.kitGroove; }
     $("kgDlg").close(); refresh(); try{ renderEditbar(); }catch(e){} if(v&&v!=="none"&&!kitOn) toast("Chosen — switch the drums on to hear it"); return; }
-  kitPick=KG.val||"auto"; KG.chosen=true; try{ localStorage.setItem("hps.kitpick",kitPick); }catch(e){}
+  kitPick=KG.val||"auto"; KG.chosen=true; try{ localStorage.setItem("hps.kitpick",kitPick); }catch(e){} kitPickDefault(kitPick);
   $("kgDlg").close(); toast("Kit groove: "+kitMenuLabel()+(kitOn?"":" — switch the kit on to hear it")); }
 /* LISTEN: the groove alone at the piece's tempo, until its circle again, another, or the browser closes */
 function kgListenStop(){ const P=KGP; KGP=null; if(P){ clearInterval(P.iv); const t=ctx?ctx.currentTime:0; for(const g of P.gs){ try{ g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(0,t,0.03); }catch(e){} } } kgMark(); }
@@ -18893,7 +18979,7 @@ async function kgListen(id){ const was=KGP&&KGP.id===id; kgListenStop(); if(was)
   const kf=kitFolder(G0); kitFetch(kf); kitReady(kf); try{ if(KIT.dec[kf]) await KIT.dec[kf]; }catch(e){} if(!kitReady(kf)) return;   // the groove's kit (patches/kit-electronic.py)
   const G=kitParse(G0), cd=60/effBpm()*4/((piece&&piece.unit)||4), P={id,gs:[],t0:ctx.currentTime+0.08,bar:0}; KGP=P; kgMark();
   const tick=()=>{ if(KGP!==P) return; while(P.t0+P.bar*G.L*cd<ctx.currentTime+0.5){ const tb=P.t0+P.bar*G.L*cd;
-      for(const h of G.bars[P.bar%G.bars.length]){ const g=kitHit(h.k,h.v,tb+h.pos*cd); if(g) P.gs.push(g); } P.bar++; if(P.gs.length>400) P.gs.splice(0,200); } };
+      for(const h of G.bars[P.bar%G.bars.length]){ const g=kitHit(h.k,h.v,tb+h.pos*cd,G0.trim&&G0.trim[h.k]); if(g) P.gs.push(g); } P.bar++; if(P.gs.length>400) P.gs.splice(0,200); } };
   tick(); P.iv=setInterval(tick,60); }
 function kitMixSet(mix){ if(!KIT_MIXES.some(x=>x[0]===mix)) return; kitMix=mix; try{ localStorage.setItem("hps.kitmix",mix); }catch(e){} if(kitOn) kitFetch(mix); kitReady(kitFolderNow()); }
 function kitSrcSet(v){ if(v!=="auto"&&v!=="acoustic"&&v!=="electronic"&&v!=="yours") return; kitSrc=v; try{ localStorage.setItem("hps.kitsrc",v); }catch(e){} const f=kitFolderNow(); if(kitOn) kitFetch(f); kitReady(f); }   // (patches/kit-electronic.py)
@@ -19397,6 +19483,9 @@ if(window.matchMedia){
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden) reScheme(); });
 window.addEventListener("focus",reScheme);
 let swing=allowed("advancedsettings")?+(localStorage.getItem("hps.swing")||0):0;   // no Advanced settings (a switch): no swing
+/* the MPC's values on the slider: MPC p% moves the off pulse by (p-50)/50 of a pulse, the slider by swing/300 - MPC 54% is 24,
+   MPC 58% is 48 (David, 6 Oct 2026; patches/swing-mpc-drums.py) */
+function swingLab(v){ return v===24?"MPC 54%":v===48?"MPC 58%":v+"%"; }
 /* ───────── MY FEEL — DAVID'S OWN TIMING (28 Aug) ─────────
    COPIED, NOT SHARED, from World Groove Grid — `feel/udu_feel.json` at WGG
    commit e550c79 ("Feel lab: ghost-note timing analysis … DAW-style groove
@@ -19420,6 +19509,10 @@ function feelShift(rel,m,dur){
   const a=FEEL_MAP[i%4], b=FEEL_MAP[(i+1)%4];
   return (a+(b-a)*f)/100*(dur*sub/4);     // % of a sixteenth → seconds
 }
+/* THE GRID'S BEND, one function (patches/swing-mpc-drums.py): the groove map when it is on, else the swing - the off pulse
+   toward the triplet. gridBent: is anything bending it (the drums follow it then, their own swing resting) */
+function gridBend(rel,m,dur){ return feelOn?feelShift(rel,m,dur):(swing>0&&m.sub%2===0&&(rel%2)===1?swing/100*dur/3:0); }
+function gridBent(){ try{ return !!feelOn||swing>0; }catch(e){ return false; } }
 let playing=false, timer=null, raf=null, nextTime=0, nextPulse=0, lastPaint=-1, fired=[];
 /* a generated progression restarts at the next bar line — see jamGenerate */
 let jamRestartDue=null, jamRestartAt=0;
@@ -19776,8 +19869,7 @@ function sched(){
       /* MY FEEL REPLACES SWING (28 Aug): both bend the same grid, so only one
          of them speaks. The metronome keeps the straight grid either way —
          the click is the thing the feel is felt against. */
-      if(feelOn) at+=feelShift(rel,m,pulseDurOf(p2));
-      else if(swing>0&&m.sub%2===0&&(rel%2)===1) at+=swing/100*pulseDurOf(p2)/3;
+      at+=gridBend(rel,m,pulseDurOf(p2));
       // a running groove PREVIEW owns the ears: the playback clock keeps
       // walking silently and speaks again after the preview stops — plus a
       // short breath (jamMuteUntil) so the handover isn't a hard cut
@@ -20789,8 +20881,7 @@ function exportWalk(pulses,visit,onPulse){
       try{
         const sec=secOfPulse(pi), rel=pi-sec.pulse, m=SM(piece,sec.name);
         let at=t;
-        if(feelOn) at+=feelShift(rel,m,dur);
-        else if(swing>0&&m.sub%2===0&&(rel%2)===1) at+=swing/100*dur/3;
+        at+=gridBend(rel,m,dur);
         if(ab===0) at=Math.max(at,graceLead(C.byPulse.get(pi)));   // a grace on the first beat needs room before it (23 Sep 2026)
         if(onPulse) onPulse(pi,ab,t,m,sec);
         const bk=jamOn?jamBreakInfo(ab):null;
@@ -21212,7 +21303,7 @@ function paintExpSize(){
     +Math.round(wav)+" MB as WAV."):"";
 }
 function openExport(){
-  if(!allowed("export")) return;   /* a DOOR (TEST-VERSION.md): the buttons are not the only way in */
+  if(!allowed("export")&&!allowed("midi")) return;   /* a DOOR (TEST-VERSION.md): the buttons are not the only way in - audio or MIDI (patches/editions-studio.py) */
   if(!piece){ toast("There is nothing to export yet"); return; }
   if(!C) C=compile(piece);
   const jam=!!jamOn;
@@ -21615,6 +21706,7 @@ function expDeliver(blob,full){
 }
 async function doExport(fmt){
   if(expBusy) return;
+  if(fmt==="mid"?!allowed("midi"):!allowed("export")) return;   /* a DOOR: each format by its own row (patches/editions-studio.py) */
   const ext=fmt==="mp3"?"mp3":fmt==="mid"?"mid":"wav";
   const full=expTargetName()+"."+ext;
   const prog=$("expProg"), btns=[$("expMp3"),$("expWav"),$("expMidi")];
@@ -21892,6 +21984,7 @@ function transpose(){
    The parameter is called `piece` on purpose: the body below is the body
    transpose() always had, and every `piece` in it now means this argument. */
 function transSolve(piece,S,T,how,ov){
+  if(!allowed("transcustom")) ov={};   /* an edition without custom transposition: saved overrides stay saved, unused (patches/editions-studio.py) */
   const ovRaw=ov; ov=ovPlain(ov);          // a chosen foreign pitch is FOREIGN to every question of place
   const use=fieldUsage(piece);
   const adj=transAdjFor(S,T,how);
@@ -22504,23 +22597,29 @@ function cardPageOf(el){
 const CARD_PRESETS={
   /* THE DRUMS' PRESETS (David, 5 Oct 2026: "2. Presets"; patches/kit-own-card.py): each a groove, a kit, a Freedom and pedals */
   kit:[["Backbeat",[
-      ["Rock","Rock eighths · acoustic · fills","kgp=rock8 ksrc=acoustic kmix=natural klv=2 ksw=groove",{}],
-      ["Pop","Pop sixteenths · close mics","kgp=pop16 ksrc=acoustic kmix=close klv=2 ksw=groove",{comp:"light"}],
-      ["Half-time","Half-time · room","kgp=half ksrc=acoustic kmix=room klv=2 ksw=groove",{}],
-      ["Ballad","Sidestick and ride · steady","kgp=ballad ksrc=acoustic kmix=room klv=0 ksw=groove",{}]]],
+      ["Rock","Rock eighths · acoustic · fills","kgp=rock8 ksrc=acoustic kmix=natural klv=2 ksw=app",{}],
+      ["Pop","Pop sixteenths · close mics","kgp=pop16 ksrc=acoustic kmix=close klv=2 ksw=app",{comp:"light"}],
+      ["Half-time","Half-time · room","kgp=half ksrc=acoustic kmix=room klv=2 ksw=app",{}],
+      ["Ballad","Sidestick and ride · steady","kgp=ballad ksrc=acoustic kmix=room klv=0 ksw=app",{}]]],
+    ["Funk",[   /* (David, 6 Oct 2026; patches/kit-funk-presets.py) - the swing Your own, 54% */
+      ["Funk sixteenths","Tight · close mics · 54% swing","kgp=funk16 ksrc=acoustic kmix=close klv=1 ksw=own",{comp:"light"}],
+      ["New Orleans","Second-line feel · fills · 54% swing","kgp=nolafunk ksrc=acoustic kmix=natural klv=2 ksw=own",{}],
+      ["Half-time funk","Half-time · room · 54% swing","kgp=funkhalf ksrc=acoustic kmix=room klv=1 ksw=own",{}],
+      ["Disco-funk","Driving · steady · 54% swing","kgp=discofunk ksrc=acoustic kmix=natural klv=0 ksw=own",{comp:"medium"}],
+      ["Oakland","Every sixteenth · close · fills · 54% swing","kgp=oakfunk ksrc=acoustic kmix=close klv=2 ksw=own",{comp:"light"}]]],
     ["Swing & jazz",[
-      ["Jazz ride","Jazz ride · room · free","kgp=jazz ksrc=acoustic kmix=room klv=2 ksw=groove",{}],
-      ["Shuffle","Shuffle · fills","kgp=shuffle ksrc=acoustic kmix=natural klv=2 ksw=groove",{}]]],
+      ["Jazz ride","Jazz ride · room · free","kgp=jazz ksrc=acoustic kmix=room klv=2 ksw=app",{}],
+      ["Shuffle","Shuffle · fills","kgp=shuffle ksrc=acoustic kmix=natural klv=2 ksw=app",{}]]],
     ["Latin & world",[
-      ["Bossa nova","Close mics · steady","kgp=bossa ksrc=acoustic kmix=close klv=0 ksw=groove",{}],
-      ["Reggae","One-drop · fills","kgp=onedrop ksrc=acoustic kmix=natural klv=2 ksw=groove",{}],
-      ["Afro 6/8","The bell pattern · room","kgp=afro68 ksrc=acoustic kmix=room klv=2 ksw=groove",{}]]],
+      ["Bossa nova","Close mics · steady","kgp=bossa ksrc=acoustic kmix=close klv=0 ksw=app",{}],
+      ["Reggae","One-drop · fills","kgp=onedrop ksrc=acoustic kmix=natural klv=2 ksw=app",{}],
+      ["Afro 6/8","The bell pattern · room","kgp=afro68 ksrc=acoustic kmix=room klv=2 ksw=app",{}]]],
     ["Electronic",[
-      ["Hip-hop","Boom bap · the hip-hop kit","kgp=boombap ksrc=auto klv=2 ksw=groove",{}],
-      ["Lo-fi","Lo-fi · the hip-hop kit · Lo-fi EQ","kgp=lofi ksrc=auto klv=2 ksw=groove",{eq:"lofi"}],
-      ["House","House · the 909","kgp=house ksrc=auto klv=2 ksw=groove",{comp:"medium"}],
-      ["Trap","Trap · the EDM kit","kgp=trap ksrc=auto klv=2 ksw=groove",{}],
-      ["Techno","Techno · the techno kit","kgp=techno ksrc=auto klv=2 ksw=groove",{comp:"medium"}]]]],
+      ["Hip-hop","Boom bap · the hip-hop kit","kgp=boombap ksrc=auto klv=2 ksw=app",{}],
+      ["Lo-fi","Lo-fi · the hip-hop kit · Lo-fi EQ","kgp=lofi ksrc=auto klv=2 ksw=app",{eq:"lofi"}],
+      ["House","House · the 909","kgp=house ksrc=auto klv=2 ksw=app",{comp:"medium"}],
+      ["Trap","Trap · the EDM kit","kgp=trap ksrc=auto klv=2 ksw=app",{}],
+      ["Techno","Techno · the techno kit","kgp=techno ksrc=auto klv=2 ksw=app",{comp:"medium"}]]]],
   /* the guitar's presets by their own category (David, 3 Oct 2026: "Strumming, Arpeggio, Picking, Jazz, Funk, Rock, Metal"; patches/card-presets-mine.py) */
   gtr:[["Strumming",[
       ["Folk strum","Nylon · Folk","~gc=strum gi=strum:1 gsnd=mf gr=open gv=2 gl=both",{}],
@@ -22556,6 +22655,12 @@ const CARD_PRESETS={
       ["Jazz comping","Free · jazz colour · wide","~pg=rhy ps=jcomp pr=around pw=1 pj=1 pv=3 pl=both",{}],
       ["Charleston swing","Jazz colour · wide","~pg=rhy ps=jcharl pr=around pw=1 pj=1 pv=2 pl=both",{}],
       ["Stride","Jazz colour","~pg=rhy ps=stride pr=around pw=0 pj=1 pv=2 pl=both",{}]]],
+    ["Funk",[   /* (David, 6 Oct 2026; patches/piano-funk-presets.py) - the piano's own patterns, jazz colour */
+      ["Rhodes syncopation","Syncopated · Rhodes · 7ths and 9ths","~pg=rhy ps=synco pr=around pw=0 pj=1 pv=2 pl=both",{}],
+      ["Sixteenth stabs","Short chords on the sixteenths · above","~pg=rhy ps=j16ch pr=above pw=0 pj=1 pv=2 pl=both",{}],
+      ["Double stab","Two quick hits · above","~pg=rhy ps=jdbl pr=above pw=0 pj=1 pv=2 pl=both",{}],
+      ["Wurli off-beats","Off-beat · Wurlitzer","~pg=rhy ps=off pr=around pw=0 pj=1 pv=2 pl=both",{}],
+      ["Neo-soul","Wide · Rhodes · chorus","~pg=rhy ps=neosoul pr=around pw=1 pj=1 pv=2 pl=both",{chorus:"light"}]]],
     ["Colour",[
       ["Lo-fi","Chorus · Lo-fi EQ","~pg=rhy ps=synco pr=around pw=1 pj=1 pv=2 pl=both",{chorus:"light",eq:"lofi"}],
       ["Ambient","Pad · long delay","~pg=sus ps=pad pr=above pw=1 pj=0 pv=0 pl=both",{chorus:"deep",delay:"amb"}],
@@ -23007,7 +23112,8 @@ var BAND_PRESETS=[["Alone",[["Handpan alone","the pan, nothing else",{on:["pan"]
   ["Band",[["Jazz trio","walking bass, comping piano, drums",{on:["pan","kit","bass","pno"],kit:"Jazz ride",bass:"Walking jazz",pno:"Jazz comping"}],
     ["Pop band","the whole band, a backbeat",{on:["pan","kit","bass","gtr","pno"],kit:"Pop",bass:"Root and fifth",gtr:"Pop strum",pno:"Pop pulse"}],
     ["Latin","tumbao bass, montuno, the groove",{on:["pan","drm","bass","pno"],bass:"Salsa tumbao",pno:"Montuno"}],
-    ["Rock","distorted guitar, root on the beats",{on:["pan","kit","bass","gtr"],kit:"Rock",bass:"Rock on the beats",gtr:"Rock rhythm"}]]]];
+    ["Rock","distorted guitar, root on the beats",{on:["pan","kit","bass","gtr"],kit:"Rock",bass:"Rock on the beats",gtr:"Rock rhythm"}],
+    ["Funk","octave pops, chank guitar, 54% swing",{on:["pan","kit","bass","gtr"],kit:"Funk sixteenths",bass:"Octave pops",gtr:"Funk chank"}]]]];   /* (David, 6 Oct 2026; patches/band-funk.py) */
 var BAND_MIX0={pan:{v:100,p:0,r:16},drm:{v:100},kit:{v:100,p:0,r:12},bass:{v:100,p:0,r:0},gtr:{v:100,p:0,r:18},pno:{v:100,p:0,r:18},syn:{v:100,p:0,r:30}};
 function bandKeyOfName(k,name){ const L=CARD_PRESETS[k]; if(!L) return null; for(let gi=0;gi<L.length;gi++){ const i=L[gi][1].findIndex(p=>p[0]===name); if(i>=0) return gi+":"+i; } return null; }
 function bandMine(){ try{ const v=JSON.parse(localStorage.getItem("hps.mybands")||"[]"); return Array.isArray(v)?v.filter(x=>x&&x.n&&Array.isArray(x.on)):[]; }catch(e){ return []; } }
@@ -23986,6 +24092,7 @@ const PK_ASK="hps.panask", PK_WARN="hps.panwarn", PK_LOOP="hps.loopwarn", PK_VAS
    Silenceable like them, and brought back by the same bell. */
 let loopNoT=null;
 function loopRefused(){
+  if(!allowed("loops")) return;   // no loops in this edition: nothing to explain about the video
   if(panPref(PK_LOOP)==="off") return;
   const d=$("loopNoDlg"); if(!d) return;
   try{ if(!d.open) openDlg(d); }catch(e){ return; }
@@ -24771,7 +24878,8 @@ function onVideoTime(t,rate){
    video's tempo (6a).
    `folL` is the loop's state while it runs, null otherwise; folSync() (from updateScoreTools, which every loop
    gesture and both sound switches reach, and from every video report) is the one place it begins and ends. */
-function loopAllowed(){ return !follow||(!followMuted&&vidMuted!==false&&!!(piece&&piece.syncMap&&piece.syncMap.length>=2)); }   // vidMuted false: the video's own sound is on
+function loopAllowed(){ if(!allowed("loops")) return false;   /* an edition without loops (patches/editions-play.py) */
+  return !follow||(!followMuted&&vidMuted!==false&&!!(piece&&piece.syncMap&&piece.syncMap.length>=2)); }   // vidMuted false: the video's own sound is on
 var folL=null, folBusy=false;
 var FOL_OFF=0.08, FOL_GAP=700;                // seconds off before the video is moved; ms between two moves
 function folVidRate(){                         // the video's speed, read as the nearest speed a player offers: a measured
@@ -25234,7 +25342,9 @@ if(view!=="table"&&!allowed(view)) view="table";   // a view kept from a fuller 
 if(!["table","tab","flow"].includes(view)) view="table";   // "pan" is a companion panel now, not a main view
 function setView(v,opts){
   if(v!=="table"&&!allowed(v)) v="table";   /* a DOOR: "tab" and "flow" are switches of the same names */
+  let keepV=null; try{ const s=localStorage.getItem("hps.view")||"table"; if(v==="table"&&!allowed(s)) keepV=s; }catch(e){}   // a view this edition lacks stays stored (patches/editions-play.py)
   view=v; try{localStorage.setItem("hps.view",v)}catch(e){}
+  if(keepV) try{ localStorage.setItem("hps.view",keepV); }catch(e){}
   if(v!=="flow"){ const m=$("score");
     if(m){ m.style.maxHeight=""; m.style.minHeight=""; } }   // landscape sets both
   document.body.classList.remove("design-table","design-tab","design-flow");
@@ -28017,7 +28127,8 @@ function openPanZoomFour(W){
    once. It closes by its × or Esc. Chord practice's four keep their own zoom. */
 function openPanZoom(pan){
   if(!(pan&&pan.fields)) pan=null;       // a button may hand in its click event: only a pan counts
-  { const W=fourNow(); if(W&&!pan){ openPanZoomFour(W); return; } }
+  { const W=fourNow(); if(W&&!pan){ openPanZoomFour(W); return; } }   /* the four pans have their own door */
+  if(!allowed("fullpan")) return;   /* a DOOR: the playable full-screen pan (patches/editions-play.py) */
   const P=pan||myPan, z=$("panZoom"); if(!P||!z||!$("panZoomInner")) return;
   /* IN A LESSON IT STAYS A PICTURE (David, 19 Sep: "everything should be
      adapted for the embed player except the new live play enlarged pan with
@@ -29899,7 +30010,8 @@ function syncBare(){
    flipped the default for every room after a single visit (measured on a
    wiped phone: fresh boot pan, one jam visit, chords ever after). */
 function sideSticks(){ return !(PHONE&&jamOn); }
-function setChords(v){ chordRowOn=v;
+function setChords(v){ if(v&&!allowed("chordtab")) v=false;   /* a DOOR (patches/editions-play.py) */
+  chordRowOn=v;
   /* IN CHORD PRACTICE THE BAND *IS* THE CHORD TAB — on the phone as well now
      (David, 4 Sep: "in chord practice, still on mobile, can you fix the area
      below the notation? It should have the same setup as the other pages of
@@ -29922,7 +30034,8 @@ function setChords(v){ chordRowOn=v;
   if(v&&PHONE&&!TABLET&&staffOn) setStaff(false);   // …and the staff side (22 Sep 2026)
   if(PHONE){ placeJamPanel(); paintSidePills(); }
   render(); }
-function setPan(v){ if(!v) panCustom=false; panOn=v;
+function setPan(v){ if(v&&!allowed("pantab")) v=false;   /* a DOOR (patches/editions-play.py) */
+  if(!v) panCustom=false; panOn=v;
   const inCp=(typeof cpOn!=="undefined"&&cpOn&&cpStage);   // …and neither does this one
   if(sideSticks()&&!sideQuiet&&!inCp) try{localStorage.setItem("hps.pan",v?"1":"0")}catch(e){}
   $("panBtn").classList.toggle("on",v);
@@ -30299,7 +30412,8 @@ function staffFields(p){
    and the numbers on the notes are Advanced-settings options, off by default. Desktop only in this round (the phone
    pager's three sides are inlined in three places); hidden while editing, shown in Jam. render() redraws it with the
    table; paintPulse moves its band; refresh() reaches it through render() when the pan changes. */
-function setStaff(v){ staffOn=v;
+function setStaff(v){ if(v&&!allowed("staff")) v=false;   /* a DOOR (patches/editions-play.py) */
+  staffOn=v;
   if(sideSticks()&&!sideQuiet&&!(typeof cpOn!=="undefined"&&cpOn&&cpStage)) try{localStorage.setItem("hps.staff",v?"1":"0")}catch(e){}
   const b=$("staffBtn"); if(b){ b.classList.toggle("on",v); b.setAttribute("aria-pressed",v?"true":"false"); }
   if(v&&PHONE&&!TABLET){ if(chordRowOn) setChords(false); if(panOn) setPan(false); }   // a phone shows one side; a tablet holds them all
@@ -31850,7 +31964,8 @@ function edFkWire(root){
 function edFkRedraw(){ if(edFkPhone()) paintEditDeck(); else renderEditbar(); }
 function edFkShift(d){ const ph=edFkPhone(), lo=Math.max(24,Math.min(84,edFkLo(ph)+d));
   if(ph) edFkLoP=lo; else edFkLoD=lo; edFkRedraw(); }
-function edFkToggle(){ edForeign=!edForeign; edFkRedraw(); }
+function edFkToggle(){ if(!edForeign&&!allowed("foreignnotes")) return;   /* a DOOR (patches/editions-editor.py) */
+  edForeign=!edForeign; edFkRedraw(); }
 document.addEventListener("click",e=>{ const b=e.target&&e.target.closest&&e.target.closest("#edForeign,#edForeignD");
   if(b&&editing) edFkToggle(); });
 function edFkTap(m){
@@ -32117,6 +32232,7 @@ function edOpen(kind){          // "arr" | "grv"
   dgAway();   // step e
   BASSOV=false;   // the editor shows the piece's own bass (28 Sep 2026)
   if(!allowed("editor")) return;   /* a DOOR (TEST-VERSION.md): the buttons are not the only way in */
+  if(kind==="grv"&&!allowed("grooveeditor")) return;   /* a DOOR: the Pattern editor (patches/editions-editor.py) */
   if(typeof tnOn!=="undefined"&&tnOn) leaveTuner();   // the Tuner (23 Sep)
   if(typeof plOn!=="undefined"&&plOn) leavePlog();   // the Practice log (23 Sep)
   if(cpOn) leaveCp();   // chord practice's piece is generated — the editor opens on the student's own
@@ -34045,7 +34161,7 @@ function tagsForApp(){ const d=tagDraft(), out=[];
 
 function libFavs(){ try{ return new Set(JSON.parse(localStorage.getItem("hps.favPieces")||"[]")); }catch(e){ return new Set(); } }
 function libKey(p){ return p._saved?"saved:"+(p.title||"Untitled"):p.id; }
-function libPieces(){ return (allowed("others")?DEMOS:DEMOS.filter(p=>p.course||p.collection)).concat(   /* the test version's library is the courses and the collections (David, 20 Sep) — a curtain: the pieces are still in the file */savedPieces().map((p,i)=>Object.assign({},p,{_saved:true,_i:i}))); }
+function libPieces(){ return (allowed("others")?DEMOS:DEMOS.filter(p=>p.course||p.collection)).filter(p=>!p.course||allowed("coursepieces")).concat(   /* the test version's library is the courses and the collections (David, 20 Sep) — a curtain: the pieces are still in the file */savedPieces().map((p,i)=>Object.assign({},p,{_saved:true,_i:i}))); }
 function libFolders(){
   const all=libPieces(), fav=libFavs();
   const courses=[...new Set(all.filter(p=>p.course).map(p=>p.course))].sort();
@@ -36451,6 +36567,7 @@ function brkCycleBars(){ try{ return brkCycle().bars; }catch(e){ return 4; } }
    throws it away. */
 function jamBreakInfo(ab){
   if(!jamOn||!jam||!jam.brk||!jam.brk.on||ab==null||!C) return null;
+  if(!allowed("jambreaks")) return null;   // an edition without breaks: the plan stays saved, and silent (patches/editions-jam.py)
   const c=brkCycle();
   if(ab<c.from) return null;                        // a loop's run-in
   const k=Math.floor((ab-c.from)/c.span);           // 0-based cycle index
@@ -36618,6 +36735,7 @@ function setListenEnabled(on){
 }
 // The Suggest button: one chord onto the end, from the shared core above.
 function jamSuggest(){
+  if(!allowed("jamown")) return;   /* a DOOR (patches/editions-jam.py) */
   if(jam.slots.length>=JAM_MAX){ toast("Eight chords is the most for now"); return; }
   const pick=suggestPick();
   if(!pick){ toast("No chord to suggest on this pan"); return; }
@@ -37464,6 +37582,7 @@ function renderJamPanel(){
     // WebKit, and element-level moves die the moment the pointer leaves the
     // card ("dragging still doesn't work" — his Safari, twice).
     b.addEventListener("pointerdown",e=>{
+      if(!allowed("jamown")) return;   // reordering is writing your own sequence (patches/editions-jam.py)
       if(e.target.classList.contains("jx")) return;
       if(e.pointerType==="mouse"&&e.button!==0) return;
       const pid=e.pointerId, sx=e.clientX, sy=e.clientY; let dragging=false;
@@ -37931,6 +38050,7 @@ function jamPatLabel(p){
   return p.name+(!mt||p.name.includes(mt)?"":' <span class="hint">'+mt+"</span>")+bars;
 }
 function openJamSlot(i){
+  if(!allowed("jamown")) return;   /* a DOOR: changing a chord is writing your own sequence (patches/editions-jam.py) */
   jamEditSlot=i; renderJamPanel(); renderJamDlg(); openDlg($("jamDlg"));
 }
 function paintTopChords(){
@@ -40615,6 +40735,7 @@ function tnAttach(){
   LS.inNode.connect(TN.an); TN.db=new Float32Array(TN.an.frequencyBinCount);
 }
 async function enterTuner(){
+  if(!allowed("tuner")) return;   /* a DOOR: the Tuner (patches/editions-practice.py) */
   dgAway();   // step e
   if(PHONE||tnOn||!listenEnabled()) return;   // a listener: behind Settings > Listening mode (20 Sep)
   if(editing){ leaveEditingThen(enterTuner); return; }
@@ -41385,6 +41506,7 @@ function plWire(){
     if(plUse(b.dataset.use)){ $("plPickDlg").close(); if(plOn) plPaint(); if(typeof lcPaintToday==="function") lcPaintToday(); } });
 }
 function enterPlog(){
+  if(!allowed("plog")) return;   /* a DOOR: the Practice log (patches/editions-practice.py) */
   dgAway();   // step e
   if(plOn) return;   // the phone too, in Today only (27 Sep 2026)
   if(editing){ leaveEditingThen(enterPlog); return; }
@@ -41865,6 +41987,7 @@ function jrClick(){
   toast(R.state==="review"?"Keep or discard your take first":"Finishing the take…");
 }
 async function jrStart(){
+  if(jamOn&&!allowed("jamrecord")) return;   /* a DOOR: recording with the jam (patches/editions-jam.py) */
   const room=jrRoomNow();
   if(JR||!room||PHONE||!listenEnabled()) return;   // the jam, or a room opened from the plan (27-28 Sep 2026)
   if(editing){ toast("Leave the editor to record"); return; }
@@ -43917,6 +44040,7 @@ function tpNote(what){
   if(tpLog.length>4000) tpLog.shift();
 }
 async function tpStart(){
+  if(!allowed("tablelisten")) return;   /* a DOOR: listening practice by table (patches/editions-practice.py) */
   if(PHONE||tpOn||!listenEnabled()) return;
   if(jamOn||cpOn||editing||follow||lsOn){ toast("Listening works in the plain player"); return; }
   if(playing) stop();
@@ -44357,6 +44481,7 @@ function cpFoldBar(bel,D,m){
 }
 /* ---- entering and leaving, the quizzes' and the jam's shape ---- */
 function enterCp(){
+  if(!allowed(cpcfg.mode==="scale"?"scales":cpcfg.mode==="listen"?"cplisten":"cp")) return;   /* a DOOR: the mode its edition has (patches/editions-practice.py) */
   BASSROOM="root";   // every exercise starts on the root note (David, 28 Sep 2026)
   if(!allowed("learn")) return;   /* a DOOR (TEST-VERSION.md): the buttons are not the only way in */
   if(cpOn) return;
@@ -44698,6 +44823,7 @@ function coVisible(){ return coItems.filter(c=>coAlmost||!c.miss); }
    reopened when the sheet closes (David: "when the chord overview is closed,
    the user should go back to the scale selector screen") */
 function coOpen(id,fromPicker){
+  if(!allowed("chordchart")) return;   /* a DOOR: the chord overview (patches/editions-studio.py) */
   const d=$("chordOvDlg"); if(!d) return;
   /* the picker's twin pane borrows .cohead and .cobody; whatever happened
      there, the dialog takes them back before it opens */
@@ -45413,6 +45539,7 @@ function leaveLearn(){
   updatePracticeBtn();
 }
 function enterQuiz(kind){
+  if(!allowed("quiz")||(qcfg.listen&&!allowed("quizlisten"))) return;   /* a DOOR (patches/editions-practice.py) */
   if(!allowed("learn")) return;   /* a DOOR (TEST-VERSION.md): the buttons are not the only way in */
   if(quizOn) return;
   roomBack("quiz",()=>leaveQuiz());
@@ -46957,6 +47084,7 @@ function renderRQSum(complete){
 
 /* ---- entering and leaving, mirroring the chord quiz exactly -------------- */
 function enterRhythmQuiz(){
+  if(!allowed("quiz")) return;   /* a DOOR (patches/editions-practice.py) */
   if(!allowed("learn")) return;   /* a DOOR (TEST-VERSION.md): the buttons are not the only way in */
   if(!rqOn) roomBack("rquiz",()=>leaveRhythmQuiz());
   if(rqOn) return;
@@ -47234,7 +47362,9 @@ function grooveSetTime(tsVal,subVal){
   cursor=0;
   refresh();
 }
-function startGrooveEdit(opts){    // opts: {id?, name, meter, sub, unit?, ref, ev?}
+function startGrooveEdit(opts){
+  if(!allowed("grooveeditor")) return;   /* a DOOR: the Pattern editor (patches/editions-editor.py) */
+     // opts: {id?, name, meter, sub, unit?, ref, ev?}
   if(!allowed("editor")) return;   /* a DOOR (TEST-VERSION.md): the buttons are not the only way in */
   if(editing){ leaveEditingThen(()=>startGrooveEdit(opts)); return; }
   const def=jamDefs().byName[opts.ref];
@@ -47532,6 +47662,7 @@ function runAfterEditNow(){ const f=afterEdit; afterEdit=null; if(f) f(); }
    "Practice"). A room that borrows the field for its own name locks it; a locked field is not the piece's name. */
 function titleFromField(){ const f=$("title"); if(f&&!f.readOnly) piece.title=f.value; }
 function savePieceToLibrary(){
+  if(!allowed("savelocal")) return;   /* a DOOR: saving pieces on the device (patches/editions-savelocal.py) */
   titleFromField();
   const l=savedPieces();
   const i=l.findIndex(x=>x.id===piece.id&&x.title===piece.title);
@@ -48284,6 +48415,7 @@ function brkGather(){
     .forEach(el=>w.appendChild(el));
 }
 function openBrk(){
+  if(!allowed("jambreaks")) return;   /* a DOOR: Breaks (patches/editions-jam.py) */
   const w=document.getElementById("brkWrap"); if(!w) return;
   document.getElementById("bkSwitchHost").appendChild(w);
   brkSplit(); paintBrk(w); openDlg(document.getElementById("brkDlg"));
@@ -48373,6 +48505,7 @@ function paintVoicingDesc(){
   }
 }
 function openJamSet(){
+  if(!allowed("jamchords")) return;   /* a DOOR: Chord settings (patches/editions-jam.py) */
   const deep=document.querySelector(".jdeep"); if(!deep) return;
   $("jsVoicingHost").appendChild($("jamVoicing"));
   $("jsColourHost").appendChild($("jamColourWrap"));
@@ -49149,7 +49282,7 @@ function wireRail(){
   go("railArr",()=>toEd("arr"));
   go("railGrv",()=>toEd("grv"));
   go("railDg",()=>enterDg());   // Drum Grooves (step e, 29 Sep 2026)
-  { const dgb=$("railDg"); if(dgb&&!allowed("bassline")) dgb.style.display="none"; }
+  { const dgb=$("railDg"); if(dgb&&!(typeof EDMODE!=="undefined"&&EDMODE)&&!allowed("bassline")) dgb.style.display="none"; }   /* an edition switches it by its own row (patches/editions-dg.py) */
   rail.addEventListener("click",e=>{ const b=e.target.closest(".re");   // another room's entry leaves Drum Grooves first
     if(b&&/^rail(Repertoire|Jam|Arr|Grv|Learn|Tuner|Log)$/.test(b.id)) dgAway(); },true);
   go("railChords",()=>coOpen(null,false));
@@ -50159,13 +50292,13 @@ function boot(){
         else if(id==="kitSwR"){ kitSwSet(+ev.target.value); const v=$("kitSwV"); if(v) v.textContent=kitSw+"%"; const n=$("kitSwN"); if(n) n.textContent=kitSwNote(); } });
       pop.addEventListener("click",ev=>{ const t=ev.target.closest("[data-klv],[data-kmix],[data-ksrc],[data-kek],[data-kuk],[data-ksw],[data-kgp],#kitPickBtn"); if(!t) return;
         if(t.id==="kitPickBtn"){ closePop(); kgOpen(); kitBack("kgDlg"); return; }
-        if(t.dataset.kgp){ kitPickSet(t.dataset.kgp); }
+        if(t.dataset.kgp){ kitPickSet(t.dataset.kgp); kitPickDefault(t.dataset.kgp); }   /* the groove's default swing (patches/kit-funk-presets.py) */
         else if(t.dataset.klv!=null){ kitLv=+t.dataset.klv; try{ localStorage.setItem("hps.kitlv",String(kitLv)); }catch(e){} }
         else if(t.dataset.kmix){ kitMixSet(t.dataset.kmix); }
         else if(t.dataset.ksrc){ kitSrcSet(t.dataset.ksrc); }
         else if(t.dataset.kek){ kitEkSet(t.dataset.kek); }
         else if(t.dataset.kuk){ kitUkSet(t.dataset.kuk); }
-        else if(t.dataset.ksw){ kitSwSet(t.dataset.ksw==="own"?(kitSw!=null?kitSw:(kitSwGroove()||58)):null); }
+        else if(t.dataset.ksw){ kitSwFromSet(t.dataset.ksw); if(kitSwFrom==="own"&&kitSw==null) kitSwSet(kitSwGroove()>50?kitSwGroove():58); }
         kitCardPaint(pop); });
       openPop(pop,kb);
     };
@@ -50428,9 +50561,9 @@ function boot(){
       if(synOn){ arm(); toast("Synth on — "+synSound().name.toLowerCase()+", "+synStyleName(synStyle).toLowerCase()); }
       else { if(ctx){ synRelease(ctx.currentTime); SYN.chord=null; } toast("Synth off"); } 
       voicePaint(); };   /* the long press, the menu's Plays row and the Band row */ }
-  $("swing").value=swing; $("swingVal").textContent=swing+"%";
+  $("swing").value=swing; $("swingVal").textContent=swingLab(swing);
   $("swing").addEventListener("input",()=>{ swing=+$("swing").value;
-    $("swingVal").textContent=swing+"%";
+    $("swingVal").textContent=swingLab(swing);
     try{localStorage.setItem("hps.swing",swing)}catch(e){} });
   /* MY FEEL — one switch, and it takes the grid over from swing while it is
      on (David, 28 Aug). The slider is greyed rather than hidden, so it is
@@ -51471,7 +51604,7 @@ function boot(){
   let p0=null;
   if(location.hash.startsWith("#p=")) p0=pieceFromText(location.hash.slice(3));
   if(!p0&&WANT_PIECE){
-    const w=DEMOS.find(p=>p.id===WANT_PIECE&&(allowed("others")||p.course||p.collection));   // …and a ?piece= link cannot name what the library does not show
+    const w=DEMOS.find(p=>p.id===WANT_PIECE&&(allowed("others")||p.course||p.collection)&&(!p.course||allowed("coursepieces")));   // …and a ?piece= link cannot name what the library does not show
     if(w) p0=w; else toast("No built-in piece called \""+WANT_PIECE+"\"");
   }
   /* a LINK or ?piece= is a door the student came through, so its pan follows;
