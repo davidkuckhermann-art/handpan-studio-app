@@ -13098,9 +13098,21 @@ const GTR_TOUCH={strum:[[["M","D"]],[["L","D"],["L+","U"]],[["P+","U"],["M","D"]
   jazz:[[["P+","J"]],[["L","J"]],[["M+","J"]],[["L+","J"]]],
   pick:[[["M","B"]],[["L","B"]],[["M","T"],["L","B"]]],
   arp:[[["M","A"]],[["L","T"]],[["M","T"],["L","A"]]]};
+/* SMALL TOUCHES VISIT BRIEFLY (David, 6 Oct 2026: "only sometimes incorporate short phrases from related styles" - "keep
+   the frequency, but make the visits shorter, usually half a bar" - "keep today's frequency"; patches/small-touches-short-
+   visits.py). ONE RULE for the guitar, the piano and the bass. r is the four-bar block's draw, pos the unit's place in it
+   (0-3), U the unit in pulses. From Answers the band up (Visit with Listen) as before: bars 3-4 rarely, bar 4 about one
+   block in three. At Small touches (Visit without Listen) the same one block in three, bar 4 only, and three visits in
+   four (r2) only its second half. Returns the pulse of the unit the visit starts on (0: all of it), or null. */
+function liveVisitFrom(inst,r,r2,pos,U,m){
+  const small=inst==="gtr"?!gtrListen:inst==="pno"?!pnoListen:bassListen!==true;
+  if(small){ if(pos!==3||!(r<actP(inst,0.35))) return null; return r2<0.75?liveHalf(U,m):0; }
+  const span=r<actP(inst,0.05)?[2,3]:r<actP(inst,0.35)?[3]:null; return span&&span.includes(pos)?0:null;
+}
+function liveHalf(U,m){ const b=Math.max(1,m.sub||1); let h=Math.ceil(U/2/b-1e-9)*b; if(h<=0||h>=U) h=Math.floor(U/2); return h; }   // the count at or just past the middle
 function gtrLiveAt(rel,m){ const home=gtrStyle==="strum"?"strum|"+gtrStrum:gtrStyle==="pick"?"pick|"+gtrPick:gtrStyle+"|", R=GTR_LIVE_REL[home]; if(!R||!R.length) return null;
   const U=phraseAt(m,rel).n*m.bp, u=Math.floor(rel/U+1e-9), seed=Math.floor(u/4)*131+7919*PLAYPASS+3, r=gtrPuHash(seed), pos=u%4;
-  const span=r<actP("gtr",0.05)?[2,3]:r<actP("gtr",0.35)?[3]:null;   /* bars 3-4 rarely, bar 4 about one block in three (patches/guitar-live-short.py) */ if(!span||!span.includes(pos)) return null;
+  const from=liveVisitFrom("gtr",r,gtrPuHash(seed+23),pos,U,m); if(from==null||rel-u*U<from-1e-9) return null;   /* bar 4, at Small touches usually its second half (patches/small-touches-short-visits.py) */
   const nb=R[Math.floor(gtrPuHash(seed+11)*R.length)].split("|"); return nb[1]?{y:nb[0],p:nb[1]}:{y:nb[0]}; }
 function gtrLeadNotes(from,to,lo,n,chrom,encl,aim,turn){ const pc=chordPCs(to); if(!pc) return null; const pf=from&&chordPCs(from), m12=x=>((x%12)+12)%12, r=m12(pc[0]);
   let sc=null; try{ if(typeof myPan!=="undefined"&&myPan) sc=new Set(panMidis(myPan).map(m12)); }catch(e){}
@@ -17182,10 +17194,12 @@ const BASS_LIVE_SMALL={root:["pass","pop","ghost","space"],r5:["pass","pop","gho
   tumbao:["ghost","son"],"332t":["ghost","son"],tumbaox2:["ghost","son"],"332tx2":["ghost","son"],
   kick:["fifth","pass","ghost","space"],kitkick:["fifth","pass","ghost","space"],panlow:["fifth","pass","ghost","space"]};   // the follow styles: the 5th or a leading note now and then (patches/bass-follow.py)
 const BASS_TUMBAOS=new Set(["tumbao","332t","tumbaox2","332tx2"]);
+let BASS_VIS_FROM=0;   // the pulse of the bar a visit starts on - set by bassLiveVisit, read by bassBarVaried (patches/small-touches-short-visits.py)
 function bassLiveVisit(bi,m,style){   // the pattern this bar visits, or null - per four-bar block (a pair a bar in a short metre)
   const R=(BASS_LIVE_FAM.find(f=>f.includes(style))||[]).filter(x=>x!==style); if(!R.length) return null;
   const n=phraseAt(m,bi*m.bp).n, u=Math.floor(bi/n), blk=Math.floor(u/4), pos=u%4, r=passDraw("bassv",blk,0);
-  const span=r<actP("bass",0.05)?[2,3]:r<actP("bass",0.35)?[3]:null; if(!span||!span.includes(pos)) return null;
+  const from=liveVisitFrom("bass",r,passDraw("bassv",blk,2),pos,n*m.bp,m), s=(bi-u*n)*m.bp;   /* (patches/small-touches-short-visits.py) */
+  if(from==null||s+m.bp<=from+1e-9) return null; BASS_VIS_FROM=Math.max(0,from-s);
   return R[Math.floor(passDraw("bassv",blk,1)*R.length)];
 }
 function bassLiveGrid(m,bi){ return feelSteps(m,bi).list.filter(x=>Math.abs(x.at-Math.round(x.at))<1e-6).map(x=>({k:x.k,s:x.s,t:Math.round(x.at)})); }   // the pattern's steps on the table's grid
@@ -17240,6 +17254,10 @@ function bassBarVaried(nm,bi,ent,m){   // the bar as Live plays it, before the p
     /* A VISIT KEEPS THE HOME BAR'S EDGES: its one, and a note ringing over the bar line - the tumbao's next root, which the
        next bar does not strike again */
     if(tail) v=v.filter(o=>o.t<tail.t).map(o=>o.t+o.len>tail.t?{...o,len:tail.t-o.t,ring:tail.t-o.t}:o).concat([tail]);
+    /* HALF A BAR (patches/small-touches-short-visits.py): the home bar up to the middle, the visit after - a home note
+       sounding into the visit is cut at its first note */
+    if(BASS_VIS_FROM>0){ const fr=BASS_VIS_FROM, vn=v.filter(o=>o.t>=fr-1e-6), first=vn.length?vn[0].t:m.bp;
+      return base.filter(o=>o.t<fr-1e-6).map(o=>o.t+o.len>first+1e-6?{...o,len:first-o.t,ring:Math.min(o.ring||o.len,first-o.t)}:o).concat(vn); }
     if(!one||v.some(o=>o.t===0)) return v; const len=v.length?v[0].t:m.bp; return [{...one,len,ring:Math.min(one.ring||one.len,len)}].concat(v); }
   if(bassListen&&passDraw("bassl",place,0)<actP("bass",bassJam?0.25:0.15)){ const L=bassListenFig(nm,bi,m,base); if(L) return L; }
   if(passDraw("basss",place,0)<actP("bass",pos===1||pos===3?0.35:0.15)){ const K=BASS_LIVE_SMALL[style]||[], j0=Math.floor(passDraw("basss",place,1)*K.length);
@@ -18751,7 +18769,7 @@ const PNO_LIVE_REL={}; for(const f of PNO_LIVE_FAM) for(const k of f) PNO_LIVE_R
 let PNO_LIVE_IN=false;
 function pnoLiveAt(rel,m){ const R=PNO_LIVE_REL[pnoStyle]; if(!R||!R.length) return null;
   const U=phraseAt(m,rel).n*m.bp, u=Math.floor(rel/U+1e-9), blk=Math.floor(u/4), r=passDraw("pnolive",blk,3), pos=u%4;
-  const span=r<actP("pno",0.05)?[2,3]:r<actP("pno",0.35)?[3]:null; if(!span||!span.includes(pos)) return null;
+  const from=liveVisitFrom("pno",r,passDraw("pnolive",blk,17),pos,U,m); if(from==null||rel-u*U<from-1e-9) return null;   /* (patches/small-touches-short-visits.py) */
   return R[Math.floor(passDraw("pnolive",blk,11)*R.length)]; }
 let pnoLead=(()=>{ let v=null; try{ v=localStorage.getItem("hps.pnolead"); }catch(e){} return ["notes","strums","both"].includes(v)?v:"both"; })();   /* A | B | Both (patches/freedom-five-levels.py) */   /* the piano's Pickup (patches/piano-pickup.py) */
 /* the kind of pickup a piano style plays, and its options' names (patches/piano-pickup.py) */
@@ -22189,7 +22207,7 @@ const FREEDOM_KEY={gtr:"gv",pno:"pv",bass:"bbl",pan:"hlv"};   // the handpan's t
 const FREEDOM_SAYS=["As written","Pickup phrases","Small touches","Answers the band","Jams with the band"];   /* five steps (patches/freedom-five-levels.py) */
 const FREEDOM_SAYS_PAN=["As written","Small touches","Answers the band","Jams with the band"];   // the handpan has no pickup phrases
 const FREEDOM_STEPS=[["0","Off","As written: nothing added"],["1","Phrases","Pickup phrases into chord changes, nothing else"],
-  ["2","Live","Pickup phrases, and short visits to related patterns and small variations"],
+  ["2","Live","Pickup phrases, now and then half a bar of a related pattern, and small variations"],
   ["3","Listen","Live, listening to the band: picks up the others' figures, and leads in together"],
   ["4","Jam","Listening, busier: the band picks up and plays together more often"]];
 /* PICKUP PHRASES ARE SHOWN when they can play: from Freedom's step 1, on a pattern that has them - the Handpan pattern
