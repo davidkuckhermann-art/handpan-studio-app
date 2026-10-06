@@ -5150,7 +5150,9 @@ body.phone .qgrid{grid-template-columns:minmax(0,1fr)}
 /* During the question the note NAMES go — they would spell the answer for
    anyone who knows Gm is G·B♭·D. The numbers stay (David's call): they
    orient without answering. */
-#quizpan.searching .pvnote{display:none}
+#quizpan.searching:not(.qnames) .pvnote{display:none}
+/* …except when the find quiz writes the NAMES big (David, 6 Oct 2026: "large names, small numbers"): then .pvnote is
+   the number, and it stays (patches/quiz-pan-labels.py) */
 /* TAP MODE marks. Green = a field you got right and it STAYS; clay = the
    wrong one, said briefly and then gone with all the rest. Deliberately not
    the reveal's amber — a mark you made and a mark the app made must never
@@ -10947,6 +10949,49 @@ let EMBED_KEY=EMBED_KEYS[0];
   });
   throw new Error("no key");
 })();
+/* ═══ THE LIMITS (David, 6 Oct 2026; patches/editions-limits-free.py) ═══
+   What an edition's "limited" cell keeps: per edition, per Switchboard row, a list - extend it by one line. Read
+   only where that edition's cell is "limited" (an add-on with the row in full lifts it); in the plain app, on /test/
+   and in the player edList answers null and nothing is limited. What is not kept is left out of the lists; nothing
+   a device has saved is changed or written. Here, outside the switches, because the player build cuts those out. */
+const ED_LIMITS={
+  free:{
+    library:["Traditionals"],                                     // the library's collections
+    panlib:["d-kurd","e-amara","d-celtic-minor","f2-low-pygmy"],  // scales, every size: D Kurd, E Amara, D Amara (D Celtic Minor), F Pygmy (F2 Low Pygmy)
+    drums:["khaligi-for-hps"],                                    // the percussion's grooves (wgg/grooves.json ids)
+    bass:["beats"],                                               // the bass's styles: Root on the beats
+    jam:["cg3","cg4","mg1","mg16"],                               // the jam's grooves: 3-3-2 arpeggio, Backbeat arpeggio, 2 pulse, Downwards is also nice
+    quiz:["find"],                                                // the quizzes: find, name, rhythm
+    chordnames:[],                                                // chords set by hand: none
+    savelocal:1                                                   // pieces saved on the device
+  }
+};
+function edList(k){
+  if(typeof EDMODE==="undefined"||!EDMODE) return null;
+  if((ED_T.values[ED_ED]||{})[k]!=="limited"||ED_ADDS.some(c=>(ED_T.values[c]||{})[k]===true)) return null;
+  const L=(ED_LIMITS[ED_ED]||{})[k]; return L==null?null:L;
+}
+/* a value the limit keeps, or the first it does keep */
+function edKeep(k,v){ const L=edList(k); return !Array.isArray(L)||!L.length||L.includes(v)?v:L[0]; }
+function edLibOk(p){ const L=edList("library"); return !L||L.includes(p.collection)||(!!p.course&&allowed("coursepieces")); }
+function edPanOk(p){ const L=edList("panlib"); return !L||!p||!p.scale||L.includes(p.scale); }
+/* room for one more saved piece: the oldest goes if the student says so; a device that holds more than the limit
+   (from a fuller edition) keeps them all and saves nothing */
+function edSaveRoom(l){
+  const n=edList("savelocal"); if(typeof n!=="number"||l.length<n) return true;
+  if(l.length===n&&confirm("This edition keeps "+n+" piece"+(n===1?"":"s")+" on this device. Replace \u201C"+((l[0]&&l[0].title)||"Untitled")+"\u201D with this one?")){
+    l.splice(0,l.length-n+1); return true; }
+  if(l.length>n) toast("This edition keeps "+n+" piece"+(n===1?"":"s")+" on this device, and it holds "+l.length+" already: nothing was saved");
+  return false;
+}
+/* what applyFeatures does for the limits: the quiz cards an edition lacks go, and a remembered drum pick it lacks is
+   put back to Auto in memory (a let not yet reached at the first call is skipped) */
+function edLimitsApply(){
+  const Q=edList("quiz");
+  if(Q) for(const [k,id] of [["find","lcQuiz"],["find","pcQuiz"],["name","lcName"],["name","pcName"],["rhythm","lcRhythm"],["rhythm","pcRhythm"]])
+    if(!Q.includes(k)){ const el=document.getElementById(id); if(el) el.setAttribute("data-foff","quiz"); }
+  const DL=edList("drums"); if(DL){ try{ if(rhyPick!=="auto"&&!DL.includes(rhyPick)) rhyPick="auto"; }catch(e){} }
+}
 /* ═══ THE SWITCHES (TEST-VERSION.md) ═══════════════════════════════════════════════════════════
    One question — allowed(name) — and one place that answers it. OFF THE /test/ PATH THE ANSWER IS
    ALWAYS YES: the students' app reads no switch file and cannot be reached by a wrong line in one.
@@ -11103,6 +11148,7 @@ function applyFeatures(){
     for(const f in SW_UI){ if(!allowed(f)||!edLimited(f)) continue;
       for(const s of swOf(f)){ if(s[0]==="~"||s[0]==="#") continue; const el=document.getElementById(s.replace(/^\^/,"")); if(el) el.setAttribute("data-flim",f); } }
     { const re=document.getElementById("railExport"); if(re&&!allowed("print")&&!allowed("export")&&!allowed("midi")) re.setAttribute("data-foff","export"); }   /* nothing to export (patches/editions-studio.py) */
+    edLimitsApply();   /* the limits (patches/editions-limits-free.py) */
     edClamp(); }
   const gone=el=>el.hasAttribute("data-foff")||el.hidden||el.classList.contains("hidden");
   document.querySelectorAll(".pills,.pgroup,.ctlgroup").forEach(g=>{
@@ -15182,6 +15228,7 @@ function loadWgg(){
    chip in the popup overrides it. */
 function rhyGrooveId(m,nm){
   const gs=(window.HPSWGG&&HPSWGG.grooves())||[]; if(!gs.length) return null;
+  { const DL=edList("drums"); if(DL){ if(rhyTableGroove(nm)==="none") return "none"; return DL.find(id=>gs.some(g=>g.id===id))||null; } }   /* limited: its own grooves only (patches/editions-limits-free.py) */
   const sub=RGSUB&&(RGSUB.names?RGSUB.names.has(nm):!rhyTableGroove(nm))?RGSUB.id:null;   /* the row selected while playing stands in: a groove, "none", "" (the drum button's) or "auto" (patches/groove-select-solo.py) */
   if(sub==="none") return "none"; if(sub&&sub!=="auto"&&gs.some(g=>g.id===sub)) return sub;
   const own=sub!=null?null:rhyTableGroove(nm);                  // a table's own groove, or "none" (step d, 28 Sep 2026)
@@ -15291,7 +15338,7 @@ function rgPaint(){
     else add("auto","Auto","now "+rgLabel(rhyGrooveId())+" · by the table’s metre",false);
   }
   /* YOURS FIRST, THEN THE BUILT-IN ONES (step e, 29 Sep 2026); a playing draft ("~") is never listed */
-  const gl=HPSWGG.grooves().filter(g=>!String(g.id).startsWith("~")).slice().sort((a,b)=>rgName(a).localeCompare(rgName(b),undefined,{numeric:true}));
+  const gl=HPSWGG.grooves().filter(g=>!String(g.id).startsWith("~")&&(!edList("drums")||edList("drums").includes(g.id))).slice().sort((a,b)=>rgName(a).localeCompare(rgName(b),undefined,{numeric:true}));
   const mineG=gl.filter(g=>g.mine), builtG=gl.filter(g=>!g.mine), hit=g=>!q||rgName(g).toLowerCase().includes(q);
   if(RG.tab!=="built") for(const g of mineG) if(hit(g)) add(g.id,rgName(g),rhyMeta(g)+" · yours · "+g.rows.map(r=>dgInstName(r.set).toLowerCase()).join(" + "),true);
   if(RG.tab==="mine"&&!mineG.length) L.insertAdjacentHTML("beforeend",'<div class="hint rgnote">None of your own yet — '+(RG.nm?"\uFF0B New groove makes one.":"make one in Drum Grooves.")+'</div>');
@@ -17487,7 +17534,7 @@ function bassPlanAt(b0,ent,m){
 function bassStyleEl(nm){
   const sec=piece.sections[nm], cur=(sec&&sec.bassStyle)||"", el=document.createElement("span"); el.className="bstyle";   // "" = Piece (the menu's)
   el.innerHTML='<span class="bstyle-l">Bass</span><span class="pal bwsw">'
-    +[["","Piece"]].concat(BASS_STYLES).map(([k,l])=>'<button class="bwseg'+(k===cur?" on":"")+'" data-bs="'+k+'"'
+    +[["","Piece"]].concat(BASS_STYLES.filter(([y])=>edKeep("bass",y)===y)).map(([k,l])=>'<button class="bwseg'+(k===cur?" on":"")+'" data-bs="'+k+'"'
       +(k?"":' title="The style chosen in the bass button\u2019s menu: '+bassStyleName(bassPieceStyle())+'"')+'>'+l+'</button>').join("")+'</span>';
   el.addEventListener("pointerdown",e=>e.stopPropagation());
   el.addEventListener("click",e=>{ e.stopPropagation();
@@ -17504,9 +17551,9 @@ function bassStyleEl(nm){
    switch (temporary) plays the menu's style in every bar, written ones included. */
 var BASSROOM="root", BASSOV=false;
 function bassInRoom(){ try{ return !!(jamOn||cpOn); }catch(e){ return false; } }   // jamOn is a let further down: a read before its line throws
-function bassPieceStyle(){ return bassInRoom()?(BASSROOM||"root"):((piece&&piece.bassStyle)||"root"); }
+function bassPieceStyle(){ return edKeep("bass",bassInRoom()?(BASSROOM||"root"):((piece&&piece.bassStyle)||"root")); }   /* a limited bass keeps its styles (patches/editions-limits-free.py) */
 function bassStyleFor(sec,bi){ const b=sec&&bi!=null&&sec.styb&&sec.styb.bass&&sec.styb.bass[bi];   // the bar's own, a loop's (30 Sep 2026)
-  return BASSOV?bassPieceStyle():((b&&b.y)||(sec&&sec.bassStyle)||bassPieceStyle()); }
+  return edKeep("bass",BASSOV?bassPieceStyle():((b&&b.y)||(sec&&sec.bassStyle)||bassPieceStyle())); }
 function bassPieceHasOwn(){
   if(bassInRoom()||!piece||!piece.sections) return false;
   return Object.values(piece.sections).some(s=>s&&(bassOf(s).length||s.bassStyle));
@@ -17528,7 +17575,8 @@ function bassStyleMenuInner(){
     +BASS_GROUPS.map(([g,l])=>'<button class="bwseg'+(g===open?" on":"")+'" data-bgg="'+g+'"'+(lock?" disabled":"")+'>'+l+'</button>').join("")+'</div>'
     +BASS_GROUPS.map(([g,l,ps])=>'<div data-bgb="'+g+'"'+(g===open?'':' hidden')+'><div class="ttl">Variation</div><div class="bsgrid'+(lock?" locked":"")+'">'
       +ps.map(([k,l2])=>'<button class="bwseg'+(k===cur?" on":"")+'" data-bms="'+k+'"'+(lock?" disabled":"")+'>'+l2+'</button>').join("")+'</div></div>').join("");
-  if(own) h+='<div class="bsov"><span>Override the piece’s bass for now</span><span class="pal bwsw"><button class="bwseg'+(BASSOV?"":" on")+'" data-bov="0">Off</button>'
+  if(edList("bass")) h='';   /* a limited bass: no Style section (patches/editions-limits-free.py) */
+  else if(own) h+='<div class="bsov"><span>Override the piece’s bass for now</span><span class="pal bwsw"><button class="bwseg'+(BASSOV?"":" on")+'" data-bov="0">Off</button>'
     +'<button class="bwseg'+(BASSOV?" on":"")+'" data-bov="1">On</button></span></div>'
     +'<div class="note">'+(BASSOV?"This style plays every bar for now — the piece is unchanged.":"This piece has its own bass in the editor.")+'</div>';
   { const none=BASS_PU_NONE.has(cur), wk=cur==="walk";   /* the Pickup (patches/bass-pickup.py) */
@@ -17980,7 +18028,7 @@ function wtHear(k){ const P=wtAtCur(k), x=P.here||P.auto; if(!x||x.f==="rest") r
 /* THE STYLE ROW (David, 30 Sep 2026; patches/wt-table-styles.py): the menu's styles for the table, or for the bars of the
    loop - grouped as the menu groups them; a group opens its patterns and chooses nothing */
 function wtStyleTree(k){
-  if(k==="bass") return BASS_STYLES.map(([y,l])=>[y,l,null]);
+  if(k==="bass") return BASS_STYLES.filter(([y])=>edKeep("bass",y)===y).map(([y,l])=>[y,l,null]);
   if(k==="syn") return SYN_STYLES.map(([y,l])=>[y,l,null]);
   if(k==="pno") return PNO_GROUPS.map(([g,l,ch])=>[g,l,ch?ch.map(([y,cl])=>[y,null,cl]):null]);
   return GTR_CATS.map(([c,l])=>["g"+c,l,GTR_ITEMS[c].map(([lab,y,p])=>[y,p==null?null:p,lab])]); }   /* the menu's categories (patches/guitar-categories.py) */
@@ -18620,7 +18668,7 @@ const KIT_GROOVES=[
 ];
 const KIT_PC={bd:"kick",sn:"snare",rs:"rimshot",ss:"sidestick",hh:"hh_closed",hf:"hh_half",ho:"hh_open",hp:"hh_pedal",rd:"ride",rb:"ride_bell",cr:"crash",tl:"tom_low",th:"tom_high",cp:"clap",pc:"perc",b8:"bass808"};   // the electronic kits' pieces (patches/kit-electronic.py)
 kitMineLoad();   // your own drum grooves join the library as the family Yours (patches/drum-editor.py)
-const KIT_V={g:0.24,x:0.64,X:0.94}, KIT_PK=0.55*Math.pow(10,-2/20), KIT_AC=Math.pow(10,2/20);   /* KIT_AC: the acoustic kit +2 dB (David, 6 Oct 2026: "the acoustic drum kit can be a little louder" - "the drum raise only for the acoustic kit") */   /* -2 dB of the cut to 40% before the compressor (David, 5 Oct 2026) */   /* into the gentle compressor (patches/kit-bus-gentle.py) */   /* +6 dB (David, 4 Oct 2026: "the drums need to be louder") */   // a stroke's strength; one stroke at full strength, volume 100 (the mix's loudest sample is at -1 dBFS)
+const KIT_V={g:0.24,x:0.64,X:0.94}, KIT_PK=0.55*Math.pow(10,-2/20)*1.44,   /* x1.44: the drums' 100% is what 120% was - the slider squared (David, 6 Oct 2026) */ KIT_AC=Math.pow(10,2/20);   /* KIT_AC: the acoustic kit +2 dB (David, 6 Oct 2026: "the acoustic drum kit can be a little louder" - "the drum raise only for the acoustic kit") */   /* -2 dB of the cut to 40% before the compressor (David, 5 Oct 2026) */   /* into the gentle compressor (patches/kit-bus-gentle.py) */   /* +6 dB (David, 4 Oct 2026: "the drums need to be louder") */   // a stroke's strength; one stroke at full strength, volume 100 (the mix's loudest sample is at -1 dBFS)
 /* A STROKE'S STRENGTH IS A LOUDNESS, not a level number: the recordings' levels lie far apart and unevenly (the snare's six
    span 34 dB, the closed hat's top two 13), so a stroke aims at a loudness under its piece's loudest - an accent at it, a
    normal stroke 5 dB under, a ghost 16 under - takes the level whose loudness (RMS of its first 150 ms, measured as it
@@ -18662,7 +18710,7 @@ function kitGrooveEl(nm){
 /* the samples: map.json names the pieces, their levels and variations; KIT.buf[mix][piece][level][variation] */
 const KIT={raw:{},dec:{},buf:{},play:null,rr:{},hho:null};
 function kitURL(f){ const b=document.querySelector('script[src*="bank.js"]'); const src=b?b.getAttribute("src"):"bank.js";
-  return src.replace(/bank\.js(\?.*)?$/,"drumkit/"+f+"?v=20261006c"); }   /* the samples' version: bump when drumkit/ changes (patches/kit-choices.py) */
+  return src.replace(/bank\.js(\?.*)?$/,"drumkit/"+f+"?v=20261006d"); }   /* the samples' version: bump when drumkit/ changes (patches/kit-choices.py) */
 function kitFetch(mix){
   if(kitIsMine(mix)) return Promise.all(kitSources(mix).map(kitFetch));   // yours: the folders they name (patches/kit-custom.py)
   if(mix==="snares"&&!KIT.raw.snares){ KIT.raw.snares=fetch(kitURL("snares/map.json")).then(r=>{ if(!r.ok) throw new Error("snares: "+r.status); return r.json(); })
@@ -33339,9 +33387,9 @@ function edPopAt(x,y){
     const ownName=tAt>=0?edChordNameAt(bi,tAt):null;
     /* the phone's card has three buttons to a line, so the chord's name is the
        label there — "Chord · Fmaj" — rather than a sentence cut short */
-    mk(ownName?(PHONE&&!TABLET?"Chord · "+ownName:"Change chord — "+ownName):"Set chord…",
+    if(!edList("chordnames")){ mk(ownName?(PHONE&&!TABLET?"Chord · "+ownName:"Change chord — "+ownName):"Set chord…",
       ()=>edOpenChordPick(bi,tAt), bi>=0&&tAt>=0,
-      "Press inside a bar");
+      "Press inside a bar"); }   /* no chord set by hand in a limited edition (patches/editions-limits-free.py) */
   }
   // a loop of whole bars can be removed as one (David, 27 Aug) — only when it
   // sits ON the barlines, since half a bar is not a bar to delete; a
@@ -34161,7 +34209,7 @@ function tagsForApp(){ const d=tagDraft(), out=[];
 
 function libFavs(){ try{ return new Set(JSON.parse(localStorage.getItem("hps.favPieces")||"[]")); }catch(e){ return new Set(); } }
 function libKey(p){ return p._saved?"saved:"+(p.title||"Untitled"):p.id; }
-function libPieces(){ return (allowed("others")?DEMOS:DEMOS.filter(p=>p.course||p.collection)).filter(p=>!p.course||allowed("coursepieces")).concat(   /* the test version's library is the courses and the collections (David, 20 Sep) — a curtain: the pieces are still in the file */savedPieces().map((p,i)=>Object.assign({},p,{_saved:true,_i:i}))); }
+function libPieces(){ return (allowed("others")?DEMOS:DEMOS.filter(p=>p.course||p.collection)).filter(p=>!p.course||allowed("coursepieces")).filter(edLibOk).concat(   /* the test version's library is the courses and the collections (David, 20 Sep) — a curtain: the pieces are still in the file */savedPieces().map((p,i)=>Object.assign({},p,{_saved:true,_i:i}))); }
 function libFolders(){
   const all=libPieces(), fav=libFavs();
   const courses=[...new Set(all.filter(p=>p.course).map(p=>p.course))].sort();
@@ -34484,6 +34532,7 @@ const JAMPATS=[
  {id:"mg33",name:"Upwards motion",cats:["arp"],meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","R"],[1,"g","L"],[2,"3","R"],[3,"5","L"],[4,"1","R"],[5,"g","L"],[6,"3","R"],[7,"7","L"],[8,"3","R"],[9,"g","L"],[10,"5","R"],[11,"9","L"],[12,"3","R"],[13,"g","L"],[14,"5","R"],[15,"11","L"]]},
 ];
+{ const L=edList("jam"); if(Array.isArray(L)&&L.length){ for(let i=JAMPATS.length-1;i>=0;i--){ if(!L.includes(JAMPATS[i].id)) JAMPATS.splice(i,1); } } }   /* a limited jam keeps its grooves (patches/editions-limits-free.py) */
 
 let jamOn=false, jamPrev=null, jamEditSlot=-1, jam=null, jamSugOn=false;
 /* The transposition report can be dismissed and stays dismissed until the
@@ -37070,6 +37119,7 @@ function repertoireKeep(p){
   if(!p.writtenFor&&myPanId) p.writtenFor=myPanId;
   { const s=panSpecFor(p.writtenFor); if(s) p.panSpec=s; }   // a piece carries its pan
   const l=savedPieces(), i=l.findIndex(x=>x.id===p.id);
+  if(i<0&&!edSaveRoom(l)) return;   /* a limited edition's room (patches/editions-limits-free.py) */
   if(i>=0) l[i]=p; else l.push(p);
   setSaved(l); try{ renderLib(); }catch(e){}
   toast("Saved to Library: "+p.title);
@@ -38165,7 +38215,7 @@ const QTIMES=[5,10,20,0];      // 0 = no timer: the student reveals by hand
    directions: "find" names a chord and the student finds it, "name" plays a
    chord and the student names it. Everything else — the pool, the chord
    types, the clock, the round length, the summary — is shared. */
-let qcfg={src:"pan",level:"triads",time:10,len:10,mode:"tap",listen:false,
+let qcfg={src:"pan",level:"triads",time:10,len:10,mode:"tap",listen:false,labels:"note",
           kind:"find",opts:4,voicing:"full",play:"arp",preset:"normal"};
 /* PRESETS, AND A DOOR TO THE REST (David, 1 Sep: "the user should not be
    greeted by a wall of parameters" — a Normal preset, a Challenging one, and
@@ -38178,8 +38228,8 @@ let qcfg={src:"pan",level:"triads",time:10,len:10,mode:"tap",listen:false,
    value from an old Customise cannot leak into it; what the student set in
    Customise is kept aside in `custom` and comes back when they return. */
 const QPRESETS={
-  normal:   {src:"pan",level:"triads",voicing:"full",opts:4,len:10,time:20,play:"arp",mode:"tap"},
-  challenge:{src:"pan",level:"9th",   voicing:"full",opts:6,len:10,time:20,play:"arp",mode:"tap"}};
+  normal:   {src:"pan",level:"triads",voicing:"full",opts:4,len:10,time:20,play:"arp",mode:"tap",labels:"note"},
+  challenge:{src:"pan",level:"9th",   voicing:"full",opts:6,len:10,time:20,play:"arp",mode:"tap",labels:"num"}};
 const QPRESET_KEYS=Object.keys(QPRESETS.normal);
 function qzApplyPreset(){
   const P=QPRESETS[qcfg.preset]; if(!P) return;
@@ -38205,6 +38255,7 @@ function qzLoadCfg(){
   if(qcfg.voicing!=="full"&&qcfg.voicing!=="varied") qcfg.voicing="full";
   if(qcfg.play!=="arp"&&qcfg.play!=="block") qcfg.play="arp";
   if(!["normal","challenge","custom"].includes(qcfg.preset)) qcfg.preset="normal";
+  if(qcfg.labels!=="note"&&qcfg.labels!=="num") qcfg.labels="note";
   qcfg.listen=!!qcfg.listen&&!PHONE&&listenEnabled();          // the find quiz by ear (4 Sep): the desktop's, outside the presets
   qzApplyPreset();
 }
@@ -38228,7 +38279,10 @@ function qzHeard(midis){
     const g=pan.querySelector('.pvf[data-f="'+f+'"]'); if(g) qzTapField(pan,g,true);
   }
 }
-const qzKind=()=>qcfg.kind==="name"?"name":"find";
+const qzKind=()=>edKeep("quiz",qcfg.kind==="name"?"name":"find");   /* a limited quiz (patches/editions-limits-free.py) */
+/* THE FIND QUIZ SETS THE PAN'S LABELS (David, 6 Oct 2026; patches/quiz-pan-labels.py): Normal note names, Challenging
+   tone fields, Customise a switch. Borrowed for the quiz's drawing only - panLabels, the pan tab's, is never written. */
+const qzLabels=()=>qzKind()==="find"?(qcfg.labels==="num"?"num":"note"):panLabels;
 function qzSaveCfg(){ try{ localStorage.setItem("hps.quiz",JSON.stringify(qcfg)); }catch(e){} }
 
 /* ---- memory (David: "memory") ----
@@ -38863,6 +38917,11 @@ function renderQuizSetup(){
       if(v==="hands"&&!qcfg.time) qcfg.time=10;
       set("mode",v);
     });
+  if(!naming)
+    qzChipRow(round,"Labels on the pan",[
+      {id:"note",label:"Note names",why:"Note names big, the tone-field numbers small under them"},
+      {id:"num",label:"Tone fields",why:"Tone-field numbers only while you search; the note names come with the answer"}
+    ],qcfg.labels,v=>set("labels",v));
   if(naming)
     qzChipRow(round,"Answers offered",
       QOPTS.map(n=>({id:n,label:String(n)})),qcfg.opts,v=>set("opts",v));
@@ -39082,11 +39141,11 @@ function renderQuiz(){
      the student had earned popped in again with their entry animation. The
      question's own drawing now STAYS and only its state changes. */
   const pan=$("quizpan");
-  const qk=QZ.i+"|"+def.name;
+  const qk=QZ.i+"|"+def.name+"|"+qzLabels();
   const fresh=pan.dataset.qk!==qk||!pan.querySelector("svg");
   if(fresh){
     pan.dataset.qk=qk;
-    pan.innerHTML=panViewSVG(myPan,"");
+    { const was=panLabels; try{ panLabels=qzLabels(); pan.innerHTML=panViewSVG(myPan,""); }finally{ panLabels=was; } }
     // ids would collide with the pan PANEL's identical drawing, so this copy
     // carries none — everything here is found through data-f
     pan.querySelectorAll("[id]").forEach(el=>{
@@ -39106,6 +39165,7 @@ function renderQuiz(){
        : "Your pan — the numbers are there, the note names are hidden while you search")
     : def.name+" on your pan");
   pan.classList.toggle("searching",searching);
+  pan.classList.toggle("qnames",qzKind()==="find"&&qzLabels()==="note");
   pan.classList.toggle("tapping",searching&&!naming&&qcfg.mode==="tap"&&!qcfg.listen);
   pan.querySelectorAll(".pvf.clit").forEach(g=>g.classList.remove("clit"));
   if(!searching)
@@ -45540,6 +45600,7 @@ function leaveLearn(){
 }
 function enterQuiz(kind){
   if(!allowed("quiz")||(qcfg.listen&&!allowed("quizlisten"))) return;   /* a DOOR (patches/editions-practice.py) */
+  if(kind&&edKeep("quiz",kind)!==kind) return;   /* a DOOR: a limited quiz (patches/editions-limits-free.py) */
   if(!allowed("learn")) return;   /* a DOOR (TEST-VERSION.md): the buttons are not the only way in */
   if(quizOn) return;
   roomBack("quiz",()=>leaveQuiz());
@@ -47085,6 +47146,7 @@ function renderRQSum(complete){
 /* ---- entering and leaving, mirroring the chord quiz exactly -------------- */
 function enterRhythmQuiz(){
   if(!allowed("quiz")) return;   /* a DOOR (patches/editions-practice.py) */
+  if(edKeep("quiz","rhythm")!=="rhythm") return;   /* a DOOR: a limited quiz (patches/editions-limits-free.py) */
   if(!allowed("learn")) return;   /* a DOOR (TEST-VERSION.md): the buttons are not the only way in */
   if(!rqOn) roomBack("rquiz",()=>leaveRhythmQuiz());
   if(rqOn) return;
@@ -47666,6 +47728,7 @@ function savePieceToLibrary(){
   titleFromField();
   const l=savedPieces();
   const i=l.findIndex(x=>x.id===piece.id&&x.title===piece.title);
+  if(i<0&&!edSaveRoom(l)) return;   /* a limited edition's room (patches/editions-limits-free.py) */
   if(i>=0) l[i]=piece; else l.push(JSON.parse(JSON.stringify(piece)));
   setSaved(l);
   toast("Saved to library");
@@ -48682,6 +48745,7 @@ function ppRow(p,scaleKey){
 }
 function choosePan(id){
   id=panIdIn(id);
+  if(!edPanOk(allPans().find(p=>p.id===id))) return;   /* a DOOR: a limited pan library (patches/editions-limits-free.py) */
   const wasPan=myPan, wasId=myPanId;
   myPanId=id;
   /* the setup cards read the pan (their chords, their head's name): redraw
@@ -48775,7 +48839,8 @@ function renderPanPick(){
   L.innerHTML="";
   $("ppLib").setAttribute("aria-pressed",ppView==="lib");
   $("ppMine").setAttribute("aria-pressed",ppView==="mine");
-  $("ppFilters").classList.toggle("hidden",ppView!=="lib");
+  if(edList("panlib")) ppTier="all";   /* a limited library is short: no filters (patches/editions-limits-free.py) */
+  $("ppFilters").classList.toggle("hidden",ppView!=="lib"||!!edList("panlib"));
   $("ppFav").setAttribute("aria-pressed",ppTier==="fav");
   $("ppCommon").setAttribute("aria-pressed",ppTier==="common");
   $("ppRare").setAttribute("aria-pressed",ppTier==="rare");
@@ -48811,6 +48876,7 @@ function renderPanPick(){
      by default) — so a scale never repeats down the list at four sizes */
   const seen=new Set(), byFam={};
   for(const p of BUILTIN_PANS){
+    if(!edPanOk(p)) continue;   /* a limited pan library (patches/editions-limits-free.py) */
     /* "All" is one list, not a third category — the same family headings, with
        the common scales simply not filtered out (David, 28 Aug: the row had
        the width for it once the builds moved onto the chips). */
@@ -48956,12 +49022,12 @@ function openPanBrowse(curId,go){
    what the full-screen pan's ‹ › walk. The same keys renderPanPick groups by. */
 function ppOrder(){
   const byFam={}, seen=new Set(), out=[];
-  for(const p of BUILTIN_PANS){ if(seen.has(p.scale)) continue; seen.add(p.scale); (byFam[p.fam]=byFam[p.fam]||[]).push(p.scale); }
+  for(const p of BUILTIN_PANS){ if(seen.has(p.scale)||!edPanOk(p)) continue; seen.add(p.scale); (byFam[p.fam]=byFam[p.fam]||[]).push(p.scale); }
   for(const fam of FAM_ORDER)
     for(const s of (byFam[fam]||[]).slice().sort((a,b)=>ppBuildsOf(a)[0].name.localeCompare(ppBuildsOf(b)[0].name)))
       out.push(...ppBuildsOf(s));
   const has=new Set(out.map(p=>p.id));
-  for(const p of allPans()) if(!has.has(p.id)) out.push(p);   // the student's own, and anything no family claims
+  for(const p of allPans()) if(!has.has(p.id)&&edPanOk(p)) out.push(p);   // the student's own, and anything no family claims
   return out;
 }
 function openPanPick(fromDoor){
@@ -49489,6 +49555,7 @@ function edWriteChord(bi,t,name){
   toast(name?("Chord written: "+name):"Chord cleared — the app reads it from the notes again");
 }
 function edOpenChordPick(bi,t){
+  if(edList("chordnames")) return;   /* a DOOR: no chord set by hand (patches/editions-limits-free.py) */
   scdAt={bi,t};
   const cur=edChordNameAt(bi,t), host=$("scdList");
   const m=SM(piece,viewSec);
@@ -51350,6 +51417,7 @@ function boot(){
     titleFromField();
     const l=savedPieces();
     const i=l.findIndex(x=>x.id===piece.id&&x.title===piece.title);
+    if(i<0&&!edSaveRoom(l)) return;   /* a limited edition's room (patches/editions-limits-free.py) */
     if(i>=0)l[i]=piece; else l.push(JSON.parse(JSON.stringify(piece)));
     setSaved(l); renderLib();
     $("shareDlg").close(); toast("Saved: "+(piece.title||"Untitled"));
@@ -51466,6 +51534,7 @@ function boot(){
     // while the quiz borrows the title slot the input is NOT the piece's name
     const l=savedPieces(); titleFromField();
     const i=l.findIndex(x=>x.id===piece.id&&x.title===piece.title);
+    if(i<0&&!edSaveRoom(l)) return;   /* a limited edition's room (patches/editions-limits-free.py) */
     if(i>=0)l[i]=piece; else l.push(JSON.parse(JSON.stringify(piece)));
     setSaved(l); renderLib(); toast("Saved"); });
   /* NEW PIECE (26 Aug, David: "with time-signature selection") — one dialog,
@@ -51604,13 +51673,13 @@ function boot(){
   let p0=null;
   if(location.hash.startsWith("#p=")) p0=pieceFromText(location.hash.slice(3));
   if(!p0&&WANT_PIECE){
-    const w=DEMOS.find(p=>p.id===WANT_PIECE&&(allowed("others")||p.course||p.collection)&&(!p.course||allowed("coursepieces")));   // …and a ?piece= link cannot name what the library does not show
+    const w=DEMOS.find(p=>p.id===WANT_PIECE&&(allowed("others")||p.course||p.collection)&&(!p.course||allowed("coursepieces"))&&edLibOk(p));   // …and a ?piece= link cannot name what the library does not show
     if(w) p0=w; else toast("No built-in piece called \""+WANT_PIECE+"\"");
   }
   /* a LINK or ?piece= is a door the student came through, so its pan follows;
      the default demo is the app opening itself and moves nobody's instrument */
   if(p0) openPiece(p0);
-  else loadPiece(DEMOS.find(p=>p.id==="composition-2")||DEMOS[0]);
+  else loadPiece(DEMOS.find(p=>p.id==="composition-2"&&edLibOk(p))||DEMOS.find(edLibOk)||DEMOS[0]);   /* the opening piece keeps to a limited library (patches/editions-limits-free.py) */
   restoreSession();
   try{ ensureCtx(); preloadBank(); }catch(e){}   // warm the bank before the first tap
 }
