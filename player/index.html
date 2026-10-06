@@ -5115,7 +5115,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
 
 <dialog id="loopNoDlg">
   <h3>Loop not available</h3>
-  <p class="hint">Looping is off while the notation is synced to the video &mdash; the recording is the clock. Turn Follow video off to loop a bar.</p>
+  <p class="hint">While you follow the video with its own sound, the recording is the clock. Turn the player&rsquo;s sound on, or Follow video off, to loop a passage.</p>
   <label class="dlgask"><input type="checkbox" id="lnNever"> Don&rsquo;t warn me again</label>
   <div class="row"><button class="ctl on" id="lnOk">Got it</button></div>
 </dialog>
@@ -6758,7 +6758,7 @@ function goTo(from,to){
   if(to!=null) mapShowSpan(from,to);
 }
 
-function effBpm(){ return halfSpeed?bpm/2:bpm; }
+function effBpm(){ if(folL&&folL.lock) return folL.lock; return halfSpeed?bpm/2:bpm; }    
 
 
 function pulseDurOf(pi){ return 60/effBpm()/secOfPulse(pi).sub*(4/(piece.unit||4)); }
@@ -7190,7 +7190,7 @@ function tick(){
 async function togglePlay(){
   if(lsOn){ lsPause(!lsPaused); return; }          
    
-  if(follow){
+  if(follow&&!folL){
     const v=$("vidEl");
     if(v&&v.src){ if(v.paused) v.play().catch(()=>{}); else v.pause(); return; }
     
@@ -7329,6 +7329,7 @@ async function start(){
     : ((pendingStart!=null ? pendingStart : tableTop));
   pendingStart=null; navSeek=false; lastPaint=-1; fired=[]; jamRestartDue=null;
   playing=true; timer=setInterval(sched,60); sched();
+  if(folL) folStart(t0);              
   startSchedClock();                  
   watchAudioInterruption();           
   raf=requestAnimationFrame(tick);
@@ -7384,6 +7385,7 @@ function stop(){
   if(typeof jamPreviewStop==="function") jamPreviewStop();
   if(typeof libPreviewStop==="function") libPreviewStop();
   playing=false; clearInterval(timer); cancelAnimationFrame(raf);
+  if(folL){ clearTimeout(folL.playT); folCtl("pause"); }    
   stopSchedClock();
   if(!loopSec&&lastPaint>=0) pendingStart=lastPaint;   
   const now=ctx?ctx.currentTime:0;
@@ -8069,6 +8071,7 @@ function paintTips(){
 
 function hasVideo(){ return !!$("vidEl").src || videoT!=null; }
 function updateScoreTools(){
+  folSync();                                      
   const v=hasVideo(), fb=$("followBtn"), fm=$("folMute"), lb=$("loopBtn");
   fb.classList.toggle("hidden",!v);
   fm.classList.toggle("hidden",!v);
@@ -8647,7 +8650,7 @@ let panMutedT=null;
 
 
 function halfVideo(){
-  if(!bridgeRate) return;
+  if(!bridgeRate||folL) return;        
   const want=follow&&halfSpeed, has=halfPrevRate!=null;
   const post=r=>{ try{ window.parent.postMessage({type:"hps-video-ctl",action:"rate",rate:r},"*"); }catch(e){} };
   if(want&&!has){ halfPrevRate=(vRate>0.05&&Math.abs(vRate-0.5)>0.01)?vRate:1; post(0.5); }
@@ -8696,7 +8699,7 @@ function seekToPulse(p,nav){
       if(sm&&sm.sub>0){ const rb=rel%sm.bp; p=sSec.pulse+(rel-rb)+cellAt(sm,rb).start; } }    
   }
   viewPin=null;           
-  if(follow&&piece.syncMap&&piece.syncMap.length>=2){
+  if(follow&&!folL&&piece.syncMap&&piece.syncMap.length>=2){
     const vt=invMap(p);
     
 
@@ -8942,7 +8945,7 @@ function onVideoTime(t,rate){
   
 
   if(vStopped) stopN++; else stopN=0;
-  if(stopN===(vidState!=null?1:2)) followHush(vidState!=null||selfPaused);
+  if(stopN===(vidState!=null?1:2)&&!folL) followHush(vidState!=null||selfPaused);
   vStillWas=vStill; vStoppedWas=vStopped;
   if(ctx&&!vStill){
     const b=t-vRate*ctx.currentTime;
@@ -8991,8 +8994,9 @@ function onVideoTime(t,rate){
       try{ if(d&&!d.open) openDlg(d); }catch(e){} }
   }
   if(vidMuted!=null) vidMutedWas=vidMuted;
+  if(follow||folL) folReport(t);        
   { const vs=fmtT(t); if(vs!==vtimeStr){ vtimeStr=vs; $("vtime").textContent=vs; } }
-  if(follow&&!playing){
+  if(follow&&!playing&&!folL){
     const p=mapPulse(t);
     if(p!=null){ if(!C) C=compile(piece); followTick(t,p); }
   }
@@ -9013,7 +9017,124 @@ function onVideoTime(t,rate){
 }
 
 
-function loopAllowed(){ return !follow; }
+function loopAllowed(){ return !follow||(!followMuted&&vidMuted!==false&&!!(piece&&piece.syncMap&&piece.syncMap.length>=2)); }    
+var folL=null, folBusy=false;
+var FOL_OFF=0.08, FOL_GAP=700;                 
+function folVidRate(){                          
+  const v=vRate>0.05?vRate:1;                    
+  return [0.25,0.5,0.75,1,1.25,1.5,1.75,2].reduce((a,b)=>Math.abs(b-v)<Math.abs(a-v)?b:a);
+}
+function folCanRate(){ const v=$("vidEl"); return !!(v&&v.src)||bridgeRate; }
+function folCtl(a){                              
+  const v=$("vidEl"); if(folL) folL.cmdAt=performance.now();
+  if(v&&v.src){ try{ a==="play"?v.play().catch(()=>{}):v.pause(); }catch(e){} }
+  else try{ window.parent.postMessage({type:"hps-video-ctl",action:a},"*"); }catch(e){}
+}
+function folRate(r){
+  const v=$("vidEl");
+  if(v&&v.src){ try{ v.playbackRate=r; }catch(e){} }
+  else if(bridgeRate) try{ window.parent.postMessage({type:"hps-video-ctl",action:"rate",rate:r},"*"); }catch(e){}
+}
+function folMeasure(L){                          
+  if(!C) C=compile(piece);
+  const a=piece.syncMap, vS=invMap(loopSec.from), vE=invMap(loopSec.to);
+  if(!a||a.length<2||vS==null||vE==null||!(vE-vS>0.15)) return false;
+  const cum=[0]; let S=0;
+  for(let p=loopSec.from;p<loopSec.to;p++){ S+=pulseDurOf(p); cum.push(S); }
+  if(!(S>0)) return false;
+  const pass=S*effBpm()/(vE-vS);                 
+  Object.assign(L,{key:loopSec.from+"-"+loopSec.to,from:loopSec.from,to:loopSec.to,vS,vE,D:vE-vS,
+    cum:cum.map(x=>x/S),pass});
+  return true;
+}
+function folBegin(){
+  const L={lead:0.25,seekAt:0,cmdAt:0,rateSent:null,learn:false,lastT:null,heldSince:null,told:false,
+    bpm0:bpm,base:halfPrevRate!=null?halfPrevRate:folVidRate()};
+  if(!folMeasure(L)){ loopSec=null; paintLoopFrame(); toast("This passage isn't in the video's timing"); return; }
+  folL=L;
+  if(folCanRate()) setTempo(L.pass);             
+  else { L.lock=L.pass*folVidRate(); setTempo(L.lock); }    
+  L.bpmAt=bpm; L.halfAt=halfSpeed;
+  L.cmdAt=performance.now();
+  if(vidPlaying&&!playing){ followHush(true); start(); }          
+  toast("Loop on — the video follows the player");
+}
+function folEnd(){
+  const L=folL; folL=null; if(!L) return;
+  clearTimeout(L.playT);
+  if(folCanRate()){                              
+    if(follow&&halfSpeed){ halfPrevRate=L.base; folRate(0.5); }
+    else { halfPrevRate=null; folRate(L.base); }
+  }
+  if(follow){                                    
+    if(playing) stop();
+    setTempo(L.bpm0);
+    vOff=null; vCursor=null; vRefT=null; vRefA=null; vLastA=null; vRateM=null;
+    startFollowPaint(); updatePlayBtn();
+  } else folCtl("pause");                        
+}
+function folSync(){
+  if(folBusy) return; folBusy=true;
+  try{
+    if(!piece) return;
+    if(follow&&loopSec&&(followMuted||vidMuted===false)){    
+      loopSec=null; folEnd(); paintLoopFrame(); toast("Loop off — the video's sound is on"); return;
+    }
+    const want=follow&&!!loopSec&&!piece.loopFixed;
+    if(folL&&!want) folEnd();
+    else if(want&&!folL) folBegin();
+    else if(want&&folL&&folL.key!==loopSec.from+"-"+loopSec.to){    
+      const r=bpm/(folL.lock||folL.pass), was=folL.pass;
+      if(!folMeasure(folL)){ loopSec=null; folEnd(); paintLoopFrame(); toast("This passage isn't in the video's timing"); return; }
+      if(folL.lock) folL.lock*=folL.pass/was;
+      setTempo((folL.lock||folL.pass)*r); folL.bpmAt=bpm;
+    }
+  } finally { folBusy=false; }
+}
+function folStart(t0){                           
+  const L=folL; if(!L||!ctx) return;
+  folCtl("pause"); videoSeek(L.vS);
+  const ms=Math.max(0,(t0-ctx.currentTime-L.lead)*1000);
+  L.seekAt=performance.now(); L.cmdAt=L.seekAt+ms; L.learn=true; L.heldSince=null;
+  clearTimeout(L.playT);
+  L.playT=setTimeout(()=>{ if(folL===L&&playing){ folCtl("play"); L.cmdAt=performance.now(); } },ms);
+}
+function folPassX(){                             
+  const L=folL, now=ctx.currentTime-(ctx.outputLatency||0);
+  for(let i=fired.length-1;i>=0;i--){ const f=fired[i]; if(f.at>now) continue;
+    if(f.pi<L.from||f.pi>=L.to) return null;
+    const r=effBpm()/L.pass;                     
+    return {x:Math.min(L.D,L.cum[f.pi-L.from]*L.D+(now-f.at)*r),r};
+  }
+  return null;
+}
+function folReport(t){                           
+  folSync();
+  const L=folL; if(!L) return;
+  const now=performance.now(), can=folCanRate();
+  if(can){ const want=Math.max(0.5,Math.min(2,effBpm()/L.pass));    
+    if(L.rateSent==null||Math.abs(want-L.rateSent)>0.003){ folRate(want); L.rateSent=want; } }
+  else if(!L.told&&(bpm!==L.bpmAt||halfSpeed!==L.halfAt)){ L.told=true;
+    toast("This lesson page can't change the video's speed — the loop keeps the video's tempo"); }
+  const moving=L.lastT!=null&&t>L.lastT; L.lastT=t;
+   
+  if(vidState!=null&&now-L.cmdAt>1500&&now-L.seekAt>1000&&vidState!==playing){
+    if(L.heldSince==null) L.heldSince=now;
+    else if(now-L.heldSince>400){ L.heldSince=null; L.cmdAt=now; if(vidState) start(); else stop(); return; }
+  } else L.heldSince=null;
+  if(!playing||!ctx||vidState===false) return;     
+  const ps=folPassX(); if(!ps) return;
+  const vr=can?(L.rateSent||1):folVidRate();
+  if(L.learn&&now-L.seekAt>200&&moving&&now>L.cmdAt){    
+    let e=(t-L.vS)-ps.x; if(e>L.D/2) e-=L.D; if(e<-L.D/2) e+=L.D;
+    if(Math.abs(e)<1) L.lead=Math.max(0.05,Math.min(0.8,L.lead-0.6*e/Math.max(vr,0.25)));
+    L.learn=false;
+  }
+  if(now-L.seekAt<FOL_GAP||now<L.cmdAt) return;
+  let xf=ps.x+L.lead*ps.r; xf-=Math.floor(xf/L.D)*L.D;    
+  const target=L.vS+xf, there=t+L.lead*vr;
+  if(Math.abs(there-target)>FOL_OFF){ videoSeek(target); L.seekAt=now; L.learn=true; }
+}
 
 
 function predictedVideoT(){
