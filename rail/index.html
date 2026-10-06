@@ -13356,7 +13356,10 @@ function gtrTuneRow(){ return '<div class="ttl">Tuning</div><div class="pal bwsw
 /* METAL SOUNDS DISTORTED (David: "Switch distortion on as default for metal and choose the distorted guitar sample"):
    into Metal, Distorted 1 and the Drive pedal on (Distorted, unless a drive is on); the sound and drive before are kept
    and come back when a pattern of another category is chosen */
-function gtrMetalSwitch(on,pop){ if(on===gtrIsMetal()) return;
+/* THE METAL SETUP IS HELD while the sound from before it is kept (patches/guitar-rock-hold-di.py): a Metal pattern brings it,
+   moving inside Rock keeps it, another category gives the sound back */
+function gtrMetalHeld(){ try{ return localStorage.getItem("hps.gtrpremetal")!=null; }catch(e){ return gtrIsMetal(); } }
+function gtrMetalSwitch(on,pop){ if(on===gtrMetalHeld()) return;
   if(on){ try{ localStorage.setItem("hps.gtrpremetal",JSON.stringify({snd:gtrSound,drive:gtrFx.drive,fx:Object.assign({},gtrFx)})); }catch(e){}
     const mp=gtrMetalPreset(), ms=mp&&presetTok(mp,"gsnd");   /* as the Metal preset sets the sound and the pedals (patches/guitar-metal-amp.py) */
     gtrSound=GTR_SOUNDS.some(x=>x[0]===ms)?ms:"metal"; for(const [q] of GFX_PEDALS) gtrFx[q]=(mp&&mp[3][q])||"off"; }
@@ -13473,9 +13476,10 @@ function gtrScore(f,root,need,fifth,prev,full,topT){
 /* THE GUITAR'S SOUND (David, 2 Oct 2026; patches/guitar-sound.py): a set is a folder guitar/<id>/ in MF's format - MF
    nylon, and Karoryfer's Black And Green Guitars, two hollowbody electrics (CC0; Black's notes ring 2-3 s, as recorded).
    The guitar plays the chosen set once it is decoded and until then the set it had - never silent, the bass's rule */
-const GTR_SOUNDS=[["mf","Nylon"],["black","Hollow"],["clean","Clean"],["metal","Metal"]];   /* four (David, 3 Oct 2026: "get rid of hollow 2, clean 2, distorted 1 and 2" - "combine the 3 metal options into one"; patches/guitar-sounds-four.py) */   // Clean 2, Distorted 1 and 2: FreePats' Fender, clean amp and the two distortions, CC0 (David, 2 Oct 2026: "add the FreePats clean amp and both distorted version to the app")   // Clean: GeneralUser GS's Clean Guitar, guitar/clean/ (David, 2 Oct 2026: "add the GeneralUser Clean" - "call it Clean")   // Hollow 1 and 2 were Jazz dark, Jazz bright (David, 2 Oct 2026: "rename jazz 1 and 2 to hollow 1 and 2"); the ids stay, so a saved choice carries over
-const GTR_SOUND_WAS={green:"black","fp-clean":"clean","fp-dist1":"metal","fp-dist2":"metal","mt-v30":"metal","mt-rd":"metal","mt-mar":"metal"};   // the sounds that went (3 Oct 2026), and where a stored choice goes
+const GTR_SOUNDS=[["mf","Nylon"],["black","Hollow"],["clean","Clean"],["metal","Metal"]];   /* DI IS CLEAN (David, 6 Oct 2026; patches/guitar-di-is-clean.py): Clean plays METAL-GTX without the amp; the GeneralUser set is gone */   /* four (David, 3 Oct 2026: "get rid of hollow 2, clean 2, distorted 1 and 2" - "combine the 3 metal options into one"; patches/guitar-sounds-four.py) */   // Clean 2, Distorted 1 and 2: FreePats' Fender, clean amp and the two distortions, CC0 (David, 2 Oct 2026: "add the FreePats clean amp and both distorted version to the app")   // Clean: GeneralUser GS's Clean Guitar, guitar/clean/ (David, 2 Oct 2026: "add the GeneralUser Clean" - "call it Clean")   // Hollow 1 and 2 were Jazz dark, Jazz bright (David, 2 Oct 2026: "rename jazz 1 and 2 to hollow 1 and 2"); the ids stay, so a saved choice carries over
+const GTR_SOUND_WAS={di:"clean",green:"black","fp-clean":"clean","fp-dist1":"metal","fp-dist2":"metal","mt-v30":"metal","mt-rd":"metal","mt-mar":"metal"};   // the sounds that went (3 Oct 2026), and where a stored choice goes
 let gtrSound=(function(){ try{ let v=localStorage.getItem("hps.gtrsound"); v=GTR_SOUND_WAS[v]||v; return GTR_SOUNDS.some(x=>x[0]===v)?v:"mf"; }catch(e){ return "mf"; } })();
+let gtrCleanCab=(function(){ try{ const v=localStorage.getItem("hps.gtrcleancab"); return v==="v30"||v==="rd"||v==="mar"?v:"off"; }catch(e){ return "off"; } })();   // Clean's cabinet, Off the DI (patches/guitar-clean-amp.py)
 let gtrCab=(function(){ try{ const v=localStorage.getItem("hps.gtrcab"), w=localStorage.getItem("hps.gtrsound"); return v==="v30"||v==="rd"||v==="mar"?v:w==="mt-rd"?"rd":w==="mt-mar"?"mar":"v30"; }catch(e){ return "v30"; } })();   // Metal's cabinet
 const GTR_RAW={}, GTR_DEC={}, GTR_BUFS={}; let GTR_BUF=null;   // GTR_BUF: the buffers being played
 const GTR_STAC=new Set(["black"]);   // the sets with staccato recordings, stac.json beside map.json (patches/guitar-stac.py)
@@ -13504,7 +13508,8 @@ function gtrOnset(b){ const d=b.getChannelData(0); let pk=0; for(let i=0;i<d.len
   for(let i=0;i<d.length;i++) if(Math.abs(d[i])>0.05*pk) return Math.max(0,i/b.sampleRate-0.002); return 0; }
 function gtrLevel(b,off){ const d=b.getChannelData(0), s0=Math.floor(off*b.sampleRate), n=Math.min(d.length-s0,Math.floor(0.45*b.sampleRate));
   let s=0; for(let i=0;i<n;i++) s+=d[s0+i]*d[s0+i]; return Math.sqrt(s/Math.max(1,n))||1e-4; }
-function gtrReady(kk){ const k=kk||gtrSetOf(gtrSound); if(!kk) gtrAmpLoad();   /* kk: a set loaded beside the one played - Metal's palm mutes (patches/guitar-metal-gtx.py) */
+function gtrReady(kk){ const k=kk||gtrSetOf(gtrSound); if(!kk) gtrAmpLoad();
+  if(!kk&&ctx&&gtrSound==="clean"){ gtrReady("mgtx/pmd"); gtrReady("mgtx/pmu"); }   // Clean's chugs (patches/guitar-rock-hold-di.py)   /* kk: a set loaded beside the one played - Metal's palm mutes (patches/guitar-metal-gtx.py) */
   if(GTR_BUFS[k]){ if(!kk) GTR_BUF=GTR_BUFS[k]; return true; }
   if(ctx&&!GTR_DEC[k]){
     GTR_DEC[k]=gtrFetch(k).then(({map,stac,list})=>Promise.all(list.map(([f,ab])=>new Promise((res,rej)=>ctx.decodeAudioData(ab.slice(0),b=>res([f,b]),rej))))
@@ -13541,7 +13546,7 @@ function gtrStac(n,t){ const B=n.B; if(!ctx||!B||!B.stac||n.at==null||t-n.at>GTR
 /* THE MUTED STROKES (David, 5 Oct 2026: "the muted strokes are too loud for hollow and clean"; patches/guitar-mute-level.py):
    a stroke damped within 60 ms of its start is a mute, and sounds at its sound's trim - a mute as far under an open stroke
    as on Nylon (measured: Nylon 7.1 dB, Clean 5.1, Hollow 0.4 - its staccato takes levelled up to a full note) */
-const GTR_MUTE_TRIM={black:Math.pow(10,-6.7/20),clean:Math.pow(10,-2/20)};
+const GTR_MUTE_TRIM={black:Math.pow(10,-6.7/20)};   // the GeneralUser Clean's -2 dB went with it (patches/guitar-di-is-clean.py)
 function gtrChoke(s,t,tc,re){ const st=GTR.str[s]; if(!st) return; GTR.str[s]=null;   // re: a re-pluck of the string, not a damping
   if(!re) gtrStac(st,t);
   if(!re&&st.pk&&st.at!=null&&t-st.at<0.06){ const k=Object.keys(GTR_BUFS).find(x=>GTR_BUFS[x]===st.B), tr=GTR_MUTE_TRIM[k];
@@ -13656,19 +13661,43 @@ function gtrChordLevel(st,lp){ const R=GTR_RECENT; R.push({st,lp,cut:false}); R.
    up; patches/guitar-metal-gtx.py) - each file's two channels two performances, the left and the right guitar - through one amp (a Tube Screamer as a boost, two gain stages, a tone
    stack, the low resonance, a gate), then a 4x12 cabinet per side, hard left and right */
 const GTR_AMPS={v30:{l:"V30",ir:["v30-sm57-c","v30-sm57-b"]},rd:{l:"Rockdriver",ir:["v30-rdj-blend","v30-dv77-blend"]},mar:{l:"Marshall",ir:["greenback-a","v30-sm57-a"]}};
+/* A CLEAN AMP FOR CLEAN (David, 6 Oct 2026: "please implement the amps straight away"; patches/guitar-clean-amp.py): the DI
+   through a tone stack - no gain stage - into the chosen cabinet's two impulse responses, one per side, hard left and right
+   as Metal's, then the pedals as after Metal's amp; Off is the DI. The level matched to the DI (measured) */
+const GTR_CAMP_TRIM=1.85;
+function gtrCabNow(){ return gtrSound==="clean"?gtrCleanCab:gtrCab; }
+function gtrCleanAmpOn(){ return gtrSound==="clean"&&gtrCleanCab!=="off"; }
+let GTR_CAMP=null;
+function gtrCAmpBuild(ac,k){
+  const biq=(type,f,q,g)=>{ const b=ac.createBiquadFilter(); b.type=type; b.frequency.value=f; if(q!=null) b.Q.value=q; if(g!=null) b.gain.value=g; return b; };
+  const gn=v=>{ const g=ac.createGain(); g.gain.value=v; return g; };
+  const I=GTR_AMPS[k].ir, inp=gn(1), sp=ac.createChannelSplitter(2), mg=ac.createChannelMerger(2), out=gn(GTR_CAMP_TRIM);
+  const L=[inp,biq("highpass",75,0.7),biq("lowshelf",120,0.7,2),biq("peaking",500,0.7,-2),biq("highshelf",3200,0.7,2),sp];   // the tone stack: bass up, mids a little scooped, a touch of sparkle
+  for(let i=0;i<L.length-1;i++) L[i].connect(L[i+1]);
+  const cL=ac.createConvolver(), cR=ac.createConvolver(); cL.buffer=GTR_IR[I[0]].buf; cR.buffer=GTR_IR[I[1]].buf;
+  const gL=gn(GTR_IR_GAIN[I[0]]||1), gR=gn(GTR_IR_GAIN[I[1]]||1);
+  sp.connect(cL,0); sp.connect(cR,1); cL.connect(gL); cR.connect(gR); gL.connect(mg,0,0); gR.connect(mg,0,1);
+  const hp=biq("highpass",70,0.7), lp=biq("lowpass",11000,0.707); mg.connect(hp); hp.connect(lp); lp.connect(out);
+  return {ctx:ac,inp,out,k}; }
+function gtrCAmp(){ if(!gtrCleanAmpOn()) return null; const k=gtrCleanCab;   // the clean amp in this context, or null while its cabinet loads (the DI plays)
+  if(!GTR_AMPS[k].ir.every(n=>GTR_IR[n]&&GTR_IR[n].ctx===ctx)) return null;
+  if(GTR_CAMP&&GTR_CAMP.ctx===ctx&&GTR_CAMP.k===k) return GTR_CAMP;
+  if(GTR_CAMP&&GTR_CAMP.ctx===ctx){ try{ GTR_CAMP.out.disconnect(); }catch(e){} }
+  GTR_CAMP=gtrCAmpBuild(ctx,k); GTR_CAMP.out.connect(gtrFxIn()); return GTR_CAMP; }
 const GTR_AMP_K=[34,7], GTR_AMP_TRIM=0.075;   // Brutal; the output level-matched to Distorted 2 (measured)
 const GTR_IR_GAIN={"v30-sm57-a":1,"v30-sm57-b":1,"v30-sm57-c":1,"v30-rdj-blend":0.68,"v30-dv77-blend":0.86,"greenback-a":2.34};   // each cabinet levelled, so the two sides sit even (measured)
-function gtrSetOf(k){ return k==="metal"?"mgtx/sus":k; }   // the samples an amp sound plays
+function gtrSetOf(k){ return k==="metal"||k==="clean"?"mgtx/sus":k; }   // the samples an amp sound plays
 function gtrAmpOn(){ return gtrSound==="metal"; }
 const GTR_IR={}, GTR_IR_DEC={};
-function gtrAmpLoad(f){ if(!ctx||(!f&&!gtrAmpOn())) return; gtrReady("mgtx/pmd"); gtrReady("mgtx/pmu");
-  for(const n of GTR_AMPS[gtrCab].ir){ if(GTR_IR_DEC[n]&&GTR_IR_DEC[n].ctx===ctx) continue; const ac=ctx; GTR_IR_DEC[n]={ctx:ac};
+function gtrAmpLoad(f){ if(!ctx||(!f&&!gtrAmpOn()&&!gtrCleanAmpOn())) return; gtrReady("mgtx/pmd"); gtrReady("mgtx/pmu");   // Clean's cabinet, or Metal's (patches/guitar-clean-amp.py)
+  for(const n of GTR_AMPS[gtrCleanAmpOn()?gtrCleanCab:gtrCab].ir){ if(GTR_IR_DEC[n]&&GTR_IR_DEC[n].ctx===ctx) continue; const ac=ctx; GTR_IR_DEC[n]={ctx:ac};
     fetch(gtrURL(n+".wav","ir")).then(r=>{ if(!r.ok) throw new Error(n+": "+r.status); return r.arrayBuffer(); })
       .then(ab=>new Promise((res,rej)=>ac.decodeAudioData(ab,res,rej))).then(b=>{ GTR_IR[n]={ctx:ac,buf:b}; if(GTR_AMP&&GTR_AMP.ctx===ac) gtrAmpCab(); })
       .catch(()=>{ GTR_IR_DEC[n]=null; }); } }
 function gtrMetalPreload(){ try{ ensureCtx(); gtrReady("mgtx/sus"); gtrAmpLoad(true); }catch(e){} }   /* Metal loads when it is opened (patches/guitar-metal-preload.py) */
 document.addEventListener("click",ev=>{ if(ev.target.closest&&ev.target.closest('.pop [data-gc="rock"],.pop [data-gsnd="metal"],.pop [data-gi^="rock:"]')) gtrMetalPreload(); },true);
-function gtrAmpReady(){ return !gtrAmpOn()||(GTR_AMPS[gtrCab].ir.every(n=>GTR_IR[n]&&GTR_IR[n].ctx===ctx)&&!!GTR_BUFS["mgtx/pmd"]&&!!GTR_BUFS["mgtx/pmu"]); }
+function gtrAmpReady(){ if(gtrCleanAmpOn()) return GTR_AMPS[gtrCleanCab].ir.every(n=>GTR_IR[n]&&GTR_IR[n].ctx===ctx);   // (patches/guitar-clean-amp.py)
+  return !gtrAmpOn()||(GTR_AMPS[gtrCab].ir.every(n=>GTR_IR[n]&&GTR_IR[n].ctx===ctx)&&!!GTR_BUFS["mgtx/pmd"]&&!!GTR_BUFS["mgtx/pmu"]); }
 let GTR_AMP=null;
 function gtrAmpCurve(K){ const n=4096, c=new Float32Array(n), nm=Math.tanh(K*1.3); for(let i=0;i<n;i++){ const v=i*2/(n-1)-1; c[i]=Math.tanh(K*v+0.3*K*v*v)/nm; } return c; }
 function gtrAmp(){   // once per audio context; the cabinets follow the sound
@@ -13689,7 +13718,7 @@ function gtrAmpCab(){ const A=GTR_AMP; if(!A||A.ctx!==ctx||!gtrAmpOn()) return; 
   A.cL=ctx.createConvolver(); A.cL.buffer=a.buf; A.cR=ctx.createConvolver(); A.cR.buffer=b.buf;
   A.gL=ctx.createGain(); A.gL.gain.value=GTR_IR_GAIN[I[0]]||1; A.gR=ctx.createGain(); A.gR.gain.value=GTR_IR_GAIN[I[1]]||1;
   A.sp.connect(A.cL,0); A.sp.connect(A.cR,1); A.cL.connect(A.gL); A.cR.connect(A.gR); A.gL.connect(A.mg,0,0); A.gR.connect(A.mg,0,1); A.k=gtrCab; }
-function gtrAmpPm(pm,t){ if(!pm||!gtrAmpOn()||GTR_BUF!==GTR_BUFS["mgtx/sus"]) return undefined;   /* a chug plays METAL-GTX's palm mute, down and up in turn by stroke */
+function gtrAmpPm(pm,t){ if(!pm||!(gtrAmpOn()||gtrSound==="clean")||GTR_BUF!==GTR_BUFS["mgtx/sus"]) return undefined;   /* a chug plays METAL-GTX's palm mute, down and up in turn by stroke */
   if(Math.abs(t-(GTR.pmT==null?-9:GTR.pmT))>0.02){ GTR.pmUp=!GTR.pmUp; GTR.pmT=t; }
   return GTR_BUFS[GTR.pmUp?"mgtx/pmu":"mgtx/pmd"]||GTR_BUFS["mgtx/pmd"]||undefined; }
 function gtrAmpGate(t,L){ const A=GTR_AMP; if(!A||A.ctx!==ctx) return; const G=A.gate.gain;   // a ringing note opens the gate; a chug shuts it after L
@@ -13708,7 +13737,7 @@ function gtrNote(s,fret,t,vel,pm){
   if(gtrAmpOn()&&GTR_BUF===GTR_BUFS["mgtx/sus"]){   /* a Metal sound: METAL-GTX's two channels, the left and the right guitar, into the amp (patches/guitar-metal-gtx.py) */
     const A=gtrAmp(); if(!pm) gtrAmpGate(st);   // a ringing note opens the gate; a chug shuts it (shortly)
     src.connect(lp); lp.connect(env); env.connect(g); g.connect(A.inp); }
-  else { src.connect(lp); lp.connect(env); env.connect(g); g.connect(gtrFxIn()); }   /* through the pedalboard to the voice bus (patches/guitar-fx.py) */
+  else { const CA=GTR_BUF===GTR_BUFS["mgtx/sus"]?gtrCAmp():null; src.connect(lp); lp.connect(env); env.connect(g); g.connect(CA?CA.inp:gtrFxIn()); }   // Clean's amp, when a cabinet is chosen (patches/guitar-clean-amp.py)   /* through the pedalboard to the voice bus (patches/guitar-fx.py) */
   gtrChordLevel(st,lp);
   const len=(e.buf.duration-e.off)/src.playbackRate.value;
   src.start(st,e.off); src.stop(st+len+0.05);
@@ -22223,17 +22252,23 @@ function cardPlay(pop,k){
   if(k==="gtr"&&sound){ const dd=play.querySelector("[data-gdd]"), row=dd&&dd.parentElement, t=row&&row.previousElementSibling, reg=sound.querySelector("[data-gr]");
     if(row&&t&&t.classList.contains("ttl")&&reg){ const w=document.createElement("div"); w.className="gtune"; w.append(t,row); reg.parentElement.after(w); } }
   if(k==="gtr"&&sound&&typeof GTR_AMPS!=="undefined"){ const c=document.createElement("div"); c.className="gcab";   /* Metal's cabinet, above Tuning (patches/guitar-sounds-four.py) */
-    c.innerHTML='<div class="ttl">Cabinet</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(3,1fr)">'+Object.keys(GTR_AMPS).map(q=>'<button class="bwseg'+(q===gtrCab?' on':'')+'" data-gcab="'+q+'">'+GTR_AMPS[q].l+'</button>').join("")+'</div>';
+    c.innerHTML=gtrCabRowHTML(); c.dataset.k=gtrSound+"|"+gtrCabNow();   // Metal's cabinets, or Clean's with Off (patches/guitar-clean-amp.py)
     const tu=sound.querySelector(".gtune"), rg=sound.querySelector("[data-gr]"); if(tu) tu.before(c); else if(rg) rg.parentElement.after(c); else sound.prepend(c); } }
 document.addEventListener("click",ev=>{ const b=ev.target.closest&&ev.target.closest(".pop [data-gcab]"); if(!b) return;   // Metal's cabinet
-  gtrCab=b.dataset.gcab; try{ localStorage.setItem("hps.gtrcab",gtrCab); }catch(e){} gtrAmpLoad(); gtrAmpCab();
+  const v=b.dataset.gcab;   // Clean's cabinet (Off: the DI) or Metal's (patches/guitar-clean-amp.py)
+  if(gtrSound==="clean"){ gtrCleanCab=v==="off"||GTR_AMPS[v]?v:"off"; try{ localStorage.setItem("hps.gtrcleancab",gtrCleanCab); }catch(e){} }
+  else if(GTR_AMPS[v]){ gtrCab=v; try{ localStorage.setItem("hps.gtrcab",gtrCab); }catch(e){} }
+  gtrAmpLoad(); gtrAmpCab(); const r=b.closest(".gcab"); if(r) r.dataset.k=gtrSound+"|"+gtrCabNow();
   b.parentElement.querySelectorAll("[data-gcab]").forEach(x=>x.classList.toggle("on",x===b)); });
+function gtrCabRowHTML(){ const ks=(gtrSound==="clean"?["off"]:[]).concat(Object.keys(GTR_AMPS)), cur=gtrCabNow();   // (patches/guitar-clean-amp.py)
+  return '<div class="ttl">Cabinet</div><div class="pal bwsw gsty" style="grid-template-columns:repeat('+ks.length+',1fr)">'
+    +ks.map(q=>'<button class="bwseg'+(q===cur?' on':'')+'" data-gcab="'+q+'">'+(q==="off"?"Off":GTR_AMPS[q].l)+'</button>').join("")+'</div>'; }
 function cardPlaySync(pop){ cardPreviewPaint(); cpLater(pop);
   pop.querySelectorAll(".frdm").forEach(f=>{ const a=f.dataset.fra, on=pop.querySelector('.cpage [data-'+a+'].on'), v=on?+on.getAttribute("data-"+a):0;
     f.querySelector("input").value=v; f.querySelector(".frval").textContent=(a==="hlv"?FREEDOM_SAYS_PAN:FREEDOM_SAYS)[v]||"";
     f.querySelector("input").disabled=!!pop.querySelector('.cpage [data-'+a+']:disabled'); });
   [["gtr","#gtrLeadBox"],["pno","#pnoLeadBox"],["bass","#bassPuBox"]].forEach(([k,s])=>{ const b=pop.querySelector(s); if(b) b.hidden=!puShown(k); });   // (patches/freedom-five-levels.py)   // greyed with its buttons - the handpan's outside the jam (patches/pan-freedom.py)
-  const gc=pop.querySelector(".gcab"); if(gc) gc.hidden=gtrSound!=="metal";   /* Metal's cabinet (patches/guitar-sounds-four.py) */
+  const gc=pop.querySelector(".gcab"); if(gc){ gc.hidden=gtrSound!=="metal"&&gtrSound!=="clean"; const ck=gtrSound+"|"+gtrCabNow(); if(gc.dataset.k!==ck){ gc.innerHTML=gtrCabRowHTML(); gc.dataset.k=ck; } }   // Clean's too (patches/guitar-clean-amp.py)   /* Metal's cabinet (patches/guitar-sounds-four.py) */
   { const mt=typeof gtrIsMetal==="function"&&gtrIsMetal(), r=pop.querySelector('.cpage[data-cpage="sound"] [data-gr]'), row=r&&r.parentElement, t=row&&row.previousElementSibling;   /* Metal always low (patches/guitar-metal-low.py); no Tuning row (patches/guitar-tuning-auto.py) */
     if(row){ row.style.display=mt?"none":""; if(t&&t.classList.contains("ttl")) t.style.display=row.style.display; } }
   pop.querySelectorAll(".cpage .vlist,.cpage :is([data-gcb]>.pal,[data-pgb]>.pal,[data-bgb]>.bsgrid,.pal:has(>[data-sy]))").forEach(l=>{ if(!l.clientHeight) return;
@@ -22259,13 +22294,8 @@ const CPV_ADAPT={
     to:val=>{ const q=val.split(":"), it=GTR_ITEMS[q[0]]&&GTR_ITEMS[q[0]][+q[1]]; if(!it) return null;
       const v=[it[1],gtrStrum,gtrPick,gtrSound,Object.assign({},gtrFx),gtrTune,gtrReg];
       if(it[2]!=null){ if(it[1]==="strum") v[1]=it[2]; else v[2]=it[2]; }
-      const was=gtrIsMetal(), will=v[0]==="strum"&&/^mt/.test(v[1]||"");
-      if(will&&!was){ const p=gtrMetalPreset(); if(p){   // into Metal: as the Metal preset sets it, read now (patches/card-preview-metal-preset.py)
-          const s=presetTok(p,"gsnd"), d=presetTok(p,"gdd"), r=presetTok(p,"gr");
-          if(GTR_SOUNDS.some(x=>x[0]===s)) v[3]=s; if(d==="auto"||d==="std"||d==="drop") v[5]=d; if(r) v[6]=r;
-          for(const [k] of GFX_PEDALS) v[4][k]=p[3][k]||"off"; } }
-      else if(was&&!will){ let p=null; try{ p=JSON.parse(localStorage.getItem("hps.gtrpremetal")||"null"); }catch(e){}   // out of Metal: as choosing would
-        if(p){ if(GTR_SOUNDS.some(x=>x[0]===p.snd)) v[3]=p.snd; if(p.fx) for(const [q] of GFX_PEDALS){ if(p.fx[q]) v[4][q]=p.fx[q]; } else if(GFX_PEDALS[1][3].some(x=>x[0]===p.drive)) v[4].drive=p.drive; } }
+      if(SND_AUTO.gtr){ const o=[gtrStyle,gtrStrum,gtrPick]; gtrStyle=v[0]; gtrStrum=v[1]; gtrPick=v[2];   // A SOUND YOU CHOOSE STAYS: only Auto's follows the pattern (patches/guitar-sound-stays.py)
+        try{ v[3]=gtrAutoSound(); } finally{ gtrStyle=o[0]; gtrStrum=o[1]; gtrPick=o[2]; } }
       return v; }, paint:()=>{ if(window.paintGtr) paintGtr(); }, on:()=>gtrOn, ready:()=>{ gtrReady(); return !!GTR_BUFS[gtrSetOf(gtrSound)]&&gtrAmpReady(); }},
   pno:{attr:"ps", get:()=>pnoStyle, set:v=>{ pnoStyle=v; PNO.chord=null; }, to:v=>v, paint:()=>{ if(window.paintPno) paintPno(); }, on:()=>pnoOn, ready:()=>pnoReady()},
   bass:{attr:"bms", get:()=>bassInRoom()?BASSROOM:((piece&&piece.bassStyle)||"root"),
@@ -49919,7 +49949,7 @@ function boot(){
         /* a category opens its patterns and chooses nothing; a pattern chooses its style and pattern (patches/guitar-categories.py) */
         const openCat=c=>{ pop.querySelectorAll("[data-gc]").forEach(x=>x.classList.toggle("on",x.dataset.gc===c));
           pop.querySelectorAll("[data-gcb]").forEach(x=>{ x.hidden=x.dataset.gcb!==c; }); };
-        const choose=(c,i)=>{ const it=GTR_ITEMS[c]&&GTR_ITEMS[c][i]; if(!it) return; gtrMetalSwitch(it[1]==="strum"&&/^mt/.test(it[2]||""),pop);   // the pattern, not the category (patches/guitar-rock-metal.py)
+        const choose=(c,i)=>{ const it=GTR_ITEMS[c]&&GTR_ITEMS[c][i]; if(!it) return; /* A SOUND YOU CHOOSE STAYS (David, 6 Oct 2026; patches/guitar-sound-stays.py): a pattern never changes the sound or the pedals - Auto does, when it is on */
           gtrStyle=it[1]; GTR.chord=null;   // the next count voices the chord for this style (28 Sep 2026)
           if(it[2]!=null){ if(it[1]==="strum") gtrStrum=it[2]; else gtrPick=it[2]; }
           try{ localStorage.setItem("hps.gtrstyle",gtrStyle); localStorage.setItem("hps.gtrstrum",gtrStrum); localStorage.setItem("hps.gtrpick",gtrPick); }catch(e){}
