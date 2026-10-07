@@ -15623,8 +15623,12 @@ function wggURL(name){
 /* THE PERCUSSION FETCHED IN THE BACKGROUND (David, 7 Oct 2026: "In the background" - step 1, the downloads only (patches/perc-prefetch.py)):
    when the percussion is on in any room this device remembers, the groove it would play is fetched after the page has
    settled - the URLs and cache mode the core uses - so the first press finds it in the browser's cache. Never decodes. */
-var RHY_PREFETCHED=0;
+var RHY_PREFETCHED=0, RHY_WARM=false;
+/* THE WARM START (David, 7 Oct 2026: "go, build the warm start" (patches/warm-start.py)): the engine is made now, silent - a browser keeps
+   it suspended until the first press resumes it - the handpan's sounds are decoded, and the percussion, when it is on,
+   is fetched and then prepared, every groove the piece's tables play. The first press finds it all ready. */
 async function rhyPrefetch(){
+  try{ ensureCtx(); preloadBank(); }catch(e){}
   const on=["practice","jam","cp"].some(r=>{ try{ const v=JSON.parse(localStorage.getItem("hps.voices."+r)||"null"); return !!(v&&v.rhy); }catch(e){ return false; } });
   if(!on) return;
   try{ await loadWgg(); }catch(e){ return; }
@@ -15643,6 +15647,13 @@ async function rhyPrefetch(){
   let i=0; const one=async()=>{ while(i<urls.length){ const [u,cm]=urls[i++]; try{ await (await fetch(u,{cache:cm})).arrayBuffer(); }catch(e){} } };
   await Promise.all([one(),one(),one(),one()]);
   RHY_PREFETCHED=urls.length;
+  if(!ctx) return;
+  const ids=new Set(); try{ for(const nm of Object.keys((piece&&piece.sections)||{})){ let m=null; try{ m=SM(piece,nm); }catch(e){}
+    const x=rhyGrooveId(m,nm); if(x&&x!=="none") ids.add(x); } }catch(e){}
+  ids.add(id);
+  for(const x of ids){ try{ HPSWGG.use(x); await HPSWGG.prepare(0.1); }catch(e){} }
+  try{ HPSWGG.use(id); }catch(e){}
+  RHY_WARM=true;
 }
 function loadWgg(){
   if(window.HPSWGG&&window.HPSWGG.loaded()) return Promise.resolve();
@@ -20475,9 +20486,12 @@ function bandPulse(ab,p2,rel,m,sec,at,quiet){
              on an odd step — 2-step's 5, 11 and 13, Khaligi's 3 — never
              fired and the rest sounded cut. The pulse now hands over each of
              its spp steps in turn, spaced by the step length. */
-          if(HPSWGG.ready(sd)){ const s0=(rel%span)*fit.spp;
+          /* NOT READY, IT COMES IN ON THE NEXT BEAT (David, 7 Oct 2026: "just come in on the next beat once ready" (patches/warm-start.py)):
+             a step while it prepares passes in silence, as always; once ready, a percussion that was waiting starts on a
+             count, never mid-beat */
+          if(!HPSWGG.ready(sd)){ RHY_WAIT=true; HPSWGG.prepare(sd); }
+          else if(!(RHY_WAIT&&(((rel%m.bp)+m.bp)%m.bp)%m.sub!==0)){ RHY_WAIT=false; const s0=(rel%span)*fit.spp;
             for(let k=0;k<fit.spp;k++) HPSWGG.fireStep((s0+k)%fit.steps,at+k*sd,sd); }
-          else HPSWGG.prepare(sd);
         }
       }
 }
@@ -21124,9 +21138,9 @@ function edStartPulse(top){
     return top+Math.floor(back/n)*bp+cs[back%n];
   }catch(e){ return top; }
 }
-var START_TIMED=false, START_PERC=-1;   /* the first press of a page, timed for the audio log (patches/perc-prefetch.py) */
+var START_TIMED=false, START_PERC=-1, RHY_WAIT=false;   /* RHY_WAIT: the percussion was not ready this playback - it comes in on the next beat (patches/warm-start.py) */   /* the first press of a page, timed for the audio log (patches/perc-prefetch.py) */
 async function start(){
-  const T0=performance.now(), T1st=!START_TIMED; START_TIMED=true; START_PERC=-1;
+  const T0=performance.now(), T1st=!START_TIMED; START_TIMED=true; START_PERC=-1; RHY_WAIT=false;
   if(typeof jamPreviewStop==="function") jamPreviewStop();  // play takes the ears back
   rgListenStop();                                            // …from the groove chooser's listen too (step d)
   if(typeof libPreviewStop==="function") libPreviewStop();  // ...from the library preview too
@@ -21197,7 +21211,9 @@ async function start(){
      nothing on every later press. */
   if(rhyOn&&window.HPSWGG&&HPSWGG.loaded()){
     try{
-      { const tp=performance.now(); await rhyPrepareAll(pendingStart!=null?pendingStart:0); START_PERC=performance.now()-tp; }   // every groove the piece's tables play (step d)
+      { const tp=performance.now();   /* NOT AWAITED: the music starts now, the percussion comes in on the next beat once ready (patches/warm-start.py) */
+        rhyPrepareAll(pendingStart!=null?pendingStart:0).then(()=>{ START_PERC=performance.now()-tp;
+          if(T1st) audioNote("the percussion ready "+Math.round(START_PERC)+" ms after the first press"+(RHY_WARM?" (prepared at load)":RHY_PREFETCHED?" (fetched at load)":"")); },()=>{}); }   // every groove the piece's tables play (step d)
     }catch(e){}
   }
   if(T1st) audioNote("first play of this page: "+Math.round(performance.now()-T0)+" ms before the music"+(START_PERC>=0?" - the percussion's preparation "+Math.round(START_PERC)+" ms ("+(RHY_PREFETCHED?RHY_PREFETCHED+" files fetched in the background":"nothing fetched ahead")+")":""));   /* (patches/perc-prefetch.py) */
