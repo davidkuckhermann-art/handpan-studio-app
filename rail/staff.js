@@ -51,8 +51,8 @@ const E={staffLine:.11,stem:.10,beam:.5,beamGap:.25,ledger:.16,ledgerExt:.33,thi
   /* THE CLEFS' OWN INK (David, 26 Sep 2026: "the clef in the notation is cut off" - patches/staff-clef-in-crop.py),
      above and below the glyph's line, in spaces: Leland measured in the page (canvas actualBoundingBox, 4 spaces to
      the em). The 8 under the 8vb clef is what reached past the note ink's crop. */
-  clefInk:{perc:[1.1,1.1],g8va:[5.4,2.664],f8vb:[1.004,3.4],g:[4.448,2.664],g8vb:[4.448,3.592],g15mb:[4.448,3.592],f:[1.004,2.468]}};
-const CLEFS={g8va:{bottom:30,glyph:G.gClef8va,glyphStep:32,shift:-7,keyOff:0},f8vb:{bottom:18,glyph:G.fClef8vb,glyphStep:24,shift:7,keyOff:-14},perc:{bottom:30,glyph:G.percClef,glyphStep:34,shift:0,keyOff:0,perc:true,line:true},g:{bottom:30,glyph:G.gClef,glyphStep:32,shift:0,keyOff:0},g8vb:{bottom:30,glyph:G.gClef8vb,glyphStep:32,shift:7,keyOff:0},
+  clefInk:{perc:[1.1,1.1],kit:[1.1,1.1],g8va:[5.4,2.664],f8vb:[1.004,3.4],g:[4.448,2.664],g8vb:[4.448,3.592],g15mb:[4.448,3.592],f:[1.004,2.468]}};
+const CLEFS={g8va:{bottom:30,glyph:G.gClef8va,glyphStep:32,shift:-7,keyOff:0},f8vb:{bottom:18,glyph:G.fClef8vb,glyphStep:24,shift:7,keyOff:-14},perc:{bottom:30,glyph:G.percClef,glyphStep:34,shift:0,keyOff:0,perc:true,line:true},kit:{bottom:30,glyph:G.percClef,glyphStep:34,shift:0,keyOff:0,perc:true},g:{bottom:30,glyph:G.gClef,glyphStep:32,shift:0,keyOff:0},g8vb:{bottom:30,glyph:G.gClef8vb,glyphStep:32,shift:7,keyOff:0},
   g15mb:{bottom:30,glyph:G.gClef15mb,glyphStep:32,shift:14,keyOff:0},f:{bottom:18,glyph:G.fClef,glyphStep:24,shift:0,keyOff:-14}};
 const KEYPOS={flats:{B:34,E:37,A:33,D:36,G:32,C:35,F:31},sharps:{F:37,C:34,G:38,D:35,A:32,E:36,B:33}};
 const ORDER={sharps:["F","C","G","D","A","E","B"],flats:["B","E","A","D","G","C","F"]};
@@ -308,6 +308,7 @@ function staff(bars,ctx,o){
   const {sp,pw,left,top,clef,keep,numbers,numbersRow,collect,band,barNumbers,timeSig,firstBar,prelude,colour,heads,chords,mode,width}=o;
   const {names,key,sub,beats,den,ppb,pulse32,groupOf}=ctx;
   const C=CLEFS[clef];const bottom=C.bottom,topS=bottom+8,mid=bottom+4;
+  const FS=o.stem==="up"?true:o.stem==="down"?false:null;   // a voice whose stems go one way: the kit's hands up, its feet down (patches/staff-drum-kit.py)
   const yW=s=>top+(topS-s)*sp/2, y=s=>yW(s+C.shift);
   const topY=yW(topS),botY=yW(bottom),midY=yW(mid);
   const fs=4*sp;let g="";
@@ -361,15 +362,15 @@ function staff(bars,ctx,o){
   if(o.label){const bw=sp*3.4,bh=sp*2.3,bx=left,by=topY-5.4*sp;g+=`<rect x="${bx}" y="${by.toFixed(1)}" width="${bw}" height="${bh}" rx="1.5" fill="none" stroke="${COL.ink}" stroke-width="${(sp*.14).toFixed(2)}"/>`+text(o.label,bx+bw/2,by+bh*.73,sp*1.55,COL.ink,'text-anchor="middle" font-weight="800"')}
   let lowest=bottom,highest=topS,over=[],attMin=Infinity,attMax=-Infinity;
   laid.forEach(L=>{
-    if(L.empty){g+=glyph(G.restW,L.x0+(L.x1-L.x0)/2-.7*sp,yW(topS-2));return}
+    if(L.empty){if(!o.noRests)g+=glyph(G.restW,L.x0+(L.x1-L.x0)/2-.7*sp,yW(topS-2));return}
     const accState=new Map();
     L.items.forEach(it=>{
       if(it.rest)return;
       it.heads=it.notes.map(n=>n.v==="perc"?{step:mid-C.shift,perc:true,hand:n.hand,acc:"",ev:n}:{step:stepOf(nameOf(names,n.f)),acc:C.perc?"":accidentalInBar(nameOf(names,n.f),key,accState),hand:n.hand,f:n.f,ev:n,xh:!!n.mute}).filter(h=>h.step!=null).sort((a,b)=>a.step-b.step);
       if(!it.heads.length){it.rest=true;return}
-      const w0=it.heads[0].step+C.shift,w1=it.heads[it.heads.length-1].step+C.shift;it.up=C.line||(mid-w0)>=(w1-mid);lowest=Math.min(lowest,w0);highest=Math.max(highest,w1)});
+      const w0=it.heads[0].step+C.shift,w1=it.heads[it.heads.length-1].step+C.shift;it.up=FS!=null?FS:C.line||(mid-w0)>=(w1-mid);lowest=Math.min(lowest,w0);highest=Math.max(highest,w1)});
     const groups=beamRuns(L.items,sub,groupOf);   // one rule for beams and for spacing()
-    for(const grp of groups.values()){if(grp.length<2)continue;let glo=99,ghi=-99;grp.forEach(d=>{glo=Math.min(glo,d.heads[0].step+C.shift);ghi=Math.max(ghi,d.heads[d.heads.length-1].step+C.shift)});const up=C.line||(mid-glo)>=(ghi-mid);grp.forEach(d=>{d.up=up;d.beamed=true});
+    for(const grp of groups.values()){if(grp.length<2)continue;let glo=99,ghi=-99;grp.forEach(d=>{glo=Math.min(glo,d.heads[0].step+C.shift);ghi=Math.max(ghi,d.heads[d.heads.length-1].step+C.shift)});const up=FS!=null?FS:C.line||(mid-glo)>=(ghi-mid);grp.forEach(d=>{d.up=up;d.beamed=true});
       const sx=d=>up?d.x+E.stemUpSE[0]*sp-E.stem*sp/2:d.x+E.stem*sp/2;const hy=d=>up?y(d.heads[d.heads.length-1].step):y(d.heads[0].step);
       const f=grp[0],l=grp[grp.length-1];const dx=sx(l)-sx(f)||1;let slope=(hy(l)-hy(f))/dx;const maxRise=(grp.length===2?.5:1)*sp;slope=Math.max(-maxRise/dx,Math.min(maxRise/dx,slope));
       let y0;grp.forEach(d=>{const need=up?Math.min(hy(d)-3.25*sp,midY):Math.max(hy(d)+3.25*sp,midY);const at=need-slope*(sx(d)-sx(f));y0=y0==null?at:(up?Math.min(y0,at):Math.max(y0,at))});grp.forEach(d=>{d.tipY=y0+slope*(sx(d)-sx(f))});
@@ -378,14 +379,15 @@ function staff(bars,ctx,o){
       for(const level of [16,32]){let i=0;const off=(E.beam+E.beamGap)*sp*(level===16?1:2),stub=1.1*sp;while(i<grp.length){if(grp[i].den<level){i++;continue}let j=i;while(j+1<grp.length&&grp[j+1].den>=level)j++;if(j>i)beam(sx(grp[i])-E.stem*sp/2,sx(grp[j])+E.stem*sp/2,off);else if(i>0)beam(sx(grp[i])-stub,sx(grp[i])+E.stem*sp/2,off);else beam(sx(grp[i])-E.stem*sp/2,sx(grp[i])+stub,off);i=j+1}}}
     L.items.forEach((it,i)=>{
       if(rE&&L===laid[rE.bi]&&it.p>=rE.p-1e-6)return;   // past the end repeat: the staff stops there (C)
-      if(it.rest){g+=glyph(restGlyph(it.den),it.x,it.den===1?yW(topS-2):midY);if(it.dot)g+=glyph(G.dot,it.x+1.2*sp,midY-sp/2);return}
+      if(it.rest){const rY=o.restLow?yW(bottom+1):midY;g+=glyph(restGlyph(it.den),it.x,it.den===1&&!o.restLow?yW(topS-2):rY);if(it.dot)g+=glyph(G.dot,it.x+1.2*sp,rY-sp/2);return}   // the kit's feet: their rests under the hands' (patches/staff-drum-kit.py)
       const hs=it.heads,lo=hs[0].step,hi=hs[hs.length-1].step,up=it.up;const stemX=up?it.x+E.stemUpSE[0]*sp-E.stem*sp/2:it.x+E.stem*sp/2;
       const lay=chordLayout(hs.map(h=>h.step),hs.map(h=>h.acc),up),dl=Math.min(0,...lay.dx),dr=Math.max(0,...lay.dx);   // patches/staff-chord-accidentals.py
       const lx=it.x+(dl-E.ledgerExt)*sp,lw=(E.headW+dr-dl+2*E.ledgerExt)*sp;
       for(let s=bottom-2;s>=lo+C.shift;s-=2)g+=rect(lx,yW(s)-E.ledger*sp/2,lw,E.ledger*sp,COL.line);
       for(let s=topS+2;s<=hi+C.shift;s+=2)g+=rect(lx,yW(s)-E.ledger*sp/2,lw,E.ledger*sp,COL.line);
       hs.forEach((hd,k)=>{const cy=y(hd.step);const fill=(colour&&heads!==false)?(COL[hd.hand]||COL.ink):COL.ink;const hx=it.x+lay.dx[k]*sp;hd.shifted=lay.dx[k]!==0;hd.x=hx;
-        const gl=(hd.perc||hd.xh)?G.x:it.den<=1?G.whole:it.den<=2?G.half:G.black;g+=glyph(gl,hx,cy,fill);
+        const gl=(hd.perc||hd.xh)?G.x:it.den<=1?G.whole:it.den<=2?G.half:G.black;g+=glyph(gl,hx,cy,fill);if(hd.ev&&hd.ev.ghost){g+=text("(",hx-.5*sp,cy+.45*sp,1.5*sp,fill,'text-anchor="middle"');g+=text(")",hx+E.headW*sp+.5*sp,cy+.45*sp,1.5*sp,fill,'text-anchor="middle"')}   /* the kit (patches/staff-drum-kit.py) */
+        if(hd.ev&&hd.ev.open){const oy=cy-5.4*sp;g+=text("o",hx+E.headW*sp/2,oy,1.3*sp,fill,'text-anchor="middle"');attMin=Math.min(attMin,oy-1.2*sp)}
         if(hd.acc)g+=glyph(hd.acc,it.x+lay.ax[k]*sp,cy);
         if(C.line&&k===0&&!it.tie)hs.map(h=>h.ev&&h.ev.letter).filter(Boolean).reverse().forEach((l,j)=>{g+=text(l,hx+E.headW*sp/2,midY+3.4*sp+j*1.35*sp,1.25*sp,COL.ink,'text-anchor="middle"')});   // every letter of the chord, the highest first (30 Sep 2026)   // the drums' letters below their notes (30 Sep 2026)
         if(it.dot){const dy=((hd.step+C.shift)%2===0)?cy-sp/2:cy;g+=glyph(G.dot,hx+(E.headW+.35)*sp,dy)}
@@ -394,7 +396,7 @@ function staff(bars,ctx,o){
          picture's bounds take it in */
       /* STACCATO (the bass line, 28 Sep 2026): a dot beyond the head furthest from the stem */
       if(!it.tie&&hs.some(h=>h.ev&&h.ev.stac)){const far=up?hs[0]:hs[hs.length-1],sy=y(far.step)+(up?1.3:-1.3)*sp;g+=glyph(G.dot,it.x+(E.headW/2-.2)*sp,sy);if(up)attMax=Math.max(attMax,sy+.5*sp);else attMin=Math.min(attMin,sy-.5*sp)}
-      if(!it.tie&&hs.some(h=>h.ev&&h.ev.accent)){const far=up?hs[0]:hs[hs.length-1],ay=y(far.step)+(up?1.8:-1.8)*sp;g+=glyph(up?G.accB:G.accA,it.x,ay);if(up)attMax=Math.max(attMax,ay+.8*sp);else attMin=Math.min(attMin,ay-.8*sp)}
+      if(!it.tie&&hs.some(h=>h.ev&&h.ev.accent)){const far=FS!=null?(up?hs[hs.length-1]:hs[0]):up?hs[0]:hs[hs.length-1],ay=FS!=null?y(far.step)+(up?-4.6:4.6)*sp:y(far.step)+(up?1.8:-1.8)*sp;if(FS!=null){g+=glyph(G.accA,it.x,ay);if(up)attMin=Math.min(attMin,ay-.8*sp);else attMax=Math.max(attMax,ay+.8*sp)}else g+=glyph(up?G.accB:G.accA,it.x,ay);if(up)attMax=Math.max(attMax,ay+.8*sp);else attMin=Math.min(attMin,ay-.8*sp)}
       if(numbers||numbersRow||collect){const rows=[...hs].reverse().map(hd=>({label:hd.perc?"×":labelOf(hd.f),bot:isBot(hd.f),fill:colour?(COL[hd.hand]||COL.ink):COL.ink}));it.rows=rows;if(!it.tie)over.push({x:it.x+E.headW*sp/2,rows})}
       if(it.den>1){const aTop=hs[hs.length-1],aBot=hs[0];const anchorFar=up?y(aBot.step)-(aBot.perc?E.xUpSE[1]:E.stemUpSE[1])*sp:y(aTop.step)-(aTop.perc?E.xDownNW[1]:E.stemDownNW[1])*sp;const tip=it.tipY!=null?it.tipY:(up?Math.min(y(hi)-(it.dot&&it.den>=8?4.25:3.5)*sp,midY):Math.max(y(lo)+3.5*sp,midY));   /* a flag's tail hangs 3.27 spaces below its tip, onto the dot of a dotted note on a 3.5 stem; the stem grows, the dot stays by its head (23 Sep 2026) */it.tipY=tip;const y1=Math.min(tip,anchorFar),y2=Math.max(tip,anchorFar);g+=rect(stemX-E.stem*sp/2,y1,E.stem*sp,y2-y1);
         /* THE PICTURE HOLDS EVERY STEM (David, 23 Sep 2026: "The notation is cut off at the bottom"): its ends set the
@@ -410,7 +412,7 @@ function staff(bars,ctx,o){
     /* tuplet numbers and brackets: one per range that is not a plain division; the number sits beyond the beam,
        a bracket joins the units when they are not one beamed group */
     for(const r of L.ranges){const its=L.items.filter(it=>it.tup&&it.tup.id===r.id);if(!its.length||its[0].tup.plain)continue;
-      const notes=its.filter(it=>!it.rest);const up=C.line||(notes.length?notes.filter(n=>n.up).length>=notes.length/2:true);
+      const notes=its.filter(it=>!it.rest);const up=FS!=null?FS:C.line||(notes.length?notes.filter(n=>n.up).length>=notes.length/2:true);
       const oneBeam=notes.length===its.length&&notes.length>=2&&notes.every(n=>n.beamed);
       const xa=its[0].x-.2*sp,xb=its[its.length-1].x+E.headW*sp+.2*sp,cx=(xa+xb)/2;
       const edgeOf=it=>it.rest?(up?midY-1.2*sp:midY+1.2*sp):(it.tipY!=null?it.tipY:(up?y(it.heads[it.heads.length-1].step):y(it.heads[0].step)));
@@ -561,7 +563,12 @@ function build(input,opts){
   /* the staves' filters, said once (keepsFor): spacing() and plan() read the same bars the staves draw */
   const keeps=keepsFor(opts.grand,names,opts);
   const ex=extraStaves(opts);   // the instruments' staves, in order under the handpan's (30 Sep 2026)
-  const extraStaff=(top,i,v)=>staff(bars,ctx,{...base,top,clef:(v.clef&&v.clef!=="auto")?v.clef:((v.prefer&&v.prefer[0])||"f"),keep:keeps[keeps.length-ex.length+i],cols,barNumbers:false,numbers:false,numbersRow:false,collect:false,chords:false,voice:v.label||""});   // voice, not label: label is the table's boxed name
+  const extraStaff0=(top,i,v,x)=>staff(bars,ctx,{...base,top,clef:(v.clef&&v.clef!=="auto")?v.clef:((v.prefer&&v.prefer[0])||"f"),keep:keeps[keeps.length-ex.length+i],cols,barNumbers:false,numbers:false,numbersRow:false,collect:false,chords:false,voice:v.label||"",...(x||{})});
+  /* THE KIT (patches/staff-drum-kit.py): one staff, two voices - the hands with stems up, then the feet with stems down and no
+     rests, drawn over it at the same columns */
+  const extraStaff=(top,i,v)=>{ if(v.key!=="kit") return extraStaff0(top,i,v); const kk=keeps[keeps.length-ex.length+i];
+    const a=extraStaff0(top,i,v,{keep:e=>kk(e)&&!e.foot,stem:"up"}), b=extraStaff0(top,i,v,{keep:e=>kk(e)&&!!e.foot,stem:"down",noRests:true,restLow:true,voice:""});
+    return {...a,inner:a.inner+b.inner,extentTop:Math.min(a.extentTop,b.extentTop),extentBot:Math.max(a.extentBot,b.extentBot),clefTop:Math.min(a.clefTop,b.clefTop),clefBot:Math.max(a.clefBot,b.clefBot)}; };   // voice, not label: label is the table's boxed name
   /* A STAFF CLEARS THE ONE ABOVE (David, 30 Sep 2026: "the notations are curently overcrossing"): 3.5 spaces under it, and
      lower where its highest ink - a note, a stem, its name - would come within 1.2 spaces of it */
   const stackExtras=prev=>ex.forEach((v,i)=>{let top=prev+3.5*sp,bs=extraStaff(top,i,v);
