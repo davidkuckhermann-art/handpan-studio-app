@@ -1,0 +1,262 @@
+<!-- Handpan Studio under-lesson embed for Kajabi (custom code block). -->
+<!-- build 2026-09-02c (the Vimeo muted flag is one derived value, so the sound dialogs cannot flap; 02b: the bridge also finds a VIMEO player, through Vimeo's Player SDK, loaded only when one is on the page;
+     space on the lesson page plays and stops the app; allowfullscreen on the iframe; bridge unchanged since 2026-08-28g) — keeps Wistia from pausing itself off-screen, and
+     tight anchor, AND on a 150 ms timer as a heartbeat, so the pan keeps
+     playing when the page stops being drawn (fullscreen video, another window
+     in front, a background tab) and rAF is suspended. Measured: rAF alone
+     posts NOTHING in that state while the video plays on, and the follow
+     engine drops 74% of its notes once the stream falls to 2 reports a second.
+     The timer sends only when a frame has not, so at 60 Hz it costs nothing.
+     Also: only ONE pump now — the Wistia branch used to leave the <video>
+     hunt running and both would pump the same player. -->
+<div style="margin-top:16px">
+  <!-- allowfullscreen (build 2026-08-30a): the notation's own full-screen
+       button needs the iframe's permission, or the browser refuses it and the
+       app falls back to filling only the iframe. Lessons pasted before this
+       build need the two attributes added to THEIR iframe tag by hand — the
+       iframe is the part a re-paste deliberately leaves alone. -->
+  <iframe id="hps-app"
+    src="https://davidkuckhermann-art.github.io/handpan-studio-app/?k=ce0f3bf87594bda9"
+    style="width:100%;height:820px;border:0;border-radius:12px;background:#FBF9F6"
+    allow="autoplay; fullscreen"
+    allowfullscreen
+    loading="lazy"></iframe>
+</div>
+<script src="https://fast.wistia.net/assets/external/E-v1.js" async></script>
+<script>
+(function(){
+  /* Handpan Studio bridge — build 2026-09-02c (Vimeo, muted derived). Kept INSIDE the script so it
+     travels when only this block is re-pasted (the iframe above carries the
+     piece and its tempo map in the URL and must not be replaced). */
+  function frame(){ return document.getElementById('hps-app'); }
+  function send(m){ var f=frame(); if(f&&f.contentWindow) try{ f.contentWindow.postMessage(m,'*'); }catch(e){} }
+  /* SPACE PLAYS AND STOPS THE APP FROM THE LESSON PAGE (build 2026-09-02a).
+     Keys go to whatever has focus, and on a lesson page that is Kajabi's own
+     document until the student has clicked inside the app — where a bare
+     space only scrolls the page. Forwarded to the app, which answers with
+     its transport. Not while typing in a field, never with a modifier. */
+  document.addEventListener('keydown',function(e){
+    if(e.key!==' '||e.metaKey||e.ctrlKey||e.altKey) return;
+    var t=e.target, tag=t&&t.tagName;
+    if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||(t&&t.isContentEditable)) return;
+    if(!frame()) return;
+    e.preventDefault(); send({type:'hps-key',key:' '});
+  });
+  /* THE CLOCK GOES OUT TWICE OVER, AND THE SECOND WAY ONLY SPEAKS WHEN THE
+     FIRST HAS GONE QUIET. requestAnimationFrame gives the tight anchor; a
+     timer gives a floor under it, because rAF does not merely slow when the
+     page stops being composited, it STOPS. sendTime stamps every report, so
+     the heartbeat stays silent while frames are flowing. */
+  var lastSend=0, pumping=false;
+  /* AND WHETHER THE PLAYER'S OWN SOUND IS ON (David, 28 Aug: the app "should go
+     mute when audio is switched back on in the video player"). Read off the
+     real <video> element, which is reachable for both players — that is how the
+     duplicate pump used to find Wistia's own element — so muted-or-silent is
+     one flag either way, and Wistia's mutechange/volumechange are bound below
+     as a cross-check. */
+  function vmuted(el){
+    if(!el) return null;
+    return !!(el.muted||el.volume===0);
+  }
+  /* p — IS THE VIDEO PLAYING, stated, not left for the app to guess. The app
+     used to infer a pause from the clock standing still, and a muted video
+     scrolled out of view stands still in exactly the same way: browsers
+     throttle what nobody can see or hear, so its clock moves in coarse jumps
+     the inference kept mistaking for a stop (David, 28 Aug, three times).
+     The player knows the truth; send it with every report. */
+  function sendTime(t,r,m,p){ lastSend=Date.now();
+    var msg={type:'hps-video-time',t:t,r:r};
+    if(m!=null) msg.m=m;
+    if(p!=null) msg.p=!!p;
+    send(msg); }
+  function heartbeat(read){ setInterval(function(){
+    if(Date.now()-lastSend>150) try{ read(); }catch(e){} },150); }
+  function status(st){ send({type:'hps-bridge',status:st}); }
+  var found=false, sIv=setInterval(function(){ status(found?'connected':'searching'); },1000);
+  /* The app schedules the pan against the AUDIO clock, so it must know how
+     fast the video's clock is running — at 0.5x an offset alone put every
+     stroke twice too early. Every timecode now carries r. The app can also
+     measure the rate itself, so an old un-repasted block still works; this
+     just makes the change instant and exact. */
+  // the app's play button (in follow mode) toggles whichever player we found
+  var ctl=null;
+  window.addEventListener('message',function(e){
+    var d=e.data;
+    if(d&&d.type==='hps-video-ctl'&&ctl){ try{ ctl(d.action||'toggle',d.t); }catch(err){} return; }
+    /* THE APP ASKS FOR THE HEIGHT IT NEEDS (David, 28 Aug: "extend the
+       available window to full player size and then lock vertical scrolling").
+       It knows what its notation comes to and a fixed 820px did not — so the
+       window follows the music rather than the music being shrunk to the
+       window. Bounded either side: a silly number from anywhere is ignored,
+       and only this page's own frame is touched. */
+    if(d&&d.type==='hps-size'&&typeof d.h==='number'&&d.h>300&&d.h<4000){
+      var f=frame(); if(f) f.style.height=Math.round(d.h)+'px';
+    }
+  });
+  // 1) Wistia — E-v1.js above also upgrades Wistia IFRAME embeds into API handles
+  window._wq=window._wq||[];
+  /* THE CAUSE OF "PLAYBACK STOPS WHEN I SCROLL DOWN" (28 Aug, David's third
+     report — and his observation that video-sound-on was immune cracked it):
+     Wistia DELIBERATELY PAUSES a muted video the moment it scrolls fully out
+     of view, and resumes it when it returns. Documented, default true, named
+     playSuspendedOffScreen. The pan follows the video, so the pan stopped at
+     an exact scroll line and restarted a few px back up — the app was
+     faithfully following a video that really was pausing. Asked off here;
+     this push only takes effect if it lands before Wistia embeds, so the
+     onReady guard below covers the race the other way. */
+  _wq.push({id:'_all',options:{playSuspendedOffScreen:false}});
+  _wq.push({id:'_all',onReady:function(v){
+    /* ONE PUMP ONLY. id:'_all' fires for every Wistia player on the page and
+       can fire again when one re-initialises, and the <video> hunt below finds
+       Wistia's own <video> element — so without this the same player was
+       pumped twice over (counted: two loops from one video). */
+    if(pumping) return;
+    pumping=true; clearInterval(iv);
+    found=true; status('connected');
+    var askedPause=false;   // a pause the STUDENT chose, via the app's button
+    ctl=function(a,t){
+      if(a==='seek'&&t!=null){ v.time(t); return; }
+      var playing=v.state()==='playing';
+      if(a==='play'||(a==='toggle'&&!playing)){ askedPause=false; v.play(); }
+      else { askedPause=true; v.pause(); } };
+    /* If the options push above lost the race to the embed, Wistia still
+       suspends off-screen — so any pause that arrives while the player is
+       FULLY out of view, and that neither the student's scrubbing nor the
+       app's button asked for, is Wistia's own and is undone on the spot. A
+       student cannot click pause on a player that is not on screen; the one
+       off-screen pause they CAN cause goes through ctl and is honoured. */
+    try{ v.bind('pause',function(){
+      if(askedPause) return;
+      var c=v.container||document.querySelector('.wistia_embed');
+      if(!c) return;
+      var r=c.getBoundingClientRect();
+      if(r.bottom<=0||r.top>=window.innerHeight){ try{ v.play(); }catch(e){} }
+    }); }catch(e){}
+    try{ v.bind('play',function(){ askedPause=false; }); }catch(e){}
+    // playbackRate() is documented as a SETTER only — calling it bare could
+    // set the rate to undefined, so never read it. The event is the getter.
+    /* THE RATE MUST BE READABLE AT ANY MOMENT, not only after the student has
+       changed it. playbackRate() on the Wistia API is a documented SETTER, so
+       it can never be read — the event was the only getter, which left wr
+       sitting at 1 whenever a player opened at a remembered speed, and the app
+       TRUSTS a stated rate over its own measurement. Wistia renders a real
+       <video>, so read that element's live playbackRate and keep the event as
+       the fallback. */
+    var wr=1, wvid=null;
+    try{ v.bind('playbackratechange',function(r){
+      if(typeof r==='number'&&r>0.05&&r<8) wr=r; }); }catch(e){}
+    function wel(){
+      try{ if(!wvid||!wvid.isConnected) wvid=findVideo(document); }catch(e){}
+      return wvid;
+    }
+    function wrate(){
+      var r=wel()&&wvid.playbackRate;
+      return (typeof r==='number'&&r>0.05&&r<8)?r:wr;
+    }
+    var wmute=null;                      // what Wistia's own events last said
+    try{ v.bind('mutechange',function(x){ wmute=!!x; }); }catch(e){}
+    try{ v.bind('volumechange',function(x){ if(typeof x==='number') wmute=(x===0); }); }catch(e){}
+    function wmuted(){ var m=vmuted(wel()); return m==null?wmute:m; }
+    // every frame for the anchor, and the heartbeat underneath it for the
+    // states where frames stop coming
+    (function pump(){ sendTime(v.time(),wrate(),wmuted(),v.state()==='playing'); requestAnimationFrame(pump); })();
+    heartbeat(function(){ sendTime(v.time(),wrate(),wmuted(),v.state()==='playing'); });
+  }});
+  // 2) Vimeo — masterthehandpan.com (Webflow) hosts its lessons on Vimeo,
+  //    whose player is a CROSS-ORIGIN iframe: the <video> hunt below cannot see
+  //    into it, so the Player SDK is the only way to its clock. The SDK is
+  //    loaded only once a Vimeo iframe is actually on the page, so a Kajabi
+  //    lesson never fetches it. It attaches to any existing player iframe
+  //    (Webflow's Video element makes one) or a data-vimeo-id element.
+  function vimeoEl(){
+    return document.querySelector('iframe[src*="player.vimeo.com"],[data-vimeo-id],[data-vimeo-url]');
+  }
+  var vimeoAsked=false;
+  function vimeoSDK(){
+    if(window.Vimeo&&window.Vimeo.Player) return true;
+    if(!vimeoAsked){ vimeoAsked=true;
+      var s=document.createElement('script'); s.src='https://player.vimeo.com/api/player.js'; s.async=true;
+      document.head.appendChild(s); }
+    return false;
+  }
+  function vimeoPump(el){
+    var p=new Vimeo.Player(el);
+    /* THE SDK ANSWERS BY PROMISE, not on the spot — every read is a round
+       trip into the player's frame. So the state the app wants stated (rate,
+       mute, playing) is kept here from the player's own events, and only the
+       clock is asked for, one question in flight at a time: a frame that
+       finds the last answer still out simply waits for it. Vimeo's own
+       timeupdate fires ~4x a second, far too coarse for the follow engine
+       (it drops notes below a handful of reports a second), which is why the
+       clock is polled rather than listened for. */
+    /* MUTED IS ONE DERIVED VALUE, never two sources writing one flag (David,
+       2 Sep, Safari on the Webflow page: the "video sound is off/on" dialogs
+       re-opened the instant they were closed and stacked two deep — the flag
+       was flapping). The muted switch and the volume are tracked apart: the
+       volumechange event only ever sets the volume, the getMuted poll only
+       ever sets the switch, and what goes out is switch-on OR volume-zero. A
+       volumechange reporting volume 1 while the switch is on — which is what
+       a muted player says when its volume is asked — can no longer flip it. */
+    var vt=0, vr=1, vmuteSw=null, vvol=null, vplay=false, inflight=false;
+    function vmuted(){ if(vmuteSw==null&&vvol==null) return null; return !!(vmuteSw||vvol===0); }
+    function report(){ sendTime(vt,vr,vmuted(),vplay); }
+    function ask(){
+      if(inflight) return; inflight=true;
+      p.getCurrentTime().then(function(s){ inflight=false;
+        if(typeof s==='number') vt=s; report(); },function(){ inflight=false; });
+    }
+    ctl=function(a,t){
+      if(a==='seek'&&t!=null){ p.setCurrentTime(t); return; }
+      if(a==='play'||(a==='toggle'&&!vplay)) p.play(); else p.pause(); };
+    p.on('play',function(){ vplay=true; report(); });
+    p.on('pause',function(){ vplay=false; report(); });
+    p.on('ended',function(){ vplay=false; report(); });
+    p.on('seeked',function(d){ if(d&&typeof d.seconds==='number') vt=d.seconds; report(); });
+    p.on('playbackratechange',function(d){ var r=d&&d.playbackRate;
+      if(typeof r==='number'&&r>0.05&&r<8) vr=r; });
+    p.on('volumechange',function(d){ if(d&&typeof d.volume==='number') vvol=d.volume; });
+    /* muted is not an event in this SDK, so it is asked for on a slow tick,
+       together with the values the events may have missed at attach time */
+    function slow(){
+      try{ p.getMuted().then(function(m){ vmuteSw=!!m; }); }catch(e){}
+      try{ p.getVolume().then(function(v){ if(typeof v==='number') vvol=v; }); }catch(e){}
+      try{ p.getPlaybackRate().then(function(r){ if(typeof r==='number'&&r>0.05&&r<8) vr=r; }); }catch(e){}
+    }
+    p.ready().then(function(){
+      found=true; status('connected');
+      p.getPaused().then(function(x){ vplay=!x; });
+      slow(); setInterval(slow,500);
+      (function pump(){ ask(); requestAnimationFrame(pump); })();
+      heartbeat(ask);
+    });
+  }
+  // 3) any <video> — page, same-origin iframes, and shadow roots
+  function findVideo(root){
+    var v=root.querySelector&&root.querySelector('video'); if(v) return v;
+    var all=root.querySelectorAll?root.querySelectorAll('*'):[];
+    for(var i=0;i<all.length;i++) if(all[i].shadowRoot){ var s=findVideo(all[i].shadowRoot); if(s) return s; }
+    return null;
+  }
+  var tries=0, iv=setInterval(function(){
+    if(pumping){ clearInterval(iv); return; }     // Wistia got there first
+    var vel=vimeoEl();
+    if(vel){ if(!vimeoSDK()){ if(++tries>40){ clearInterval(iv); clearInterval(sIv); status('no-player'); } return; }
+      clearInterval(iv); pumping=true; vimeoPump(vel); return; }
+    var vid=findVideo(document);
+    if(!vid){ var ifr=document.querySelectorAll('iframe');
+      for(var i=0;i<ifr.length&&!vid;i++){ try{ if(ifr[i].contentDocument) vid=findVideo(ifr[i].contentDocument); }catch(e){} } }
+    if(vid){ clearInterval(iv); pumping=true; found=true; status('connected');
+      ctl=function(a,t){
+        if(a==='seek'&&t!=null){ vid.currentTime=t; return; }
+        if(a==='play'||(a==='toggle'&&vid.paused)) vid.play&&vid.play(); else vid.pause&&vid.pause(); };
+      /* while paused the reports keep coming, carrying p:false — a pause the
+         app hears about at once beats one it must deduce from silence */
+      (function pump(){ sendTime(vid.currentTime,vid.playbackRate,vmuted(vid),!vid.paused);
+        requestAnimationFrame(pump); })();
+      heartbeat(function(){ sendTime(vid.currentTime,vid.playbackRate,vmuted(vid),!vid.paused); });
+      vid.addEventListener('seeked',function(){
+        sendTime(vid.currentTime,vid.playbackRate,vmuted(vid),!vid.paused); });
+    } else if(++tries>40){ clearInterval(iv); clearInterval(sIv); status('no-player'); }
+  },1000);
+})();
+</script>

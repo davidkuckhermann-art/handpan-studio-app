@@ -1,0 +1,60 @@
+<!doctype html><meta charset="utf-8"><title>Sync test rig</title>
+<style>body{font-family:sans-serif;margin:14px;background:#f5f2ec}
+button{font-size:15px;padding:8px 14px}#t{font-variant-numeric:tabular-nums}</style>
+<h3>Fake lesson video (posts timecodes like the Kajabi bridge)</h3>
+<p><button id="pp">Play</button> <b id="t">0.0s</b>
+ · drift <input type="range" id="dr" min="80" max="120" value="100">
+ <span id="drv">100%</span> (simulates rubato — NOT reported)</p>
+<p>speed
+ <select id="sp"><option>0.25</option><option>0.5</option><option>0.75</option>
+  <option selected>1</option><option>1.25</option><option>1.5</option><option>2</option></select>
+ (a real playbackRate change)
+ · <label><input type="checkbox" id="rep" checked> post <code>r</code> with each
+ timecode</label> — uncheck to test an old un-repasted Kajabi block, where the
+ app has to measure the rate itself</p>
+<iframe id="app" src="/app.html" style="width:100%;height:760px;border:1px solid #ccc;border-radius:10px"></iframe>
+<script>
+let t=0,playing=false,last=0;
+const app=document.getElementById("app");
+pp.onclick=()=>{playing=!playing;pp.textContent=playing?"Pause":"Play";last=performance.now();};
+window.addEventListener("message",e=>{const d=e.data;   // the app's play button / navigation in follow mode
+  if(!d||d.type!=="hps-video-ctl")return;
+  if(d.action==="seek"&&d.t!=null){ t=d.t; return; }
+  const want=d.action==="play"?true:d.action==="pause"?false:!playing;
+  if(want!==playing) pp.onclick();
+});
+dr.oninput=()=>drv.textContent=dr.value+"%";
+setInterval(()=>{   // 200 ms like the OLD bridge; rAF pump added below
+  const now=performance.now();
+  const sp=+document.getElementById("sp").value;
+  if(playing){ t+=(now-last)/1000*(dr.value/100)*sp; }
+  last=now;
+  document.getElementById("t").textContent=t.toFixed(1)+"s";
+  const m={type:"hps-video-time",t:t};
+  if(document.getElementById("rep").checked) m.r=sp;   // drift is never reported
+  app.contentWindow.postMessage(m,"*");
+},200);
+
+// the current bridge reports every animation frame — mirror it so the rig
+// exercises what the lessons actually do
+(function pump(){
+  if(playing){
+    const sp=+document.getElementById("sp").value;
+    const m={type:"hps-video-time",t:t};
+    if(document.getElementById("rep").checked) m.r=sp;
+    app.contentWindow.postMessage(m,"*");
+  }
+  requestAnimationFrame(pump);
+})();
+</script>
+
+<script>
+/* the block's own space forwarding (build 2026-09-02a), so the round trip can be tried here */
+document.addEventListener('keydown',function(e){
+  if(e.key!==' '||e.metaKey||e.ctrlKey||e.altKey) return;
+  var t=e.target, tag=t&&t.tagName;
+  if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
+  var f=document.getElementById('app'); if(!f||!f.contentWindow) return;
+  e.preventDefault(); f.contentWindow.postMessage({type:'hps-key',key:' '},'*');
+});
+</script>
