@@ -196,6 +196,27 @@ W.remix=function(){ if(!ctx||graphCtx!==ctx) return; const t=ctx.currentTime;   
 /* AN INSTRUMENT'S LEVEL FOR THE APP'S METER (Handpan Studio, 7 Oct 2026; patches/perc-meters.py): every chain of that
    instrument, in any groove, sums here; null until the graph is built */
 W.tap=function(set){ if(!ctx||graphCtx!==ctx) return null; return taps[set]||(taps[set]=ctx.createGain()); };
+/* THE EXPORT'S ENGINE (Handpan Studio, 7 Oct 2026; patches/band-export.py): an export plays the groove into an offline
+   context, and this file's graph and core follow `ctx` - so the app takes the live graph aside and puts it back. The
+   groove is not put back: a preparation the export began finishes on the groove it began on, so the groove stays what
+   the export left - and a groove that is not the one the live chains were built for builds its chains afresh */
+W.keep=function(){ return {CORE,coreCtx,bus,busD,busS,graphCtx,chains,mixes,taps,absPulse,curSd,groove}; };
+W.put=function(s){ ({CORE,coreCtx,bus,busD,busS,graphCtx,taps,absPulse,curSd}=s);
+  if(groove===s.groove){ chains=s.chains; mixes=s.mixes; } else { chains={}; mixes={}; } applyWet(); };
+/* the strokes that begin on this step, as {set, slot} - the MIDI file's drum notes */
+W.hitList=function(pi){ const out=[]; if(!W.ready()) return out;
+  for(const d of derived) for(const c of d.cells) if(c.start===pi) out.push({set:d.r.set,slot:c.accent||"T"});
+  return out; };
+/* ONE BEAT ALONE (Handpan Studio, 7 Oct 2026; patches/export-ending-fix.py): the strokes that begin on this step and
+   nothing after them - each cell as the only one of its row, so no run recording reaches past it, and no ghost run;
+   the export's final beat */
+W.fireBeat=function(pi,at,sd){
+  if(!W.ready()) return;
+  if(sd>0) curSd=sd;
+  const C=core();
+  for(const d of derived){ const cs=d.cells.filter(c=>c.start===pi); if(cs.length) C.playPulse(d.r, cs, null, pi, at, curSd, absPulse); }
+  absPulse++;
+};
 W.setVolume=function(pct){ vol=Math.max(0,Math.min(1.5,(+pct||0)/100)); if(bus) bus.gain.value=vol; };
 
 // ---------------- what sounds on one step
