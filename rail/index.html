@@ -49073,8 +49073,7 @@ function jamDefaultName(){
   return c.length<=3?c.join(" · "):(c.slice(0,3).join(" · ")+" +"+(c.length-3));
 }
 function jamSaveToLib(name){
-  const r=jamRecipe(); r.name=(name||"").trim()||jamDefaultName();
-  r.pan={id:myPanId,spec:panSpecFor(myPanId)||null}; r.band=jamBandSnap(); r.t=Date.now();   /* My Jams (patches/my-jams.py) */
+  const r=jamRecipeFull(); r.name=(name||"").trim()||jamDefaultName(); r.t=Date.now();   /* My Jams (patches/my-jams.py): the whole recipe (patches/jam-share-full.py) */
   const l=savedJams(), i=l.findIndex(x=>x.name===r.name);
   if(i>=0) l[i]=r; else l.push(r);
   setSavedJams(l);
@@ -49110,6 +49109,9 @@ function jamRecipe(){
   if(pat&&pat.user) r.groove=pat;      // travels with it
   return r;
 }
+/* A JAM TRAVELS WHOLE (David, 7 Oct 2026) (patches/jam-share-full.py): the recipe, its pan and its band - one function for My Jams, a
+   code, a file and a link */
+function jamRecipeFull(){ const r=jamRecipe(); r.pan={id:myPanId,spec:panSpecFor(myPanId)||null}; r.band=jamBandSnap(); return r; }
 function jamRecipeOk(r){
   return !!(r&&Array.isArray(r.slots)&&r.slots.length
     &&r.slots.every(s=>s&&typeof s.chord==="string"));
@@ -49211,7 +49213,7 @@ function ctxShareText(){
     const g=userGrooves().find(x=>x.id===id);
     return g?{txt:"HPG1:"+enc(g), name:(g.name||"groove"), ext:"hpg"}:null;
   }
-  const r=jamRecipe();
+  const r=jamRecipeFull();   /* the whole recipe (patches/jam-share-full.py) */
   const first=jamHomeChord(r.slots);
   return {txt:"HPJ1:"+enc(r), name:("Jam in "+(first||"D")), ext:"hpj"};
 }
@@ -49240,7 +49242,7 @@ function applyFile(kind,obj){
     else toast("Saved to your grooves — pick it in Jam");
     return true;
   }
-  if(kind==="jam") return importJam(obj);
+  if(kind==="jam") return jamOpenSaved(obj);   /* its pan and band too (patches/jam-share-full.py) */
   openPiece(obj); toast("Opened: "+(obj.title||"Untitled")); return true;
 }
 let wrongFile=null;
@@ -52066,14 +52068,16 @@ function boot(){
      this and lives in the Library's foot since 17 Sep (#libEdit). */
   $("shareBtn").addEventListener("click",openLib);
   $("shareClose").addEventListener("click",()=>$("shareDlg").close());
-  $("cpCode").addEventListener("click",()=>copyText("HPS1:"+enc(shareable()),"Code copied"));
+  /* IN THE JAM ROOM THE SHARE SHEET SHARES THE JAM, WHOLE (patches/jam-share-full.py) - elsewhere a piece, as before */
+  const shareJamHere=()=>{ try{ return !!(jamOn&&!editing&&!grooveEdit); }catch(e){ return false; } };
+  $("cpCode").addEventListener("click",()=>copyText(shareJamHere()?"HPJ1:"+enc(jamRecipeFull()):"HPS1:"+enc(shareable()),"Code copied"));
   $("cpLink").addEventListener("click",()=>{
     const base=location.href.split("#")[0];
-    copyText(base+"#p="+enc(shareable()),"Link copied"); });
+    copyText(base+(shareJamHere()?"#j="+enc(jamRecipeFull()):"#p="+enc(shareable())),"Link copied"); });
   $("dlFile").addEventListener("click",()=>{
-    const a=document.createElement("a");
-    a.href=URL.createObjectURL(new Blob(["HPS1:"+enc(shareable())+"\n"],{type:"text/plain"}));
-    a.download=(piece.title||"piece").replace(/[^\w -]+/g,"")+".hps"; a.click();
+    const a=document.createElement("a"), J=shareJamHere();
+    a.href=URL.createObjectURL(new Blob([(J?"HPJ1:"+enc(jamRecipeFull()):"HPS1:"+enc(shareable()))+"\n"],{type:"text/plain"}));
+    a.download=(J?jamDefaultName():(piece.title||"piece")).replace(/[^\w -]+/g,"")+(J?".hpj":".hps"); a.click();
     setTimeout(()=>URL.revokeObjectURL(a.href),4000); });
   $("impFile").addEventListener("click",()=>$("impFileInput").click());
   $("impFileInput").addEventListener("change",e=>{
@@ -52892,8 +52896,10 @@ function boot(){
   /* a LINK or ?piece= is a door the student came through, so its pan follows;
      the default demo is the app opening itself and moves nobody's instrument */
   if(p0) openPiece(p0);
-  else loadPiece(DEMOS.find(p=>p.id==="composition-2"&&edLibOk(p))||DEMOS.find(edLibOk)||DEMOS[0]);   /* the opening piece keeps to a limited library (patches/editions-limits-free.py) */
+  else loadPiece(DEMOS.find(p=>p.id==="flavourful-freestyle-2"&&edLibOk(p))||DEMOS.find(edLibOk)||DEMOS[0]);   /* the opening piece for a first visit: Improvisation 2 (David, 7 Oct 2026), in every edition (ED_OPEN); a limited library keeps to its own (patches/editions-limits-free.py) */
   restoreSession();
+  if(location.hash.startsWith("#j=")){ const r=jamFromText("HPJ1:"+location.hash.slice(3));   /* a jam link opens the jam room with the jam, whole (patches/jam-share-full.py) */
+    if(r) setTimeout(()=>{ try{ jamOpenSaved(r); }catch(e){} },0); else toast("This jam link could not be read"); }
   try{ ensureCtx(); preloadBank(); }catch(e){}   // warm the bank before the first tap
 }
 function setTempo(v){
