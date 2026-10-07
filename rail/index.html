@@ -11027,7 +11027,7 @@ const ED_LIMITS={
     panlib:["d-kurd","e-amara","d-celtic-minor","f2-low-pygmy"],  // scales, every size: D Kurd, E Amara, D Amara (D Celtic Minor), F Pygmy (F2 Low Pygmy)
     drums:["malfuf-karatchi"],                                    // the percussion's grooves (wgg/grooves.json ids): Malfuf/Karatchi
     bass:["beats"],                                               // the bass's styles: Root on the beats
-    jam:["cg3","cg4","mg1","mg16"],                               // the jam's grooves: 3-3-2 arpeggio, Backbeat arpeggio, 2 pulse, Downwards is also nice
+    jam:{grooves:["cg3","cg4","mg1","mg16"],chords:4},            // the jam: its grooves (3-3-2 arpeggio, Backbeat arpeggio, 2 pulse, Downwards is also nice) and its chords - exactly that many
     quiz:["find"],                                                // the quizzes: find, name, rhythm
     chordnames:[],                                                // chords set by hand: none
     savelocal:1                                                   // pieces saved on the device
@@ -11046,6 +11046,13 @@ function edList(k){
 }
 /* a value the limit keeps, or the first it does keep */
 function edKeep(k,v){ const L=edList(k); return !Array.isArray(L)||!L.length||L.includes(v)?v:L[0]; }
+/* the jam's longest progression: the edition's number where its jam is limited, the jam's own eight everywhere else (patches/editions-jam-chords.py) */
+function jamMax(){ const L=edList("jam"); return (L&&L.chords)||JAM_MAX; }
+/* a limited jam is EXACTLY its number of chords: jamFix answers it (0 elsewhere), jamToCount brings the progression to it -
+   longer is cut, shorter filled by the rules Generate follows - in memory (patches/editions-jam-four.py) */
+function jamFix(){ const L=edList("jam"); return (L&&L.chords)||0; }
+function jamToCount(){ const M=jamMax(); if(jam.slots.length>M) jam.slots=jam.slots.slice(0,M);
+  const X=jamFix(); while(X&&jam.slots.length<X){ const p=suggestPick(); if(!p) break; jam.slots.push({chord:p.name,bars:1}); } }
 function edLibOk(p){ const L=edList("library"); return !L||L.includes(p.collection)||(!!p.course&&allowed("coursepieces")); }
 function edPanOk(p){ const L=edList("panlib"); return !L||!p||!p.scale||L.includes(p.scale); }
 /* room for one more saved piece: the oldest goes if the student says so; a device that holds more than the limit
@@ -11218,6 +11225,7 @@ const SW_UI={
   editor:["editBtn","railArr","footEdit","navEdit","mNavEdit","libEdit","libNewBtn","spEdWrap","spGoWrap","csGoWrap","csToGroove",'#roomDrop [data-r="7"]','#roomDrop [data-r="8"]'],
   articulations:["edFx"], foreignnotes:["edForeign","~#edForeignD"], grooveeditor:["railGrv","jeGroove"], tablegroove:["~.bwseg[data-bw=\"drm\"]"],   /* the Editor group (patches/editions-editor.py) */
   learn:["navLearn","railLearn","mNavLearn",'#roomDrop [data-r="9"]'],
+  tablelisten:["~body:not(.cplisten) #tpBtn"],   /* the ear on the table; chord practice's listening keeps it (patches/editions-tablelisten-ear.py) */
   plog:["railLog","navLog","~#lcToday"], cp:["lcChord"], cplisten:["lcListen"], scales:["lcScale","pcScale"],
   quiz:["lcQuiz","lcName","lcRhythm"], quizlisten:["lcListenQuiz"], tuner:["railTuner","navTuner"],
   drumgrooves:["railDg"], drumseteditor:["~[data-dkmode=\"drums\"]"],   /* the Drum Grooves editor (patches/editions-dg.py) */   /* the Practice group (patches/editions-practice.py) */
@@ -34829,7 +34837,7 @@ const JAMPATS=[
  {id:"mg33",name:"Upwards motion",cats:["arp"],meter:[4,4],sub:4,bpr:1,ev:[
    [0,"1","R"],[1,"g","L"],[2,"3","R"],[3,"5","L"],[4,"1","R"],[5,"g","L"],[6,"3","R"],[7,"7","L"],[8,"3","R"],[9,"g","L"],[10,"5","R"],[11,"9","L"],[12,"3","R"],[13,"g","L"],[14,"5","R"],[15,"11","L"]]},
 ];
-{ const L=edList("jam"); if(Array.isArray(L)&&L.length){ for(let i=JAMPATS.length-1;i>=0;i--){ if(!L.includes(JAMPATS[i].id)) JAMPATS.splice(i,1); } } }   /* a limited jam keeps its grooves (patches/editions-limits-free.py) */
+{ const L=(edList("jam")||{}).grooves; if(Array.isArray(L)&&L.length){ for(let i=JAMPATS.length-1;i>=0;i--){ if(!L.includes(JAMPATS[i].id)) JAMPATS.splice(i,1); } } }   /* a limited jam keeps its grooves (patches/editions-limits-free.py) */
 
 let jamOn=false, jamPrev=null, jamEditSlot=-1, jam=null, jamSugOn=false;
 /* The transposition report can be dismissed and stays dismissed until the
@@ -36837,7 +36845,7 @@ function jamReline(){ if(jam.motion||jam.trans) jam.mseed=jamNewSeed(); }
    so a student who wants runs in Wide is one tap away and never has to wonder
    what the app is remembering for them. */
 function jamGenerate(bars){
-  const n=Math.max(1,Math.min(JAM_MAX,bars||jamBarCount()||4));
+  const n=jamFix()||Math.max(1,Math.min(jamMax(),bars||jamBarCount()||4));   /* a limited jam: its number, every time (patches/editions-jam-four.py) */
   jamPreviewStop();
   const before=jam.slots;
   jam.slots=[];
@@ -37082,7 +37090,7 @@ function setListenEnabled(on){
 // The Suggest button: one chord onto the end, from the shared core above.
 function jamSuggest(){
   if(!allowed("jamown")) return;   /* a DOOR (patches/editions-jam.py) */
-  if(jam.slots.length>=JAM_MAX){ toast("Eight chords is the most for now"); return; }
+  if(jam.slots.length>=jamMax()){ toast(jamMax()===JAM_MAX?"Eight chords is the most for now":jamMax()+" chords is the most in this edition"); return; }
   const pick=suggestPick();
   if(!pick){ toast("No chord to suggest on this pan"); return; }
   jam.slots.push({chord:pick.name,bars:1});
@@ -37447,7 +37455,8 @@ function jamToPiece(){
   if(!editing) $("editBtn").click();
   toast("Copied into a new piece — save it from the Library");
 }
-function saveJamLS(){ try{localStorage.setItem("hps.jam",JSON.stringify(
+function saveJamLS(){ if(typeof EDMODE!=="undefined"&&EDMODE) return;   /* an edition leaves the device's jam as it was (patches/editions-jam-chords.py) */
+  try{localStorage.setItem("hps.jam",JSON.stringify(
   {slots:jam.slots,patternId:jam.patternId,bpm:bpm,narrow:!!jam.narrow,
    motion:!!jam.motion,trans:!!jam.trans,mpasses:jamEndless()?"inf":jamPasses(),mseed:jam.mseed||1,
    brk:jam.brk,vv:2}))}catch(e){} }
@@ -37534,6 +37543,7 @@ function enterJam(){
   // an EMPTY progression is a legal state (David, 26 Aug) — only a missing
   // one gets the default; chords this pan can't voice stay as silent bars
   if(!jam||!Array.isArray(jam.slots)) jam=defaultJam();
+  jamToCount();   /* the edition's number of chords, in memory (patches/editions-jam-four.py) */
   jamLast=JSON.stringify(jam); histClear("jam");   // a jam opens its own history
   if(!allPats().some(p=>p.id===jam.patternId)) jam.patternId=JAMPATS[0].id;
   jam.brk=jamBrkNorm(jam.brk,4);      // a stored jam from before breaks existed
@@ -38025,22 +38035,22 @@ function renderJamPanel(){
   const add=document.createElement("button");
   add.className="jslot jadd"; add.textContent="＋"; add.title="Add a chord";
   add.addEventListener("click",()=>{
-    if(jam.slots.length>=JAM_MAX){ toast("Eight chords is the most for now"); return; }
+    if(jam.slots.length>=jamMax()){ toast(jamMax()===JAM_MAX?"Eight chords is the most for now":jamMax()+" chords is the most in this edition"); return; }
     const last=jam.slots[jam.slots.length-1];
     // one bar, so the chord lands in the next FREE BAR rather than starting a
     // row of its own (David, 27 Aug); its length is editable in the chord card
     jam.slots.push({chord:last?last.chord:(jamDefs().list[0]||{}).name,bars:1});
     applyJam(); openJamSlot(jam.slots.length-1);
   });
-  if(jam.slots.length>=JAM_MAX){ add.classList.add("na");
-    add.title="Eight chords is the most for now"; }
+  if(jam.slots.length>=jamMax()){ add.classList.add("na");
+    add.title=jamMax()===JAM_MAX?"Eight chords is the most for now":jamMax()+" chords is the most in this edition"; }
   prog.appendChild(add);
   // a fitting follow-up chord, with dice in it
   const sug=document.createElement("button");
   sug.className="jslot jadd"; sug.textContent="Suggest";
   sug.title="Add a chord that fits — with a little randomness";
-  if(jam.slots.length>=JAM_MAX){ sug.classList.add("na");
-    sug.title="Eight chords is the most for now"; }
+  if(jam.slots.length>=jamMax()){ sug.classList.add("na");
+    sug.title=jamMax()===JAM_MAX?"Eight chords is the most for now":jamMax()+" chords is the most in this edition"; }
   sug.addEventListener("click",jamSuggest);
   prog.appendChild(sug);
   // transpose the WHOLE progression by semitones; clear starts fresh
@@ -38505,7 +38515,7 @@ const QLEVELS=[
   {id:"triads",label:"Triads",groups:["Triads"]},
   {id:"7th",label:"+ 7th chords",groups:["Triads","7th chords"]},
   {id:"9th",label:"+ 9th chords",groups:["Triads","7th chords","9th chords"]}];
-const QTIMES=[5,10,20,0];      // 0 = no timer: the student reveals by hand
+const QTIMES=[5,10,20,60,0];   // 0 = no timer: the student reveals by hand; 60 is Normal's (David, 7 Oct 2026)
 // Tap the pan is the DEFAULT (David, 26 Aug) — it is the mode that checks the
 // student rather than asking them, so it is the one to meet first.
 /* `kind` picks between the TWO quizzes (David, 26 Aug), which run in opposite
@@ -38525,7 +38535,7 @@ let qcfg={src:"pan",level:"triads",time:10,len:10,mode:"tap",listen:false,labels
    value from an old Customise cannot leak into it; what the student set in
    Customise is kept aside in `custom` and comes back when they return. */
 const QPRESETS={
-  normal:   {src:"pan",level:"triads",voicing:"full",opts:4,len:10,time:20,play:"arp",mode:"tap",labels:"note"},
+  normal:   {src:"pan",level:"triads",voicing:"full",opts:4,len:10,time:60,play:"arp",mode:"tap",labels:"note"},
   challenge:{src:"pan",level:"9th",   voicing:"full",opts:6,len:10,time:20,play:"arp",mode:"tap",labels:"num"}};
 const QPRESET_KEYS=Object.keys(QPRESETS.normal);
 function qzApplyPreset(){
@@ -48261,6 +48271,7 @@ function importJam(r){
     if(!l.some(x=>x.id===r.groove.id)){ l.push(Object.assign({},r.groove,{user:true})); setUserGrooves(l); }
   }
   jam.slots=r.slots.map(s=>({chord:s.chord,bars:Math.max(1,s.bars||1)}));
+  jamToCount();   /* the edition's number of chords (patches/editions-jam-four.py) */
   jam.patternId=allPats().some(p=>p.id===r.patternId)?r.patternId:JAMPATS[0].id;
   jamVoicingMigrate(r); jam.narrow=!!r.narrow;   // a shared jam from before Motion had its own switch
   /* the line travels with the jam, seed and all — a shared Motion jam must
