@@ -11139,7 +11139,10 @@ function jamMax(){ const L=edList("jam"); return (L&&L.chords)||JAM_MAX; }
 function jamFix(){ const L=edList("jam"); return (L&&L.chords)||0; }
 function jamToCount(){ const M=jamMax(); if(jam.slots.length>M) jam.slots=jam.slots.slice(0,M);
   const X=jamFix(); while(X&&jam.slots.length<X){ const p=suggestPick(); if(!p) break; jam.slots.push({chord:p.name,bars:1}); } }
-function edLibOk(p){ const L=edList("library"); return !L||L.includes(p.collection)||(!!p.course&&allowed("coursepieces")); }
+/* THE PIECES EVERY EDITION HAS, whatever its library or course pieces say (David, 7 Oct 2026) (patches/open-cookbook-pieces.py) */
+const ED_OPEN=["composition-1","composition-2","flavourful-freestyle-2"];   // Composition 1 - Simple, Composition 1 Advanced, Improvisation 2 (Handpan Cookbook)
+function edOpenPiece(p){ return !!p&&ED_OPEN.includes(p.id); }
+function edLibOk(p){ const L=edList("library"); return !L||L.includes(p.collection)||(!!p.course&&allowed("coursepieces"))||edOpenPiece(p); }
 function edPanOk(p){ const L=edList("panlib"); return !L||!p||!p.scale||L.includes(p.scale); }
 /* room for one more saved piece: the oldest goes if the student says so; a device that holds more than the limit
    (from a fuller edition) keeps them all and saves nothing */
@@ -11439,6 +11442,8 @@ function openDlg(d){
     }
   }
   if(!FLAT_DLG){ d.showModal(); dlgFocus(d); return; }
+  { const top=Math.max(60,...[...document.querySelectorAll("dialog.flat[open]")].filter(x=>x!==d).map(x=>+getComputedStyle(x).zIndex||60));   /* above the flat dialogs already open (patches/flat-dialog-above.py) */
+    d.style.zIndex=String(top+1); d.addEventListener("close",()=>{ d.style.zIndex=""; },{once:true}); }
   d.classList.add("flat"); $("dlgShade").classList.remove("hidden"); d.show();
   dlgFocus(d);
 }
@@ -18985,11 +18990,13 @@ function voicesLoad(){ try{ SOLO.clear(); }catch(e){}   // a solo is not remembe
 
   let v=null; try{ v=JSON.parse(localStorage.getItem("hps.voices."+voiceRoom())||"null"); }catch(e){}
   bassOn=!!(v&&v.bass); rhyOn=!!(v&&v.rhy); kitOn=!!(v&&v.kit); gtrOn=!!(v&&v.gtr); pnoOn=!!(v&&v.pno); synOn=!!(v&&v.syn);
+  if(typeof pieceVoicesApply==="function") pieceVoicesApply();   /* the play room plays the piece's instruments (patches/piece-instruments.py) */
   if(typeof paintVoices==="function") paintVoices();
   try{ jvFoldInit(); }catch(e){}   /* the instrument group folded or open, as this device keeps it (patches/voices-fold.py) */
   try{ jvMsInit(); }catch(e){}   /* the phone's M | S strip open or closed (patches/band-row-phone.py) */
 }
-function voicesSave(){ try{ localStorage.setItem("hps.voices."+voiceRoom(),JSON.stringify({bass:bassOn?1:0,rhy:rhyOn?1:0,kit:kitOn?1:0,gtr:gtrOn?1:0,pno:pnoOn?1:0,syn:synOn?1:0})); }catch(e){} }
+function voicesSave(){ if(voiceRoom()==="practice") return;   /* the play room's instruments are the piece's: a toggle lasts until the next piece (patches/piece-instruments.py) */
+  try{ localStorage.setItem("hps.voices."+voiceRoom(),JSON.stringify({bass:bassOn?1:0,rhy:rhyOn?1:0,kit:kitOn?1:0,gtr:gtrOn?1:0,pno:pnoOn?1:0,syn:synOn?1:0})); }catch(e){} }
 /* …and how loud it is, in per cent of its own full level (David, 9 Sep:
    "can you give me volume control on the bass when I right-click on the
    symbol?"). 100 is the level it shipped at; the range runs to 150 because a
@@ -34992,9 +34999,34 @@ function loadPiece(p){
    it does not carry; loadPiece downgrades that to D Kurd to draw it, and
    following that downgrade would put the student on an instrument nobody
    chose. */
+/* A PIECE BRINGS ITS INSTRUMENTS TO THE PLAY ROOM (David, 7 Oct 2026) (patches/piece-instruments.py): what a piece defines - notes
+   written, a table's or a bar's style, a table's groove, the bass's piece style - is on, the rest muted; a piece saved
+   with its own instrumentation (piece.voices) brings that; the handpan is untouched */
+const PV_KEYS=["bass","drm","kit","gtr","pno","syn"];
+function pieceDefines(p,k){ if(!p||!p.sections) return false;
+  if(k==="bass"&&p.bassStyle) return true;
+  return Object.values(p.sections).some(s=>{ if(!s) return false;
+    if(k==="bass") return bassOf(s).length>0||!!s.bassStyle;
+    if(k==="drm") return !!s.groove&&s.groove!=="none";
+    if(k==="kit") return !!s.kitGroove&&s.kitGroove!=="none";
+    return (Array.isArray(s[k])&&s[k].length>0)||!!(s.sty&&s.sty[k])||!!(s.styb&&s.styb[k]&&Object.keys(s.styb[k]).length); }); }
+function pieceVoicesOwn(p){ const o={}; for(const k of PV_KEYS) o[k]=pieceDefines(p,k); return o; }
+function pieceVoicesWant(p){ const v=(p&&p.voices)||pieceVoicesOwn(p), o={};
+  for(const k of PV_KEYS) o[k]=!!v[k]&&(typeof voiceAllowed!=="function"||voiceAllowed(k)); return o; }
+function pieceVoicesApply(){ if(typeof voiceRoom!=="function"||voiceRoom()!=="practice"||!piece) return;
+  const w=pieceVoicesWant(piece);
+  bassOn=w.bass; gtrOn=w.gtr; pnoOn=w.pno; synOn=w.syn;
+  if(!!kitOn!==w.kit){ try{ kitSwitch(w.kit); }catch(e){ kitOn=w.kit; } }
+  if(rhyOn!==w.drm){ rhyOn=w.drm; if(rhyOn){ try{ loadWgg(); }catch(e){} } }
+  try{ if(typeof paintVoices==="function") paintVoices(); }catch(e){} }
+/* saved with the piece only when it differs from what the piece defines ("a new piece with different instrumentation") */
+function pieceVoicesStamp(){ if(!piece||typeof voiceRoom!=="function"||voiceRoom()!=="practice") return;
+  const own=pieceVoicesOwn(piece), now={bass:!!bassOn,drm:!!rhyOn,kit:!!kitOn,gtr:!!gtrOn,pno:!!pnoOn,syn:!!synOn};
+  if(PV_KEYS.some(k=>own[k]!==now[k])) piece.voices=now; else delete piece.voices; }
 function openPiece(p){
   loadPiece(p);                       // adopts the piece's own pan on arrival
   followPiecePan();
+  pieceVoicesApply();                 /* …and brings its instruments (patches/piece-instruments.py) */
 }
 function followPiecePan(){
   if(piecePanUnknown) return;         // a downgrade is not a choice
@@ -35263,7 +35295,7 @@ function tagsForApp(){ const d=tagDraft(), out=[];
 
 function libFavs(){ try{ return new Set(JSON.parse(localStorage.getItem("hps.favPieces")||"[]")); }catch(e){ return new Set(); } }
 function libKey(p){ return p._saved?"saved:"+(p.title||"Untitled"):p.id; }
-function libPieces(){ return (allowed("others")?DEMOS:DEMOS.filter(p=>p.course||p.collection)).filter(p=>!p.course||allowed("coursepieces")).filter(edLibOk).concat(   /* the test version's library is the courses and the collections (David, 20 Sep) — a curtain: the pieces are still in the file */savedPieces().map((p,i)=>Object.assign({},p,{_saved:true,_i:i}))); }
+function libPieces(){ return (allowed("others")?DEMOS:DEMOS.filter(p=>p.course||p.collection)).filter(p=>!p.course||allowed("coursepieces")||edOpenPiece(p)).filter(edLibOk).concat(   /* the test version's library is the courses and the collections (David, 20 Sep) — a curtain: the pieces are still in the file */savedPieces().map((p,i)=>Object.assign({},p,{_saved:true,_i:i}))); }
 function libFolders(){
   const all=libPieces(), fav=libFavs();
   const courses=[...new Set(all.filter(p=>p.course).map(p=>p.course))].sort();
@@ -38391,7 +38423,7 @@ function leaveJam(){
   try{ $("jamDlg").close(); }catch(e){}
   const prev=jamPrev; jamPrev=null;
   const prevHist=prev&&prev.hist;
-  if(prev){ loadPiece(prev.piece); bpm=prev.bpm; $("bpm").value=bpm; }
+  if(prev){ loadPiece(prev.piece); pieceVoicesApply(); bpm=prev.bpm; $("bpm").value=bpm; }   /* the piece back, then its instruments - voicesLoad above ran before it returned (patches/piece-instruments.py) */
   /* AFTER loadPiece, never before — loadPiece clears the piece history by
      design, so restoring it first would only have it wiped again. */
   if(prevHist){ HIST.piece.u=prevHist.u; HIST.piece.r=prevHist.r; }
@@ -45693,7 +45725,7 @@ function leaveCp(noRestore){
     } finally{ sideQuiet=false; }
   }
   if(prev&&!noRestore){
-    loadPiece(prev.piece); bpm=prev.bpm; $("bpm").value=bpm;
+    loadPiece(prev.piece); pieceVoicesApply(); bpm=prev.bpm; $("bpm").value=bpm;
     if(prev.hist){ HIST.piece.u=prev.hist.u; HIST.piece.r=prev.hist.r; }
     paintUndo();
   }
@@ -48785,7 +48817,8 @@ function runAfterEditNow(){ const f=afterEdit; afterEdit=null; if(f) f(); }
    "Practice"). A room that borrows the field for its own name locks it; a locked field is not the piece's name. */
 function titleFromField(){ const f=$("title"); if(f&&!f.readOnly) piece.title=f.value; }
 function savePieceToLibrary(){
-  if(!allowed("savelocal")) return;   /* a DOOR: saving pieces on the device (patches/editions-savelocal.py) */
+  if(!allowed("savelocal")) return;
+  pieceVoicesStamp();   /* its instrumentation, when it is not what the piece defines (patches/piece-instruments.py) */   /* a DOOR: saving pieces on the device (patches/editions-savelocal.py) */
   titleFromField();
   const l=savedPieces();
   const i=l.findIndex(x=>x.id===piece.id&&x.title===piece.title);
@@ -52220,7 +52253,7 @@ function boot(){
       try{ const lp=localStorage.getItem("hps.lastPiece");
         // a stored generated jam or groove workbench never restores as a piece
         if(lp){ const p=pieceFromText(lp);
-          if(p&&p.id!=="jam"&&p.id!=="groove-edit") loadPiece(p); } }catch(e){}
+          if(p&&p.id!=="jam"&&p.id!=="groove-edit"){ loadPiece(p); pieceVoicesApply(); } } }catch(e){}
     }
     // last video — only inside the Mac app, whose server can stream any path
     try{
@@ -52834,7 +52867,7 @@ function boot(){
   let p0=null;
   if(location.hash.startsWith("#p=")) p0=pieceFromText(location.hash.slice(3));
   if(!p0&&WANT_PIECE){
-    const w=DEMOS.find(p=>p.id===WANT_PIECE&&(allowed("others")||p.course||p.collection)&&(!p.course||allowed("coursepieces"))&&edLibOk(p));   // …and a ?piece= link cannot name what the library does not show
+    const w=DEMOS.find(p=>p.id===WANT_PIECE&&(allowed("others")||p.course||p.collection)&&(!p.course||allowed("coursepieces")||edOpenPiece(p))&&edLibOk(p));   // …and a ?piece= link cannot name what the library does not show
     if(w) p0=w; else toast("No built-in piece called \""+WANT_PIECE+"\"");
   }
   /* a LINK or ?piece= is a door the student came through, so its pan follows;
