@@ -1816,7 +1816,7 @@ body.phone:not(.tablet) .pop.card .dbar{margin:-5px -6px 6px; padding:0 6px}
 .pop .cpre::before{content:"\25B6\FE0E"; position:absolute; left:10px; top:50%; transform:translateY(-50%); width:24px; height:24px;
   box-sizing:border-box; border:1px solid var(--rule); border-radius:50%; background:var(--card); display:grid; place-items:center;
   padding-left:2px; font-size:8px; line-height:1; color:var(--ink2)}
-.pop .cpre.vpv::before{content:"\25A0"; padding-left:0; font-size:9px; color:#fff; background:var(--dixie); border-color:var(--dixie)}
+.pop .cpre.vpv::before{content:""; padding-left:0; background:linear-gradient(#fff,#fff) center/8px 8px no-repeat var(--dixie); border-color:var(--dixie)}   /* the stop square drawn in the circle's centre (David, 7 Oct 2026) */
 .pop .cpre.vwait::before,.pop .cpplay.vwait{animation:vwait 1s ease-in-out infinite}
 .pop .cpre .ed,.pop .cpchosen .ed{font-style:normal; font-weight:700; color:var(--amber-ink)}
 .pop .cpre:has(.cpdel){padding-right:70px}
@@ -1854,7 +1854,7 @@ body.phone:not(.tablet) .pop.card>.cwleft #grooveDlg .pptop h3,body.phone:not(.t
 .pop .cpchosen .cpplay{width:34px; height:34px; flex:none; border:0; border-radius:50%; background:var(--dixie); color:#fff; display:grid; place-items:center; padding:0 0 0 2px; font-size:12px; cursor:pointer}
 .pop .cpchosen .cpplay::before{content:"\25B6\FE0E"}
 .pop .cpchosen .cpplay:is(.vpv,.on){padding-left:0}
-.pop .cpchosen .cpplay:is(.vpv,.on)::before{content:"\25A0"}
+.pop .cpchosen .cpplay:is(.vpv,.on)::before{content:""; width:11px; height:11px; border-radius:2px; background:currentColor}   /* the stop square drawn, not the font's - the fallback glyph was small and sat on the baseline (David, 7 Oct 2026) */
 .pop .cpchosen .t{flex:1; min-width:0}
 .pop .cpchosen b{display:block; font:800 15px/1.2 Figtree,"Helvetica Neue",Arial,sans-serif; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 .pop .cpchosen .t>span{display:block; font:600 11.5px/1.3 Figtree,"Helvetica Neue",Arial,sans-serif; color:var(--ink3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
@@ -1902,7 +1902,7 @@ body.phone:not(.tablet) .pop.card:has(>.dbar){top:calc(env(safe-area-inset-top,0
 .pop .cpage :is([data-gcb]>.pal,[data-pgb]>.pal,[data-bgb]>.bsgrid,[data-kgb]>.pal,[data-rgb]>.pal,.pal:has(>[data-sy]))>.bwseg::before{content:"\25B6\FE0E"; position:absolute; left:10px; top:50%; transform:translateY(-50%); width:24px; height:24px;
   box-sizing:border-box; border:1px solid var(--rule); border-radius:50%; background:var(--card); display:grid; place-items:center;
   padding-left:2px; font-size:8px; line-height:1; color:var(--ink2)}
-.pop .cpage :is([data-gcb]>.pal,[data-pgb]>.pal,[data-bgb]>.bsgrid,[data-kgb]>.pal,[data-rgb]>.pal,.pal:has(>[data-sy]))>.bwseg.vpv::before{content:"\25A0"; padding-left:0; font-size:9px; color:#fff; background:var(--dixie); border-color:var(--dixie)}
+.pop .cpage :is([data-gcb]>.pal,[data-pgb]>.pal,[data-bgb]>.bsgrid,[data-kgb]>.pal,[data-rgb]>.pal,.pal:has(>[data-sy]))>.bwseg.vpv::before{content:""; padding-left:0; background:linear-gradient(#fff,#fff) center/8px 8px no-repeat var(--dixie); border-color:var(--dixie)}   /* drawn, as the presets' (David, 7 Oct 2026) */
 .pop .cpage :is([data-gcb]>.pal,[data-pgb]>.pal,[data-bgb]>.bsgrid,[data-kgb]>.pal,[data-rgb]>.pal,.pal:has(>[data-sy]))>.bwseg.vwait::before{animation:vwait 1s ease-in-out infinite}
 @keyframes vwait{50%{opacity:.35}}   /* the preview waits for its samples (patches/card-preview-wait.py) */
 .pop .cpage [data-gc="strum"]::after{content:"down & up"}
@@ -15378,7 +15378,7 @@ function synFollow(p2,at){   // the handpan's basic pattern (panTones), the patt
    instruments the grooves use. All of wgg/ is written by sync_wgg.py from
    WGG's folder, run by hand. With the button off the app has not even heard
    of them. */
-let wggPend=null;
+let wggPend=null, WGG_AT=null;   /* what loadWgg attached, for rhyPrefetch (patches/perc-prefetch.py) */
 function wggURL(name){
   const b=document.querySelector('script[src*="bank.js"]');
   const src=b?b.getAttribute("src"):"bank.js";
@@ -15400,6 +15400,30 @@ function wggURL(name){
      move with it or the app keeps the grooves it already had. */
   return "bank.js".replace(/bank\.js(\?.*)?$/,name+"?v=14");   // v=14: each instrument's tap for its meter (patches/perc-meters.py)     // v=13: each instrument's level, pan and mute (patches/perc-presets-mixer.py)   // v=12: the drums' pedalboard hook (patches/instrument-fx.py)   // v=11: a groove's own reverb (29 Sep 2026); v=10 forget(); v=9 kept every prepared groove
 }
+/* THE PERCUSSION FETCHED IN THE BACKGROUND (David, 7 Oct 2026: "In the background" - step 1, the downloads only (patches/perc-prefetch.py)):
+   when the percussion is on in any room this device remembers, the groove it would play is fetched after the page has
+   settled - the URLs and cache mode the core uses - so the first press finds it in the browser's cache. Never decodes. */
+var RHY_PREFETCHED=0;
+async function rhyPrefetch(){
+  const on=["practice","jam","cp"].some(r=>{ try{ const v=JSON.parse(localStorage.getItem("hps.voices."+r)||"null"); return !!(v&&v.rhy); }catch(e){ return false; } });
+  if(!on) return;
+  try{ await loadWgg(); }catch(e){ return; }
+  let id=null; try{ id=rhyGrooveId(); }catch(e){}
+  const g=id&&id!=="none"?HPSWGG.grooves().find(x=>x.id===id):null;
+  if(!g||!WGG_AT||typeof wggInstView!=="function") return;
+  const urls=[];
+  for(const set of [...new Set((g.rows||[]).map(r=>r.set))]){
+    const def=((WGG_AT.defs&&WGG_AT.defs.instruments)||[]).find(i=>i.id===set); if(!def) continue;
+    const v=wggInstView(def,WGG_AT.base+"bank/"), cm=v.cache;
+    try{ const man=await (await fetch(v.manifest,{cache:cm})).json();
+      for(const c of man.cells||[]) if(c.enabled!==false) urls.push([v.dir+"/"+c.file,cm]); }catch(e){}
+    if(v.oneshots) try{ const om=await (await fetch(v.oneshots,{cache:cm})).json(), od=v.oneshots.replace(/[^/]*$/,"");
+      for(const h of om.hits||[]) if(h.enabled!==false&&/^[DTP]v?$/.test(h.type)) urls.push([od+h.file,cm]); }catch(e){}
+  }
+  let i=0; const one=async()=>{ while(i<urls.length){ const [u,cm]=urls[i++]; try{ await (await fetch(u,{cache:cm})).arrayBuffer(); }catch(e){} } };
+  await Promise.all([one(),one(),one(),one()]);
+  RHY_PREFETCHED=urls.length;
+}
 function loadWgg(){
   if(window.HPSWGG&&window.HPSWGG.loaded()) return Promise.resolve();
   if(wggPend) return wggPend;
@@ -15420,7 +15444,7 @@ function loadWgg(){
     .then(()=>Promise.all([json("bank/instruments.json"),json("grooves.json"),json("SOURCE.json")]))
     .then(([defs,grooves,source])=>{
       if(!window.HPSWGG||!window.WGGCore) throw new Error("the rhythm files loaded but were empty");
-      HPSWGG.attach({base,defs,grooves,source}); HPSWGG.setVolume(rhyVol); dgSync(); });
+      WGG_AT={base,defs}; HPSWGG.attach({base,defs,grooves,source}); HPSWGG.setVolume(rhyVol); dgSync(); });
   wggPend.catch(()=>{ wggPend=null; });     // a failed load may be retried
   return wggPend;
 }
@@ -20868,7 +20892,9 @@ function edStartPulse(top){
     return top+Math.floor(back/n)*bp+cs[back%n];
   }catch(e){ return top; }
 }
+var START_TIMED=false, START_PERC=-1;   /* the first press of a page, timed for the audio log (patches/perc-prefetch.py) */
 async function start(){
+  const T0=performance.now(), T1st=!START_TIMED; START_TIMED=true; START_PERC=-1;
   if(typeof jamPreviewStop==="function") jamPreviewStop();  // play takes the ears back
   rgListenStop();                                            // …from the groove chooser's listen too (step d)
   if(typeof libPreviewStop==="function") libPreviewStop();  // ...from the library preview too
@@ -20939,9 +20965,10 @@ async function start(){
      nothing on every later press. */
   if(rhyOn&&window.HPSWGG&&HPSWGG.loaded()){
     try{
-      await rhyPrepareAll(pendingStart!=null?pendingStart:0);   // every groove the piece's tables play (step d)
+      { const tp=performance.now(); await rhyPrepareAll(pendingStart!=null?pendingStart:0); START_PERC=performance.now()-tp; }   // every groove the piece's tables play (step d)
     }catch(e){}
   }
+  if(T1st) audioNote("first play of this page: "+Math.round(performance.now()-T0)+" ms before the music"+(START_PERC>=0?" - the percussion's preparation "+Math.round(START_PERC)+" ms ("+(RHY_PREFETCHED?RHY_PREFETCHED+" files fetched in the background":"nothing fetched ahead")+")":""));   /* (patches/perc-prefetch.py) */
   /* TABLE PRACTICE — STAGE B: table practice counts the student in itself, so it says WHEN the music begins —
      the beat after its four clicks, on a clock the snaps set. Everything else starts as it always did. */
   let t0=(tpStartAt!=null&&tpStartAt>ctx.currentTime)?tpStartAt:ctx.currentTime+0.12; tpStartAt=null;
@@ -54479,6 +54506,7 @@ advArrange();
 /* ═══ the end of the advanced settings ═══ */
 if("serviceWorker" in navigator && /github\.io$/.test(location.hostname))
   navigator.serviceWorker.register("../sw.js").catch(()=>{});
+window.addEventListener("load",()=>setTimeout(()=>{ try{ rhyPrefetch(); }catch(e){} },1500));   /* the percussion fetched in the background (patches/perc-prefetch.py) */
 applyFeatures();   /* THE SWITCHES, again: boot has moved the rows to where this device keeps them, and the last controls are built */
 </script>
 <script src="../tour.js?v=94"></script>   <!-- THE TOUR (21 Sep 2026): a guided walk through the practice page, after the app's script because it reads the app's globals. Bump ?v= when it changes; make_player.py lifts it out -->
