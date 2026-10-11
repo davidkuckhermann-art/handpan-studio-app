@@ -6919,8 +6919,10 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
   
   <div class="drow"><span>Adapt hand pattern to my pan layout</span>
     <span class="pills" role="group" aria-label="Adapt hand pattern to my pan layout">
-      <button id="pmHandsOn" title="The hands are worked out for your pan as you laid it out — a written hand moves only where your layout forces it">On</button>
-      <button id="pmHandsOff" title="The hands are worked out for the standard layout">Off</button></span></div>
+      <button id="pmHandsOff" title="Keep the original hand pattern of the composition">Off</button>
+      <button id="pmHands1" title="Minimal necessary adjustment to your pan layout">1</button>
+      <button id="pmHands2" title="Adapt to a more ergonomic hand pattern where it's helpful">2</button>
+      <button id="pmHands3" title="Calculate a new hand pattern for your pan layout">3</button></span></div>
   
   <div class="drow"><span>My pans</span>
     <button class="ctl" id="pmSaveMine" title="Keep a copy of this pan under My pans, to edit and customise">Save this pan to my pans</button></div>
@@ -7809,7 +7811,7 @@ function panTurned(){ if(!allowed("turnpan")) return false;
 
 function handGeom(P,turn){                      
   const cx=215, out=new Map();
-  const stored=handLayout&&!HANDSTD;    
+  const stored=handMode!=="off"&&!HANDSTD;    
   const spots=topSpots(P,stored?undefined:(defaultLayout(P)||null)), wide=Math.max(60,...spots.map(s=>Math.abs(s.x-cx)));
   
 
@@ -7918,6 +7920,11 @@ function assignHands(piece,P,opts){
       const seeds=[...freed,...loose].map(e=>atOf.get(e));
       if(seeds.length) for(const sl of slots) for(const e of sl.evs)
         if(e.hand&&!freed.has(e)&&!loose.has(e)&&seeds.some(a=>Math.abs(a-sl.at)<=sub)) loose.add(e);
+      
+
+      if(opts.seed){ const st=[]; for(const sl of slots) for(const e of sl.evs) if(opts.seed.has(e)) st.push(sl.at);
+        for(const sl of slots) for(const e of sl.evs)
+          if(e.hand&&!opts.seed.has(e)&&!freed.has(e)&&!loose.has(e)&&st.some(a=>Math.abs(a-sl.at)<=sub)) freed.add(e); }
     }
     
 
@@ -13684,12 +13691,27 @@ let transHowChoice=null, transHowKey=null, TRANSHOW="root", TRANSADJ=0;
 
 
 
-let transHandsChoice=null, transHandsKey="";
-function transHandsNow(){
-  if(!piece||!srcPan||!myPan) return "modify";
+
+let transTurnChoice=false, transTurnKey="";
+function transTurnNow(){
+  if(!piece||!srcPan||!myPan) return false;
   const key=(piece.id||"")+"|"+myPanId;
-  if(transHandsKey!==key){ transHandsKey=key; transHandsChoice=null; }
-  return transHandsChoice||"modify";
+  if(transTurnKey!==key){ transTurnKey=key; transTurnChoice=false; }
+  return !!transTurnChoice;
+}
+
+
+function handSameScale(S,T){ const a=S&&S.pan, b=T&&T.pan; if(!a||!b) return false;
+  if(a.scale&&b.scale) return a.scale===b.scale;
+  if(midiOf(a.ding)===null||midiOf(a.ding)!==midiOf(b.ding)) return false;
+  const notes=p=>new Set([p.ding].concat(p.fields||[],p.bottom||[]).map(midiOf));
+  const nb=notes(b); return [...notes(a)].every(n=>nb.has(n)); }
+
+
+function transHandsWay(){
+  if(handMode==="off") return "keep"; if(handMode==="min") return "soft"; if(handMode==="new") return "fresh";
+  if(transTurnNow()) return "soft";
+  return handSameScale(srcPan,myPan)?"switch":"fresh";
 }
 
 
@@ -14335,7 +14357,7 @@ if(!["off","16th","8th","subdiv"].includes(countMark)) countMark="off";
 let panOrient=localStorage.getItem("hps.panorient")==="1"?"1":"2";    
 
 
-let handLayout=(()=>{ try{ return localStorage.getItem("hps.handlayout")!=="0"; }catch(e){ return true; } })();
+let handMode=(()=>{ try{ const v=localStorage.getItem("hps.handlayout"); return v==="0"?"off":v==="min"?"min":v==="3"?"new":"on"; }catch(e){ return "on"; } })();
 let HANDSTD=false;    
 
 
@@ -16063,28 +16085,44 @@ function transSolve(piece,S,T,how,ov){
 
 let THAND=new WeakMap();
 function transHands(){
-  THAND=new WeakMap(); if(!piece||!myPan||!MAP) return;
-  const copy={sections:{},meter:piece.meter,sub:piece.sub,barsPerRow:piece.barsPerRow,groups:piece.groups}, links=[];
+  THAND=new WeakMap(); THANDN=0; if(!piece||!myPan||!MAP) return;
+  TURN=transTurnNow();
+  
+
+  const build=(ref,seed)=>{ const copy={sections:{},meter:piece.meter,sub:piece.sub,barsPerRow:piece.barsPerRow,groups:piece.groups}, links=[];
   for(const nm in piece.sections){ const sec=piece.sections[nm]; const cs={bars:[]}; if(sec.meter) cs.meter=sec.meter; if(sec.sub) cs.sub=sec.sub; if(sec.groups) cs.groups=sec.groups;
     
 
-    for(const bar of sec.bars||[]){ const cb=[]; for(const ev of bar){ if(ev.v!=="field"){ const c=Object.assign({},ev); delete c.ha; cb.push(c); links.push([c,ev]); continue; }
+    for(const bar of sec.bars||[]){ const cb=[]; for(const ev of bar){ if(ev.v!=="field"){ const c=Object.assign({},ev); delete c.ha; if(seed&&seed.has(ev)) c.hand=seed.get(ev); cb.push(c); links.push([c,ev]); continue; }
         let f=ev.f; const fo=foreignOf(ev); if(fo){ if(fo.pos===null) continue; f=fo.pos; } else { const back=standInPos(ev); if(back!=null) f=back; else { f=MAP[f]; if(f===null||f===undefined) continue; } }
-        const c=Object.assign({},ev,{f}); delete c.ha; cb.push(c); links.push([c,ev]); }
+        const c=Object.assign({},ev,{f:ref?ev.f:f}); delete c.ha; if(seed&&seed.has(ev)) c.hand=seed.get(ev); cb.push(c); links.push([c,ev]); }
       cs.bars.push(cb); }
     copy.sections[nm]=cs; }
+    return {copy,links}; };
   
 
-  const way=transHandsNow(); TURN=(way==="turn");
+  const way=transHandsWay(), own=handKeepsOriginal(piece);
+  const ask=(std,keep,seed)=>{ const b=build(std,seed), heldO=panOrient, heldT=TURN;
+    if(std){ HANDSTD=true; panOrient="2"; TURN=false; }
+    try{ assignHands(b.copy,std?srcPan:myPan,{keep,seed:seed?new Set(b.links.filter(l=>seed.has(l[1])).map(l=>l[0])):null}); }
+    finally{ HANDSTD=false; panOrient=heldO; TURN=heldT; }
+    return b.links; };
   try{
-    if(way==="keep"){ for(const [c,ev] of links) THAND.set(ev,ev.hand); THANDN=0; }
     
 
-    else { const r=assignHands(copy,myPan,{keep:way==="fresh"?"none":"soft"});
-      let n=0; for(const [c,ev] of links){ THAND.set(ev,c.hand); if(ev.hand&&c.hand!==ev.hand) n++; }
-      THANDN=n; }
+    const base=build(false).links;
+    const sig=[way,own,TURN,panOrient,handMode].join("|")+"|"+JSON.stringify([myPan.pan||null,panLayouts()[(myPan.pan||{}).id]||null,
+      (srcPan&&srcPan.pan)||null,(piece&&piece.panTurn)||0,piece.meter,piece.sub,piece.groups,piece.sections,base.map(l=>l[0].f)]);
+    let h;
+    if(TRANSMEMO&&TRANSMEMO.sig===sig&&TRANSMEMO.h.length===base.length) h=TRANSMEMO.h;
+    else { h=way==="keep"?base.map(l=>l[1].hand)
+            :way==="switch"?handsAsked(ask,"none",false,own).map(r=>r[1])
+            :ask(false,way==="fresh"?"none":"soft").map(l=>l[0].hand);
+      TRANSMEMO={sig,h}; }
+    let n=0; base.forEach(([c,ev],i)=>{ THAND.set(ev,h[i]); if(ev.hand&&h[i]!==ev.hand) n++; }); THANDN=n;
   }catch(e){ THAND=new WeakMap(); THANDN=0; }
 }
+let TRANSMEMO=null;    
 let THANDN=0, TURN=false;
 
 
@@ -16093,25 +16131,47 @@ function handOf(ev){ return (((mode==="trans"&&MAP)||OWNHAND)&&THAND.has(ev))?TH
 
 var HANDKEY;
 let OWNHAND=false;
+let OWNMEMO=null;    
 function handLayoutKey(){ const id=(myPan&&myPan.pan&&myPan.pan.id)||myPanId;
-  return (handLayout?"1":"0")+"|"+panOrient+"|"+id+"|"+JSON.stringify(panLayouts()[id]||null); }
+  return handMode+"|"+panOrient+"|"+id+"|"+JSON.stringify(panLayouts()[id]||null); }
 function handsGenerated(){ return false; }    
 
 
+
+
+function handsAsked(ask,keep,fresh,check){
+  const mine=ask(false,keep), std=fresh?null:ask(true,keep), sw=new Map();
+  if(fresh) mine.forEach(([c,ev])=>sw.set(ev,c.hand));
+  else mine.forEach(([c,ev],i)=>{ if(c.hand!==std[i][0].hand&&c.hand!==ev.hand) sw.set(ev,c.hand); });
+  const fit=(check&&sw.size)?ask(false,"soft",sw):null;
+  return mine.map(([c,ev],i)=>[ev,fit?fit[i][0].hand:(sw.has(ev)?c.hand:ev.hand)]);
+}
 function ownHands(){
   OWNHAND=false; HANDKEY=handLayoutKey();
-  if(MAP||!handLayout||!piece||!myPan||editing||handsGenerated()||piece.writtenFor!==myPanId) return;
-  if(!layoutFor(myPan.pan.id)&&panOrient!=="1") return;
-  const keep=handKeepsOriginal(piece)?"soft":"none";
-  const ask=std=>{ const copy={sections:{},meter:piece.meter,sub:piece.sub,barsPerRow:piece.barsPerRow,groups:piece.groups}, links=[];
+  if(MAP||handMode==="off"||!piece||!myPan||editing||handsGenerated()||piece.writtenFor!==myPanId) return;
+  if(handMode!=="new"&&!layoutFor(myPan.pan.id)&&panOrient!=="1") return;    
+  
+
+  
+
+  const own=handKeepsOriginal(piece), on=handMode==="on", fresh=handMode==="new";
+  const keep=(on||fresh||!own)?"none":"soft";
+  
+
+  const evs=[]; for(const nm in piece.sections) for(const bar of piece.sections[nm].bars||[]) for(const ev of bar) evs.push(ev);
+  const sig=HANDKEY+"|"+JSON.stringify([myPan.pan||null,piece.meter,piece.sub,piece.groups,piece.sections]);
+  if(OWNMEMO&&OWNMEMO.sig===sig&&OWNMEMO.h.length===evs.length){
+    THAND=new WeakMap(); evs.forEach((ev,i)=>THAND.set(ev,OWNMEMO.h[i])); OWNHAND=true; return; }
+  const ask=(std,keep,seed)=>{ const copy={sections:{},meter:piece.meter,sub:piece.sub,barsPerRow:piece.barsPerRow,groups:piece.groups}, links=[];
     for(const nm in piece.sections){ const sec=piece.sections[nm]; const cs={bars:[]}; if(sec.meter) cs.meter=sec.meter; if(sec.sub) cs.sub=sec.sub; if(sec.groups) cs.groups=sec.groups;
-      for(const bar of sec.bars||[]){ const cb=[]; for(const ev of bar){ const c=Object.assign({},ev); delete c.ha; cb.push(c); links.push([c,ev]); } cs.bars.push(cb); }
+      for(const bar of sec.bars||[]){ const cb=[]; for(const ev of bar){ const c=Object.assign({},ev); delete c.ha; if(seed&&seed.has(ev)) c.hand=seed.get(ev); cb.push(c); links.push([c,ev]); } cs.bars.push(cb); }
       copy.sections[nm]=cs; }
     const held=panOrient; HANDSTD=std; if(std) panOrient="2";             
-    try{ assignHands(copy,myPan,{keep}); } finally{ HANDSTD=false; panOrient=held; }
+    try{ assignHands(copy,myPan,{keep,seed:seed?new Set(links.filter(l=>seed.has(l[1])).map(l=>l[0])):null}); } finally{ HANDSTD=false; panOrient=held; }
     return links; };
-  try{ const mine=ask(false), std=ask(true);
-    THAND=new WeakMap(); mine.forEach(([c,ev],i)=>THAND.set(ev,c.hand!==std[i][0].hand?c.hand:ev.hand));
+  try{ const res=handsAsked(ask,keep,fresh,on&&own);
+    THAND=new WeakMap(); res.forEach(([ev,h])=>THAND.set(ev,h));
+    OWNMEMO={sig,h:res.map(r=>r[1])};
     OWNHAND=true;
   }catch(e){ OWNHAND=false; }
 }
@@ -16136,8 +16196,8 @@ function handsAfterLayout(){
   if(handLayoutKey()===HANDKEY) return;                              
   rehandGenerated(); refresh();
 }
-function setHandLayout(v){
-  handLayout=!!v; try{localStorage.setItem("hps.handlayout",handLayout?"1":"0")}catch(e){}
+function setHandMode(v){
+  handMode=v==="off"||v==="min"||v==="new"?v:"on"; try{localStorage.setItem("hps.handlayout",{off:"0",min:"min",on:"1",new:"3"}[handMode])}catch(e){}
   paintPanMenu(); handsAfterLayout();
 }
 
@@ -20343,8 +20403,8 @@ function paintPanMenu(){
   $("pmNums").setAttribute("aria-pressed",String(panLabels!=="note"));
   $("pmNotes").setAttribute("aria-pressed",String(panLabels==="note"));
   $("pmZoomVal").textContent=Math.round(panZoom*100)+"%";
-  { const a=$("pmHandsOn"), b=$("pmHandsOff");    
-    if(a) a.setAttribute("aria-pressed",String(handLayout)); if(b) b.setAttribute("aria-pressed",String(!handLayout)); }
+  for(const [id,v] of [["pmHandsOff","off"],["pmHands1","min"],["pmHands2","on"],["pmHands3","new"]]){ const b=$(id);    
+    if(b) b.setAttribute("aria-pressed",String(handMode===v)); }
   { const on=!!(piece&&piece.panTurn);       
     const a=$("pmTurnOn"), b=$("pmTurnOff");
     if(a) a.setAttribute("aria-pressed",String(on)); if(b) b.setAttribute("aria-pressed",String(!on)); }
@@ -20389,8 +20449,10 @@ function openPanMenu(){ paintPanMenu(); openDlg($("panMenuDlg")); }
   on("pmTurnOn",()=>setTurn(true));
   on("pmTurnOff",()=>setTurn(false));
   on("pmCustom",()=>{ $("panMenuDlg").close(); if(!panCustom) setPanCustom(true); });
-  on("pmHandsOn",()=>setHandLayout(true));
-  on("pmHandsOff",()=>setHandLayout(false));
+  on("pmHandsOff",()=>setHandMode("off"));
+  on("pmHands1",()=>setHandMode("min"));
+  on("pmHands2",()=>setHandMode("on"));
+  on("pmHands3",()=>setHandMode("new"));
   
 
   on("pmSaveMine",()=>{
@@ -22201,25 +22263,37 @@ function renderReport(){
       +(live?'':'<span class="pinnote">— the same either way on these two pans</span>')+'</div>'; }
   
 
-  { const way=transHandsNow(), T=transTurnWorth();
-    if(!adv) h+='<div class="pinrow"><span class="pinnote">Hand pattern is modified where necessary.</span></div>';
+  { const way=transHandsWay(), turn=transTurnNow(), T=transTurnWorth();
+    const line={keep:"Hand pattern as written.",soft:"Hand pattern is modified where necessary.",switch:"Hand pattern is adapted where it helps.",fresh:"A new hand pattern for this pan."}[way];
+    if(!adv) h+='<div class="pinrow"><span class="pinnote">'+line+'</span></div>';
     else {
-    const hb=(v,label,title)=>'<button data-th="'+v+'" aria-pressed="'+(way===v?"true":"false")+'" title="'+title+'">'+label+(v==="modify"?'<small class="defmark"> default</small>':'')+'</button>';
-    h+='<div class="pinrow"><span class="pinnote">Hands:</span>'
-      +'<span class="pills thpills" role="group" aria-label="Hands">'
-      +hb("modify","Modify where necessary","Your hand pattern stays. A hand moves only where this pan forces it: a bottom note now on the other side, a hand that would have to play a bottom note and another note at once, or a chord one hand cannot reach.")
-      +hb("keep","Keep the original hands","Every hand exactly as written, even where this pan makes it awkward.")
-      +hb("fresh","Work out new hands","The piece is handed again from scratch for this pan.")
-      +hb("turn","Turn the pan around","Keep the hand pattern and turn the instrument instead: the pan is drawn round, low notes at the top. The notation does not change — field 2 is still 2, it just sits on the other side.")
+    
+
+    const hb=(v,label,title)=>'<button data-hm="'+v+'" aria-pressed="'+(handMode===v?"true":"false")+'" title="'+title+'">'+label+'</button>';
+    const tb=(v,label,title)=>'<button data-tt="'+(v?1:0)+'" aria-pressed="'+(turn===v?"true":"false")+'" title="'+title+'">'+label+'</button>';
+    h+='<div class="pinrow"><span class="pinnote">Adapt hand pattern:</span>'
+      +'<span class="pills thpills" role="group" aria-label="Adapt hand pattern to my pan layout">'
+      +hb("off","Off","Keep the original hand pattern of the composition")
+      +hb("min","1","Minimal necessary adjustment to your pan layout")
+      +hb("on","2","Adapt to a more ergonomic hand pattern where it's helpful")
+      +hb("new","3","Calculate a new hand pattern for your pan layout")
+      +'</span></div>'
+      +'<div class="pinrow"><span class="pinnote">Turn the pan around:</span>'
+      +'<span class="pills ttpills" role="group" aria-label="Turn the pan around">'
+      +tb(false,"Normal","The pan as it is built")
+      +tb(true,"Turned","Keep the hand pattern and turn the instrument instead: the pan is drawn round, low notes at the top. The notation does not change — field 2 is still 2, it just sits on the other side.")
       +'</span></div>'; }
-    const said=way==="keep"?"Every hand as written."
-      :way==="turn"?("The pan below is drawn turned round"+(THANDN?" — "+THANDN+" hand"+(THANDN===1?"":"s")+" still had to move":"; every hand as written")+".")
-      :THANDN?(THANDN+" hand"+(THANDN===1?"":"s")+" moved"+(way==="modify"?" — this pan forced it":""))
-      :(way==="modify"?"No hand had to move.":"Handed again for this pan.");
+     
+    const hands=THANDN+" hand"+(THANDN===1?"":"s"), moved=hands+" moved";
+    const said=(turn?"The pan below is drawn turned round. ":"")
+      +(way==="keep"?"Every hand as written."
+       :way==="soft"?(THANDN?moved+" — this pan forced it.":"No hand had to move.")
+       :way==="switch"?(THANDN?moved+" — where this pan plays better another way.":"No hand had to move.")
+       :(handMode==="on"?"Another scale, so the hands are worked out anew: ":"New hand pattern: ")+(THANDN?hands+" differ"+(THANDN===1?"s":"")+" from the written pattern.":"the same as the written pattern."));
     h+='<div class="pinrow"><span class="pinnote fitparts">'+said+'</span></div>';
     
 
-    if(adv&&T&&T.share>=0.6&&way!=="turn")
+    if(adv&&T&&T.share>=0.6&&!turn)
       h+='<div class="pinrow"><span class="pinnote fitparts" id="turnOffer">'+T.moved+' of '+T.sided+' notes have landed on the other side of the pan. Turning the handpan around can help to stay closer to the original hand pattern.</span></div>'; }
   
 
@@ -22272,7 +22346,7 @@ function renderReport(){
   const ra=$("repAdv");
   if(ra) ra.addEventListener("change",()=>{
     if(ra.checked){ repAdv=true; renderReport(); return; }
-    repAdv=false; transHandsChoice=null;
+    repAdv=false; transTurnChoice=false;
     if(((bulkPrev[myPanId]||{}).kind||"none")!=="none"){ bulkUndo(); saveOv(); }
     refresh();
   });
@@ -22283,9 +22357,13 @@ function renderReport(){
   }));
   const rr=$("repReset");
   if(rr) rr.addEventListener("click",()=>{ delete overrides[myPanId]; delete bulkPrev[myPanId]; saveOv(); refresh(); });
-  R.querySelectorAll(".thpills button[data-th]").forEach(b=>b.addEventListener("click",()=>{
-    if(transHandsChoice===b.dataset.th) return;
-    transHandsChoice=b.dataset.th; refresh();
+  R.querySelectorAll(".thpills button[data-hm]").forEach(b=>b.addEventListener("click",()=>{
+    if(handMode===b.dataset.hm) return;
+    setHandMode(b.dataset.hm);           
+  }));
+  R.querySelectorAll(".ttpills button[data-tt]").forEach(b=>b.addEventListener("click",()=>{
+    const v=b.dataset.tt==="1"; if(transTurnNow()===v) return;
+    transTurnChoice=v; refresh();        
   }));
   R.querySelectorAll(".kfpills button[data-kf]").forEach(b=>b.addEventListener("click",()=>{
     const v=b.dataset.kf, now=(bulkPrev[myPanId]||{}).kind||"none";
