@@ -45,7 +45,17 @@
    198.55; the same numbers would hold at 4K). Each notation template has its
    own marker template and its own cell positions, so they are a SET, and the
    positions are the exact values David's editors landed on, read from his two
-   exports (16 Sep 2026) — not a formula. A 4/4 table, four rows. */
+   exports (16 Sep 2026) — not a formula. A 4/4 table, four rows.
+
+   THE START TITLE (David, 12 Oct 2026: "with every export to Final Cut, can you add
+   an empty title to the very beginning of the timeline. This will help us to copy
+   the notations into the actual project at the right location"): every document
+   carries one more connected title on the take's first frame - Final Cut's own
+   Basic Title (in every installation, nothing to install), its text a space, two
+   seconds long, on a lane above every other title so it meets none of them. Copied
+   together with the notation and pasted at the take's first frame in the lesson's
+   project, it carries every title to its own time. Written after the other titles
+   in the document, so their style ids stay as they were. */
 (function(root){
 "use strict";
 const FCPXML={};
@@ -72,6 +82,7 @@ FCPXML.SETS={
     uid:"~/Titles.localized/*Davids custom FCPX titles/!Percussive Notations/Percussive Marker Centered/Percussive Marker Centered.moti",
     xs:[-0.0241319,19.2593,38.5204,57.7935], ys:[0,-9.19259,-18.38518,-27.57777] }
 };
+FCPXML.START={ label:"START", dur:2, lane:99, name:"Basic Title", uid:".../Titles.localized/Bumper:Opener.localized/Basic Title.localized/Basic Title.moti" };
 FCPXML.cellPosition=function(set,row,beat){ const S=FCPXML.SETS[set]||FCPXML.SETS.v31; return S.xs[Math.min(beat,4)-1]+" "+S.ys[Math.min(row,4)-1]; };
 
 FCPXML.esc=function(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); };
@@ -97,7 +108,11 @@ FCPXML.titleXML=function(T,r,ref,ind,ids){ // one connected title; T = {t, dur, 
      already defined …" — one ts1 per table). `ids` is the document's counter. */
   const E=FCPXML.esc, L=[], p=ind, styles=new Map(); ids=ids||{n:0};
   const sid=(st)=>{ const k=FCPXML.styleAttrs(st); if(!styles.has(k)) styles.set(k,"ts"+(++ids.n)); return styles.get(k); };
-  const f0=T.offsetFrames, fd=Math.max(1,FCPXML.frames(T.dur,r));
+  /* A LENGTH IS THE END'S FRAME MINUS THE START'S (12 Oct 2026): start and length each rounded to a frame let two
+     titles that meet in time overlap by one frame, and Final Cut lifts one of them to the row above (David's
+     "daniele test tables": the second table ended a frame after the third began). A title without a time of its
+     own (the START title) keeps its rounded length. */
+  const f0=T.offsetFrames, fd=Math.max(1,T.t!=null?FCPXML.frames(T.t+T.dur,r)-FCPXML.frames(T.t,r):FCPXML.frames(T.dur,r));
   L.push(p+'<title ref="'+ref+'" lane="'+(T.lane|0||1)+'" offset="'+FCPXML.tcFrames(f0,r)+'" name="'+E(T.name)+'" start="3600s" duration="'+FCPXML.tcFrames(fd,r)+'">');
   for(const P of (T.params||[])){
     if(P.keyframes){ L.push(p+'    <param name="'+E(P.name)+'" key="'+E(P.key)+'">',p+'        <keyframeAnimation>');
@@ -142,20 +157,26 @@ FCPXML.write=function(input){
   L.push('        <effect id="r3" name="'+E(S.name)+'" uid="'+E(S.uid)+'"/>');
   const titles=(input.titles||[]).slice().sort((a,b)=>a.t-b.t), effects=new Map(), styleIds={n:0};   // one <effect> per template used; one style-id counter for the document
   for(const T of titles){ const k=T.template.uid; if(!effects.has(k)){ const id="r"+(4+effects.size); effects.set(k,id); L.push('        <effect id="'+id+'" name="'+E(T.template.name)+'" uid="'+E(k)+'"/>'); } }
+  const ST=FCPXML.START, startId="r"+(4+effects.size); L.push('        <effect id="'+startId+'" name="'+E(ST.name)+'" uid="'+E(ST.uid)+'"/>');   // THE START TITLE's template
   L.push('    </resources>');
   L.push('    <library>','        <event name="'+E(input.project)+'">','            <project name="'+E(input.project)+'">');
   L.push('                <sequence format="r1" duration="'+FCPXML.tcFrames(durF,r)+'" tcStart="0s" tcFormat="NDF" audioLayout="stereo" audioRate="48k">','                    <spine>');
   L.push('                        <asset-clip ref="r2" offset="0s" name="'+E(take.name)+'" start="'+FCPXML.tcFrames(t0F,r)+'" duration="'+FCPXML.tcFrames(durF,r)+'" format="r1" tcFormat="NDF" audioRole="dialogue">');
   const beats=(input.beats||[]).slice().sort((a,b)=>a.t-b.t);
   for(const b of beats){ const f0=FCPXML.frames(b.t,r); if(f0>=durF) continue;
-    const fd=Math.max(1,Math.min(FCPXML.frames(b.dur,r),durF-f0));
+    const fd=Math.max(1,Math.min(FCPXML.frames(b.t+b.dur,r),durF)-f0);   // the end's frame minus the start's, as titleXML
     L.push('                            <title ref="r3" lane="2" offset="'+FCPXML.tcFrames(t0F+f0,r)+'" name="'+E(b.label)+'" start="3600s" duration="'+FCPXML.tcFrames(fd,r)+'">');
     L.push('                                <adjust-transform position="'+FCPXML.cellPosition(set,b.row,b.beat)+'"/>');
     L.push('                                <adjust-blend mode="3 (Darken)"/>','                            </title>'); }
   for(const T of titles){ const f0=FCPXML.frames(T.t,r); if(f0>=durF) continue;
     L.push(...FCPXML.titleXML(Object.assign({},T,{offsetFrames:t0F+f0,dur:Math.min(T.dur,take.dur-T.t)}),r,effects.get(T.template.uid),'                            ',styleIds)); }
-  for(const c of (input.chapters||[]).slice().sort((a,b)=>a.t-b.t)){ if(FCPXML.frames(c.t,r)>=durF) continue;
-    L.push('                            <chapter-marker start="'+media(c.t)+'" duration="'+oneFrame+'" value="'+E(c.label)+'"/>'); }
+  L.push(...FCPXML.titleXML({offsetFrames:t0F,dur:Math.min(ST.dur,take.dur),lane:ST.lane,name:ST.label,texts:[[{text:" ",style:{font:"Helvetica",size:63,color:[1,1,1,0]}}]]},r,startId,'                            ',styleIds));   // the empty title on the take's first frame
+  /* A CHAPTER MARKER SAYS WHERE ITS POSTER FRAME IS (12 Oct 2026). The DTD lets posterOffset be left out; Final Cut
+     12.3 then holds no valid time for it, and selecting the marker places its poster pin at "not a number" and
+     quits (David: "once I clicked a marker, Final Cut crashed" - its log: CALayer position contains NaN,
+     TLKMarkerPosterPinLayer). 11 frames after the marker, as Final Cut writes its own; less where the take ends. */
+  for(const c of (input.chapters||[]).slice().sort((a,b)=>a.t-b.t)){ const cf=FCPXML.frames(c.t,r); if(cf>=durF) continue;
+    L.push('                            <chapter-marker start="'+media(c.t)+'" duration="'+oneFrame+'" value="'+E(c.label)+'" posterOffset="'+FCPXML.tcFrames(Math.min(11,durF-1-cf),r)+'"/>'); }
   for(const m of (input.bars||[]).slice().sort((a,b)=>a.t-b.t)){ if(FCPXML.frames(m.t,r)>=durF) continue;
     L.push('                            <marker start="'+media(m.t)+'" duration="'+oneFrame+'" value="'+E(m.label)+'"/>'); }
   L.push('                        </asset-clip>','                    </spine>','                </sequence>','            </project>','        </event>','    </library>','</fcpxml>','');
