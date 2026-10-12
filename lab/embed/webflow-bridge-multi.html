@@ -1,0 +1,423 @@
+<!-- Handpan Studio bridge for masterthehandpan.com — build 2026-10-12a.
+     Paste ONCE into Site settings -> Custom code -> Footer code (or a page's
+     "before </body>" code), IN PLACE OF the bridge that is there - never beside it. It does nothing on a
+     page without a studio iframe, so it is safe site-wide.
+     2026-10-12a: SEVERAL STUDIOS AND SEVERAL VIDEOS ON ONE PAGE. A studio is an iframe with class="hps-app"
+     (id="hps-app" is still found, so pages as they are keep working) and data-hps-video="VIMEO_ID"; it is paired
+     with the Vimeo iframe whose src holds player.vimeo.com/video/VIMEO_ID, and each pair runs by itself: clock,
+     play and pause, seek, mute, speed, status, full screen and height. A studio's messages are told apart by
+     e.source. Studios and videos that arrive after the page has loaded (Wized) are connected as they appear -
+     the page is watched for as long as it is open, there is no giving up. A studio WITHOUT data-hps-video is
+     paired as before: with the first Vimeo video on the page (or, on a page without Vimeo, the first video found).
+     Everything else is the bridge of 2026-09-26a:
+     2026-09-21a: the app can MUTE and UNMUTE the lesson video and set its PLAYBACK SPEED (0.25-2), and the bridge
+     says so in its status message - an older bridge would take an unknown command for a pause.
+     2026-09-25a: FULL SCREEN ON A PHONE THAT HAS NONE (the iPhone): the app asks this page to pin its frame over the
+     whole window and to put it back, and the bridge says "fs" in its status - an older app never asks.
+     2026-09-26a: ON A PHONE THE FRAME RUNS EDGE TO EDGE - measured, so the page never scrolls sideways. -->
+<script>
+(function(){
+  /* Handpan Studio bridge — build 2026-10-12a (several studios and videos on a page; Vimeo, muted derived; mute,
+     unmute and speed on request). Kept INSIDE the script so it travels when only this block is re-pasted (the
+     iframes above carry their pieces and tempo maps in their URLs and must not be replaced). */
+  var BUILD='2026-10-12a';
+  if(window.__hpsBridge) return;            // pasted twice: the first one serves the page, a second would double every clock
+  window.__hpsBridge=BUILD;
+
+  /* TWO LISTS, ONE RULE. A STUDIO is one app iframe; a SOURCE is one video with its clock and its controls. A
+     studio subscribes to exactly one source, a source reports to every studio subscribed to it, and a studio's
+     requests go to its own source and nowhere else. One pair on a page is simply one of each. */
+  var studios=[], sources=[];
+  var active=null;                          // the studio the student used last - where a bare space goes
+  function live(el){ return !el||(el.isConnected!==undefined?el.isConnected:document.documentElement.contains(el)); }
+  function post(S,m){ var f=S.f; if(f&&f.contentWindow) try{ f.contentWindow.postMessage(m,'*'); }catch(e){} }
+  function studioOf(win){ if(!win) return null;
+    for(var i=0;i<studios.length;i++){ try{ if(studios[i].f.contentWindow===win) return studios[i]; }catch(e){} }
+    return null; }
+  function studioByFrame(f){ for(var i=0;i<studios.length;i++) if(studios[i].f===f) return studios[i]; return null; }
+  function sourceByEl(el){ for(var i=0;i<sources.length;i++) if(sources[i].el===el&&!sources[i].dead) return sources[i]; return null; }
+
+  /* SPACE PLAYS AND STOPS THE APP FROM THE LESSON PAGE (build 2026-09-02a).
+     Keys go to whatever has focus, and on a lesson page that is the page's own
+     document until the student has clicked inside the app — where a bare
+     space only scrolls the page. Forwarded to the app, which answers with
+     its transport. Not while typing in a field, never with a modifier.
+     WITH SEVERAL STUDIOS it goes to one of them: the one whose video is playing; failing that the one the
+     student used last; failing that the one nearest the middle of the window. */
+  function keyTarget(){
+    var i,S,best=null,bd=1e9;
+    if(active&&live(active.f)&&active.src&&active.src.playing) return active;
+    for(i=0;i<studios.length;i++){ S=studios[i]; if(S.src&&S.src.playing&&live(S.f)) return S; }
+    if(active&&live(active.f)) return active;
+    for(i=0;i<studios.length;i++){ S=studios[i]; if(!live(S.f)) continue;
+      var r=S.f.getBoundingClientRect(), d=Math.abs((r.top+r.bottom)/2-window.innerHeight/2);
+      if(d<bd){ bd=d; best=S; } }
+    return best;
+  }
+  document.addEventListener('keydown',function(e){
+    if(e.key!==' '||e.metaKey||e.ctrlKey||e.altKey) return;
+    var t=e.target, tag=t&&t.tagName;
+    if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||(t&&t.isContentEditable)) return;
+    var S=keyTarget(); if(!S) return;
+    e.preventDefault(); post(S,{type:'hps-key',key:' '});
+  });
+
+  /* THE CLOCK GOES OUT TWICE OVER, AND THE SECOND WAY ONLY SPEAKS WHEN THE
+     FIRST HAS GONE QUIET. requestAnimationFrame gives the tight anchor; a
+     timer gives a floor under it, because rAF does not merely slow when the
+     page stops being composited, it STOPS. sendTime stamps every report, so
+     the heartbeat stays silent while frames are flowing. Each source has its own stamp. */
+  /* p — IS THE VIDEO PLAYING, stated, not left for the app to guess. The app
+     used to infer a pause from the clock standing still, and a muted video
+     scrolled out of view stands still in exactly the same way: browsers
+     throttle what nobody can see or hear, so its clock moves in coarse jumps
+     the inference kept mistaking for a stop (David, 28 Aug, three times).
+     The player knows the truth; send it with every report. */
+  function sendTime(V,t,r,m,p){ V.lastSend=Date.now();
+    var msg={type:'hps-video-time',t:t,r:r};
+    if(m!=null) msg.m=m;
+    if(p!=null) msg.p=!!p;
+    for(var i=0;i<V.subs.length;i++) post(V.subs[i],msg); }
+  function heartbeat(V,read){ V.hb=setInterval(function(){
+    if(V.dead){ clearInterval(V.hb); return; }
+    if(Date.now()-V.lastSend>150) try{ read(); }catch(e){} },150); }
+  /* the frames' pump: every frame while the source lives and somebody is listening */
+  function pump(V,read){ (function tick(){ if(V.dead) return;
+    if(V.subs.length) try{ read(); }catch(e){}
+    requestAnimationFrame(tick); })(); }
+  /* THE STATUS, once a second to every studio: "searching" until its video is found, "connected" from then on.
+     A studio that has waited 40 s says "no-player" - what the bridge used to say as it gave up - but the search
+     goes on, and "connected" follows whenever its video arrives. */
+  function status(S){ var st=(S.src&&S.src.found)?'connected':(Date.now()-S.since>40000?'no-player':'searching');
+    post(S,{type:'hps-bridge',status:st,can:['sound','rate','fs'],build:BUILD}); }
+  setInterval(function(){ for(var i=0;i<studios.length;i++) status(studios[i]); },1000);
+  function found(V){ V.found=true; for(var i=0;i<V.subs.length;i++) status(V.subs[i]); }
+  function newSource(el,kind){
+    var V={el:el,kind:kind,subs:[],lastSend:0,found:false,dead:false,playing:false,ctl:null,snd:null,spd:null,hb:0,slow:0};
+    sources.push(V); return V; }
+  function kill(V){ V.dead=true; clearInterval(V.hb); clearInterval(V.slow);
+    var i=sources.indexOf(V); if(i>=0) sources.splice(i,1);
+    for(i=0;i<V.subs.length;i++) if(V.subs[i].src===V) V.subs[i].src=null;
+    V.subs=[]; }
+  function attach(S,V){ S.src=V; if(V.subs.indexOf(S)<0) V.subs.push(S); status(S); }
+  function detach(S){ var V=S.src; S.src=null; S.since=Date.now(); if(!V) return;
+    var i=V.subs.indexOf(S); if(i>=0) V.subs.splice(i,1); }
+  /* the student used this video - its studio is where a bare space goes next */
+  function touched(V){ if(V.subs.length&&V.subs.indexOf(active)<0) active=V.subs[0]; }
+
+  /* FULL SCREEN ON A PHONE THAT HAS NONE (David, 25 Sep 2026). The frame's own style attribute is kept and put back
+     exactly; while pinned the page does not scroll under it, and a height the app asks for is kept for afterwards.
+     One studio at a time: the page has one window to give. */
+  var pageSaved=null;
+  function pin(S,on){
+    if(on===S.pinned) return;
+    var f=S.f, de=document.documentElement, b=document.body, i;
+    if(on){
+      for(i=0;i<studios.length;i++) if(studios[i]!==S&&studios[i].pinned) pin(studios[i],false);
+      S.pinned=true; S.pinSaved=f.getAttribute('style')||''; S.pinH=0;
+      pageSaved={de:de.style.overflow,b:b.style.overflow};
+      f.style.cssText=S.pinSaved+';position:fixed;left:0;top:0;right:0;bottom:0;width:100vw;height:100vh;height:100dvh;'
+        +'max-width:none;margin:0;border-radius:0;z-index:2147483647';
+      de.style.overflow='hidden'; b.style.overflow='hidden';
+    } else {
+      S.pinned=false;
+      f.setAttribute('style',S.pinSaved);
+      if(pageSaved){ de.style.overflow=pageSaved.de; b.style.overflow=pageSaved.b; pageSaved=null; }
+      if(S.pinH) f.style.height=S.pinH+'px';
+      bleed(S);
+    }
+  }
+  /* THE FRAME RUNS EDGE TO EDGE ON A PHONE (David, 26 Sep 2026 - build 2026-09-26a). Measured, never assumed: the frame
+     is pulled out to the screen's left edge by exactly its distance from it and made as wide as the screen, so an
+     uneven column cannot push it past the edge and the page never scrolls sideways; a wider screen gets the frame's own
+     style back. Not while pinned - full screen owns the frame then, and letting go measures again. */
+  var bleedT=0;
+  function bleed(S){
+    var f=S.f; if(!f||S.pinned||!live(f)) return;
+    if(!S.bleedOrig) S.bleedOrig={w:f.style.width,r:f.style.borderRadius,m:f.style.marginLeft,x:f.style.maxWidth};
+    var o=S.bleedOrig;
+    f.style.width=o.w; f.style.borderRadius=o.r; f.style.marginLeft=o.m; f.style.maxWidth=o.x;
+    if(window.innerWidth>600) return;
+    var r=f.getBoundingClientRect(), vw=document.documentElement.clientWidth, m0=parseFloat(getComputedStyle(f).marginLeft)||0;
+    f.style.marginLeft=(m0-r.left)+'px'; f.style.width=vw+'px'; f.style.maxWidth='none'; f.style.borderRadius='0';
+  }
+  function bleedAll(){ for(var i=0;i<studios.length;i++) bleed(studios[i]); }
+  function bleedSoon(){ clearTimeout(bleedT); bleedT=setTimeout(bleedAll,60); }
+  window.addEventListener('resize',bleedSoon);
+  window.addEventListener('orientationchange',bleedSoon);
+  window.addEventListener('load',bleedAll);
+
+  /* WHAT A STUDIO ASKS FOR. e.source says which studio is asking; its request reaches its own video and its own
+     frame, and a message from anything that is not a studio on this page is not listened to. */
+  window.addEventListener('message',function(e){
+    var d=e.data;
+    if(!d||typeof d.type!=='string'||d.type.indexOf('hps-')!==0) return;
+    var S=studioOf(e.source);
+    if(!S){ scan(); S=studioOf(e.source); if(!S) return; }     // a studio that spoke before the page's watch had seen it
+    var V=S.src;
+    if(d.type==='hps-video-ctl'){
+      active=S;
+      if(!V) return;
+      if(d.action==='mute'||d.action==='unmute'){ if(V.snd) try{ V.snd(d.action==='unmute'); }catch(err){} return; }
+      if(d.action==='rate'){ var r=+d.rate; if(V.spd&&r>=0.25&&r<=2) try{ V.spd(r); }catch(err){} return; }
+      if(V.ctl){ try{ V.ctl(d.action||'toggle',d.t); }catch(err){} }
+      return;
+    }
+    /* THE APP ASKS FOR THE HEIGHT IT NEEDS (David, 28 Aug: "extend the
+       available window to full player size and then lock vertical scrolling").
+       It knows what its notation comes to and a fixed 820px did not — so the
+       window follows the music rather than the music being shrunk to the
+       window. Bounded either side: a silly number from anywhere is ignored,
+       and only the asking studio's own frame is touched. */
+    if(d.type==='hps-fs'){ pin(S,!!d.on); return; }
+    if(d.type==='hps-size'&&typeof d.h==='number'&&d.h>300&&d.h<4000){
+      if(S.pinned){ S.pinH=Math.round(d.h); return; }
+      S.f.style.height=Math.round(d.h)+'px';
+    }
+  });
+
+  /* ---- the three kinds of source ---- */
+  /* AND WHETHER THE PLAYER'S OWN SOUND IS ON (David, 28 Aug: the app "should go
+     mute when audio is switched back on in the video player"). Read off the
+     real <video> element where one is reachable, so muted-or-silent is one flag. */
+  function elMuted(el){ if(!el) return null; return !!(el.muted||el.volume===0); }
+  // any <video> — page, same-origin iframes, and shadow roots
+  function findVideo(root){
+    var v=root.querySelector&&root.querySelector('video'); if(v) return v;
+    var all=root.querySelectorAll?root.querySelectorAll('*'):[];
+    for(var i=0;i<all.length;i++) if(all[i].shadowRoot){ var s=findVideo(all[i].shadowRoot); if(s) return s; }
+    return null;
+  }
+  // 1) Wistia — a page that has it (Kajabi). Only a studio WITHOUT data-hps-video is ever paired with it.
+  window._wq=window._wq||[];
+  /* THE CAUSE OF "PLAYBACK STOPS WHEN I SCROLL DOWN" (28 Aug, David's third
+     report — and his observation that video-sound-on was immune cracked it):
+     Wistia DELIBERATELY PAUSES a muted video the moment it scrolls fully out
+     of view, and resumes it when it returns. Documented, default true, named
+     playSuspendedOffScreen. The pan follows the video, so the pan stopped at
+     an exact scroll line and restarted a few px back up — the app was
+     faithfully following a video that really was pausing. Asked off here;
+     this push only takes effect if it lands before Wistia embeds, so the
+     onReady guard below covers the race the other way. */
+  var wistiaV=null;
+  _wq.push({id:'_all',options:{playSuspendedOffScreen:false}});
+  _wq.push({id:'_all',onReady:function(v){
+    /* ONE PUMP ONLY. id:'_all' fires for every Wistia player on the page and
+       can fire again when one re-initialises, and the <video> hunt below finds
+       Wistia's own <video> element — so without this the same player was
+       pumped twice over (counted: two loops from one video). */
+    if(wistiaV) return;
+    var V=wistiaV=newSource(null,'wistia');
+    var askedPause=false;   // a pause the STUDENT chose, via the app's button
+    V.ctl=function(a,t){
+      if(a==='seek'&&t!=null){ v.time(t); return; }
+      var playing=v.state()==='playing';
+      if(a==='play'||(a==='toggle'&&!playing)){ askedPause=false; v.play(); }
+      else { askedPause=true; v.pause(); } };
+    V.snd=function(on){ if(on){ v.unmute(); if(v.volume&&v.volume()===0) v.volume(1); } else v.mute(); };
+    V.spd=function(r){ v.playbackRate(r); };
+    /* If the options push above lost the race to the embed, Wistia still
+       suspends off-screen — so any pause that arrives while the player is
+       FULLY out of view, and that neither the student's scrubbing nor the
+       app's button asked for, is Wistia's own and is undone on the spot. A
+       student cannot click pause on a player that is not on screen; the one
+       off-screen pause they CAN cause goes through ctl and is honoured. */
+    try{ v.bind('pause',function(){
+      if(askedPause) return;
+      var c=v.container||document.querySelector('.wistia_embed');
+      if(!c) return;
+      var r=c.getBoundingClientRect();
+      if(r.bottom<=0||r.top>=window.innerHeight){ try{ v.play(); }catch(e){} }
+    }); }catch(e){}
+    try{ v.bind('play',function(){ askedPause=false; touched(V); }); }catch(e){}
+    /* THE RATE MUST BE READABLE AT ANY MOMENT, not only after the student has
+       changed it. playbackRate() on the Wistia API is a documented SETTER, so
+       it can never be read — the event was the only getter. Wistia renders a real
+       <video>, so read that element's live playbackRate and keep the event as
+       the fallback. */
+    var wr=1, wvid=null;
+    try{ v.bind('playbackratechange',function(r){
+      if(typeof r==='number'&&r>0.05&&r<8) wr=r; }); }catch(e){}
+    function wel(){
+      try{ if(!wvid||!wvid.isConnected) wvid=findVideo(document); }catch(e){}
+      return wvid;
+    }
+    function wrate(){
+      var r=wel()&&wvid.playbackRate;
+      return (typeof r==='number'&&r>0.05&&r<8)?r:wr;
+    }
+    var wmute=null;                      // what Wistia's own events last said
+    try{ v.bind('mutechange',function(x){ wmute=!!x; }); }catch(e){}
+    try{ v.bind('volumechange',function(x){ if(typeof x==='number') wmute=(x===0); }); }catch(e){}
+    function wmuted(){ var m=elMuted(wel()); return m==null?wmute:m; }
+    function read(){ V.playing=v.state()==='playing'; sendTime(V,v.time(),wrate(),wmuted(),V.playing); }
+    found(V);
+    // every frame for the anchor, and the heartbeat underneath it for the
+    // states where frames stop coming
+    pump(V,read); heartbeat(V,read);
+    scan();
+  }});
+  // 2) Vimeo — masterthehandpan.com (Webflow) hosts its lessons on Vimeo,
+  //    whose player is a CROSS-ORIGIN iframe: the <video> hunt cannot see
+  //    into it, so the Player SDK is the only way to its clock. The SDK is
+  //    loaded only once a Vimeo iframe is actually wanted, so a page without
+  //    one never fetches it. It attaches to any existing player iframe
+  //    (Webflow's Video element makes one) or a data-vimeo-id element.
+  var VIMEO='iframe[src*="player.vimeo.com"],[data-vimeo-id],[data-vimeo-url]';
+  /* the id a studio names: the number itself, or the number inside a Vimeo address */
+  function wantId(f){ var a=(f.getAttribute('data-hps-video')||'').replace(/^\s+|\s+$/g,''); if(!a) return '';
+    var m=a.match(/(?:video\/|vimeo\.com\/)(\d+)/)||a.match(/^(\d+)$/); return m?m[1]:a; }
+  /* is this the video with that id - the whole number, so 123 never answers for 1234 */
+  function isVimeo(el,id){
+    var re=new RegExp('(^|[^0-9])'+id.replace(/[^0-9A-Za-z_-]/g,'')+'([^0-9]|$)');
+    var s=el.getAttribute('src')||'';
+    if(s.indexOf('player.vimeo.com')>=0){ var m=s.match(/player\.vimeo\.com\/video\/(\d+)/); return !!m&&m[1]===id; }
+    var a=el.getAttribute('data-vimeo-id'); if(a!=null&&a!=='') return a.replace(/^\s+|\s+$/g,'')===id;
+    a=el.getAttribute('data-vimeo-url'); return !!a&&re.test(a);
+  }
+  function vimeoFor(id){
+    var all=document.querySelectorAll(VIMEO), i;
+    if(!id) return all.length?all[0]:null;
+    for(i=0;i<all.length;i++) if(isVimeo(all[i],id)) return all[i];
+    return null;
+  }
+  var vimeoAsked=false;
+  function vimeoSDK(){
+    if(window.Vimeo&&window.Vimeo.Player) return true;
+    if(!vimeoAsked){ vimeoAsked=true;
+      var s=document.createElement('script'); s.src='https://player.vimeo.com/api/player.js'; s.async=true;
+      s.onload=function(){ scan(); };
+      s.onerror=function(){ vimeoAsked=false; };            // the next look asks again
+      document.head.appendChild(s); }
+    return false;
+  }
+  function vimeoSource(el){
+    var V=newSource(el,'vimeo');
+    var p=new Vimeo.Player(el);
+    /* THE SDK ANSWERS BY PROMISE, not on the spot — every read is a round
+       trip into the player's frame. So the state the app wants stated (rate,
+       mute, playing) is kept here from the player's own events, and only the
+       clock is asked for, one question in flight at a time: a frame that
+       finds the last answer still out simply waits for it. Vimeo's own
+       timeupdate fires ~4x a second, far too coarse for the follow engine
+       (it drops notes below a handful of reports a second), which is why the
+       clock is polled rather than listened for. */
+    /* MUTED IS ONE DERIVED VALUE, never two sources writing one flag (David,
+       2 Sep, Safari on the Webflow page: the "video sound is off/on" dialogs
+       re-opened the instant they were closed and stacked two deep — the flag
+       was flapping). The muted switch and the volume are tracked apart: the
+       volumechange event only ever sets the volume, the getMuted poll only
+       ever sets the switch, and what goes out is switch-on OR volume-zero. A
+       volumechange reporting volume 1 while the switch is on — which is what
+       a muted player says when its volume is asked — can no longer flip it. */
+    var vt=0, vr=1, vmuteSw=null, vvol=null, inflight=false;
+    function vmuted(){ if(vmuteSw==null&&vvol==null) return null; return !!(vmuteSw||vvol===0); }
+    function report(){ sendTime(V,vt,vr,vmuted(),V.playing); }
+    function ask(){
+      if(inflight) return; inflight=true;
+      p.getCurrentTime().then(function(s){ inflight=false;
+        if(typeof s==='number') vt=s; report(); },function(){ inflight=false; });
+    }
+    V.ctl=function(a,t){
+      if(a==='seek'&&t!=null){ p.setCurrentTime(t); return; }
+      if(a==='play'||(a==='toggle'&&!V.playing)) p.play(); else p.pause(); };
+    /* Vimeo answers with a promise, and a browser may refuse sound the viewer has not allowed: the state the app
+       hears is set only when Vimeo says it happened */
+    V.snd=function(on){
+      p.setMuted(!on).then(function(){ vmuteSw=!on; report(); },function(){});
+      if(on&&vvol===0) p.setVolume(1).then(function(){ vvol=1; report(); },function(){}); };
+    V.spd=function(r){ p.setPlaybackRate(r).then(function(){ vr=r; report(); },function(){}); };
+    p.on('play',function(){ V.playing=true; touched(V); report(); });
+    p.on('pause',function(){ V.playing=false; report(); });
+    p.on('ended',function(){ V.playing=false; report(); });
+    p.on('seeked',function(d){ if(d&&typeof d.seconds==='number') vt=d.seconds; report(); });
+    p.on('playbackratechange',function(d){ var r=d&&d.playbackRate;
+      if(typeof r==='number'&&r>0.05&&r<8) vr=r; });
+    p.on('volumechange',function(d){ if(d&&typeof d.volume==='number') vvol=d.volume; });
+    /* muted is not an event in this SDK, so it is asked for on a slow tick,
+       together with the values the events may have missed at attach time */
+    function slow(){
+      try{ p.getMuted().then(function(m){ vmuteSw=!!m; },function(){}); }catch(e){}
+      try{ p.getVolume().then(function(v){ if(typeof v==='number') vvol=v; },function(){}); }catch(e){}
+      try{ p.getPlaybackRate().then(function(r){ if(typeof r==='number'&&r>0.05&&r<8) vr=r; },function(){}); }catch(e){}
+    }
+    p.ready().then(function(){
+      if(V.dead) return;
+      found(V);
+      p.getPaused().then(function(x){ V.playing=!x; },function(){});
+      slow(); V.slow=setInterval(slow,500);
+      pump(V,ask); heartbeat(V,ask);
+    },function(){});
+    return V;
+  }
+  // 3) any <video> on the page itself
+  function videoSource(vid){
+    var V=newSource(vid,'video');
+    V.ctl=function(a,t){
+      if(a==='seek'&&t!=null){ vid.currentTime=t; return; }
+      if(a==='play'||(a==='toggle'&&vid.paused)) vid.play&&vid.play(); else vid.pause&&vid.pause(); };
+    V.snd=function(on){ vid.muted=!on; if(on&&vid.volume===0) vid.volume=1; };
+    V.spd=function(r){ vid.playbackRate=r; };
+    /* while paused the reports keep coming, carrying p:false — a pause the
+       app hears about at once beats one it must deduce from silence */
+    function read(){ V.playing=!vid.paused; sendTime(V,vid.currentTime,vid.playbackRate,elMuted(vid),V.playing); }
+    vid.addEventListener('play',function(){ touched(V); });
+    vid.addEventListener('seeked',read);
+    found(V);
+    pump(V,read); heartbeat(V,read);
+    return V;
+  }
+
+  /* ---- pairing: which video is this studio's ---- */
+  function connect(S,deep){
+    var el=null;
+    if(S.id){ el=vimeoFor(S.id); if(!el) return; }          // a named video is waited for, nothing else will do
+    else {
+      if(wistiaV&&!wistiaV.dead){ attach(S,wistiaV); return; }   // Wistia got there first
+      el=vimeoFor('');
+    }
+    if(el){ if(!vimeoSDK()) return;                         // the SDK is on its way; the next look connects
+      attach(S,sourceByEl(el)||vimeoSource(el)); return; }
+    if(!deep) return;                                       // the walk through the whole page: on the second's tick only
+    var vid=findVideo(document);
+    if(!vid){ var ifr=document.querySelectorAll('iframe');
+      for(var i=0;i<ifr.length&&!vid;i++){ try{ if(ifr[i].contentDocument) vid=findVideo(ifr[i].contentDocument); }catch(e){} } }
+    if(vid) attach(S,sourceByEl(vid)||videoSource(vid));
+  }
+  /* THE WATCH. Every look does the same four things, in order: forget a studio whose frame has left the page;
+     take in a studio that is new; let go of a pairing that no longer holds (the video left, or the studio now
+     names another); and look for a video for every studio that has none. It runs when the page changes
+     (Wized puts studios and videos in after the page has loaded) and once a second besides, for as long as the
+     page is open. Only the second's tick walks the whole page for a plain <video> (deep) - a studio that names
+     its video never needs that walk. */
+  function scan(deep){
+    var i,S,V,fs=document.querySelectorAll('iframe.hps-app,iframe#hps-app');
+    for(i=studios.length-1;i>=0;i--){ S=studios[i];
+      if(!live(S.f)){
+        if(S.pinned&&pageSaved){ document.documentElement.style.overflow=pageSaved.de; document.body.style.overflow=pageSaved.b; pageSaved=null; }
+        detach(S); studios.splice(i,1); if(active===S) active=null; } }
+    for(i=0;i<fs.length;i++){ if(!studioByFrame(fs[i])){
+      S={f:fs[i],id:wantId(fs[i]),src:null,since:Date.now(),pinned:false,pinSaved:'',pinH:0,bleedOrig:null};
+      studios.push(S); bleed(S); bleedSoon(); } }
+    for(i=0;i<studios.length;i++){ S=studios[i];
+      var id=wantId(S.f); if(id!==S.id){ S.id=id; detach(S); }
+      V=S.src;
+      if(V&&(V.dead||!live(V.el))) detach(S);
+      else if(V&&S.id&&!(V.kind==='vimeo'&&isVimeo(V.el,S.id))) detach(S); }
+    for(i=sources.length-1;i>=0;i--){ V=sources[i];
+      if(!live(V.el)){ if(V===wistiaV) wistiaV=null; kill(V); } }
+    for(i=0;i<studios.length;i++) if(!studios[i].src) connect(studios[i],deep===true);
+    for(i=sources.length-1;i>=0;i--){ V=sources[i];         // a video nobody follows any more is let go
+      if(!V.subs.length&&V!==wistiaV) kill(V); }
+  }
+  var scanT=0;
+  function scanSoon(){ if(scanT) return; scanT=setTimeout(function(){ scanT=0; scan(); },50); }
+  scan(true);
+  /* class and id are not watched: a page's own animations change classes all day, and the second's tick finds a
+     frame that was given its class late */
+  try{ new MutationObserver(scanSoon).observe(document.documentElement,{childList:true,subtree:true,attributes:true,
+    attributeFilter:['src','data-hps-video','data-vimeo-id','data-vimeo-url']}); }catch(e){}
+  setInterval(function(){ scan(true); },1000);
+  window.addEventListener('load',function(){ scan(true); });
+})();
+</script>
