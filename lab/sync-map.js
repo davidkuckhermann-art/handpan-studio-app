@@ -191,6 +191,7 @@ SyncMap.beatClock=function(piece,SM){
   const seg=p=>{ let g=segs[0]; for(const x of segs){ if(x.p0<=p) g=x; else break; } return g; };
   const U=p=>{ const g=seg(p); return g?g.u0+(p-g.p0)/g.sub:p; };   // past the end: the last table's grid, continued
   U.sub=p=>{ const g=seg(p); return g?g.sub:1; };
+  U.start=p=>{ const g=seg(p); return g?g.p0:0; };          // the table a pulse stands in, by its first pulse (placeLoose: which side of a break a marker belongs to)
   return U; };
 SyncMap.walkGap=function(L,R,targets,onsets,stats,piece,SM){ // fill targets strictly between two anchors; piece+SM: measure in beats (beatClock)
   const between=targets.filter(p=>p>L.p&&p<R.p);
@@ -438,13 +439,28 @@ SyncMap.checkMarks=function(ch,sr,marks,only,opt){   // opt.U: the beat clock; o
   return {moved,flagged,placed}; };
 /* A MARKER WITHOUT AN ACCENT OF ITS OWN SITS AT ITS CALCULATED PLACE (David, 9 Oct 2026): purple (g) or silent (s), it
    goes between the nearest neighbours that are neither, in beats - halfway in the music, halfway between them. `which`
-   narrows the markers it may move; commitMap runs it on every change, so moving an accented marker carries them. */
+   narrows the markers it may move; commitMap runs it on every change, so moving an accented marker carries them.
+   IN A BREAK A CALCULATED MARKER KEEPS THE TEMPO OF ITS OWN TABLE (David, 12 Oct 2026: "The marker currently stays on the
+   screen after the end of a table"). Halfway between its neighbours is right inside the music and wrong across a pause:
+   a table's last count with no accent of its own stood halfway to the NEXT table's first beat, in the middle of the
+   pause, and the marker lit up there. Where the stretch between the two firm neighbours is a break - more than twice as
+   slow as the stretch before it, the export's own rule (fcpSpans) - the marker is counted on from the firm marker before
+   it at the tempo that led up to that one; or, when it stands in the table of the firm marker after the break (U.start),
+   counted back from that one at the tempo that follows it. patches/sync-loose-in-a-break.py */
 SyncMap.placeLoose=function(marks,U,which){
   const S=marks.slice().sort((a,b)=>a.p-b.p), loose=m=>!!(m.g||m.s); let n=0;
   for(let i=0;i<S.length;i++){ const m=S[i]; if(!loose(m)||(which&&!which(m))) continue;
     let a=i-1; while(a>=0&&loose(S[a])) a--; let z=i+1; while(z<S.length&&loose(S[z])) z++;
     if(a<0||z>=S.length) continue; const A=S[a], Z=S[z], ua=U(A.p), uz=U(Z.p); if(!(uz>ua)||!(Z.t>A.t)) continue;
-    const t=+(A.t+(Z.t-A.t)*(U(m.p)-ua)/(uz-ua)).toFixed(3); if(Math.abs(t-m.t)>0.0005){ m.t=t; n++; } }
+    let tt=A.t+(Z.t-A.t)*(U(m.p)-ua)/(uz-ua);              // halfway in the music, halfway between them
+    { let pa=a-1; while(pa>=0&&loose(S[pa])) pa--; let nz=z+1; while(nz<S.length&&loose(S[nz])) nz++;
+      const um=U(m.p), tab=U.start||null;
+      const r0=pa>=0&&ua>U(S[pa].p)&&A.t>S[pa].t?(A.t-S[pa].t)/(ua-U(S[pa].p)):0;                 // seconds a beat, up to A
+      const r1=nz<S.length&&U(S[nz].p)>uz&&S[nz].t>Z.t?(S[nz].t-Z.t)/(U(S[nz].p)-uz):0;            // and on from Z
+      if(r0>0&&(Z.t-A.t)/(uz-ua)>2*r0){                    // a break between A and Z
+        if(tab&&tab(m.p)===tab(Z.p)&&tab(Z.p)!==tab(A.p)){ if(r1>0) tt=Math.max(A.t,Z.t-(uz-um)*r1); }   // in the table that follows the break
+        else tt=Math.min(Z.t,A.t+(um-ua)*r0); } }           // in the table before it, or inside one table
+    const t=+tt.toFixed(3); if(Math.abs(t-m.t)>0.0005){ m.t=t; n++; } }
   return n; };
 root.SyncMap=SyncMap;
 })(typeof window!=="undefined"?window:globalThis);

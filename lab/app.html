@@ -25961,6 +25961,23 @@ function segRate(t){ return SyncMap.segRate(piece.syncMap,t); }                 
 function invMap(p){ return SyncMap.invMap(piece.syncMap,p); }
 function mapBegun(t){ return SyncMap.mapBegun(piece.syncMap,t); }                // the music has started: the map's first anchor is behind the video
 function mapPulse(t){ return SyncMap.mapPulse(piece.syncMap,t); }
+/* NO MARKER IN A BREAK (David, 12 Oct 2026: "The marker currently stays on the screen after the end of a table ... also
+   in ... the player below the lessons?"). mapPulse reads straight lines, so through a pause in the video the marker
+   crept over the last counts of the table before. The Lab knows where the music stops - its guess and the hand's word on
+   the table lane - and writes br on the marker that FOLLOWS a break (lab.html, pieceOut). Here that is obeyed, by the
+   Final Cut export's own rule: the marker runs on for ONE UNIT (the distance to the marker before) at the tempo of the
+   last stretch that is not itself a break, then leaves the page until the flagged marker comes. null: no break here;
+   {p}: the pulse inside that last unit; {off}: nothing lights. Nothing is guessed - a map without the flag is followed
+   as it always was. The marker only: Follow's sound is not touched. patches/follow-no-marker-in-a-break.py */
+function mapBreak(t){
+  const a=piece.syncMap; if(!a||a.length<3) return null;
+  let i=-1; for(let k=0;k<a.length;k++){ if(a[k].t<=t) i=k; else break; }      // sorted by time, as mapPulse reads it
+  if(i<1||i>a.length-2||!a[i+1].br) return null;
+  let j=i; while(j>1&&a[j].br) j--; if(a[j].br) return null;                    // the tempo before: the last stretch that is not itself a break
+  const r=(a[j].t-a[j-1].t)/Math.max(1e-6,a[j].p-a[j-1].p); if(!(r>0)) return null;   // seconds a pulse
+  const q=a[i].p+(t-a[i].t)/r, end=Math.min(a[i].p+(a[i].p-a[i-1].p),a[i+1].p);
+  return q<end?{p:q}:{off:true};
+}
 /* ── TWO CHORDS IN ONE BAR (David, 12 Sep 2026) ──────────────────────────────
    "Right now the bass cannot deal well with the situation when a chord change
    happens twice in a bar. For example, in the Flavourful Freestyle 2 intro
@@ -26882,6 +26899,9 @@ function followPaint(){
      the map's first anchor the notation stands unmarked, as it does after the
      End anchor: the same branch below, the same clearing. */
   if(!mapBegun(t)){ if(lastFollowPaint!==C.total){ lastFollowPaint=C.total; clearMarks(); } return; }
+  /* …AND NONE IN A BREAK THE MAP NAMES (mapBreak): the same clearing, and the unit that was sounding runs on at its own tempo */
+  const bk=mapBreak(t);
+  if(bk&&bk.off){ if(lastFollowPaint!==C.total){ lastFollowPaint=C.total; clearMarks(); } return; }
   /* FLOOR, not round (David, 26 Aug: "a tiny bit too early" in the Kajabi
      embed). Rounding lights a stroke as soon as the video passes the halfway
      point TOWARDS it — up to half a pulse early, which on Composition 2
@@ -26889,7 +26909,7 @@ function followPaint(){
      Ordinary playback never does this: tick() takes the last pulse whose
      scheduled time has already PASSED (`fired[i].at<=now`), so the marker
      lights a stroke only once it has sounded. Follow now matches it. */
-  const pr=Math.max(0,Math.floor(p));
+  const pr=Math.max(0,Math.floor(bk?bk.p:p));
   /* AND IT HOLDS THROUGH THE RUN-IN. The click seeks a third of a second
      before the bar so the player is moving by the downbeat, which means the
      video lands BEHIND the clicked pulse and the marker would step backwards

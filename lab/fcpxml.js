@@ -46,6 +46,11 @@
    own marker template and its own cell positions, so they are a SET, and the
    positions are the exact values David's editors landed on, read from his two
    exports (16 Sep 2026) — not a formula. A 4/4 table, four rows.
+   A MARKER CLIP ON A TABLE OF THE LAB'S OWN (12 Oct 2026) says where it sits itself: a beat
+   with `at` [x, y] (percent of the frame height) and `scale` [x, y] is written with them, on
+   its `lane` - the caller fits the template's rectangle (a set's `box`: centre and size in
+   Motion px from the frame's centre, read from the installed .moti) to the table's cell. The
+   scale is about the frame's centre, the position added after, as on every title here.
 
    THE START TITLE (David, 12 Oct 2026: "with every export to Final Cut, can you add
    an empty title to the very beginning of the timeline. This will help us to copy
@@ -76,11 +81,13 @@ FCPXML.SETS={
   /* "test 2.fcpxmld", a 4K50 lesson: Notation Template V 3.1 with Highlight Marker, 96 markers, four rows seen */
   v31:{ table:"Notation Template V 3.1", name:"Highlight Marker",
     uid:"~/Titles.localized/*Davids custom FCPX titles/Handpandojo Notations/Highlight Marker/Highlight Marker.moti",
-    xs:[-0.196492,18.0981,36.3276,54.6708], ys:[0,-8.90741,-17.8426,-26.713] },
+    xs:[-0.196492,18.0981,36.3276,54.6708], ys:[0,-8.90741,-17.8426,-26.713],
+    box:{cx:302.06,cy:762.478,w:396.942,h:148.385} },   // its rectangle, from the .moti: 270 x 270 scaled 1.4701547 x 0.5495727
   /* "sample xml export.fcpxmld", a 1080p30 lesson: Percussive Notation Template v2.00 with Percussive Marker Centered; two rows seen, rows 3–4 continue the step */
   v200:{ table:"Percussive Notation Template v2.00", name:"Percussive Marker Centered",
     uid:"~/Titles.localized/*Davids custom FCPX titles/!Percussive Notations/Percussive Marker Centered/Percussive Marker Centered.moti",
-    xs:[-0.0241319,19.2593,38.5204,57.7935], ys:[0,-9.19259,-18.38518,-27.57777] }
+    xs:[-0.0241319,19.2593,38.5204,57.7935], ys:[0,-9.19259,-18.38518,-27.57777],
+    box:{cx:277.580,cy:779.155,w:411.757,h:193.272} }   // 270 x 270 scaled 1.5250267 x 0.7158237
 };
 FCPXML.START={ label:"START", dur:2, lane:99, name:"Basic Title", uid:".../Titles.localized/Bumper:Opener.localized/Basic Title.localized/Basic Title.moti" };
 FCPXML.cellPosition=function(set,row,beat){ const S=FCPXML.SETS[set]||FCPXML.SETS.v31; return S.xs[Math.min(beat,4)-1]+" "+S.ys[Math.min(row,4)-1]; };
@@ -141,7 +148,7 @@ FCPXML.titleXML=function(T,r,ref,ind,ids){ // one connected title; T = {t, dur, 
 };
 
 /* write({project, set:"v31"|"v200", take:{name, path, dur, frameDur, width, height, tcStart},
-          chapters:[{t,label}], bars:[{t,label}], beats:[{t, dur, row, beat, label}],
+          chapters:[{t,label}], bars:[{t,label}], beats:[{t, dur, label, row, beat | at:[x,y], scale:[x,y], lane}],
           titles:[{t, dur, name, template:{name, uid}, params, texts}]}) → the document */
 FCPXML.write=function(input){
   const take=input.take, r=FCPXML.rate(take.frameDur), E=FCPXML.esc, tc=(t)=>FCPXML.tc(t,r);
@@ -165,8 +172,9 @@ FCPXML.write=function(input){
   const beats=(input.beats||[]).slice().sort((a,b)=>a.t-b.t);
   for(const b of beats){ const f0=FCPXML.frames(b.t,r); if(f0>=durF) continue;
     const fd=Math.max(1,Math.min(FCPXML.frames(b.t+b.dur,r),durF)-f0);   // the end's frame minus the start's, as titleXML
-    L.push('                            <title ref="r3" lane="2" offset="'+FCPXML.tcFrames(t0F+f0,r)+'" name="'+E(b.label)+'" start="3600s" duration="'+FCPXML.tcFrames(fd,r)+'">');
-    L.push('                                <adjust-transform position="'+FCPXML.cellPosition(set,b.row,b.beat)+'"/>');
+    const n4=(v)=>+(+v).toFixed(4);
+    L.push('                            <title ref="r3" lane="'+(b.lane|0||2)+'" offset="'+FCPXML.tcFrames(t0F+f0,r)+'" name="'+E(b.label)+'" start="3600s" duration="'+FCPXML.tcFrames(fd,r)+'">');
+    L.push('                                <adjust-transform position="'+(b.at?n4(b.at[0])+' '+n4(b.at[1]):FCPXML.cellPosition(set,b.row,b.beat))+'"'+(b.scale?' scale="'+n4(b.scale[0])+' '+n4(b.scale[1])+'"':'')+'/>');   // a clip that says where it sits, or the set's own cell
     L.push('                                <adjust-blend mode="3 (Darken)"/>','                            </title>'); }
   for(const T of titles){ const f0=FCPXML.frames(T.t,r); if(f0>=durF) continue;
     L.push(...FCPXML.titleXML(Object.assign({},T,{offsetFrames:t0F+f0,dur:Math.min(T.dur,take.dur-T.t)}),r,effects.get(T.template.uid),'                            ',styleIds)); }
