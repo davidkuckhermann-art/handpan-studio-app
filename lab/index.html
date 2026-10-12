@@ -433,7 +433,7 @@ body.preview.tlane .scrub{border-radius:0}
       <!-- NEW, OPEN, SAVE FIRST, IN THAT ORDER (David, 12 Oct 2026: "move open and save piece to the top of the menu. For all these kinds of
            file navigation and similar menus, let's stick to best practices that are common in other applications") - New piece came
            over from File with them: it replaces the open piece, so it is this menu's New -->
-      <button class="it" id="newBtn">New piece<span class="k">the editor, blank</span></button>
+      <button class="it" id="newBtn" title="A blank piece in the place of the open one (⌘Z brings the open one back). To keep it and write another piece for the same video: ＋ Add a piece to this video, below">New piece<span class="k">replaces this one · blank</span></button>
       <button class="it" id="openPieceBtn">Open piece…<span class="k">.hps · HPS1 code · JSON</span></button>
       <button class="it" id="savePieceBtn" title="The open piece — its tables, arrangement and tempo map — as a .hps file the Studio and the phone app open (the same as Export › Save piece as .hps…)">Save piece…<span class="k">.hps</span></button>
       <hr>
@@ -4116,9 +4116,19 @@ $("newProjBtn").onclick=()=>{
 $("newCancel").onclick=()=>$("newDlg").close();
 $("newDiscard").onclick=()=>{ $("newDlg").close(); newProject(); };
 $("newSave").onclick=async()=>{ $("newDlg").close(); await saveProject(false); if(state.dirty&&!inShell()) { labToast("Not saved — the new project waits"); return; } newProject(); };   // in the shell the save is handed over; the browser save either clears dirty or was cancelled
+/* NEW PIECE IS AN UNDO STEP, AND SAYS THAT IT REPLACES (patches/lab-new-piece-undo.py; David, 12 Oct 2026: "I added a
+   second piece to a Notation Lab project, and it wrote over my first piece. Now I can't undo this."). It recorded no
+   step and set dirty to false, so ⌘Z reached the old piece only while the history happened to hold something - never
+   after a reload or a project just opened. Replacing the piece is a change like any other: the step before closes,
+   this is a step, the project is unsaved. The question is asked when the piece holds a stroke or a playhead marker. */
 $("newBtn").onclick=()=>{ if(!ready) return;
-  if(state.dirty&&!confirm("Start a new table? Unsaved changes will be lost.")) return;
-  state.cur=null; pushPiece(cw.edBlankPiece()); state.dirty=false; paintTitle(); };
+  const p=state.piece, work=!!p&&(((p.syncMap||[]).length>0)||Object.values(p.sections||{}).some(s=>(s.bars||[]).some(b=>b&&b.length)));
+  if(work&&!confirm("Replace this piece with a blank one?\n\nTo keep it and write another piece for this video, cancel and choose \u201C\uFF0B Add a piece to this video\u201D in the Piece menu.\n\n\u2318Z brings it back.")) return;
+  histCommit();                                             // whatever was still open closes first: the step before is the piece as it stood
+  state.cur=null; pushPiece(cw.edBlankPiece());
+  paintMarks();                                             // the table marks give the blank piece their markers NOW (syncMarkAnchors), inside this step: a step recorded before them is one the rule changes again each time undo lands on it, and ⌘Z never gets past it
+  markDirty(); histCommit();
+  if(work) labToast("A blank piece \u2014 \u2318Z brings the other back"); };
 
 /* A FILE DROPPED ANYWHERE OPENS ITSELF - on the Lab's page and on the notation table alike, ONE router (David, 5 Sep:
    "drag a video file into the video window, and it will be loaded"; 9 Oct: "load HPS files by dragging them onto the
