@@ -5081,7 +5081,17 @@ body.phone #editPop.two .tuprow .ctl{min-width:0; padding:9px 0; font-size:14px;
 
 #gwTools:empty{display:none}
 
-#pieceDlg{width:min(560px,94vw); max-height:86vh; overflow-y:auto; overscroll-behavior:none}
+#pieceDlg{width:min(560px,94vw); max-height:calc(100vh - 28px); overflow-y:auto; overscroll-behavior:none}
+
+#psDonePin{position:fixed; right:22px; bottom:22px; z-index:2; min-width:104px; justify-content:center; padding:11px 24px; font-size:15px; font-weight:800;
+  background:var(--ink); color:var(--paper); border-color:var(--ink); box-shadow:0 10px 24px -10px rgba(var(--sh),.7)}
+body.phone:not(.tablet) #psDonePin{display:none}
+@media (max-width:860px){ #psDonePin{display:none} }
+
+body:not(.phone) dialog.flat#pieceDlg[open]{top:14px; left:0; right:0; margin:0 auto; transform:none}
+#psArr .aslot.dragging.copying{cursor:copy}   
+#psArr .pspick{width:100%; display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:7px 9px; background:var(--dust); border-radius:10px}
+#psArr .pspick .pslead{font-size:10px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3); margin-right:2px}
 #pieceDlg .pslab{font-size:10px; font-weight:800; letter-spacing:.12em; text-transform:uppercase;
   color:var(--ink3); margin:12px 0 4px}
 
@@ -7408,7 +7418,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
   
   <h4 class="pslab">Arrangement</h4>
   <div id="psArr"></div>
-  <p class="hint">Drag a chip to change the order · tap the ✕ to take it out — the table itself stays · ＋ appends one.</p>
+  <p class="hint">Drag a chip to change the order · ⌥-drag copies it · tap the ✕ to take it out — the table itself stays · a table in the row beneath appends it.</p>
   <h4 class="pslab">Tables</h4>
   <div id="psList"></div>
   <div class="row" style="gap:8px; margin:8px 0 2px">
@@ -7417,6 +7427,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
     <span class="hint">A part's first table is named for it — B makes B1.</span>
   </div>
   <div class="row"><span class="spacer"></span><button class="ctl" id="psClose">Done</button></div>
+  <button class="ctl" id="psDonePin" type="button" title="Done — close the Sections sheet">Done</button>
 </dialog>
 
 
@@ -17647,6 +17658,17 @@ function mapBegun(t){ return SyncMap.mapBegun(piece.syncMap,t); }
 function mapPulse(t){ return SyncMap.mapPulse(piece.syncMap,t); }
 
 
+function mapBreak(t){
+  const a=piece.syncMap; if(!a||a.length<3) return null;
+  let i=-1; for(let k=0;k<a.length;k++){ if(a[k].t<=t) i=k; else break; }       
+  if(i<1||i>a.length-2||!a[i+1].br) return null;
+  let j=i; while(j>1&&a[j].br) j--; if(a[j].br) return null;                     
+  const r=(a[j].t-a[j-1].t)/Math.max(1e-6,a[j].p-a[j-1].p); if(!(r>0)) return null;    
+  const q=a[i].p+(t-a[i].t)/r, end=Math.min(a[i].p+(a[i].p-a[i-1].p),a[i+1].p);
+  return q<end?{p:q}:{off:true};
+}
+
+
 function chordRootPc(name){ const t=chordPCs(name); return t?t[0]:null; }
 function barPcSet(evs){
   const s=new Set();
@@ -18250,9 +18272,12 @@ function followPaint(){
   
 
   if(!mapBegun(t)){ if(lastFollowPaint!==C.total){ lastFollowPaint=C.total; clearMarks(); } return; }
+   
+  const bk=mapBreak(t);
+  if(bk&&bk.off){ if(lastFollowPaint!==C.total){ lastFollowPaint=C.total; clearMarks(); } return; }
   
 
-  const pr=Math.max(0,Math.floor(p));
+  const pr=Math.max(0,Math.floor(bk?bk.p:p));
   
 
   if(seekPaint!=null){
@@ -23517,7 +23542,6 @@ function edPopClose(){
 
 
 const TSOPTS=["2/4","3/4","4/4","5/4","5/8","6/8","7/8","9/8","10/8","12/8"];    
-let psPickOpen=false;
 function nextSecName(base){
   let mx=0;
   for(const nm of Object.keys(piece.sections)){
@@ -23556,7 +23580,7 @@ function psTrim(nm){
 }
 function openPieceDlg(){
   if(grooveEdit){ toast("A groove is one bar — no sections to arrange"); return; }
-  psPickOpen=false; renderPieceDlg(); openDlg($("pieceDlg")); }
+  renderPieceDlg(); openDlg($("pieceDlg")); }
 
 
 function psDragArr(A){
@@ -23585,7 +23609,7 @@ function psDragArr(A){
   A.addEventListener("pointerdown",e=>{
     const chip=e.target.closest(".aslot"); if(!chip||!A.contains(chip)) return;
     const r=chip.getBoundingClientRect();
-    st={chip,id:e.pointerId,x0:e.clientX,y0:e.clientY,ox:e.clientX-r.left,oy:e.clientY-r.top,moved:false};
+    st={chip,id:e.pointerId,x0:e.clientX,y0:e.clientY,ox:e.clientX-r.left,oy:e.clientY-r.top,moved:false,copy:!!e.altKey};    
     try{ chip.setPointerCapture(e.pointerId); }catch(err){}
   });
   A.addEventListener("pointermove",e=>{
@@ -23594,6 +23618,10 @@ function psDragArr(A){
       if(Math.abs(e.clientX-st.x0)+Math.abs(e.clientY-st.y0)<8) return;
       st.moved=true; st.chip.classList.add("dragging");
       st.chip.dataset.dragged="1";                
+      
+
+      if(st.copy){ const twin=st.chip.cloneNode(true); twin.classList.remove("dragging"); twin.dataset.dragged=""; twin.style.transform="";
+        A.insertBefore(twin,st.chip); st.chip.classList.add("copying"); }
     }
     follow(e);
      
@@ -23612,7 +23640,7 @@ function psDragArr(A){
   const drop=e=>{
     if(!st||(e&&e.pointerId!==st.id)) return;
     const s=st; st=null;
-    s.chip.classList.remove("dragging"); s.chip.style.transition=""; s.chip.style.transform="";
+    s.chip.classList.remove("dragging","copying"); s.chip.style.transition=""; s.chip.style.transform="";
     if(!s.moved) return;
     const order=slots().map(c=>+c.dataset.ai);
     const same=order.every((v,i)=>v===i);
@@ -23783,7 +23811,7 @@ function renderPieceDlg(){
     const c=document.createElement("button"); c.className="chip aslot";
     c.dataset.ai=ai;
     c.innerHTML=nm+' <span class="x">✕</span>';
-    c.title="Drag to move it · tap to take it out";
+    c.title="Drag to move it · ⌥-drag to copy it · tap to take it out";
     
 
     { const r=passOf(ai); if(r&&r.ais[0]===ai){ const off=(piece.noVar||[]).includes(ai);
@@ -23802,21 +23830,16 @@ function renderPieceDlg(){
     A.appendChild(c); if(c.vmark) A.appendChild(c.vmark);
   });
   psDragArr(A);
-  const add=document.createElement("button"); add.className="chip"; add.textContent="＋";
-  add.title="Append a table to the arrangement";
-  add.addEventListener("click",()=>{ psPickOpen=!psPickOpen; renderPieceDlg(); });
-  A.appendChild(add);
-  if(psPickOpen){
-    const pick=document.createElement("div");
-    pick.style.cssText="width:100%;display:flex;flex-wrap:wrap;gap:6px;padding:7px 9px;background:var(--dust);border-radius:10px";
+  
+
+  { const pick=document.createElement("div"); pick.className="pspick";
+    const lead=document.createElement("span"); lead.className="pslead"; lead.textContent="＋ Add"; pick.appendChild(lead);
     for(const nm of Object.keys(piece.sections)){
-      const c=document.createElement("button"); c.className="chip"; c.textContent=nm;
-      c.addEventListener("click",()=>{ snapshot(); piece.arrangement.push(nm);
-        psPickOpen=false; refresh(); renderPieceDlg(); });
+      const c=document.createElement("button"); c.className="chip"; c.textContent=nm; c.title="Append "+nm+" to the arrangement";
+      c.addEventListener("click",()=>{ snapshot(); piece.arrangement.push(nm); refresh(); renderPieceDlg(); });
       pick.appendChild(c);
     }
-    A.appendChild(pick);
-  }
+    A.appendChild(pick); }
 }
 
  
@@ -34410,6 +34433,7 @@ function boot(){
   });
    
   $("psClose").addEventListener("click",()=>$("pieceDlg").close());
+$("psDonePin").addEventListener("click",()=>$("pieceDlg").close());    
   $("psNewBtn").addEventListener("click",()=>{
     const raw=$("psNewName").value.trim()||"B";
     const base=baseOf(raw).base||raw;
