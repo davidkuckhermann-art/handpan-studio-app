@@ -271,6 +271,20 @@ body.minioff #mini{display:none}
 #divider:hover::after,#divider.on::after{background:var(--dixie)}
 .ecol{flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:8px}
 #edbox{flex:1 1 auto; min-height:300px; border-radius:8px}
+/* THE CHORD COLUMN (patches/lab-chord-column.py): the editor's box shares a row with it; each row of the table has its
+   chords beside it - written upright, guessed grey and italic as the Studio writes them, the sounding one amber */
+.edrow{flex:1 1 auto; min-height:0; display:flex; align-items:flex-start; gap:8px}
+.edrow #edbox{min-width:0}
+#chcol{display:none; flex:0 0 148px; position:relative; align-self:stretch}
+body.chcol #chcol{display:block}
+#chcol .cr{position:absolute; left:0; right:0; display:flex; flex-wrap:wrap; align-content:center; justify-content:flex-end; gap:4px 5px; overflow:hidden}
+#chcol button{appearance:none; -webkit-appearance:none; font-family:inherit; font-size:12.5px; font-weight:700; line-height:1.25; padding:3px 8px; border-radius:7px; border:1px solid var(--rule); background:var(--card); color:var(--ink); cursor:pointer; white-space:nowrap}
+#chcol button:hover{border-color:var(--ink3)}
+#chcol button.inf{font-style:italic; font-weight:600; color:var(--ink3); background:none; border-style:dashed}
+#chcol button.add{font-weight:600; color:var(--ink3); background:none; border-style:dashed; opacity:.55}
+#chcol button.now{background:var(--dixie-soft); border-color:var(--dixie); border-style:solid; color:var(--ink); box-shadow:inset 0 -3px 0 var(--dixie)}
+#chcol button .at{font-size:10px; font-weight:600; font-style:normal; color:var(--ink3); margin-left:4px}
+#chcol button .fl{font-style:normal; font-family:"Apple Symbols","Arial Unicode MS",sans-serif; margin:0 -1px 0 0}   /* the flat and the sharp, from a font that has them */
 #edbox.waiting{display:flex; align-items:center; justify-content:center; color:var(--ink3);
   border:1.5px dashed var(--rule)}
 
@@ -438,6 +452,7 @@ body.preview.tlane .scrub{border-radius:0}
       <div class="h lbl">This mode's layout — <span id="viewMode" class="sub" style="color:var(--ink)">Write</span></div>
       <button class="it chk" data-v="pan">Pan card under the notation</button>
       <button class="it nochk" data-v="panright">Pan card beside the notation<span class="k">for a wide screen</span></button>
+      <button class="it nochk" data-v="chcol" title="Beside each row of the table: the chords that begin in it. Upright - written; grey and italic - read from the notes; amber - sounding now. Click one to change or clear it">Chords beside the notation<span class="k">Write and Sync — click one to change it</span></button>
       <button class="it chk" data-v="mini">Small timeline under the video</button>
       <button class="it nochk" data-v="tlane">Table lane above the waveform<span class="k">Preview — where each table enters and leaves</span></button>
       <hr>
@@ -598,7 +613,10 @@ body.preview.tlane .scrub{border-radius:0}
           </div>
         </span>
       </div>
-      <div id="edbox" class="waiting">Loading the editor…</div>
+      <div class="edrow">
+        <div id="chcol"></div>
+        <div id="edbox" class="waiting">Loading the editor…</div>
+      </div>
     </div>
   </div>
   <iframe id="frame" title="Handpan Studio — the editor"></iframe>
@@ -1119,6 +1137,56 @@ function fitPreviewGlyphs(){
    before the browser paints, fits at once; and since the frame's own layout shifts with its height, the fit is
    repeated until the height stands (two or three passes, 0.2 ms each). The later fits find nothing left to change.
    (patches/lab-fit-at-once.py) */
+/* THE CHORD COLUMN (David, 12 Oct 2026: "We need a way to see and edit the chords of a piece in the Notation Lab" - "the
+   chord functionality already exists in the main app's editor, should we use that existing functionality?" - "please
+   create an additional way to view the chords that can be added next to the notation table"). The Studio's editor
+   writes a chord's name over its slot and sets one by a right-click, but in the Tab view the Lab writes in it draws no
+   names. ONE RULE: beside each row of the table stand the chords that begin in it, read from the Studio's own
+   barChordSpans - written upright, guessed grey and italic, the one under the video's playhead amber - and a click on
+   one opens the Studio's own picker for its slot (edOpenChordPick). The Lab neither reads nor writes a chord itself.
+   A bar with no chord shows a faint +, which sets one on its first beat; any other slot: a right-click in the table,
+   as before. The rows are placed from the table's own rows through the frame's scale, at the end of every fit; the
+   sounding chord is repainted on every tick. (patches/lab-chord-column.py) */
+function chcolOn(){ return document.body.classList.contains("chcol")&&isEdit(); }
+function paintChcol(){
+  const host=$("chcol"); if(!host) return;
+  if(!ready||!chcolOn()||!state.piece){ if(host.dataset.sig){ host.textContent=""; host.dataset.sig=""; host.dataset.now=""; } return; }
+  let rows=[];
+  try{
+    const p=appEval("piece"), nm=appEval("viewSec"), sec=p.sections[nm], m=cw.SM(p,nm);
+    const fr=FR.getBoundingClientRect(), k=fr.width/(FR.offsetWidth||1), top0=host.getBoundingClientRect().top;
+    const say=t=>{ if(!t) return ""; const beat=Math.floor(t/m.sub)+1, off=t%m.sub, q=off/(m.sub/m.base);   // the slot in counting words, as the picker says it
+      return beat+(!off?"":(m.base===4&&Number.isInteger(q))?["","e","+","a"][q]:(m.base===2&&q===1)?"+":"·"); };
+    let bi=0;
+    for(const nr of cd.querySelectorAll("#score > .nrow")){ const r=nr.getBoundingClientRect(), n=nr.querySelectorAll(".bar").length||1, chips=[];
+      for(let b=0;b<n;b++,bi++){ const bar=sec.bars[bi]; if(!bar) continue; const spans=cw.barChordSpans(bar,m)||[];
+        if(!spans.length) chips.push({bi,t:0,add:1,bar:n>1?bi+1:0}); else for(const sp of spans) chips.push({bi,t:sp.t,name:sp.name,inf:sp.inf?1:0,at:say(sp.t)}); }
+      rows.push({y:Math.round(fr.top+r.top*k-top0),h:Math.round(r.height*k),chips}); }
+  }catch(e){ rows=[]; }
+  const sig=JSON.stringify(rows);
+  if(host.dataset.sig!==sig){ host.dataset.sig=sig; host.dataset.now=""; host.textContent="";
+    for(const R of rows){ const d=document.createElement("div"); d.className="cr"; d.style.top=R.y+"px"; d.style.height=R.h+"px";
+      for(const c of R.chips){ const b=document.createElement("button"); b.type="button"; b.tabIndex=-1; b.dataset.bi=c.bi; b.dataset.t=c.t;
+        if(c.add){ b.className="add"; b.textContent="+"; b.title="Bar "+(c.bi+1)+" has no chord. Click: set one on its first beat (any other slot: right-click it in the table)"; }
+        else { b.className=c.inf?"inf":""; for(const part of String(c.name).split(/([♭♯])/)){ if(!part) continue; if(part==="♭"||part==="♯"){ const f=document.createElement("span"); f.className="fl"; f.textContent=part; b.appendChild(f); } else b.appendChild(document.createTextNode(part)); } if(c.at){ const s=document.createElement("span"); s.className="at"; s.textContent=c.at; b.appendChild(s); }
+          b.title=c.name+" — bar "+(c.bi+1)+(c.at?", beat "+c.at:"")+(c.inf?". Read from the notes. Click: write a chord here":". Written. Click: change or clear it"); }
+        d.appendChild(b); }
+      host.appendChild(d); } }
+  paintChcolNow();
+}
+function paintChcolNow(){   // the chord under the video's playhead: the last one whose slot the beat has reached in its bar (the Studio's chipAt), while the table on screen is the one playing
+  const host=$("chcol"); if(!host||!host.dataset.sig) return; let key="";
+  try{ const ai=tnavNow(); if(ai!=null&&ai===tnavShown()){ const sm=state.piece.syncMap, t=vid.currentTime;
+      if(sm&&sm.length>=2&&SyncMap.mapBegun(sm,t)){ const s=tnavSecs()[ai], m=cw.SM(appEval("piece"),s.name), rel=Math.floor(SyncMap.mapPulse(sm,t))-s.pulse, bi=Math.floor(rel/m.bp), inBar=rel-bi*m.bp;
+        let best=null; host.querySelectorAll('button[data-bi="'+bi+'"]:not(.add)').forEach(b=>{ if(+b.dataset.t<=inBar) best=b; });
+        if(best) key=best.dataset.bi+":"+best.dataset.t; } } }catch(e){}
+  if(host.dataset.now===key) return; host.dataset.now=key;
+  host.querySelectorAll("button.now").forEach(b=>b.classList.remove("now"));
+  if(key){ const a=key.split(":"), b=host.querySelector('button[data-bi="'+a[0]+'"][data-t="'+a[1]+'"]'); if(b) b.classList.add("now"); }
+}
+$("chcol").addEventListener("mousedown",e=>e.preventDefault());   // the chips take no focus: Space stays the play key
+$("chcol").addEventListener("click",e=>{ const b=e.target.closest("button[data-bi]"); if(!b||!ready) return;
+  try{ cw.edOpenChordPick(+b.dataset.bi,+b.dataset.t); }catch(err){ labToast("The chord picker did not open"); } });
 function fitNow(){ if(!ready) return; for(let i=0;i<4;i++){ const h=FR.style.height; fitFrame(); if(FR.style.height===h) break; } }
 function fitFrame(){
   if(!ready) return;
@@ -1212,6 +1280,7 @@ function fitFrame(){
   const visH=(bottom-top)*k;
   if(isEdit()) $("edbox").style.height=visH+"px";
   else { const st=stageBox(); $("tblobj").style.height=(r.height*k/st.height*100)+"%"; $("tblobj").classList.remove("empty"); }
+  paintChcol();   // the chord column beside the table: its rows follow the table's (patches/lab-chord-column.py)
 }
 
 /* ---------------------------------------------------------------- modes */
@@ -1827,7 +1896,7 @@ let pendingT=null;
 let tick=function(){                    // the playhead moved: the window follows it, then everything is painted
   if(!vid) return;
   if(follow()){ drawWave(); paintLoop(); }
-  paintPh(); labFollow(); paintTnav();
+  paintPh(); labFollow(); paintTnav(); paintChcolNow();
 }
 /* THE TABLE'S PLAYHEAD FOLLOWS THE VIDEO (David, 5 Sep: "a way to see the
    playhead that follows the placed playhead markers in the notation table"):
@@ -4330,6 +4399,7 @@ function applyLayout(){
   $("viewMode").textContent=state.mode[0].toUpperCase()+state.mode.slice(1);
   paintPanItems(!!L.pan);
   $("viewDD").querySelector('[data-v="mini"]').className="it "+(L.mini?"chk":"nochk");
+  document.body.classList.toggle("chcol",!!L.chcol&&state.mode!=="preview"); $("viewDD").querySelector('[data-v="chcol"]').className="it "+(L.chcol&&state.mode!=="preview"?"chk":"nochk");   // the chord column (patches/lab-chord-column.py)
   document.body.classList.toggle("tlane",!!state.tlane); $("viewDD").querySelector('[data-v="tlane"]').className="it "+(state.tlane?"chk":"nochk"); paintLane(true);
   if(ready) placePanWrap(!!L.panRight&&state.mode!=="preview");
   homeVideo(); drawWave(); paintLoop(); paintPh();
@@ -4381,6 +4451,7 @@ $("viewDD").addEventListener("click",e=>{ const it=e.target.closest(".it"); if(!
   else if(it.dataset.v==="pan"){ const was=lay().pan&&!lay().panRight; lay().pan=!was; lay().panRight=false; }
   else if(it.dataset.v==="panright"){ const was=lay().pan&&lay().panRight; lay().pan=!was; lay().panRight=!was; }
   else if(it.dataset.v==="mini") lay().mini=!lay().mini;
+  else if(it.dataset.v==="chcol") lay().chcol=!lay().chcol;   // the chord column, this mode's (patches/lab-chord-column.py)
   else if(it.dataset.v==="tlane"){ state.tlane=!state.tlane; try{ localStorage.setItem("hpdlab.tlane",state.tlane?"1":"0"); }catch(err){} }   // the table lane, remembered (Preview)
   saveLayout(); applyLayout(); });
 
