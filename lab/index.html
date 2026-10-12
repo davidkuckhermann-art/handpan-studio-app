@@ -275,9 +275,9 @@ body.minioff #mini{display:none}
    chords beside it - written upright, guessed grey and italic as the Studio writes them, the sounding one amber */
 .edrow{flex:1 1 auto; min-height:0; display:flex; align-items:flex-start; gap:8px}
 .edrow #edbox{min-width:0}
-#chcol{display:none; flex:0 0 148px; position:relative; align-self:stretch}
+#chcol{display:none; flex:0 0 148px; position:relative; z-index:2; align-self:stretch}
 body.chcol #chcol{display:block}
-#chcol .cr{position:absolute; left:0; right:0; display:flex; flex-wrap:wrap; align-content:center; justify-content:flex-end; gap:4px 5px; overflow:hidden}
+#chcol .cr{position:absolute; left:0; right:0; display:flex; flex-wrap:wrap; align-content:center; justify-content:flex-start; gap:4px 5px; overflow:hidden}
 #chcol button{appearance:none; -webkit-appearance:none; font-family:inherit; font-size:12.5px; font-weight:700; line-height:1.25; padding:3px 8px; border-radius:7px; border:1px solid var(--rule); background:var(--card); color:var(--ink); cursor:pointer; white-space:nowrap}
 #chcol button:hover{border-color:var(--ink3)}
 #chcol button.inf{font-style:italic; font-weight:600; color:var(--ink3); background:none; border-style:dashed}
@@ -601,6 +601,7 @@ body.preview.tlane .scrub{border-radius:0}
       <div class="phead">
         <span class="lbl">Notation</span>
         <span class="tnav" id="tnavEdit"></span>
+        <span class="seg tiny" id="edFaceSeg" title="How the table is written in this mode. Table: one line of notes, each chord's name over the slot where it begins. Tab: a lane for each hand. Write and Sync each remember their own"><button data-v="table">Table</button><button data-v="tab" class="on">Tab</button></span>
         <button class="btn" id="clearTblBtn" style="font-size:12.5px" title="Clear this table — everything in it (it asks first)">Clear</button>
         <span class="menu" id="mTable"><button class="btn" data-menu="mTable" style="font-size:12.5px" title="Which table is being written, and which sits on the stage">Table <b class="tableName">—</b> <span class="car">▾</span></button>
           <div class="dd">
@@ -614,8 +615,8 @@ body.preview.tlane .scrub{border-radius:0}
         </span>
       </div>
       <div class="edrow">
-        <div id="chcol"></div>
         <div id="edbox" class="waiting">Loading the editor…</div>
+        <div id="chcol"></div>
       </div>
     </div>
   </div>
@@ -998,7 +999,7 @@ function pushPiece(p){
   if(!state.cur||!p.sections[state.cur]) state.cur=p.arrangement[0];
   showSection(state.cur);
   if(!appEditing()) cd.getElementById("editBtn").click();
-  cw.setView(isEdit()?"tab":state.face);
+  cw.setView(labFace());
   paintTitle(); fillSecPick(); paintFcpTiming(); syncChordCard(); fitFrame(); labWarm();   // every piece arrives here, its chapter's fcp already in state: the Preview fields and the chord card follow it
 }
 function pullPiece(){
@@ -1163,6 +1164,14 @@ function paintChcol(){
         if(!spans.length) chips.push({bi,t:0,add:1,bar:n>1?bi+1:0}); else for(const sp of spans) chips.push({bi,t:sp.t,name:sp.name,inf:sp.inf?1:0,at:say(sp.t)}); }
       rows.push({y:Math.round(fr.top+r.top*k-top0),h:Math.round(r.height*k),chips}); }
   }catch(e){ rows=[]; }
+  /* THE COLUMN TOUCHES THE RIGHT EDGE of what the editor shows (David, 12 Oct 2026: "I would like something next to the table on the
+     right side"). The table is set at its box's LEFT edge, and one whose height sets its scale is narrower than the box, so the
+     column, right of the box in the row, would stand apart from it. It is drawn shifted left to the right edge of the Studio's
+     #scorewrap - the table, or the table and the pan card when that is beside the notation - by a TRANSFORM, which changes no
+     layout: the box, and with it the table's scale, do not move with it. (patches/lab-chord-column-right.py) */
+  try{ const fr=FR.getBoundingClientRect(), k=fr.width/(FR.offsetWidth||1), edge=fr.left+cd.getElementById("scorewrap").getBoundingClientRect().right*k;
+    const own=host.getBoundingClientRect().left-(+host.dataset.dx||0), dx=Math.min(0,Math.round(edge+8-own));
+    if(String(dx)!==host.dataset.dx){ host.dataset.dx=dx; host.style.transform=dx?"translateX("+dx+"px)":""; } }catch(e){}
   const sig=JSON.stringify(rows);
   if(host.dataset.sig!==sig){ host.dataset.sig=sig; host.dataset.now=""; host.textContent="";
     for(const R of rows){ const d=document.createElement("div"); d.className="cr"; d.style.top=R.y+"px"; d.style.height=R.h+"px";
@@ -1294,7 +1303,7 @@ function setMode(m,force){
   document.querySelectorAll("#modeSeg button").forEach(b=>b.classList.toggle("on",b.dataset.m===m));
   if(ready){
     cd.body.classList.toggle("labpreview",m==="preview");
-    cw.setView(isEdit()?"tab":state.face);
+    cw.setView(labFace());
     if(!appEditing()) cd.getElementById("editBtn").click();
     syncChordCard();   // the editor rests the Chords pill on its way in; the Lab's switch puts the card back
   }
@@ -1303,6 +1312,17 @@ function setMode(m,force){
   requestAnimationFrame(()=>{ fitFrame(); requestAnimationFrame(fitFrame); });
 }
 document.querySelectorAll("#modeSeg button").forEach(b=>b.onclick=()=>setMode(b.dataset.m));
+/* TABLE | TAB IN WRITE AND SYNC (David, 12 Oct 2026: "please also give me a table/tab switch"). The Lab wrote in the
+   Studio's Tab view always - a lane for each hand - and only Preview had the switch. In the Table view the Studio writes
+   each chord's name over its slot. ONE RULE: the view the table is written in is the mode's own setting - Write and Sync
+   each keep theirs in their layout (lay().face, Tab until changed), Preview keeps the project's (state.face) - and
+   labFace() is the one place that answers. (patches/lab-edit-face.py) */
+function labFace(){ return isEdit()?(lay().face==="table"?"table":"tab"):state.face; }
+function paintEdFace(){ const f=lay().face==="table"?"table":"tab"; document.querySelectorAll("#edFaceSeg button").forEach(b=>b.classList.toggle("on",b.dataset.v===f)); }
+document.querySelectorAll("#edFaceSeg button").forEach(b=>b.onclick=()=>{ if(!isEdit()) return;
+  lay().face=b.dataset.v; saveLayout(); paintEdFace();
+  if(ready){ try{ cw.setView(labFace()); }catch(e){} requestAnimationFrame(fitNow); }
+  labToast(b.dataset.v==="table"?"Table view — each chord's name stands over its slot":"Tab view — a lane for each hand"); });
 document.querySelectorAll("#faceSeg button").forEach(b=>b.onclick=()=>{
   state.face=b.dataset.v;
   document.querySelectorAll("#faceSeg button").forEach(x=>x.classList.toggle("on",x===b));
@@ -4401,6 +4421,7 @@ function applyLayout(){
   $("viewDD").querySelector('[data-v="mini"]').className="it "+(L.mini?"chk":"nochk");
   document.body.classList.toggle("chcol",!!L.chcol&&state.mode!=="preview"); $("viewDD").querySelector('[data-v="chcol"]').className="it "+(L.chcol&&state.mode!=="preview"?"chk":"nochk");   // the chord column (patches/lab-chord-column.py)
   document.body.classList.toggle("tlane",!!state.tlane); $("viewDD").querySelector('[data-v="tlane"]').className="it "+(state.tlane?"chk":"nochk"); paintLane(true);
+  paintEdFace(); if(ready&&isEdit()){ try{ if(appEval("view")!==labFace()) cw.setView(labFace()); }catch(e){} }   // Table | Tab, this mode's (patches/lab-edit-face.py)
   if(ready) placePanWrap(!!L.panRight&&state.mode!=="preview");
   homeVideo(); drawWave(); paintLoop(); paintPh();
   requestAnimationFrame(()=>{ fitFrame(); requestAnimationFrame(fitFrame); });
