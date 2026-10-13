@@ -1871,7 +1871,7 @@ function fcpPanPic(P,cx,cy,rad,ch){ const {g,X,Y,k}=P, G=fcpPanGeom(); if(!G) re
   const px=f=>X(cx+(f.x-G.cx)*s), py=f=>Y(cy-(f.y-G.cy)*s);
   g.beginPath(); g.arc(X(cx),Y(cy),G.R*s*k,0,2*Math.PI); g.strokeStyle=FCPP.LINE; g.lineWidth=FCPP.HAIR*k; g.stroke();
   for(const f of G.fields){ const nt=lit.get(f.f), r=f.r*(FCPP.V2?(nt?FCP_PANDOT.lit:FCP_PANDOT.unlit):0.84)*s*k; g.beginPath(); g.arc(px(f),py(f),r,0,2*Math.PI);
-    if(!nt){ g.fillStyle=FCPP.FIELD; g.fill(); } else { g.fillStyle=fcpPanelNoteFill(nt); g.fill();
+    if(!nt){ g.fillStyle=FCPP.FIELD; g.fill(); } else { g.fillStyle=FCPP.TEXT; g.fill();   // the pan shows no hands (David, 13 Oct 2026: "we never need the hands for the chord pan graphic")
       if(FCPP.V2&&fcpPanNums()&&String(nt.text).length===1){ const sz=r*1.3; g.font="800 "+sz+"px "+FCPP.F; g.textAlign="center"; g.textBaseline="alphabetic"; g.fillStyle=FCPP.PICNUM; g.fillText(nt.text,px(f),py(f)+FCPP.CAP*sz); } } } }   // a lit field carries its number (a skin's V2)
 function fcpPanelNextChord(P){ try{ const i=P.tables.indexOf(P.tb), nx=P.tables[i+1]; if(!nx) return null; const R=fcpChordRow(nx,P.c); return R&&R.chips[0]||null; }catch(e){ return null; } }   // after a table's last chord comes the next table's first
 /* THE FORM STRIP AND THE CHORD CARD, under the panel in that order, each 30 below what stands over it */
@@ -5232,22 +5232,28 @@ $("fcpBoxes").addEventListener("change",e=>{ const sp=state.fcp=Object.assign({d
    tab at its side (a checkbox, Letter tab, takes the tab away with the letter); the arrangement bar across the table's
    width, its FORM column inside; words untracked; the pan's circles real circles. The first build's names are not
    written any more. (patches/lab-fcp-panel-v2.py) */
-const FCP_PANEL_FAMILY={paper:"HPD Panel v3 Paper",copper:"HPD Panel v3 Copper"};   // v3 (13 Oct): a colour is one build, with an Outline checkbox in every title and a Next chord checkbox in the card (patches/lab-outline-next.py)
+/* THE SLIM TITLES, v4 (David, 13 Oct 2026, of what one export weighs in Final Cut: "1,2,4 and 6" - "as efficient and slim as possible,
+   while keeping all functionality"). His lesson: 24 tables, 24 bars, 107 chord cards. A table of four rows or fewer is
+   written in a four-row title (' 4r': 83 text layers where 147); a bar and a card carry no leftover of the source
+   template (10 where 21, 6 where 11); a field of the card's pan is one circle whose State the Lab writes, where it
+   was three circles and two opacities; and the pan shows no hands ("we never need the hands for the chord pan
+   graphic"). tools-cell-moti.py builds them; the classic titles are as they were. (patches/lab-fcp-v4.py) */
+const FCP_PANEL_FAMILY={paper:"HPD Panel v4 Paper",copper:"HPD Panel v4 Copper"};   // v3 (13 Oct): a colour is one build, with an Outline checkbox in every title and a Next chord checkbox in the card (patches/lab-outline-next.py)
 const FCP_PANEL_SWITCH=side=>(side.switches&&side.switches.outline?[{name:"Outline",key:side.switches.outline,value:fcpOutline()?"1":"0"}]:[]).concat(side.switches&&side.switches.row_bands?[{name:"Row bands",key:side.switches.row_bands,value:fcpRowBands()?"1":"0"}]:[]);   // the colour choices that have titles (tools-cell-moti.py SKINS)
 const FCP_PANEL_SAID={used:0,missing:new Set(),left:new Set()};
-async function fcpPanelTemplate(beats,sub,groups,bpr){   // the look's title for this grid, or null: the look is not chosen, its colours have no titles, or this grid's is not built
+async function fcpPanelTemplate(beats,sub,groups,bpr,need){   // need: the rows the table has (v4: four or fewer take the four-row title)   // the look's title for this grid, or null: the look is not chosen, its colours have no titles, or this grid's is not built
   if(fcpDesign()!=="panel") return null;
   const fam=FCP_PANEL_FAMILY[fcpSkin()]; if(!fam){ FCP_PANEL_SAID.left.add("the Panel look in these colours has no titles yet — the classic ones are written"); return null; }
   if(fcpSkin()==="paper"&&!fcpOutline()) FCP_PANEL_SAID.left.add("Final Cut draws no shadow — without the outline the panel stands bare there");
-  const side=await fcpPanelTableSide(fam,fcpKey(beats,sub,groups,bpr));
+  const side=await fcpPanelTableSide(fam,fcpKey(beats,sub,groups,bpr),need);
   if(!side) FCP_PANEL_SAID.missing.add(fcpKey(beats,sub,groups,bpr));
   else if(fcpRowBands()&&!(side.switches&&side.switches.row_bands)) FCP_PANEL_SAID.left.add("banded rows need the Table v2 titles — the tables are written plain");
   return side; }
 /* 'TABLE V2' FIRST (David, 13 Oct 2026: "the banded rows don't seem to export to FCP, can you fix that?"): a Panel table's
    title has its row bands and a Row bands checkbox since Table v2 (tools-cell-moti.py); the morning's plain title is
    asked for where that one is not installed. FCP_PANEL_SWITCH sets the checkbox. (patches/lab-fcp-row-bands.py) */
-async function fcpPanelTableSide(fam,key){
-  for(const ck of [fam+" Table v2 "+key,fam+" "+key]){
+async function fcpPanelTableSide(fam,key,need){
+  for(const ck of (need>=1&&need<=4?[fam+" "+key+" 4r",fam+" "+key]:[fam+" "+key])){   // v4: the four-row title where the table fits it, else the eight-row one
     if(FCP_TEMPLATES[ck]===undefined){ try{ const r=await fetch("fcp-templates/"+ck+".json?t="+Date.now()); FCP_TEMPLATES[ck]=r.ok?await r.json():null; }catch(e){ FCP_TEMPLATES[ck]=null; } }
     if(FCP_TEMPLATES[ck]) return FCP_TEMPLATES[ck]; }
   return null; }
@@ -5291,7 +5297,7 @@ function fcpPanelFormTitle(fs,SR,tb,o){ const SL=fs.sliders, n=SR.parts.length, 
    text cannot be moved by a slider. (patches/lab-fcp-panel-chord.py) */
 async function fcpPanelChordTemplate(n){ const fam=FCP_PANEL_FAMILY[fcpSkin()]; if(!fam) return null;   // 'Card v2 N' (13 Oct, later): the card's width is a slider - no next chord, compact, the section; else the morning's 'Card N', which knows the first and the last
   try{ await document.fonts.load(fcpSym().font(60)); await document.fonts.load("800 60px Figtree"); }catch(e){}   // the notes are laid out by measure: their faces have to be there
-  for(const ck of [fam+" Card v2 "+n,fam+" Card "+n]){
+  for(const ck of [fam+" Card "+n]){   // v4: one card   // Card v3: the fields' numbers are one text (patches/lab-card-numbers-one-line.py)
     if(FCP_TEMPLATES[ck]===undefined){ try{ const r=await fetch("fcp-templates/"+ck+".json?t="+Date.now()); FCP_TEMPLATES[ck]=r.ok?await r.json():null; }catch(e){ FCP_TEMPLATES[ck]=null; } }
     if(FCP_TEMPLATES[ck]) return FCP_TEMPLATES[ck]; }
   return null; }
@@ -5300,6 +5306,19 @@ function fcpPanelNameRuns(name,size,face,small,fill,align,maxW,out){   // out.w:
   const parts=[{t:m[1],f:face,w:face==="ExtraBold"?"800":"700",s:1,dy:0,fill}]; if(m[2]) parts.push({t:/[b♭]/.test(m[2])?"b":"#",f:"Bold",w:"700",s:0.6,dy:0.3,fill}); if(m[3]) parts.push({t:m[3].replace(/♭/g,"b").replace(/♯/g,"#"),f:sub,w:sub==="Bold"?"700":"600",s:small,dy:0,fill:FCPP.MUTED});
   try{ const g=fcpPanelLabel.g||(fcpPanelLabel.g=document.createElement("canvas").getContext("2d")); let W=0; for(const p of parts){ g.font=p.w+" "+(p.s*100)+"px "+FCPP.F; W+=g.measureText(p.t).width; } W=W/100*size; if(maxW&&W>maxW){ size*=maxW/W; W=maxW; } if(out) out.w=W; }catch(e){}
   return parts.map(p=>({text:p.t,style:{font:"Figtree",face:p.f,size:p.s*size,color:fcpCssRGB(p.fill),alignment:align,baseline:p.dy*size}})); }
+/* THE NUMBERS ARE A LINE OF TEXT (David, 13 Oct 2026, of an import grown slow - 107 cards of 32 text layers: "Is there a way to resolve
+   this while keeping the numbers?" - "ok, build the first one"). Card v3 has ONE text, 'Field numbers', where Card v2 has
+   a text a field slot: a line beginning num_line.x from the pan's middle, on the pan's middle line. Each lit field's
+   number is set over its dot by what a run can carry: sorted from the left, its place sideways is the kerning after the
+   run before it, its place up or down its own baseline shift (a capital's middle on the dot's, as the stage draws it).
+   An invisible glyph leads the line and carries the way to the first number - a space at a line's start may not be kept.
+   nums: [{text,size,x,y}] from the pan's middle, y upward. (patches/lab-card-numbers-one-line.py) */
+function fcpPanelNumLine(nums,C){ const L=C.num_line, it0=(nums||[]).filter(Boolean); if(!L||!it0.length) return [{text:" ",style:{size:C.num_size||40,color:[0,0,0]}}];
+  const g=fcpPanelLabel.g||(fcpPanelLabel.g=document.createElement("canvas").getContext("2d")); g.font="800 100px Figtree"; const W=t=>g.measureText(t).width/100;
+  const fill=fcpCssRGB(FCPP.PICNUM), it=it0.map(q=>{ const w=W(q.text)*q.size; return {q,w,o:q.x-w/2}; }).sort((a,b)=>a.o-b.o), LEAD=10;
+  const runs=[{text:"0",style:{font:"Figtree",face:"ExtraBold",size:LEAD,color:fill.slice(0,3).concat(0),alignment:"left",kerning:it[0].o-L.x-W("0")*LEAD}}];
+  it.forEach((a,i)=>{ const st={font:"Figtree",face:"ExtraBold",size:+a.q.size.toFixed(3),color:fill,alignment:"left",baseline:a.q.y-L.y-FCPP.CAP*a.q.size}; if(i<it.length-1) st.kerning=it[i+1].o-(a.o+a.w); runs.push({text:a.q.text,style:st}); });
+  return runs; }
 function fcpPanelChordTitles(cs,CR,tb,o){ const SL=cs.sliders, C=cs.card, m=tb.m, S0=o.T.s||1, runs=[];
   for(const x of o.beats){ const ci=fcpChordAt(CR,x.b,x.q-(tb.sec.pulse+x.b*m.bp)); if(ci<0) continue; const L=runs[runs.length-1]; if(L&&L.ci===ci) L.e=x.end; else runs.push({ci,s:x.t,e:x.end}); }
   if(!runs.length) runs.push({ci:0,s:o.t0,e:o.t1,dark:true});   // a table with no lit beat: its first chord, no segment lit
@@ -5312,10 +5331,11 @@ function fcpPanelChordTitles(cs,CR,tb,o){ const SL=cs.sliders, C=cs.card, m=tb.m
       .concat(cs.switches&&cs.switches.next_chord?[{name:"Next chord",key:cs.switches.next_chord,value:nextOn?"1":"0"}]:[])
       .concat(V2C?[{name:"Next line",key:cs.switches.next_line,value:mode==="zone"?"1":"0"},{name:"Card width",key:SL["Card width"].key,value:String(+(C.width_full*extra/C.next_w).toFixed(5))}]:[]);
     C.keys.forEach((K,i)=>{ const f=G&&G.fields[i], id="Field "+(i+1); if(!f){ params.push({name:id+" Size",key:K.size,value:"0"}); return; }
-      const nt=lit.get(f.f), left=!!(nt&&state.fcp&&state.fcp.chordHands&&nt.hand==="L"), x=(f.x-G.cx)*sc, y=-(f.y-G.cy)*sc, d=2*f.r*(nt?FCP_PANDOT.lit:FCP_PANDOT.unlit)*sc;
+      const nt=lit.get(f.f), left=false, x=(f.x-G.cx)*sc, y=-(f.y-G.cy)*sc, d=2*f.r*(nt?FCP_PANDOT.lit:FCP_PANDOT.unlit)*sc;
       params.push({name:id+" X",key:K.x,value:n01((x+C.pan.span)/(2*C.pan.span))},{name:id+" Y",key:K.y,value:n01((y+C.pan.span)/(2*C.pan.span))},{name:id+" Size",key:K.size,value:n01(d/C.pan.slot)},
-        {name:id+" Right",key:K.right,value:nt&&!left?"1":"0"},{name:id+" Left",key:K.left,value:left?"1":"0"});
-      if(nt&&fcpPanNums()&&String(nt.text).length===1) nums[i]={text:String(nt.text),size:1.3*d/2}; });   // the stage's number: 1.3 of the dot's radius (fcpPanPic)
+        ...(K.state?[{name:id+" State",key:K.state,value:String(+((nt?1:0)/(C.states||2)).toFixed(6))}]   // v4: one circle a field, unlit or lit - the pan shows no hands
+          :[{name:id+" Right",key:K.right,value:nt&&!left?"1":"0"},{name:id+" Left",key:K.left,value:left?"1":"0"}]));
+      if(nt&&fcpPanNums()&&String(nt.text).length===1) nums[i]={text:String(nt.text),size:1.3*d/2,x,y}; });   // the stage's number: 1.3 of the dot's radius (fcpPanPic)
     const most=Math.max(1,ch.notes.length), tsz=Math.min(C.notes_size,C.zone/(most*0.718+(most-1)*0.2));
     /* compact: the next name at NEXT_S, lifted from the chord's baseline (where the title has it) to stand top to top with the chord's name; the chord's name has the room left of it */
     if(NM==="compact"&&!V2C) FCP_PANEL_SAID.left.add("the compact chord card needs the Card v2 titles — the card is written with its section");
@@ -5326,6 +5346,7 @@ function fcpPanelChordTitles(cs,CR,tb,o){ const SL=cs.sliders, C=cs.card, m=tb.m
       :nm==="Chord name"?fcpPanelNameRuns(ch.name,C.name_size,"ExtraBold",0.56,FCPP.TEXT,"left",nameMax)
       :nm==="Next name"?(nxRuns||(nx?fcpPanelNameRuns(nx.name,C.next_size,"Bold",0.74,FCPP.MUTED,"right",C.next_zone):[{text:" ",style:{size:C.next_size,color:[0,0,0]}}]))
       :nm==="Chord notes"?fcpPanelToneRuns(ch,tsz,FCPC.INK*(C.notes_size-tsz))   // as the stage draws them (patches/lab-card-parity.py)
+      :nm==="Field numbers"?fcpPanelNumLine(nums,C)   // Card v3: every number in one text
       :/^Field \d+ number$/.test(nm)?(q=>q?[{text:q.text,style:{font:"Figtree",face:"ExtraBold",size:+q.size.toFixed(3),color:fcpCssRGB(FCPP.PICNUM),alignment:"center",baseline:FCPP.CAP*(C.num_size-q.size)}}]:[{text:" ",style:{size:C.num_size||40,color:[0,0,0]}}])(nums[+nm.split(" ")[1]-1])   // a lit field's number, a capital's middle on the dot's
       :[{text:" ",style:{size:cs.glyph,color:[0,0,0]}}]);
     out.push({lane:FCP_LANE.chords,t:t0,dur:t1-t0,name:tb.sec.name+" — "+String(ch.name).replace(/♭/g,"b").replace(/♯/g,"#")+" ("+(ri+1)+")",template:{name:cs.name,uid:cs.uid},transform:tf,fadeIn:ri===0?o.fadeIn:0,fadeOut:ri===runs.length-1?o.fadeOut:0,params,texts}); });
@@ -5867,7 +5888,7 @@ async function fcpTablesOf(staticMarker,clipSet){   // the open piece's titles f
   FCP_PANEL_SAID.used=0; FCP_PANEL_SAID.cards=0; FCP_PANEL_SAID.missing.clear(); FCP_PANEL_SAID.left.clear(); if(fcpDesign()==="panel") fcpPanelDress();   // the Panel look's titles (patches/lab-fcp-panel-table.py)
   let panelUsed=false;
   for(const tb of tables){ const SP=spans[tables.indexOf(tb)];
-    const m=tb.m, pos=m.base||m.sub, per=Math.max(1,Math.round(m.sub/pos)), GR=cw.groupsOf(m), bpr=fcpBpr(m), side=await fcpPanelTemplate(m.beats,pos,GR,bpr)||await fcpTemplate(m.beats,pos,GR,bpr);   // the DRAWN grid, the grouping and the bars per row name the template; per = stored pulses in one drawn slot
+    const m=tb.m, pos=m.base||m.sub, per=Math.max(1,Math.round(m.sub/pos)), GR=cw.groupsOf(m), bpr=fcpBpr(m), side=await fcpPanelTemplate(m.beats,pos,GR,bpr,Math.ceil(tb.bars/bpr))||await fcpTemplate(m.beats,pos,GR,bpr);   // the DRAWN grid, the grouping and the bars per row name the template; per = stored pulses in one drawn slot
     chapters.push({t:tb.ta,label:MARK_LABELS.get(Math.round(tb.ta*1000))||tb.sec.name});
     for(let b=0;b<tb.bars;b++) bars.push({t:SyncMap.invMap(sm,tb.sec.pulse+b*m.bp),label:tb.sec.name+"·"+(b+1)});
     if(!side){ missing.add(fcpKey(m.beats,pos,GR,bpr)); continue; }
