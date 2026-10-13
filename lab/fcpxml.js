@@ -60,7 +60,13 @@
    seconds long, on a lane above every other title so it meets none of them. Copied
    together with the notation and pasted at the take's first frame in the lesson's
    project, it carries every title to its own time. Written after the other titles
-   in the document, so their style ids stay as they were. */
+   in the document, so their style ids stay as they were.
+
+   THE NOTATION WITHOUT THE VIDEO (David, 13 Oct 2026: "can you create an option to export to FCP only the
+   notation, not the video itself?"): input.noVideo - the document names no media at all. Where the take stood in
+   the spine there is a GAP of the take's length, beginning at the take's own start time, and everything that hung
+   on the take hangs on it: the same titles, the same markers, at the same offsets. Nothing is imported or asked
+   for; the sequence keeps the take's frame size and rate. Without the flag the document is what it was. */
 (function(root){
 "use strict";
 const FCPXML={};
@@ -159,8 +165,9 @@ FCPXML.write=function(input){
   const L=[];
   L.push('<?xml version="1.0" encoding="UTF-8"?>','<!DOCTYPE fcpxml>','','<fcpxml version="1.14">','    <resources>');
   L.push('        <format id="r1" frameDuration="'+r.num+'/'+r.den+'s" width="'+(take.width|0)+'" height="'+(take.height|0)+'" colorSpace="1-1-1 (Rec. 709)"/>');
-  L.push('        <asset id="r2" name="'+E(take.name)+'" start="'+FCPXML.tcFrames(t0F,r)+'" duration="'+FCPXML.tcFrames(durF,r)+'" hasVideo="1" format="r1" hasAudio="1" videoSources="1" audioSources="1">');
-  L.push('            <media-rep kind="original-media" src="'+E(src)+'"/>','        </asset>');
+  const bare=!!input.noVideo;   // the notation without the video: no asset, a gap where the take stood
+  if(!bare){ L.push('        <asset id="r2" name="'+E(take.name)+'" start="'+FCPXML.tcFrames(t0F,r)+'" duration="'+FCPXML.tcFrames(durF,r)+'" hasVideo="1" format="r1" hasAudio="1" videoSources="1" audioSources="1">');
+  L.push('            <media-rep kind="original-media" src="'+E(src)+'"/>','        </asset>'); }
   L.push('        <effect id="r3" name="'+E(S.name)+'" uid="'+E(S.uid)+'"/>');
   const titles=(input.titles||[]).slice().sort((a,b)=>a.t-b.t), effects=new Map(), styleIds={n:0};   // one <effect> per template used; one style-id counter for the document
   for(const T of titles){ const k=T.template.uid; if(!effects.has(k)){ const id="r"+(4+effects.size); effects.set(k,id); L.push('        <effect id="'+id+'" name="'+E(T.template.name)+'" uid="'+E(k)+'"/>'); } }
@@ -168,7 +175,8 @@ FCPXML.write=function(input){
   L.push('    </resources>');
   L.push('    <library>','        <event name="'+E(input.project)+'">','            <project name="'+E(input.project)+'">');
   L.push('                <sequence format="r1" duration="'+FCPXML.tcFrames(durF,r)+'" tcStart="0s" tcFormat="NDF" audioLayout="stereo" audioRate="48k">','                    <spine>');
-  L.push('                        <asset-clip ref="r2" offset="0s" name="'+E(take.name)+'" start="'+FCPXML.tcFrames(t0F,r)+'" duration="'+FCPXML.tcFrames(durF,r)+'" format="r1" tcFormat="NDF" audioRole="dialogue">');
+  L.push(bare?'                        <gap name="Gap" offset="0s" start="'+FCPXML.tcFrames(t0F,r)+'" duration="'+FCPXML.tcFrames(durF,r)+'">'
+    :'                        <asset-clip ref="r2" offset="0s" name="'+E(take.name)+'" start="'+FCPXML.tcFrames(t0F,r)+'" duration="'+FCPXML.tcFrames(durF,r)+'" format="r1" tcFormat="NDF" audioRole="dialogue">');
   const beats=(input.beats||[]).slice().sort((a,b)=>a.t-b.t);
   for(const b of beats){ const f0=FCPXML.frames(b.t,r); if(f0>=durF) continue;
     const fd=Math.max(1,Math.min(FCPXML.frames(b.t+b.dur,r),durF)-f0);   // the end's frame minus the start's, as titleXML
@@ -187,7 +195,7 @@ FCPXML.write=function(input){
     L.push('                            <chapter-marker start="'+media(c.t)+'" duration="'+oneFrame+'" value="'+E(c.label)+'" posterOffset="'+FCPXML.tcFrames(Math.min(11,durF-1-cf),r)+'"/>'); }
   for(const m of (input.bars||[]).slice().sort((a,b)=>a.t-b.t)){ if(FCPXML.frames(m.t,r)>=durF) continue;
     L.push('                            <marker start="'+media(m.t)+'" duration="'+oneFrame+'" value="'+E(m.label)+'"/>'); }
-  L.push('                        </asset-clip>','                    </spine>','                </sequence>','            </project>','        </event>','    </library>','</fcpxml>','');
+  L.push(bare?'                        </gap>':'                        </asset-clip>','                    </spine>','                </sequence>','            </project>','        </event>','    </library>','</fcpxml>','');
   return L.join("\n");
 };
 
