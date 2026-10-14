@@ -10887,12 +10887,6 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
     <span class="pills" role="group" aria-label="Listening mode">
       <button id="setListenOff" aria-pressed="true" title="Nothing in the app uses the microphone">Disabled</button>
       <button id="setListenOn" aria-pressed="false" title="Shows what listens to your playing: the ear under a table, chord practice's Listening mode, the find quiz by ear">Enabled</button></span></div>
-  <!-- THE PHONE'S AUDIO ROUTE, A TEST (David, 29 Sep 2026: pitch jumps on the phone; patches/phone-audio-route-test.py):
-       shown on iPhone and iPad only; choosing reopens the app -->
-  <div class="drow" id="setRouteRow" style="display:none"><span>Phone audio route <em class="exp">test</em></span>
-    <span class="pills" role="group" aria-label="Phone audio route">
-      <button id="setRouteEl" aria-pressed="true" title="Through a hidden audio element, as always: lock-screen buttons, sound with the ringer switch off">Element</button>
-      <button id="setRouteDirect" aria-pressed="false" title="Straight to the speaker, a test: no lock-screen buttons">Direct</button></span></div>
   <!-- ONE MICROPHONE (David, 27 Sep 2026; patches/app-wide-microphone.py): the input for everything that listens or records;
        the Practice log's Microphone row is the same setting -->
   <div class="drow" id="setMicRow"><span>Microphone</span><span class="jsrow"><button type="button" id="setMicSel" aria-haspopup="listbox" aria-expanded="false" aria-label="The microphone the app listens and records with"><span>Default microphone</span></button></span></div>
@@ -13222,15 +13216,6 @@ function audioWatch(){
    moments only. Menu ▸ Settings ▸ Audio log; one screenshot settles the next
    one. */
 const AUDIO_LOG_MAX=40;
-/* THE RATES, A DIAGNOSTIC (David, 1 Oct 2026: distortion on the phone after a rebuilt context; patches/audio-rate-diagnostic.py):
-   the engine's sample rate and latencies, and - given the sink's MediaStreamDestination - its track's own rate */
-function audioRateNote(what,dest){
-  try{ const ms=v=>(typeof v==="number"&&isFinite(v))?Math.round(v*1000)+" ms":"?";
-    let tr="";
-    if(dest){ const t=dest.stream&&dest.stream.getAudioTracks()[0], s=t&&t.getSettings?t.getSettings():{};
-      tr=", stream "+(s.sampleRate?s.sampleRate+" Hz":"? Hz")+((s.sampleRate&&ctx&&s.sampleRate!==ctx.sampleRate)?" MISMATCH":""); }
-    audioNote(what+": engine #"+ctxMade+" "+(ctx?ctx.sampleRate+" Hz":"-")+tr+", base "+ms(ctx&&ctx.baseLatency)+", out "+ms(ctx&&ctx.outputLatency)+" [diagnostic]");
-  }catch(e){} }
 function audioNote(what){
   try{
     const d=new Date(), p=n=>String(n).padStart(2,"0");
@@ -13307,12 +13292,11 @@ try{ if(navigator.mediaDevices&&navigator.mediaDevices.addEventListener)
    So it is tried, deliberately and reversibly. FLIP THIS BACK TO true IF
    BACKGROUND PLAYBACK REGRESSES — that is the thing being risked, it is worth
    more than the buttons, and this constant is the whole revert. */
-/* THE PHONE'S PITCH JUMPS - A DIAGNOSTIC (David, 29 Sep 2026: "the pitch briefly goes higher and then back", all
-   instruments, on the phone; patches/phone-audio-route-test.py). Not reproduced: the lead is the element below falling
-   behind and playing fast to catch up. REMOVE BOTH once the cause is known. */
-/* 1 · the route, a test: "element" as always, or "direct" - read once, as the element route cannot be undone in a page */
-const AUDIO_ROUTE=(()=>{ try{ return localStorage.getItem("hps.audioroute")==="direct"?"direct":"element"; }catch(e){ return "element"; } })();
-/* 2 · the witness: how fast the element's clock runs against real time, one log line per stretch more than 1 % off */
+/* THE WITNESS (David, 29 Sep 2026: the phone's pitch jumps). The Element | Direct route test it came with was answered
+   on 14 Oct - Direct cannot play in the background - and removed (patches/audio-cleanup.py); a phone left on Direct
+   forgets it here. The cause was the engine starving on unplugged notes - PHONE-AUDIO.md. */
+try{ localStorage.removeItem("hps.audioroute"); }catch(e){}
+/* the witness: how fast the element's and the engine's clocks run against real time, a log line per stretch more than 2.5 % off */
 /* THE ENGINE REBUILDS ITSELF WHEN ITS CLOCK KEEPS RUNNING OFF (David, 14 Oct 2026: "constantly glitching again. A restart of the
    app fixed the issues" - "Build the self-rebuild"; patches/audio-self-rebuild.py): the witness marks it, the next Play rebuilds
    in its gesture; 4 s on end stops playback for that Play; two rebuilds a page at most - iOS gives only a handful of contexts */
@@ -13331,8 +13315,7 @@ function sinkWitness(el){
       +", context "+pct(ep.cHi)+(ep.cLo<0.99?" (low "+pct(ep.cLo)+")":"")+(ep.bg?", after the background":"")+" [diagnostic]");
     ep=null; };
   document.addEventListener("visibilitychange",()=>{ const h=document.visibilityState==="hidden";
-    if(h) bg=performance.now();
-    try{ if(soundActive()) audioNote(h?"to the background, playing [diagnostic]":"back on screen, playing [diagnostic]"); }catch(e){} });
+    if(h) bg=performance.now(); });
   /* rates over a sliding 2-second window: the context's clock moves in chunks of ~20 ms, which at half a second reads as
      2-3 % either way; over 2 s the chunks are under 1 %, and a catch-up of a few per cent for a second still shows */
   let S=[];
@@ -13358,7 +13341,7 @@ function sinkFresh(why){
   if(!iosSink||iosSink==="failed"||!ctx) return;
   try{ const dest=ctx.createMediaStreamDestination(); try{ master.disconnect(); }catch(e){} master.connect(dest);
     iosSink.srcObject=dest.stream; iosSink._idle=false; sinkArm("play"); iosSink.play().catch(()=>{});
-    audioNote("sink: a fresh stream ("+why+") - the paused stream's backlog dropped [fix test]"); }catch(e){ audioNote("sink: a fresh stream failed - "+e+" [fix test]"); }
+    audioNote("sink: a fresh stream ("+why+") - the paused stream's backlog dropped"); }catch(e){ audioNote("sink: a fresh stream failed - "+e); }
 }
 document.addEventListener("visibilitychange",()=>{ try{ if(document.visibilityState==="visible"&&iosSink&&iosSink!=="failed"&&!iosSink.paused&&soundActive()) sinkFresh("back on screen"); }catch(e){} });
 const PHONE_SINK_OFF=false;
@@ -13367,7 +13350,6 @@ function ensureSink(){
   // top-level phone app on a modern iOS: the session type does it, cleanly
   if(PHONE_SINK_OFF&&PHONE&&!FRAMED_SAFARI&&haveAudioSession()) return;
   if((!IOS&&!FRAMED_SAFARI)||!ctx) return;
-  if(AUDIO_ROUTE==="direct"){ if(!ensureSink.noted){ ensureSink.noted=true; audioNote("audio route: direct (test) [diagnostic]"); } return; }
   if(iosSink&&iosSink!=="failed"){
     if(iosSink.paused){ if(!iosSink._idle) sinkFresh("started again - it was paused while sound went on"); else { iosSink._idle=false; sinkArm("play"); iosSink.play().catch(()=>{}); } }
     return; }
@@ -13408,8 +13390,7 @@ function ensureSink(){
       try{ togglePlay(); }catch(e){}
     });
     sinkArm("play");
-    el.play().then(()=>{ master.disconnect(); master.connect(dest); iosSink=el; try{ sinkWitness(el); }catch(x){}
-      audioRateNote("sink on",dest); setTimeout(()=>audioRateNote("sink 1.5 s on",dest),1500); })   /* [diagnostic] */
+    el.play().then(()=>{ master.disconnect(); master.connect(dest); iosSink=el; try{ sinkWitness(el); }catch(x){} })
       .catch(()=>{ iosSink="failed"; });
   }catch(e){ iosSink="failed"; }
 }
@@ -13444,7 +13425,6 @@ function ensureCtx(){
   setAudioSession();          // before the context exists, so iOS picks the media route
   ctx=new (window.AudioContext||window.webkitAudioContext)({latencyHint:"playback"});
   ctxMade++;
-  audioRateNote("engine #"+ctxMade+" built");   /* [diagnostic] (patches/audio-rate-diagnostic.py) */
   master=ctx.createGain(); master.gain.value=vol; master.connect(ctx.destination);
   limiter=ctx.createWaveShaper(); limiter.curve=softClipCurve(); limiter.oversample="2x";
   limiter.connect(master);
@@ -53014,12 +52994,6 @@ function boot(){
   paintListenSetting();
   $("setListenOff").addEventListener("click",()=>setListenEnabled(false));
   $("setListenOn").addEventListener("click",()=>setListenEnabled(true));
-  { const row=$("setRouteRow");   // the phone's audio route, a test (29 Sep 2026)
-    if(row&&(IOS||FRAMED_SAFARI)){ row.style.display="";
-      const paint=()=>{ $("setRouteEl").setAttribute("aria-pressed",String(AUDIO_ROUTE!=="direct")); $("setRouteDirect").setAttribute("aria-pressed",String(AUDIO_ROUTE==="direct")); };
-      const pick=v=>{ if(v===AUDIO_ROUTE) return; try{ localStorage.setItem("hps.audioroute",v); }catch(e){}
-        audioNote("audio route set to "+v+" - reopening [diagnostic]"); toast("Reopening with the "+v+" route…"); setTimeout(()=>location.reload(),500); };
-      $("setRouteEl").addEventListener("click",()=>pick("element")); $("setRouteDirect").addEventListener("click",()=>pick("direct")); paint(); } }
   document.addEventListener("pointerdown",tpSelfGesture,true);   // TABLE PRACTICE — STAGE B: a press is a sound the app caused
   document.addEventListener("keydown",tpSelfGesture,true);
   $("tpBtn").addEventListener("click",()=>{ if(lsOn){ lsPause(!lsPaused); return; } tpOn?tpStop():tpStart(); });   // chord practice's listening: the ear pauses and resumes it
