@@ -35,9 +35,17 @@
 const W=window.HPSWGG={};
 const LIB={}, SETS={}, DIAG={fired:0, scrubbed:0}, EXPECT={push(){}};
 let BASE="", DEFS=null, GROOVES=null, groove=null, ROWS=[], STEPS=16;
-let CORE=null, coreCtx=null, bus=null, graphCtx=null, vol=1, chains={};
+let CORE=null, coreCtx=null, bus=null, graphCtx=null, vol=1, chains={}, mixes={}, taps={};   // mixes: a row's gain and panner, for remix()
 let curSd=0.125, absPulse=0, derived=null;
 let prepared=null, pending=null;
+/* EVERY PREPARED GROOVE IS KEPT (Handpan Studio step d, 28 Sep 2026: a groove for each table). use() used to throw the
+   last groove's rows, cells and chains away, so a piece whose tables change groove lost steps at every table line
+   while it prepared again; now each groove keeps its own, and coming back to one is instant. */
+const CACHE={};
+/* A GROOVE'S OWN REVERB (Handpan Studio, 29 Sep 2026): the bus reaches the dry bus and the room's send through gains of
+   its own, set by the handpan's formula relative to the room's 16 - so 16, or a groove that says nothing, is the path
+   exactly as it was */
+let busD=null, busS=null, wetP=16;
 const voices=[];                  // this file's plain gains, for the sweep
 
 const RND_MS=10;
@@ -70,7 +78,11 @@ W.use=function(gid){
   const g=(GROOVES||[]).find(x=>x.id===gid)||(GROOVES||[])[0];
   if(!g) return null;
   if(groove&&groove.id===g.id) return groove;
+  if(groove) CACHE[groove.id]={ROWS, chains, derived, prepared, gctx:graphCtx};
+  const kept=CACHE[g.id];
   groove=g; STEPS=g.steps||16;
+  wetP=(g.verb!=null&&isFinite(+g.verb))?+g.verb:16; applyWet();
+  if(kept){ ROWS=kept.ROWS; derived=kept.derived; prepared=kept.prepared; chains=kept.gctx===graphCtx?kept.chains:{}; return groove; }
   ROWS=g.rows.filter(r=>!r.mute&&SETS[r.set]).map((r,ri)=>({
     set:r.set, ri, eng:r.eng==="drum"?"drum":"natural", rings:[],
     gain:+r.gain||0, pan:+r.pan||0,
@@ -81,6 +93,9 @@ W.use=function(gid){
   return groove;
 };
 W.groove=()=>groove;
+/* FORGET A GROOVE (Handpan Studio step e, 29 Sep 2026): the drum groove editor replaces a groove under its id when it is
+   saved again, and drops its playing drafts; the kept preparation goes, so the next use() builds it afresh */
+W.forget=function(id){ delete CACHE[id]; if(groove&&groove.id===id){ groove=null; derived=null; prepared=null; } };
 W.steps=()=>groove?(groove.steps||16):16;
 
 /* the cells and ghost runs the core plays — worked out once per groove, after
@@ -122,24 +137,38 @@ W.ready=function(){ return !!(prepared&&groove&&prepared.gid===groove.id&&derive
 // ---------------- the graph: voice -> plain gain -> row chain -> bus -> dry + send
 function ensureBus(){
   if(graphCtx===ctx&&bus) return;
-  graphCtx=ctx; chains={};
+  graphCtx=ctx; chains={}; mixes={}; taps={};
   bus=ctx.createGain(); bus.gain.value=vol;
-  bus.connect(dry); bus.connect(send);
+  busD=ctx.createGain(); busS=ctx.createGain();
+  /* the drums' pedalboard, when the app has one (Handpan Studio, 2 Oct 2026: "all instruments ... should get the effects
+     section"; patches/instrument-fx.py): the groove's mix through the app's effects chain, then dry and the reverb send */
+  const fo=(typeof fxRoute==="function")?fxRoute("drm",bus):bus;
+  fo.connect(busD); fo.connect(busS); busD.connect(dry); busS.connect(send);
+  applyWet();
+}
+function applyWet(){
+  if(!busD||graphCtx!==ctx) return;
+  const w=Math.max(0,Math.min(100,wetP))/100, w0=0.16, t=ctx.currentTime;
+  busS.gain.setTargetAtTime(w/w0,t,0.02); busD.gain.setTargetAtTime((1-w*0.35)/(1-w0*0.35),t,0.02);
 }
 function rowChain(row){
   ensureBus();
   if(!chains[row.ri]){
     /* the grid's pan is a FRACTION, -1..1 — build_grid.py hands row.pan to the
        panner as it is (9 Sep: dividing by 100 had flattened every pan) */
-    let out=bus;
+    /* THE BAND'S MIX OF THE INSTRUMENTS (Handpan Studio, 7 Oct 2026; patches/perc-presets-mixer.py): the app's percMixOf(set) -
+       a level (100 = as the groove has it; 0 when muted) and a pan added to the groove's own */
+    const X=(typeof percMixOf==="function")?percMixOf(row.set):null;
+    let out=bus, p=null;
     if(ctx.createStereoPanner){
-      const p=ctx.createStereoPanner(); p.pan.value=Math.max(-1,Math.min(1,row.pan));
+      p=ctx.createStereoPanner(); p.pan.value=Math.max(-1,Math.min(1,row.pan+(X?X.p/100:0)));
       p.connect(bus); out=p;
     }
     const S=SETS[row.set], eq=eqChain(ctx, S&&S.eq);
-    const g=ctx.createGain(); g.gain.value=Math.pow(10,(row.gain||0)/20);
+    const g=ctx.createGain(); g.gain.value=Math.pow(10,(row.gain||0)/20)*(X?(X.m?0:X.v/100):1);
     g.connect(eq.input); eq.output.connect(out);
-    chains[row.ri]=g;
+    chains[row.ri]=g; mixes[row.ri]={g,p,row};
+    (p||eq.output).connect(taps[row.set]||(taps[row.set]=ctx.createGain()));   // its level after the mute and the pan, for the app's meter (Handpan Studio, patches/perc-meters.py)
   }
   return chains[row.ri];
 }
@@ -160,6 +189,34 @@ function sweep(){
     const i=live.indexOf(v); if(i>=0) live.splice(i,1);
   }
 }
+W.remix=function(){ if(!ctx||graphCtx!==ctx) return; const t=ctx.currentTime;   // the band's mix moved: the chains already built follow
+  for(const ri in mixes){ const M=mixes[ri], X=(typeof percMixOf==="function")?percMixOf(M.row.set):null;
+    try{ M.g.gain.setTargetAtTime(Math.pow(10,(M.row.gain||0)/20)*(X?(X.m?0:X.v/100):1),t,0.02);
+      if(M.p) M.p.pan.setTargetAtTime(Math.max(-1,Math.min(1,M.row.pan+(X?X.p/100:0))),t,0.02); }catch(e){} } };
+/* AN INSTRUMENT'S LEVEL FOR THE APP'S METER (Handpan Studio, 7 Oct 2026; patches/perc-meters.py): every chain of that
+   instrument, in any groove, sums here; null until the graph is built */
+W.tap=function(set){ if(!ctx||graphCtx!==ctx) return null; return taps[set]||(taps[set]=ctx.createGain()); };
+/* THE EXPORT'S ENGINE (Handpan Studio, 7 Oct 2026; patches/band-export.py): an export plays the groove into an offline
+   context, and this file's graph and core follow `ctx` - so the app takes the live graph aside and puts it back. The
+   groove is not put back: a preparation the export began finishes on the groove it began on, so the groove stays what
+   the export left - and a groove that is not the one the live chains were built for builds its chains afresh */
+W.keep=function(){ return {CORE,coreCtx,bus,busD,busS,graphCtx,chains,mixes,taps,absPulse,curSd,groove}; };
+W.put=function(s){ ({CORE,coreCtx,bus,busD,busS,graphCtx,taps,absPulse,curSd}=s);
+  if(groove===s.groove){ chains=s.chains; mixes=s.mixes; } else { chains={}; mixes={}; } applyWet(); };
+/* the strokes that begin on this step, as {set, slot} - the MIDI file's drum notes */
+W.hitList=function(pi){ const out=[]; if(!W.ready()) return out;
+  for(const d of derived) for(const c of d.cells) if(c.start===pi) out.push({set:d.r.set,slot:c.accent||"T"});
+  return out; };
+/* ONE BEAT ALONE (Handpan Studio, 7 Oct 2026; patches/export-ending-fix.py): the strokes that begin on this step and
+   nothing after them - each cell as the only one of its row, so no run recording reaches past it, and no ghost run;
+   the export's final beat */
+W.fireBeat=function(pi,at,sd){
+  if(!W.ready()) return;
+  if(sd>0) curSd=sd;
+  const C=core();
+  for(const d of derived){ const cs=d.cells.filter(c=>c.start===pi); if(cs.length) C.playPulse(d.r, cs, null, pi, at, curSd, absPulse); }
+  absPulse++;
+};
 W.setVolume=function(pct){ vol=Math.max(0,Math.min(1.5,(+pct||0)/100)); if(bus) bus.gain.value=vol; };
 
 // ---------------- what sounds on one step
@@ -187,6 +244,7 @@ W.hitsAt=function(pi){
 W.restart=function(){
   for(const id in LIB) LIB[id].rr={};
   for(const r of ROWS) r.rings=[];
+  for(const id in CACHE) for(const r of CACHE[id].ROWS) r.rings=[];
   if(CORE) CORE.resetRing();
   absPulse=0;
 };

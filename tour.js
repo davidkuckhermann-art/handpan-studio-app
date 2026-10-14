@@ -1377,7 +1377,9 @@ function firstStart(tries){
   if(sent){ if(document.querySelector("dialog[open]")&&tries<20){ setTimeout(()=>firstStart(tries+1),1000); return; }
     delete st.pend; st.seen=1; store.set(st); welcome(); return; }
   if(st.seen) return;
-  if(!PLAYER&&(!(typeof TESTV!=="undefined"&&TESTV)||(typeof EMBEDDED!=="undefined"&&EMBEDDED))) return;
+  if(!PLAYER) return;   /* the app's own offer is off for now (David, 8 Oct 2026: "deactivate the welcome tour for now";
+     patches/beta-editions.py) - it was made on the test version only; the tour stays in Settings. To bring it back:
+     if(!PLAYER&&(!(typeof TESTV!=="undefined"&&TESTV)||(typeof EMBEDDED!=="undefined"&&EMBEDDED))) return; */
   if(document.querySelector("dialog[open]")||(typeof editing!=="undefined"&&editing)){ if(tries<20) setTimeout(()=>firstStart(tries+1),3000); return; }
   st.seen=1; store.set(st);
   welcome();

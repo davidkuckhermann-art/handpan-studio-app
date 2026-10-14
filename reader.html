@@ -404,13 +404,18 @@ function longestRunRow(cls,w,h,y,pred){ let best=0,run=0; for(let x=0;x<w;x++){ 
    THE FRAME — the dark-brown rounded rectangle
    ═══════════════════════════════════════════════════════════════════════ */
 function findFrame(cls,w,h){
-  const isF=c=>c===FRAME||c===INK;
-  let fmax=0; for(let x=0;x<w;x+=2){ const r=longestRunCol(cls,w,h,x,c=>c===FRAME); if(r>fmax) fmax=r; }
+  const isF=c=>c===FRAME||c===INK, isW=c=>c===BG||c===FAINT;
+  let fmax=0; for(let x=0;x<w;x++){ const r=longestRunCol(cls,w,h,x,c=>c===FRAME); if(r>fmax) fmax=r; }
   if(fmax<h*0.15) return null;                                // no frame line: the picture is the frame (a Flow screenshot)
+  /* A FRAME'S SIDE BORDERS THE WHITE PAGE (Iconic Songs, 7 Oct 2026): beside the table the screenshot may show
+     the dark backdrop or the wood, dark and brown too, and its runs were the longest - the frame came out as the
+     whole picture and the header was never looked for. Only dark ink within 4 px of the page counts. */
+  const nearW=(x,y)=>{ for(let d=1;d<=4;d++){ if(x+d<w&&isW(cls[y*w+x+d])) return true; if(x-d>=0&&isW(cls[y*w+x-d])) return true; if(y+d<h&&isW(cls[(y+d)*w+x])) return true; if(y-d>=0&&isW(cls[(y-d)*w+x])) return true; } return false; };
+  const edge=new Uint8Array(w*h); for(let y=0;y<h;y++) for(let x=0;x<w;x++){ const i=y*w+x; if(isF(cls[i])&&nearW(x,y)) edge[i]=1; }
   const colRun=new Float32Array(w), rowRun=new Float32Array(h);
   let cmax=0,rmax=0;
-  for(let x=0;x<w;x++){ colRun[x]=longestRunCol(cls,w,h,x,isF); if(colRun[x]>cmax)cmax=colRun[x]; }
-  for(let y=0;y<h;y++){ rowRun[y]=longestRunRow(cls,w,h,y,isF); if(rowRun[y]>rmax)rmax=rowRun[y]; }
+  for(let x=0;x<w;x++){ colRun[x]=longestRunCol(edge,w,h,x,c=>c===1); if(colRun[x]>cmax)cmax=colRun[x]; }
+  for(let y=0;y<h;y++){ rowRun[y]=longestRunRow(edge,w,h,y,c=>c===1); if(rowRun[y]>rmax)rmax=rowRun[y]; }
   /* the sides are the longest vertical structures by far: a glyph is a
      fraction of a row, the side is every row */
   const cols=[],rows=[];
@@ -538,7 +543,7 @@ function splitComp(c,w,cls,H,unit){
   /* colour boundary: the majority colour flips between two bands, each tall enough */
   let last=null, flipY=-1;
   for(let y=0;y<c.h;y++){ if(rows[y]<2) continue; const g=grn[y]*2>rows[y]; if(last!==null&&g!==last&&y>=minPart&&c.h-y>=minPart){ flipY=y; break; } last=g; }
-  if(flipY>0){ const A=band(0,flipY), B=band(flipY,c.h); if(A&&B){ const u=Math.min(A.h,B.h);
+  if(flipY>0){ const A=band(0,flipY), B=band(flipY,c.h); if(A&&B){ const notMark=[A,B].filter(x=>!(ATLAS&&["^","°"].includes(matchGlyph(bitmapOf(x,w),["^","°","D","1","2","3","4","5","6","7","8","9"])[0].g))), u=notMark.length?Math.min(...notMark.map(x=>x.h)):Math.min(A.h,B.h);   // a slap under a green digit is never the measure of a digit: it cut the digit into three (Iconic Songs, 7 Oct 2026)
     return [...splitComp(A,w,cls,H,u),...splitComp(B,w,cls,H,u)]; } }
   if(!ATLAS) return [c];
   /* STACKED DIGITS OVERLAP as often as they touch (a 5's bowl around a 3's
@@ -576,7 +581,8 @@ function headerComps(item,rect){
   for(let y=rect.y0;y<=rect.y1;y++) for(let x=rect.x0;x<=rect.x1;x++){ const i=y*w+x, p=i*4;
     if(cls[i]===FRAME) continue;
     const d=Math.abs(data[p]-R)+Math.abs(data[p+1]-G)+Math.abs(data[p+2]-B);
-    if(d>110) mask[i]=1; }
+    const sat=Math.max(data[p],data[p+1],data[p+2])-Math.min(data[p],data[p+1],data[p+2]);
+    if(d>110&&sat<=45) mask[i]=1; }   // …and colourless: grey on the page, white on the wood - the grain is far from the ground too (Iconic Songs, 7 Oct 2026)
   return components(mask,w,h,rect,c=>c===1,6);
 }
 function median(a){ if(!a.length) return 0; const s=[...a].sort((p,q)=>p-q); return s[Math.floor(s.length/2)]; }
@@ -589,9 +595,12 @@ function rowHeight(comps){ const hs=comps.map(c=>c.h).sort((a,b)=>b-a); const to
    nothing is inferred: bars from the black lines, positions from the ticks.
    ═══════════════════════════════════════════════════════════════════════ */
 function isTab(cls,w,h){
-  /* a table always has its dark-brown frame; a tab has a long grey line and no frame */
-  let fmax=0; for(let x=0;x<w;x+=2){ const r=longestRunCol(cls,w,h,x,c=>c===FRAME); if(r>fmax) fmax=r; }
+  /* a table always has its dark-brown frame; a tab has a long grey line and no frame - looked for in EVERY
+     column: a 1-2 px side fell between every second one (Iconic Songs, 7 Oct 2026) */
+  let fmax=0; for(let x=0;x<w;x++){ const r=longestRunCol(cls,w,h,x,c=>c===FRAME); if(r>fmax) fmax=r; }
   if(fmax>=h*0.1) return false;
+  /* …and a tab's hands are orange and blue; a table's are black and green (1.3 C3, a blurred frame) */
+  let ob=0; for(let i=0;i<cls.length;i++) if(cls[i]===ORANGE||cls[i]===BLUE) ob++; if(ob<w*h*0.001) return false;
   for(let y=0;y<h;y++) if(greyShare(cls,w,y)>=0.5) return true;
   return false;
 }
@@ -1055,7 +1064,8 @@ function readTable(item){
         if(rel<0.06&&c.w<H*0.06) continue;                 // a speck: the frame's corner, a stray pixel
         /* the ghost dot, in every style: small, round and solid */
         const dotMax=an.style==="app"?0.45:0.24;                                        // the app draws its dot at 0.37 of a glyph; the video template at 0.2
-        if(rel<dotMax&&c.w<H*(dotMax+0.06)&&c.w<=c.h*1.6&&!hasHole(bm)&&c.area/(c.w*c.h)>=0.55){ cell.evs.push({v:"ghost",hand}); continue; }
+        const HD=Math.max(H,an.Hall||H), relD=c.h/HD;   /* against the table's glyph height: a row of chords measures its own from the small stacked digits, and its dots read as knocks (Iconic Songs 2.2 B1, 7 Oct 2026) */
+        if(relD<dotMax&&c.w<HD*(dotMax+0.06)&&c.w<=c.h*1.6&&!hasHole(bm)&&c.area/(c.w*c.h)>=0.55){ cell.evs.push({v:"ghost",hand}); continue; }
         if(an.style==="flow"||an.style==="app"){
           const num=c.parts?c.parts.map(p=>matchGlyph(bitmapOf(p,w),["0","1","2","3","4","5","6","7","8","9"],ATLAS3)[0].g).join(""):null;
           let g=num, conf=1, margin=1;
@@ -1088,7 +1098,7 @@ function readTable(item){
         const stacked=cs.filter(x=>x.h>=H*0.3).length>=2;
         /* a stack may hold a tak under a field (David's older tables, 8 Sep: a green 7 over a black T read as 7 + 7) */
         const stackTop=stacked?Math.max(...cs.map(x=>x.h)):0;
-        const allow=stacked?((rel<0.45&&c.h<0.72*stackTop)?["^","°"]:["D","1","2","3","4","5","6","7","8","9","M","T","K"])   // a mark well under the stack's tallest glyph is a slap or a knock, never a digit (the green ^ over a T read as 4, 8 Sep); three stacked digits are all small and all digits (Bossa 2)
+        const allow=stacked?((c.h/Math.max(H,an.Hall||H)<0.45&&c.h<0.72*stackTop)?["^","°"]:["D","1","2","3","4","5","6","7","8","9","M","T","K"])   // a mark well under the stack's tallest glyph is a slap or a knock, never a digit (the green ^ over a T read as 4, 8 Sep); three stacked digits are all small and all digits (Bossa 2)
                   :rel>0.62?["D","1","2","3","4","5","6","7","8","9","M","T","K","^"]
                   :rel<0.34?["°","^","~"]:["1","2","3","4","5","6","7","8","9","D","^","°","M","T","K"];
         const m=matchGlyph(bm,allow); const g=m[0].g, margin=m.length>1?m[0].score-m[1].score:1;

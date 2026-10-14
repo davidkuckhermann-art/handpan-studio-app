@@ -1,4 +1,4 @@
-/* wgg/engine.js — COPIED VERBATIM from World Groove Grid, engine.js @ commit e837a02 (11 Sep 2026),
+/* wgg/engine.js — COPIED VERBATIM from World Groove Grid, engine.js @ commit 4a13539 (28 Sep 2026),
    by sync_wgg.py. Every playback rule of the jam's rhythm track lives here.
    Do not edit — run sync_wgg.py to take a newer WGG. Below this line is WGG's. */
 function detectOnsets(buf){
@@ -418,6 +418,46 @@ function ringWinCorr(bufA,tA,bufB,tB,len){
   return (xx&&yy)?xy/Math.sqrt(xx*yy):0;
 }
 function ringDb(x){ return 20*Math.log10(Math.max(x,1e-9)); }
+// A SWITCH UNDER THE NEXT ACCENT (David, 17 Sep 2026: "the instinct of
+// inserting the ring with the next accent instead of having a long fade is
+// correct"). Where a run is cut by the accent after it, the change of recording
+// happens in the last few ms before that attack, which covers it, instead of a
+// long crossfade in open ring. Three things flatten the join: the one-shot is
+// SLID up to ±6 ms so its wave lines up with the cell's, its level is matched
+// over that window rather than at the attack peaks, and the curves hold the
+// sum's power constant for the correlation measured — a=(1-t)/D, b=t/D,
+// D=sqrt(t²+(1-t)²+2rt(1-t)): straight at r=1, equal power at r=0. On the frame
+// drum's cells that removed the ±3 dB swell an equal-power fade leaves in the
+// middle when the two rings are partly alike.
+function ringCorrCurves(lin,r,n){
+  n=n||48; const a=new Float32Array(n), b=new Float32Array(n);
+  for(let i=0;i<n;i++){
+    const t=i/(n-1), D=Math.sqrt(t*t+(1-t)*(1-t)+2*r*t*(1-t))||1;
+    a[i]=lin*(1-t)/D; b[i]=lin*t/D;
+  }
+  a[n-1]=0; b[0]=0; return {down:a, up:b};
+}
+function ringSlice(buf,t0,t1){
+  const d=buf.getChannelData(0), sr=buf.sampleRate;
+  const a=Math.max(0,Math.floor(t0*sr)), b=Math.min(d.length,Math.floor(t1*sr));
+  return b>a ? d.subarray(a,b) : new Float32Array(0);
+}
+function ringCorrAt(ref,buf,t0){
+  const o=ringSlice(buf,t0,t0+ref.length/buf.sampleRate);
+  const n=Math.min(ref.length,o.length); if(n<64) return -2;
+  let xy=0,xx=0,yy=0;
+  for(let i=0;i<n;i++){ const x=ref[i], y=o[i]; xy+=x*y; xx+=x*x; yy+=y*y; }
+  return (xx&&yy) ? xy/Math.sqrt(xx*yy) : 0;
+}
+function ringAlign(ref,buf,t0,max){
+  max=max||0.006; const sr=buf.sampleRate, step=Math.max(1,Math.round(sr*0.00025));
+  let best={r:-2,lag:0};
+  for(let k=-Math.round(max*sr); k<=Math.round(max*sr); k+=step){
+    const r=ringCorrAt(ref,buf,t0+k/sr);
+    if(r>best.r) best={r,lag:k/sr};
+  }
+  return best;
+}
 function ringCurveUp(lin,n){ n=n||48; const c=new Float32Array(n); for(let i=0;i<n;i++) c[i]=lin*Math.sin(i/(n-1)*Math.PI/2); c[0]=0; return c; }
 function ringCurveDown(lin,n){ n=n||48; const c=new Float32Array(n); for(let i=0;i<n;i++) c[i]=lin*Math.cos(i/(n-1)*Math.PI/2); c[n-1]=0; return c; }
 // where the crossfade starts, in seconds from the cell buffer's start: RING.fade
@@ -535,6 +575,16 @@ function wggInstView(i, base){
           takRing:+i.tak_ring||0,
           // the ring's crossfade, when the instrument sets its own (s; null = RING.fade)
           ringFade:i.ring_fade_ms ? i.ring_fade_ms/1000 : null,
+          // ACCENTS AS SINGLE STROKES (the frame drum, 17 Sep 2026): a lone
+          // accent plays a single stroke, ringing on by itself, with the ghost
+          // fill between accents and the recorded runs where accents follow
+          // each other — so there is no ring hand-off left to hear. One-shot
+          // mode is the same without the ghosts.
+          strokeAccents:!!i.stroke_accents,
+          // a pa's damping: how long it takes, and how far after the attack it
+          // starts, so the tail fades ACROSS the pa (ms; unset = RING.stopMs)
+          dampMs:+i.damp_ms||0, dampDelayMs:+i.damp_delay_ms||0,
+          ghostDb:+i.ghost_db||0,
           // the instrument's EQ (engine.js eqChain; null = flat)
           eq:i.eq||null};
 }
@@ -588,11 +638,38 @@ async function decodeOnce(u, ver, cm){
   try{ return await DECODED.get(key); }
   catch(e){ DECODED.delete(key); throw e; }
 }
+// a single stroke with the studio's attack and end applied: the attack is moved
+// to `pre` seconds (silence in front if he moved it earlier than that), the ring
+// stops at end_ms under a fade (fade_ms, one second unless he set another). Untouched strokes are returned as they are.
+const STROKE_FADE=1.0;          // seconds — the default fade of a single stroke with an end line
+function strokeCut(buf, h, pre){
+  const atk=(h.preroll_ms!=null ? h.preroll_ms/1000 : pre), end=(h.end_ms!=null ? h.end_ms/1000 : null);
+  // the FADE belongs to the end of the stroke wherever that is — the end line, or
+  // the end of the recording when he set a fade without moving the line (18 Sep
+  // 2026: "the end fade setting doesn't seem to do anything")
+  if(Math.abs(atk-pre)<0.0005 && end==null && h.fade_ms==null) return buf;
+  const sr=buf.sampleRate, from=atk-pre;                    // source time that becomes 0
+  const stop=Math.min(buf.duration, end!=null ? end : buf.duration);
+  const n=Math.max(1, Math.round((stop-from)*sr));
+  const out=ctx().createBuffer(buf.numberOfChannels, n, sr);
+  // a stroke cut short fades over ONE SECOND unless he set another length (David,
+  // 18 Sep 2026: "make the default fades for one-shots longer: 1,000 ms"); never
+  // into the attack
+  const fade=Math.max(0, Math.min(n-Math.round((pre+0.005)*sr),
+    Math.round((h.fade_ms!=null ? h.fade_ms/1000 : end!=null ? STROKE_FADE : 0)*sr))), lead=Math.round(0.002*sr);
+  for(let c=0;c<buf.numberOfChannels;c++){
+    const s=buf.getChannelData(c), d=out.getChannelData(c), o=Math.round(from*sr);
+    for(let i=0;i<n;i++){ const j=i+o; d[i]=(j>=0&&j<s.length) ? s[j] : 0; }
+    if(o>0) for(let i=0;i<lead&&i<n;i++) d[i]*=i/lead;        // a cut start never clicks
+    for(let i=0;i<fade;i++) d[n-1-i]*=i/fade;
+  }
+  return out;
+}
 async function loadSet(id, def){
     const set=SETS[id], cm=set.cache||"no-store";
     const man=await (await fetch(set.manifest,{cache:cm})).json();
     const L={bpm:man.bpm, div:man.div, pulseSrc:60/man.bpm/man.div,
-             files:{}, pulses:{}, preroll:{}, manstrokes:{}, manmanual:{}, wavOnset:{}, buffers:{}, strokes:{}, cutcorr:{},
+             files:{}, pulses:{}, preroll:{}, manstrokes:{}, manmanual:{}, starts:{}, wavOnset:{}, buffers:{}, strokes:{}, cutcorr:{},
              gains:{}, setGain:Math.pow(10, (def.gain_db || 0) / 20),
              // session boundaries from the studio's tempo map: the player
              // range is partitioned, every tempo belongs to one session
@@ -606,6 +683,9 @@ async function loadSet(id, def){
       L.pulses[ty]=c.pulses;
       L.preroll[ty]=(c.preroll_ms||0)/1000;
       (L.manstrokes[ty] ||= []).push(c.strokes_ms||[]);
+      // a run take says which hands may start it (David, 16 Sep 2026): each
+      // start judged on its own when it was cut. Everything else ignores it.
+      (L.starts[ty] ||= []).push(c.starts||null);
       // markers David placed by hand — never filtered off the grid, and they
       // anchor the warp at Tightness 0 (engine.js). A cell whose per-cell
       // switch is OFF hands over an empty list, so it behaves exactly as it did
@@ -656,15 +736,28 @@ async function loadSet(id, def){
       const om=await (await fetch(set.oneshots,{cache:cm})).json();
       const odir=set.oneshots.replace(/[^/]*$/,"");
       const os={pre:(om.preroll_ms||30)/1000, files:{}, buffers:{}, peaks:{}, trims:{}};
-      const over={};
-      for(const h of om.hits){ if(!/^[DTP]v?$/.test(h.type)) continue;
-        (os.files[h.type]||=[]).push(odir+h.file); (over[h.type]||=[]).push(h.imported_at||""); }
+      // THE BANK AS THE STUDIO HAS IT (David, 18 Sep 2026: single strokes "should
+      // have their own bank, and I need to be able to listen, preview, and adjust
+      // the samples there, just like with any other sampling cell"). A stroke
+      // switched off is not loaded; `preroll_ms` is where he put the attack,
+      // `end_ms` where the ring ends, `gain_db` his level on top of the peak
+      // match. The attack and the end are applied ONCE, here, by cutting an
+      // adjusted copy whose attack sits at the bank's pre-roll again — so every
+      // rule that plays a single stroke (one-shot mode, single-stroke accents,
+      // short accents, the ring hand-off and its matching) reads the same
+      // buffers it always did and needs to know nothing about the edit.
+      const over={}, meta={};
+      for(const h of om.hits){ if(!/^[DTP]v?$/.test(h.type) || h.enabled===false) continue;
+        (os.files[h.type]||=[]).push(odir+h.file);
+        (over[h.type]||=[]).push((h.imported_at||"")+(h.repaired_at||""));   // an edited file is a new version
+        (meta[h.type]||=[]).push(h); }
       await Promise.all(Object.keys(os.files).flatMap(k=>os.files[k].map(async(u,i)=>{
-        (os.buffers[k] ||= [])[i]=await decodeOnce(u, over[k][i], cm);
+        (os.buffers[k] ||= [])[i]=strokeCut(await decodeOnce(u, over[k][i], cm), meta[k][i], os.pre);
       })));
       for(const k of Object.keys(os.buffers)){
         const peaks=os.buffers[k].map(peakOf), t=Math.max(...peaks);
-        os.peaks[k]=peaks; os.trims[k]=peaks.map(p=>t/p);
+        os.peaks[k]=peaks;
+        os.trims[k]=peaks.map((p,i)=>t/p*Math.pow(10,(+meta[k][i].gain_db||0)/20));
       }
       if(Object.keys(os.buffers).length) L.os=os;
     }
@@ -832,14 +925,25 @@ function rrOf(row){ const L=LIB[row.set]; return L.rr||(L.rr={}); }
 // row is all spaces, and gets the full carpet.
 function ghostRuns(row,cells){
   if(!env.ghostFill() || row.eng==="drum") return null;
+  // no strokes, no gaps to fill: a row without a stroke is silent (13 Sep 2026,
+  // the practice player's blank custom row — every step was one "gap" before)
+  if(!cells || !cells.length) return null;
   const L=LIB[row.set];
   if(!L || !L.buffers.G4 || !L.buffers.G4.length) return null;
   const cov=new Array(CYC()).fill(false);
+  const plan=runPlan(row,cells);
   for(const c of cells){
     const r=resolve(row,c);
     if(!r) continue;
     // a jingle tiles its gap; a STOPPED stroke owns its gap in silence
-    const span=(c.accent==="J" || artOf(row,c.start)==="stop") ? c.len
+    const rp=plan.get(c);
+    // what this accent's own sound covers: a run covers its strokes, a single
+    // stroke covers its own step (the rest is ghost fill), a jingle tiles its
+    // gap and a stopped stroke owns it in silence, and a cell covers its length
+    const span=(rp && rp.type) ? rp.k
+             : (rp && rp.covered) ? 1
+             : (c.accent==="J" || artOf(row,c.start)==="stop") ? c.len
+             : (SETS[row.set].strokeAccents && /^[DTP]$/.test(c.accent)) ? 1
              : Math.min(L.pulses[r.type]||c.len, c.len);
     for(let k=0;k<span;k++) cov[(c.start+k)%CYC()]=true;
   }
@@ -878,10 +982,25 @@ function fireGhost(row,pi,n,when){
     const ratio=takeRatio(L,"G4",i);
     const t0=hit*ratio, lead=Math.min(0.012,t0);
     const off=t0-lead;
-    const endSrc=pre+(p+n)*srcPulse;
+    let endSrc=pre+(p+n)*srcPulse;
+    // never past the foot of the next stroke recorded in the ghost take — the
+    // same rule the runs follow; without it a fragment carries the first few ms
+    // of the ghost note after it, and that is a tick on every fill
+    if(SETS[row.set].strokeAccents){
+      const nxt=st.map(v=>v/1000).find(v=>v>hit+srcPulse*(n-0.5));
+      if(nxt!=null) endSrc=Math.min(endSrc, nxt-0.010);
+    }
     const end=Math.min(buf.duration, endSrc*ratio);
     const dur=Math.max(0.03,end-off);
-    const lin=(L.trims.G4?L.trims.G4[i]:1)*((L.gains.G4||[])[i]??1)*(L.setGain??1);
+    // THE GHOST FILL'S OWN LEVEL (David, 18 Sep 2026: "I cannot hear any ghost
+    // notes"). Ghost-note takes are recorded on their own, far softer than the
+    // ghosts played beside an accent — on the frame drum the fill sat 42 dB under
+    // a doum where the ghosts inside his doum cells sit 15-17 dB under it. While
+    // cells carried the ghosts nobody noticed; with single-stroke accents the
+    // fill is ALL the ghosts there are. `ghost_db` (instruments.json, the
+    // studio's Ghost fill slider) lifts the fill only; 0 = as recorded.
+    const lin=(L.trims.G4?L.trims.G4[i]:1)*((L.gains.G4||[])[i]??1)*(L.setGain??1)
+              *Math.pow(10,(SETS[row.set].ghostDb||0)/20);
     const at=Math.max(ctx().currentTime,when-lead);
     const s2=ctx().createBufferSource(); s2.buffer=buf;
     const g=ctx().createGain();
@@ -914,7 +1033,8 @@ function fire(row,type,when,step,opts){
   if(!bank||!bank.length) return null;
   const idxs=takeIdxs(L,type);
   const rr=rrOf(row);
-  const i=idxs[(rr[type]=(rr[type]||0)+1)%idxs.length];
+  // a run chooses its own take (its round-robin is per hand) and passes it in
+  const i=(opts&&opts.take!=null) ? opts.take : idxs[(rr[type]=(rr[type]||0)+1)%idxs.length];
   // the flag loop (Diagnostics): remember which take just sounded at which
   // cell, so a tap can name the exact fragment David heard
   if(step!=null && env.flagLog) env.flagLog(row, step, type, i, when);
@@ -938,8 +1058,20 @@ function fire(row,type,when,step,opts){
   // the slicer's own margin when it cuts a cell from a take. Exact-length
   // cells are already cut there on disk; cells shorter than their gap are
   // untouched; the ring hand-off is its own voice and runs on.
-  let len=buf.duration;
+  // where in the take playback begins (a left-hand run starts on its second
+  // stroke) — 0 for everything else, which is every cell there was before runs
+  const off=(opts&&opts.offset)||0;
+  let len=buf.duration-off;
   let cutAt=(opts&&opts.cutAt!=null) ? opts.cutAt-0.005 : null;
+  // A RUN NEVER PLAYS PAST THE NEXT STROKE RECORDED IN ITS FILE (David's flam
+  // rule, applied while playing — 16 Sep 2026). A five-stroke run played from
+  // stroke 1 holds the left hand's fifth stroke right where the next cell
+  // begins; the row's own cut nearly always ends it there, and this makes it
+  // certain even for a stroke he played a little early.
+  if(opts&&opts.stopBuf!=null){
+    const hard=at+(opts.stopBuf-off)-0.005;
+    if(cutAt==null || hard<cutAt) cutAt=hard;
+  }
   // a STOP (David, 6 Sep 2026): the same fade, with an earlier deadline — this
   // take's first recorded ghost (its second stroke on the manifest map), or
   // one pulse after the attack where no ghost was detected. opts.stop carries
@@ -958,10 +1090,18 @@ function fire(row,type,when,step,opts){
   g.gain.setValueAtTime(0,at);
   g.gain.linearRampToValueAtTime(lin,at+0.0015);
   if(cut){
+    const sh=opts&&opts.shape;
+    if(sh) sh.apply=()=>{ try{
+      if(!sh.down) return;
+      const w=Math.max(0.002,Math.min(sh.win,at+len-sh.at));
+      g.gain.cancelScheduledValues(sh.at);
+      g.gain.setValueCurveAtTime(sh.down,sh.at,w);
+    }catch(e){} };
     g.gain.setValueAtTime(lin,Math.max(at+0.0015,at+len-0.015));
     g.gain.linearRampToValueAtTime(0,at+len);
   }else if(opts&&opts.fadeFrom!=null){
-    const f0=at+opts.fadeFrom, d=Math.max(0.001,len-opts.fadeFrom);
+    const fr=opts.fadeFrom-off;                // fadeFrom is buffer time; playback began at off
+    const f0=at+fr, d=Math.max(0.001,len-fr);
     if(RING.curve==="eq") g.gain.setValueCurveAtTime(ringCurveDown(lin),f0,d);
     else { g.gain.setValueAtTime(lin,f0); g.gain.linearRampToValueAtTime(0,at+len); }
   }else{
@@ -969,11 +1109,11 @@ function fire(row,type,when,step,opts){
     g.gain.linearRampToValueAtTime(0,at+len);
   }
   s.connect(g); g.connect(env.out(row));
-  s.start(at); s.stop(at+len+0.02);
+  s.start(at, off); s.stop(at+len+0.02);
   EXPECT.push(at);                 // this stroke should make sound at 'at'
   const node={s,g}; live.push(node);
   s.onended=()=>{const j=live.indexOf(node); if(j>=0) live.splice(j,1);};
-  return {i,buf,lin,at,len};
+  return {i,buf,lin,at,len,off};
 }
 // ---- the ring hand-off and the drum computer (22 Aug 2026; RING in engine.js)
 // A doum cell ends where the slicer cut it, at the next accent — on the udu
@@ -988,65 +1128,267 @@ function ringUsed(setId){
   if(RING_USED.pulse!==SCHED_PULSE){ RING_USED={pulse:SCHED_PULSE, sets:{}}; }
   return RING_USED.sets[setId]||(RING_USED.sets[setId]=new Set());
 }
-function fireRing(row,type,when,step,cutAt){
+// ---------------------------------------------------------------- RUNS
+// SEVERAL ACCENTS FROM ONE RECORDING (David, 14 Sep 2026): "when several
+// accents are played right after each other … instead of triggering a new
+// sample every time, can we use one sample of a sequence of taks." The rule,
+// in one sentence:
+//
+//   A RUN SAMPLE COVERS THE ACCENTS THAT HAVE NO ROOM OF THEIR OWN — the ones
+//   whose next stroke is one step away. The first accent with space behind it
+//   (ghosts, or a rest) goes back to being its own cell.
+//
+// His own examples: T T T T Tgg → the first four taks are one recording and
+// the fifth is a T3 cell; T T Dgg → a run of two taks, then D3. Four is what
+// is recorded (TR4 starts on the right hand, TL4 on the left); two and three
+// are the same recording cut short, by the same cut rule that ends every cell
+// where the next stroke lands. Longer groups chain — 6 = 4+2, 7 = 4+3 — and a
+// group of five splits 3+2 rather than 4+1, because a single stitched stroke
+// left over is the very thing a run is here to remove. The hands carry on
+// across the chain: after an even piece the next one starts on the same hand,
+// after an odd one it swaps.
+//
+// Nothing is special-cased for an instrument that has no runs recorded: the
+// type is simply not there and every accent plays its own cell, exactly as
+// before.
+// ONE SAMPLE PER CHAIN, EITHER HAND (David, 16 Sep 2026: "Can't we just take
+// 5 samples, like 5 strokes in a row, and start them on the first stroke for
+// the right hand, and then start them on the second stroke if it's triggered
+// on a left-hand spot?"). A run take is `Trun` (`Trunv`): the chain's first
+// five strokes as played, R L R L R. A right-hand run starts it on stroke 1, a
+// left-hand run on stroke 2; each take carries `starts`, the hands it was
+// judged even for. The first build stored TR4 and TL4 — the same recording
+// twice.
+const RUNKEY=/^([DTP])run(v?)$/;
+const RUNLEN=4;                        // the longest run played: runs of four (David)
+function runMax(L){
+  if(L._runMax==null)
+    L._runMax=Object.keys(L.files).some(k=>RUNKEY.test(k)&&L.files[k].length) ? RUNLEN : 0;
+  return L._runMax;
+}
+// the takes of a run a hand may start — this tempo's session first, then any
+function handTakes(L,type,hand){
+  if(!L.buffers[type]||!L.buffers[type].length) return [];
+  const st=L.starts[type]||[];
+  const ok=i=>(st[i]||["R"]).indexOf(hand)>=0;
+  const pool=takeIdxs(L,type).filter(ok);
+  return pool.length ? pool : L.buffers[type].map((_,i)=>i).filter(ok);
+}
+// the run for this stroke and hand: the other hand's start where this one has
+// no take, and the plain run for a variation-marked group with no variation
+// runs, exactly as resolve() falls back for a single cell
+function runType(L,accent,variation,hand){
+  const other=hand==="R"?"L":"R";
+  for(const v of (variation?["v",""]:[""])){
+    const type=accent+"run"+v;
+    for(const h of [hand,other]){
+      const takes=handTakes(L,type,h);
+      if(takes.length) return {type, hand:h, takes};
+    }
+  }
+  return null;
+}
+// which take, where to start in it, and where it must stop: all read from the
+// recording's OWN stroke list (the manifest's, every stroke — the warp's list
+// may thin one out), in warped time. At the players' quantise 0 every warp
+// target is ratio × source time, so a recorded stroke at t ms sits at
+// t/1000·ratio in the warped take.
+function runPlay(row,rp){
+  const L=LIB[row.set], rr=rrOf(row), key=rp.type+":"+rp.hand;
+  let take=rp.takes[(rr[key]=(rr[key]||0)+1)%rp.takes.length];
+  // THE SAME RECORDING NEVER TWICE RUNNING. Both hands draw on one set of
+  // takes, each with its own rotation, so a right-hand run and the left-hand
+  // run straight after it could land on the same take and replay its middle
+  // strokes back to back — heard in the first test of five tight taks.
+  const last="run:last:"+rp.type;
+  if(take===rr[last] && rp.takes.length>1)
+    take=rp.takes[(rr[key]=(rr[key]||0)+1)%rp.takes.length];
+  rr[last]=take;
+  const ratio=takeRatio(L,rp.type,take);
+  const ms=((L.manstrokes[rp.type]||[])[take])||[];
+  const from=(rp.hand==="L" && ms.length>=2) ? 1 : 0;
+  const pre=(L.preroll[rp.type]||0)*ratio;
+  const at=k=>ms[k]/1000*ratio;
+  return {take, from,
+          offset: from ? Math.max(0, at(1)-pre) : 0,            // the same lead-in, before stroke 2
+          lastBuf: ms.length ? at(Math.min(from+rp.k-1, ms.length-1)) : pre,
+          stopBuf: ms.length>from+rp.k ? at(from+rp.k) : null};  // the next recorded stroke
+}
+const RUNPLAN=new WeakMap();
+function planRuns(row,cells){
+  const L=LIB[row.set];
+  const plan=new Map();
+  // the drum computer plays single strokes only — except where the instrument
+  // plays its accents that way anyway, and the runs are what it has instead
+  if(!L||!cells.length||(row.eng==="drum" && !SETS[row.set].strokeAccents)) return plan;
+  const n=runMax(L);
+  if(n<2) return plan;
+  const CY=CYC(), m=cells.length;
+  const varOf=c=>!!(row.fills&&row.fills[c.start]);
+  // an accent with no room of its own: the next stroke is one step away, and
+  // it is a plain stroke (a stop is one stroke by definition, a fill and a
+  // jingle are their own recordings)
+  const tight=c=>/^[DTP]$/.test(c.accent)&&c.len===1&&artOf(row,c.start)!=="stop";
+  const joins=(a,b)=>tight(a)&&tight(b)&&a.accent===b.accent&&varOf(a)===varOf(b)
+                     &&(a.start+1)%CY===b.start;
+  const done=new Set();
+  const cover=(i0)=>{
+    const group=[cells[i0]];
+    for(let k=1;k<m;k++){
+      const a=cells[(i0+k-1)%m], b=cells[(i0+k)%m];
+      if(b===group[0]||!joins(a,b)) break;
+      group.push(b);
+    }
+    for(const c of group) done.add(c);
+    let idx=0, hand="R";                    // a chain starts on the right hand
+    while(idx<group.length){
+      let k=Math.min(n,group.length-idx);
+      if(group.length-idx-k===1) k--;       // never leave one stroke stitched on its own
+      if(k<2){ idx++; continue; }
+      const rt=runType(L,group[idx].accent,varOf(group[idx]),hand);
+      if(!rt){ idx++; continue; }           // nothing recorded: its own cell, as before
+      plan.set(group[idx],{type:rt.type, k, hand:rt.hand, takes:rt.takes});
+      for(let j=1;j<k;j++) plan.set(group[idx+j],{covered:true});
+      idx+=k;
+      if(k%2) hand=hand==="R"?"L":"R";
+    }
+  };
+  for(let i=0;i<m;i++){
+    const c=cells[i];
+    if(!tight(c)||done.has(c)) continue;
+    if(m>1&&joins(cells[(i-1+m)%m],c)) continue;   // its group starts earlier
+    cover(i);
+  }
+  // a row that is nothing but one long chain (sixteen taks) has no first cell
+  // by that test — every cell follows another. Start it at the top of the bar.
+  for(let i=0;i<m;i++){
+    const c=cells[i];
+    if(tight(c)&&!done.has(c)) cover(i);
+  }
+  return plan;
+}
+// one plan per scheduler pass: the row's cells are derived afresh each time,
+// so the map dies with them and nothing has to be invalidated
+function runPlan(row,cells){
+  let p=RUNPLAN.get(cells);
+  if(!p){ p=planRuns(row,cells); RUNPLAN.set(cells,p); }
+  return p;
+}
+function fireRing(row,type,when,step,cutAt,run){
   const L=LIB[row.set], os=L.os;
   const acc=type[0];                         // D, or T on an instrument whose taks ring
   const want=SETS[row.set].ringMatch ? acc+(type.endsWith("v")?"v":"") : RING.source;
   const key=(os.buffers[want]&&os.buffers[want].length)?want:acc;
   const bank=os.buffers[key];
-  if(!bank||!bank.length) return fire(row,type,when,step,{cutAt});
-  const ti=peekTake(row,type);
+  const runOpts=run ? {take:run.take, offset:run.offset, stopBuf:run.stopBuf} : {};
+  if(!bank||!bank.length) return fire(row,type,when,step,Object.assign({cutAt},runOpts));
+  const ti=run ? run.take : peekTake(row,type);
   const cellBuf=takeBuf(L,type,ti), ratio=takeRatio(L,type,ti);
-  const strokes=L.strokes[type][ti], last=strokes.length?strokes[strokes.length-1].t*ratio:0;
+  const strokes=L.strokes[type][ti];
+  const last=run ? run.lastBuf : (strokes.length?strokes[strokes.length-1].t*ratio:0);
   const rf=SETS[row.set].ringFade;
   const fadeFrom=ringFadeFrom(cellBuf.duration,last,rf??undefined,rf?0.01:undefined);
-  const cell=fire(row,type,when,step,{fadeFrom,cutAt});
+  // a masked switch shapes the cell's own fade too, and only fireRing knows that
+  // curve once the take is picked — `shape` is the hook back into the cell voice
+  const masked=run && SETS[row.set].strokeAccents && cutAt!=null;
+  const shape={};
+  const cell=fire(row,type,when,step,Object.assign({fadeFrom,cutAt},runOpts,masked?{shape}:{}));
   if(!cell) return null;
   const preC=(L.preroll[type]||0)*ratio;
   const cands=bank.map((b,j)=>({key,j,buf:b,peak:os.peaks[key][j]}));
-  let pick=ringChoose(cellBuf,L.peaks[type][cell.i],fadeFrom,preC,cands,os.pre,RING.pick);
-  let c=pick&&pick.best;
-  // same-pulse guard (David, 23 Aug 2026): another row of this instrument may
-  // already have taken the best ring on this pulse — take the next-best instead
-  if(c && pick.rows && pick.rows.length){
-    const used=ringUsed(row.set);
-    if(used.has(c.key+"#"+c.j)){
-      const order=pick.rows.slice().sort((a,b)=>a.score-b.score);
-      const alt=order.find(r=>!used.has(r.key+"#"+r.j));
-      if(alt) c=cands.find(x=>x.key===alt.key&&x.j===alt.j)||c;
+  // A RUN HANDS OVER ONCE, FROM ITS LAST STROKE (David, 14 Sep 2026: "during
+  // the runs we don't use ring extensions, only for the last stroke of the
+  // run, if applicable"). The ringing of the strokes inside a run is already
+  // in the recording — extending each of them past the run's end thickens
+  // what he played. So the hand-off is aged from the LAST stroke that
+  // sounds: the one-shot is started silent at that attack, its decay already
+  // lined up when the crossfade brings it in, and the tak cap counts the run
+  // as the one ringing stroke it leaves behind.
+  // all in BUFFER time; playback began at `off` into the take
+  const off=cell.off||0;
+  let hf=fadeFrom;
+  // a run ends where the next stroke lands, before the recording's own fade
+  // point: hand over inside what is actually heard
+  if(run) hf=Math.min(fadeFrom,Math.max(off+0.001,off+cell.len-0.015));
+  if(masked) hf=off+cell.len-Math.min(0.025,Math.max(0.006,cell.len-0.004));
+  const anchors=[run ? run.lastBuf : preC];
+  for(const an of anchors){
+    const strokeAt=cell.at+an-off;
+    let pick=null, c=null, lag=0, mg=null, mr=0;
+    if(masked){
+      const ref=ringSlice(cellBuf,hf-0.040,hf);
+      if(ref.length>64){
+        const age=os.pre+(hf-0.040-an);
+        let bestc=null;
+        for(const cd of cands){
+          const al=ringAlign(ref,cd.buf,age);
+          if(!bestc||al.r>bestc.r) bestc={r:al.r,lag:al.lag,c:cd};
+        }
+        if(bestc&&bestc.r>-2){
+          c=bestc.c; lag=bestc.lag; mr=Math.max(-0.95,Math.min(0.95,bestc.r));
+          const cr=ringWinRms(cellBuf,hf-0.040,hf), or_=ringWinRms(c.buf,age+lag,age+lag+0.040);
+          if(or_>1e-7) mg=cr/or_; else c=null;
+        }
+      }
     }
-    used.add(c.key+"#"+c.j);
+    if(!c){ pick=ringChoose(cellBuf,L.peaks[type][cell.i],hf,an,cands,os.pre,RING.pick); c=pick&&pick.best; lag=0; mg=null; }
+    // same-pulse guard (David, 23 Aug 2026): another row of this instrument may
+    // already have taken the best ring on this pulse — take the next-best instead
+    if(c && pick && pick.rows && pick.rows.length){
+      const used=ringUsed(row.set);
+      if(used.has(c.key+"#"+c.j)){
+        const order=pick.rows.slice().sort((a,b)=>a.score-b.score);
+        const alt=order.find(r=>!used.has(r.key+"#"+r.j));
+        if(alt) c=cands.find(x=>x.key===alt.key&&x.j===alt.j)||c;
+      }
+      used.add(c.key+"#"+c.j);
+    }
+    if(!c){ const k="os:"+key, rr=rrOf(row); c=cands[(rr[k]=(rr[k]||0)+1)%cands.length]; }
+    const lin=(mg!=null ? cell.lin*mg : cell.lin*(L.peaks[type][cell.i]/(c.peak||1)))
+              *Math.pow(10,RING.db/20);
+    const at=strokeAt-os.pre-lag;      // both attacks land on this stroke, slid to line up
+    const f0=cell.at+hf-off, f1=cell.at+cell.len, d=Math.max(0.001,f1-f0);
+    const s=ctx().createBufferSource(); s.buffer=c.buf;
+    const g=ctx().createGain();
+    g.gain.setValueAtTime(0,at);
+    if(mg!=null){
+      g.gain.setValueCurveAtTime(ringCorrCurves(lin,mr).up,f0,d);
+      shape.down=ringCorrCurves(cell.lin,mr).down; shape.at=f0; shape.win=d;
+      if(shape.apply) shape.apply();       // the cell fades with the matching curve
+    }
+    else if(RING.curve==="eq") g.gain.setValueCurveAtTime(ringCurveUp(lin),f0,d);
+    else { g.gain.setValueAtTime(0,f0); g.gain.linearRampToValueAtTime(lin,f1); }
+    const end=at+c.buf.duration;
+    g.gain.setValueAtTime(lin,end-0.02); g.gain.linearRampToValueAtTime(0,end);
+    s.connect(g); g.connect(env.out(row));
+    s.start(at); s.stop(end+0.02);
+    if(acc==="T") limitTaks(row,run?strokeAt:when);   // unchanged for a single cell
+    const node={s,g,end,kind:acc,lin,flat:[f1,end-0.02]}; live.push(node); row.rings.push(node);
+    s.onended=()=>{const j=live.indexOf(node); if(j>=0) live.splice(j,1);
+                   const k=row.rings.indexOf(node); if(k>=0) row.rings.splice(k,1);};
   }
-  if(!c){ const k="os:"+key, rr=rrOf(row); c=cands[(rr[k]=(rr[k]||0)+1)%cands.length]; }
-  const lin=cell.lin*(L.peaks[type][cell.i]/(c.peak||1))*Math.pow(10,RING.db/20);
-  const at=cell.at+preC-os.pre;             // both attacks land on 'when'
-  const f0=cell.at+fadeFrom, f1=cell.at+cell.len, d=Math.max(0.001,f1-f0);
-  const s=ctx().createBufferSource(); s.buffer=c.buf;
-  const g=ctx().createGain();
-  g.gain.setValueAtTime(0,at);
-  if(RING.curve==="eq") g.gain.setValueCurveAtTime(ringCurveUp(lin),f0,d);
-  else { g.gain.setValueAtTime(0,f0); g.gain.linearRampToValueAtTime(lin,f1); }
-  const end=at+c.buf.duration;
-  g.gain.setValueAtTime(lin,end-0.02); g.gain.linearRampToValueAtTime(0,end);
-  s.connect(g); g.connect(env.out(row));
-  s.start(at); s.stop(end+0.02);
-  if(acc==="T") limitTaks(row,when);
-  const node={s,g,end,kind:acc}; live.push(node); row.rings.push(node);
-  s.onended=()=>{const j=live.indexOf(node); if(j>=0) live.splice(j,1);
-                 const k=row.rings.indexOf(node); if(k>=0) row.rings.splice(k,1);};
   return cell;
 }
 // the drum computer: one one-shot on the accent, the primed bank for a
 // variation-dotted step, round-robin per row and bank, nothing in between
 // returns false when the bank has no single stroke for this accent — the caller
 // then plays the recorded cell instead (David, 12 Sep 2026: never silence)
-function fireOneShot(row,accent,when,variation){
+function fireOneShot(row,accent,when,variation,step,matchType){
   const L=LIB[row.set], os=L.os; if(!os) return false;
   const key=(variation&&os.buffers[accent+"v"])?accent+"v":accent;
   const bank=os.buffers[key]; if(!bank||!bank.length) return false;
   const k="os:"+key, rr=rrOf(row), i=(rr[k]=(rr[k]||0)+1)%bank.length;
+  if(step!=null && env.flagLog) env.flagLog(row, step, key, i, when, true);
   const buf=bank[i];
-  const lin=os.trims[key][i]*(L.setGain??1);
+  // an instrument that plays its accents as single strokes takes the level of
+  // the cell it stands in for, so single strokes, runs and ghost notes keep the
+  // balance the recordings had (the udu's short one-shots do the same)
+  let lin=os.trims[key][i]*(L.setGain??1);
+  if(matchType && L.buffers[matchType] && L.buffers[matchType].length){
+    const ci=peekTake(row,matchType);
+    lin=L.trims[matchType][ci]*((L.gains[matchType]||[])[ci] ?? 1)*(L.setGain ?? 1)
+        *(L.peaks[matchType][ci]/(os.peaks[key][i]||1));
+  }
   const at=Math.max(ctx().currentTime,when-os.pre), len=buf.duration;
   const s=ctx().createBufferSource(); s.buffer=buf;
   const g=ctx().createGain();
@@ -1055,7 +1397,7 @@ function fireOneShot(row,accent,when,variation){
   s.connect(g); g.connect(env.out(row));
   s.start(at); s.stop(at+len+0.02);
   EXPECT.push(at);
-  const node={s,g,end:at+len,kind:accent}; live.push(node);
+  const node={s,g,end:at+len,kind:accent,lin,flat:[at+0.0015,at+len-0.02]}; live.push(node);
   // ring rules only on an instrument that rings (David, 11 Sep 2026: "the cajon
   // should not have any ring rule"): there a doum single stroke rings until the
   // next doum or pa and, where taks ring, a tak single stroke until a pa (at most
@@ -1082,12 +1424,13 @@ function fireOneShot(row,accent,when,variation){
 // unlike a doum's ring, which the next doum or pa mutes. DOUMS ARE EXCLUDED
 // on purpose: the udu bass sounds different depending on when the next stroke
 // lands, so a fixed one-shot would be wrong there.
-function fireShortOneShot(row,accent,when,variation){
+function fireShortOneShot(row,accent,when,variation,step){
   const L=LIB[row.set], os=L.os; if(!os) return false;
   const key=(variation&&os.buffers[accent+"v"]&&os.buffers[accent+"v"].length)
             ? accent+"v" : accent;
   const bank=os.buffers[key]; if(!bank||!bank.length) return false;
   const k="os:"+key, rr=rrOf(row), i=(rr[k]=(rr[k]||0)+1)%bank.length;
+  if(step!=null && env.flagLog) env.flagLog(row, step, key, i, when, true);
   const buf=bank[i];
   const ty=accent+"1";
   let lin;
@@ -1120,15 +1463,57 @@ function limitTaks(row,when){
   const on=row.rings.filter(v=>v.kind==="T" && v.end>when);   // oldest first: push order
   while(on.length>=max){
     const v=on.shift();
+    fadeRing(v,when,RING.stopMs,row.set);
+  }
+}
+// ONE WAY A RING IS FADED (18 Sep 2026). The fade must begin AT `when`, and a
+// linear ramp begins at the event BEFORE it — so something has to stand at
+// `when`. cancelAndHoldAtTime only pins the value where `when` falls inside a
+// ramp or a curve; on the flat stretch of a voice (nearly always) it pins
+// nothing, and the ramp then ran from the moment it was SCHEDULED — the
+// look-ahead, ~0.4 s early. David heard it at once: "the second doum sounds like
+// it's faded out before the next accent" — measured, a doum before a pa lost
+// 9 dB over the half second before the pa arrived. Every ringing voice therefore
+// says where it is flat and at what level, and the fade pins that level itself.
+function fadeRing(v,when,fade,set){
+  // THE UDU AND THE CAJON KEEP THE DAMPING THEY WERE DIALLED IN WITH (David, 18 Sep
+  // 2026: "you were not supposed to touch the Udu … revert any changes you made to
+  // the Udu engine"). These three lines are the code of freeze 0.30, character for
+  // character — including reading .value at scheduling time, which is part of how
+  // it sounds. Everything below is for instruments that play single-stroke accents
+  // (the frame drum), whose long rings showed the early fade.
+  if(!(SETS[set]||{}).strokeAccents){
     try{
       v.g.gain.cancelScheduledValues(when); v.g.gain.setValueAtTime(v.g.gain.value,when);
-      v.g.gain.linearRampToValueAtTime(0,when+RING.stopMs); v.s.stop(when+RING.stopMs+0.02);
-      v.end=when+RING.stopMs+0.02;
+      v.g.gain.linearRampToValueAtTime(0,when+fade); v.s.stop(when+fade+0.02);
+      v.end=when+fade+0.02;
     }catch(e){}
+    return;
   }
+  try{
+    const p=v.g.gain, flat=v.flat && when>=v.flat[0] && when<=v.flat[1];
+    // on the flat stretch no hold is needed — the level is known — so the plain
+    // cancel is used: cancelAndHoldAtTime is the less dependable call across
+    // browsers and is kept for the one case that needs it, a fade inside a ramp
+    if(flat){ p.cancelScheduledValues(when); p.setValueAtTime(v.lin,when); }
+    else if(p.cancelAndHoldAtTime) p.cancelAndHoldAtTime(when);
+    else { p.cancelScheduledValues(when); p.setValueAtTime(p.value,when); }
+    p.linearRampToValueAtTime(0,when+fade); v.s.stop(when+fade+0.02);
+    v.end=when+fade+0.02; v.flat=null;          // from here on it is inside a ramp
+  }catch(e){}
 }
 function muteRings(row,when,accent){
   if(!RING.stop||!row.rings) return;
+  // WHEN A PA DAMPS THE SKIN the tail fades ACROSS it (David, 17 Sep 2026: "the
+  // fade out of the previous accent can overlap with the pa"), starting a touch
+  // after the attack — per instrument, so the udu keeps its 40 ms from the
+  // attack. And it is a real fade: cancelAndHold keeps whatever the ring has
+  // reached at that moment, where reading .value took the level at SCHEDULING
+  // time — usually still 0, which dropped the tail dead on the beat.
+  const S=SETS[row.set]||{};
+  const delay=(accent==="P" ? (S.dampDelayMs||0) : 0)/1000;
+  const fade=(accent==="P" && S.dampMs ? S.dampMs : RING.stopMs*1000)/1000;
+  when+=delay;
   for(const v of row.rings){
     if(v.end<=when) continue;
     // a pa damps the whole skin; a doum stops the doum ring before it and leaves
@@ -1136,11 +1521,7 @@ function muteRings(row,when,accent){
     // cut off by a pa"). On the udu and the cajon every ring is a doum's, so a
     // doum or a pa stops them all, exactly as before.
     if(accent==="D" && v.kind==="T") continue;
-    try{
-      v.g.gain.cancelScheduledValues(when); v.g.gain.setValueAtTime(v.g.gain.value,when);
-      v.g.gain.linearRampToValueAtTime(0,when+RING.stopMs); v.s.stop(when+RING.stopMs+0.02);
-      v.end=when+RING.stopMs+0.02;
-    }catch(e){}
+    fadeRing(v,when,fade,row.set);
   }
   row.rings=row.rings.filter(v=>v.end>ctx().currentTime-0.1);
 }
@@ -1177,6 +1558,11 @@ function playPulse(row,cells,ghosts,pi,nextTime,pd,absPulse){
       const rep=cellRepeat(row,c,pi);
       if(rep<0) continue;
       if(rep===0 && env.onHit) env.onHit(row,pi,nextTime);   // the player's visual, released on the ear's beat
+      // a run covers several accents with one recording: the head plays it,
+      // the accents behind it are already inside that sound. They still flash
+      // — a student painted them — they just do not fire again.
+      const rp=rep===0 ? runPlan(row,cells).get(c) : null;
+      if(rp&&rp.covered){ DIAG.covered=(DIAG.covered||0)+1; continue; }
       const at=nextTime+feelAt(absPulse,pi);             // the groove engine: where this accent lands
       // periodic fill, audio side (David, 22 Aug 2026): on the firing cycle
       // the fill takes the place of the accent's cell. The decision comes
@@ -1190,17 +1576,44 @@ function playPulse(row,cells,ghosts,pi,nextTime,pd,absPulse){
       // a doum or pa on a drum with a one-shot bank stops the rings that
       // are still sounding from earlier doums (the resonance-voice rule)
       if(L&&L.os&&SETS[row.set].ring&&(c.accent==="D"||c.accent==="P")) muteRings(row,at,c.accent);
-      // where this row's next stroke lands — the cell's sound ends there
-      const left=c.len-((pi-c.start+CYC())%CYC());   // pulses to the row's next stroke
+      // where this row's next stroke lands — the cell's sound ends there. A
+      // run reaches over the accents it covers, so its own end is its last
+      // stroke's step, not the head's.
+      const left=(rp&&rp.type?rp.k:c.len)-((pi-c.start+CYC())%CYC());
       const cutAt=nextTime+left*pd+feelAt(absPulse+left,(c.start+c.len)%CYC());
       const variation=!!(row.fills&&row.fills[c.start]);
       // a STOP (David, 6 Sep 2026): one stroke, nothing after — the one-shot
       // where a bank exists, else the shortest cell cut before its first
       // ghost (fire's stop deadline); a firing fill still wins
       if(artOf(row,c.start)==="stop" && !(r&&r.type[0]==="F")){
-        if(!(L&&L.os&&/^[DTP]$/.test(c.accent)&&fireOneShot(row,c.accent,at,variation))){
+        if(!(L&&L.os&&/^[DTP]$/.test(c.accent)&&fireOneShot(row,c.accent,at,variation,c.start))){
           const ty=shortestType(L,c.accent,variation);   // no single stroke: the shortest cell
           if(ty) fire(row,ty,at,c.start,{cutAt, stop:pd}); }
+        DIAG.fired++;
+      }else
+      // a RUN of accents one step apart (David, 14 Sep 2026) — one recording
+      // for the lot, cut where the accent after them lands. It beats the bare
+      // high accent's one-shot below, which exists because a one-step fragment
+      // is barely there: a run is the whole figure as he played it. A firing
+      // fill still wins.
+      if(rp&&rp.type&&!(r&&r.type[0]==="F")){
+        const S2=SETS[row.set];
+        const run=runPlay(row,rp);
+        if(L&&L.os&&S2.ring&&(rp.type[0]==="D"||(S2.takRing&&rp.type[0]==="T")))
+          fireRing(row,rp.type,at,c.start,cutAt,run);
+        else fire(row,rp.type,at,c.start,{cutAt, take:run.take, offset:run.offset, stopBuf:run.stopBuf});
+        DIAG.runs=(DIAG.runs||0)+1; DIAG.fired++;
+      }else
+      // THE FRAME DRUM PLAYS SINGLE STROKES, NOT CELLS (David, 17 Sep 2026,
+      // after hearing the whole library both ways: "the engine should use
+      // option two … one shots and then ghost notes mixed into it when natural
+      // playing is selected"). A single stroke rings on by itself, so there is
+      // no hand-off to hear at all; the accents that follow each other with no
+      // ghost between keep the recorded runs (above), and the steps between
+      // accents are the ghost fill. One-shot mode is the same without ghosts.
+      if(SETS[row.set].strokeAccents && L&&L.os && /^[DTP]$/.test(c.accent)
+         && !(r&&r.type[0]==="F")
+         && fireOneShot(row,c.accent,at,variation,c.start,r?r.type:null)){
         DIAG.fired++;
       }else
       // a bare high accent (the next accent is on the very next step) plays
@@ -1209,10 +1622,10 @@ function playPulse(row,cells,ghosts,pi,nextTime,pd,absPulse){
       if(row.eng!=="drum" && L&&L.os && SETS[row.set].shortOneShots
          && c.len===1 && (c.accent==="T"||c.accent==="P")
          && !(r&&r.type[0]==="F")
-         && fireShortOneShot(row,c.accent,at,!!(row.fills&&row.fills[c.start]))){
+         && fireShortOneShot(row,c.accent,at,!!(row.fills&&row.fills[c.start]),c.start)){
         DIAG.fired++;
       }else if(row.eng==="drum" && L&&L.os && /^[DTP]$/.test(c.accent) && !(r&&r.type[0]==="F")
-               && fireOneShot(row,c.accent,at,!!(row.fills&&row.fills[c.start]))){
+               && fireOneShot(row,c.accent,at,!!(row.fills&&row.fills[c.start]),c.start)){
         // the drum computer: one-shots only; a FILL still plays its recorded
         // fill cell (below), so nothing a student painted goes silent — and an
         // accent with no single stroke falls through to its recorded cell
@@ -1234,5 +1647,6 @@ function resetRing(){ RING_USED={pulse:-1, sets:{}}; for(const r of env.rows()) 
 return {live, loadSet, decodeOnce, syncRatio, takeRatio, takeBuf, rebuildWarp, resolve,
         shortestType, cellRepeat, ghostRuns, fireGhost, peekTake, fire, fireRing,
         fireOneShot, fireShortOneShot, limitTaks, muteRings, kill, playPulse, resetRing,
+        runPlan, runType, runMax,
         peakOf, scrubBuf, pickSession};
 }
