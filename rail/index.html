@@ -7441,6 +7441,25 @@ html.player #title{ border-color:transparent; background:transparent; cursor:def
    notation has the whole window there. Not for the phone, the tablet or the
    lesson embed: the boot never gives them the class. */
 #rail{display:none}
+/* THE RAIL ON A TOUCH SCREEN (David, 14 Oct 2026; patches/rail-touch.py): an iPad gets the rail since
+   patches/rail-on-tablet.py, so the furniture always on screen answers a finger - in the header and the transport
+   bar every button at least 40 px, the section chips 34 tall. Touch only: a mouse sees nothing new. */
+@media (pointer:coarse){
+  body.rail:not(.phone) header .ib,body.rail:not(.phone) header .ctl,
+  body.rail:not(.phone) #transport .ib,body.rail:not(.phone) #transport .ctl{min-width:40px; min-height:40px}
+  body.rail:not(.phone) #transport .chip{min-height:34px}
+  /* the header is two halves of equal width, and the buttons' half could not hold them - the view door was squeezed
+     under the bulb. The buttons keep their size; when the row is too narrow, the title takes its own line above */
+  body.rail:not(.phone) header .hright{flex:0 0 auto}
+  body.rail:not(.phone) header .hleft{flex:1 1 300px; min-width:0}   /* wraps only when 300 px of title and the buttons do not fit */
+  body.rail:not(.phone) header #title{max-width:100%}
+}
+/* THE RAIL ON A SHORT TOUCH SCREEN (patches/rail-touch-short.py): the iPad mini sideways is 744 px tall and the
+   rail's column needs 807 - its places close up so the column fits, each still at least 46 px tall */
+@media (pointer:coarse) and (max-height:800px){
+  body.rail:not(.fs):not(.phone) #rail{gap:2px}
+  body.rail:not(.fs):not(.phone) #rail .re{padding-top:3px; padding-bottom:3px}
+}
 body.rail:not(.fs){padding-left:calc(148px + clamp(10px,3vw,28px))}
 body.rail:not(.fs) #rail{display:flex; flex-direction:column; gap:4px; position:fixed;
   left:0; top:0; bottom:0; width:148px; box-sizing:border-box; padding:18px 10px 14px;
@@ -9162,7 +9181,10 @@ if(new URLSearchParams(location.search).get("author")!=="1"
    desktop layout broken. Lesson embeds stay out — player mode is its own
    stripped face — and ?desktop=1 is the escape hatch. The 600 boundary is
    the tablet rule's own: phones end ~440, tablets start 744. */
-if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has("phone")
+/* THE PHONE BUILD IS FOR PHONE-SIZED SCREENS (David, 14 Oct 2026; patches/rail-on-tablet.py): the /phone/ path - the
+   Home Screen phone app - wakes it only on a screen whose short edge is under 600, so an iPad gets the computer's
+   build and the rail however it opens the app. ?phone stays the explicit look on any screen. */
+if((/\/phone\//.test(location.pathname)&&Math.min(screen.width,screen.height)<600)||new URLSearchParams(location.search).has("phone")
    ||(matchMedia("(pointer:coarse)").matches
       && Math.min(screen.width,screen.height)<600
       && !document.documentElement.classList.contains("player")
@@ -10427,15 +10449,11 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
 <dialog id="studioDlg" aria-label="Open in Handpan Studio">
   <h3>Open in Handpan Studio?</h3>
   <p class="hint">Do you want to open this composition in Handpan Studio?</p>
-  <!-- ASKED ONCE, THEN ONE BUTTON (David, 14 Oct 2026; patches/studio-two-ways.py): studioPaint shows #studioFirst until a way
-       is chosen on this device, then #studioOpen and the line that says where it goes -->
-  <div id="studioFirst" style="display:flex;flex-direction:column;align-items:stretch;gap:8px;margin:12px 0 0">
-    <button class="ctl on" id="studioGo" style="width:100%;justify-content:center">Open in the Handpan Studio web app</button>
-    <button class="ctl" id="studioApp" style="width:100%;justify-content:center">I have Handpan Studio installed on my computer</button></div>
+  <!-- THE WEB APP ONLY (David, 14 Oct 2026: "let's make the link from the embed player go to the web app ... take away
+       the other choice. We might bring it back later" - patches/studio-web-only.py; the two ways as they were: patches/studio-two-ways.py) -->
   <div class="row" style="align-items:center;gap:8px;margin:12px 0 0">
     <button class="ctl" id="studioNo">Not now</button><span class="spacer"></span>
-    <button class="ctl on" id="studioOpen">Open</button></div>
-  <p class="hint" id="studioWayLine" style="margin:8px 0 0"><span id="studioWayTxt"></span> · <a href="#" id="studioChange">change</a></p>
+    <button class="ctl on" id="studioGo">Open</button></div>
 </dialog>
 <dialog id="linkDlg">
   <h3><svg width="16" height="16" style="vertical-align:-2px"><use href="#is-bulb"/></svg> Lesson available</h3>
@@ -26975,8 +26993,9 @@ document.addEventListener("DOMContentLoaded",()=>{
    is still the front one a moment later, the web app opens in a new tab.
    NO LONGER GUESSED (David, 14 Oct 2026, patches/studio-two-ways.py): the empty tab claimed on the click took the focus
    itself, so the guess read "the app has it" and closed the tab - Safari showed its neighbour. A page cannot
-   learn whether an app is installed; the dialog asks once - the web app, or "I have Handpan Studio installed" -
-   and then opens that way (hps.studioway). What follows of the guess is the 2 Sep design, kept as history.
+   learn whether an app is installed; the dialog asked once - the web app, or "I have Handpan Studio installed" -
+   and since patches/studio-web-only.py (David, the same evening) Open goes to the web app alone. What follows of the guess
+   is the 2 Sep design, kept as history.
    THE WEB APP IS THE BETA FOR NOW (David, 14 Oct 2026: "for now, we use the beta
    version" - a masterthehandpan.com address replaces STUDIO_WEB when there is one):
    no key in the link - the beta keeps a tester's key from the first visit, and
@@ -27003,16 +27022,8 @@ function openInStudio(way){
   const q=lessonLinkQuery();
   const web=STUDIO_WEB+q+hash;
   const app="handpanstudio://open"+q+hash;
-  try{ localStorage.setItem("hps.studioway",way==="app"?"app":"web"); }catch(e){}   // one Open button from now on
-  if(way==="app"){ try{ location.href=app; }catch(e){} return; }
+  if(way==="app"){ try{ location.href=app; }catch(e){} return; }   // unused since patches/studio-web-only.py - kept for when the choice comes back
   window.open(web,"_blank","noopener");   // on the click itself, so it is the student's own tab
-}
-function studioWay(){ let w=null; try{ w=localStorage.getItem("hps.studioway"); }catch(e){} return w==="app"||w==="web"?w:null; }
-/* asked once per device: the two ways until one is chosen (or "change" is pressed), then one Open going that way */
-function studioPaint(choose){
-  const w=studioWay(), ask=!!choose||!w, show=(id,on)=>{ const e=$(id); if(e) e.style.display=on?"":"none"; };
-  show("studioFirst",ask); show("studioOpen",!ask); show("studioWayLine",!ask);
-  const t=$("studioWayTxt"); if(t&&w) t.textContent=w==="app"?"Opens in Handpan Studio on your computer":"Opens in the Handpan Studio web app";
 }
 window.addEventListener("message",e=>{
   const d=e.data; let t=null, r=null;
@@ -56657,13 +56668,10 @@ if(!PHONE||TABLET){
       const sb=document.createElement("button"); sb.id="studioBtn"; sb.className="ib"; sb.type="button";
       sb.title="Open this composition in Handpan Studio"; sb.setAttribute("aria-label",sb.title);
       sb.innerHTML='<svg width="15" height="15" aria-hidden="true"><use href="#is-bulb"/></svg>';
-      sb.addEventListener("click",()=>{ studioPaint(); openDlg($("studioDlg")); });
+      sb.addEventListener("click",()=>openDlg($("studioDlg")));
       const zoneB=document.querySelector("header .hside.hright"); if(zoneB) zoneB.appendChild(sb);
       $("studioNo").addEventListener("click",()=>$("studioDlg").close());
       $("studioGo").addEventListener("click",()=>{ $("studioDlg").close(); openInStudio("web"); });
-      $("studioApp").addEventListener("click",()=>{ $("studioDlg").close(); openInStudio("app"); });   /* patches/studio-two-ways.py */
-      $("studioOpen").addEventListener("click",()=>{ $("studioDlg").close(); openInStudio(studioWay()||"web"); });
-      $("studioChange").addEventListener("click",e=>{ e.preventDefault(); studioPaint(true); });
       /* THE FRAME TAKES THE KEYBOARD WHEN THE POINTER COMES OVER IT (2 Sep).
          Inside a lesson page the keys belong to Kajabi's document until the
          student has clicked in the app; space then scrolls the page or works
