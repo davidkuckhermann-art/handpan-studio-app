@@ -16235,7 +16235,7 @@ const SYN_GROUPS=[["sus","Sustained","held chords",[["held","Held"],["swell","Sw
   ["rhy","Rhythm","gates, stabs",[["pulse","Pulse"],["gate","Gate 16ths"],["off","Off-beat"],["s332","3-3-2"],["delay","Delay"],["delay2","Delay /2"]]],
   ["arp","Arpeggio","broken chords",[["arpu","Up"],["arpd","Down"],["arpud","Up-down"],["arpdu","Down-up"],["arpst","Stairs"],["arpth","Root pedal"],["arppk","Top pedal"],
     ["arpcv","Outside in"],["arpbr","Broken"],["arp332","Up 3-3-2"],["arpsy","Syncopated"]]],   /* eight more (patches/synth-2-lean.py) */
-  ["pan","Handpan","the pan's notes",[["pan","Handpan"]]]];
+  ["pan","Handpan","the pan's notes",[["pan","Handpan"],["panplus","Handpan plus"]]]];   /* plus: the gaps filled (patches/synth-follow-plus.py) */
 const SYN_STYLES=SYN_GROUPS.flatMap(([g,l,s,ch])=>ch.map(([y,cl])=>[y,g==="arp"?"Arp "+cl.toLowerCase():cl]));
 const SYN_RATES=[["8","8ths"],["16","16ths"]], SYN_OCTS=[["1","1 octave"],["2","2 octaves"],["3","3 octaves"]];   /* the arpeggio's Range (patches/arp-range.py) */
 /* SYNTH 2 IS THE MOVING SYNTH (David, 11 Oct 2026: "the 2nd synth can have less option and doesn't need all the pad sounds that
@@ -16298,7 +16298,7 @@ function synSteps(p2,rel,m,sec,at,pd){
       synRelease(t); synNote(Array.isArray(j)?base[Math.min(base.length-1,j[0])]+12*j[1]:L[Math.max(0,Math.min(n-1,j))],t,tk.s===0?.85:.7,six*(fast?1:2)*d*.95,atk); } }
 }   // Delay /2 (1 Oct 2026)   // Delay (30 Sep 2026)
 const SYN_VOICINGS=[["close","Close"],["open","Open"]];
-const SYN_FOLLOW_SHIFT={below:-12,around:0,above:12};   // Handpan: the pattern moved as one, as guitar and piano
+const SYN_FOLLOW_SHIFT={below:0,around:12,above:24};   /* each an octave higher (David, 14 Oct 2026: "Each register option should be one octave higher than it is now"; patches/synth-follow-plus.py) */   // Handpan: the pattern moved as one, as guitar and piano
 const SYN_LVL=0.06*1.69*0.5625;  // one chord's loudness (RMS) at volume 100 - every sound levelled to it; x1.69, what 130 on the squared slider gave (David, 9 Oct 2026: "the synth sounds should be louder (130 should be the new 100)"); then x0.5625, what 75 gave (David, 9 Oct 2026: "Synths need to go softer. What is now 75 should be 100")
 const SYN_NORM={};
 let SYN_LEVELLING=null;
@@ -16427,6 +16427,7 @@ function synPulse(p2,rel,m,sec,at,free){
   if(!free&&SYN_K==="syn"){ const W=wtBar("syn",sec,rel,m);   /* Synth 2 has no written bars: it plays its style (patches/synth-2.py) */ if(W){ synPlayWritten(p2,rel,m,sec,at,W); return; }
     const S=wtStyleAt("syn",sec,rel,m); if(S){ wtAsStyle("syn",S,()=>synPulse(p2,rel,m,sec,at,true)); return; } }   // a written bar plays what is written (30 Sep 2026)
   if(synStyle==="pan"){ synFollow(p2,at); return; }
+  if(synStyle==="panplus"){ synFollowPlus(p2,rel,m,sec,at); return; }   // Handpan plus (patches/synth-follow-plus.py)
   const rb=((rel%m.bp)+m.bp)%m.bp, pd=pulseDurOf(p2);
   if(!synReady()) return;
   if(SYN.ctx!==ctx||at<SYN.last-0.05||at-SYN.last>2.5){ SYN.chord=null; SYN.held=[]; SYN.ctx=ctx; SYN.vc=null; }   // a fresh start
@@ -16469,10 +16470,31 @@ function synFollow(p2,at){   // the handpan's basic pattern (panTones), the patt
   if(!synReady()) return;
   if(SYN.ctx!==ctx||at<SYN.last-0.05||at-SYN.last>2.5){ SYN.chord=null; SYN.held=[]; SYN.ctx=ctx; SYN.vc=null; }
   SYN.last=at; SYN.chord=null;
-  const evs=panTones(p2); if(!evs.length) return;
+  const evs=panTones(p2,true); if(!evs.length) return;   // the written pattern, not Live's variation (David, 14 Oct 2026; patches/synth-follow-plus.py)
   const sh=SYN_FOLLOW_SHIFT[synReg]!=null?SYN_FOLLOW_SHIFT[synReg]:0, P=synSound();
   synRelease(at);                                             // the last doubled notes give way
   for(const {midi,g,stac} of evs) synNote(midi+sh,at,Math.min(1,.8*g),stac?.15:2.5,Math.min(P.a,.05));
+}
+/* HANDPAN PLUS (David, 14 Oct 2026: "a pattern that is based on the handpan pattern but then fills the gaps with extra
+   notes of its own that sound nice ... maybe a higher pedal of the octave"; patches/synth-follow-plus.py): the written
+   strokes doubled as Handpan does; in a gap, on the eighths after the last stroke and for a bar at most, the chord's root
+   above the line (the high pedal) and the last note an octave up (the shimmer) in turn, each softer than the one before.
+   The written pattern only - never Live's variations - so every pass is the same and the staff can write it. */
+function synFollowPlus(p2,rel,m,sec,at){
+  if(!synReady()) return;
+  if(SYN.ctx!==ctx||at<SYN.last-0.05||at-SYN.last>2.5){ SYN.chord=null; SYN.held=[]; SYN.ctx=ctx; SYN.vc=null; SYN.fp=null; }
+  SYN.last=at; SYN.chord=null;
+  const sh=SYN_FOLLOW_SHIFT[synReg]!=null?SYN_FOLLOW_SHIFT[synReg]:0, P=synSound(), evs=panTones(p2,true);
+  if(evs.length){ synRelease(at);
+    for(const {midi,g,stac} of evs) synNote(midi+sh,at,Math.min(1,.8*g),stac?.15:2.5,Math.min(P.a,.05));
+    SYN.fp={p:p2,top:Math.max(...evs.map(e=>e.midi))+sh,g:Math.max(...evs.map(e=>e.g)),k:0}; return; }
+  const F=SYN.fp; if(!F||p2<=F.p||p2-F.p>m.bp) return;                     // nothing to answer, or a bar of silence
+  const step=m.sub%2===0?m.sub/2:m.sub; if((p2-F.p)%step) return;            // the eighths after the last stroke
+  const name=chordInForceAt(p2,sec,m), pcs=name&&chordPCs(name);
+  let midi=F.top+12;                                                         // the shimmer: the last note an octave up
+  if(F.k%2===0&&pcs){ const r=pcs[0]; midi=F.top+((((r-F.top)%12)+12)%12||12); }   // the high pedal: the chord's root above the line
+  while(midi>96) midi-=12;
+  synNote(midi,at,Math.min(1,.8*F.g)*0.42*Math.pow(0.78,F.k),0.35,Math.min(P.a,.02)); F.k++;
 }
 
 /* ---------------- the jam's rhythm track (8 Sep 2026; WGG's core since 11 Sep)
@@ -18304,7 +18326,8 @@ function SM(p,nm){ // section metrics: per-section meter/sub/barsPerRow over pie
      declared, every beat draws at sub exactly as it always did. */
   const base=Math.min(s.base||p.base||sub,sub);
   return {beats,sub,bp:beats*sub,bpr:s.barsPerRow||p.barsPerRow||1,base,den:(s.meter||p.meter)[1]||4,
-    groups:s.groups||p.groups||null};   // the bar's grouping in counts (7/8 as [3,2,2]) — see groupsOf
+    groups:s.groups||p.groups||null,
+    lead:(s.role==="pickup"&&s.was&&s.was.k0>0)?Math.round(s.was.k0/sub):0, cyc:(s.was&&(s.was.meter||p.meter)[0])||beats};   /* lead: the counts a pickup in the music's form has cut from its bar's front, cyc: that bar's counts - the count row numbers from there (David, 14 Oct 2026: "the header displays 1, 2, 3, even though this pickup starts on the second beat"; patches/pickup-counts.py) */   // the bar's grouping in counts (7/8 as [3,2,2]) — see groupsOf
 }
 /* THE SLOT LINES MARK THE GROOVE'S OWN GRID, not every drawn position (David,
    30 Aug: "when a piece has 8 notes per count in some sections, the slot lines
@@ -21291,9 +21314,9 @@ function evPitch(ev){
 /* THE HANDPAN'S PITCHED STROKES ON A PULSE, for guitar and piano to double (David, 29 Sep 2026: "Guitar and piano should
    double the Handpan notes (in their respective registers)"): open, staccato, overtone - not taks, slaps, muted or ghost
    notes, not a flam's grace; each with its pitch and its stroke's strength */
-function panTones(p2){
+function panTones(p2,home){   // home: the strokes the table holds, not this pass's variation (patches/synth-follow-plus.py)
   const out=[];
-  for(const ev of panEventsAt(p2)){   // what this pass plays (patches/pan-live.py)
+  for(const ev of (home?((C&&C.byPulse.get(p2))||[]):panEventsAt(p2))){   // what this pass plays (patches/pan-live.py), or with home what is written
     if(ev.v!=="field"||ev.flam||ev.bass||ev.run) continue;   // a jam's transition run is not the pattern (29 Sep 2026)
     const art=ev.art||"open"; if(art==="mute"||art==="ghost") continue;
     const midi=evPitch(ev.base!=null?Object.assign({},ev,{f:ev.base}):ev); if(midi==null) continue;   // the pattern's own note under a melody (29 Sep 2026)
@@ -24929,7 +24952,8 @@ const CARD_PRESETS={
       ["3-3-2 stabs","80s poly · 3-3-2","sy=s332 ss=poly sr=around sv=close",{}]]]]};
 /* SYNTH 2'S OWN PRESETS (David, 11 Oct 2026: "let's create some more that are taylored to its options"; patches/synth-2-lean.py):
    made from its six sounds, its moving styles and the pedals */
-CARD_PRESETS.syn2=[["Handpan",[["Pluck handpan","Pluck · the handpan's notes · above the pan","sy=pan ss=pluck sr=above sv=close",{}]]],   /* follows the pan (patches/synth2-follow.py) */
+CARD_PRESETS.syn2=[["Handpan",[["Pluck handpan","Pluck · the handpan's notes · above the pan","sy=pan ss=pluck sr=above sv=close",{}],
+["Pluck handpan plus","Pluck · the handpan's notes, its gaps filled · above the pan","sy=panplus ss=pluck sr=above sv=close",{}]]],   /* follows the pan (patches/synth2-follow.py) */
 ["Arpeggios",[
     ["Pluck arp","Pluck · up · 16ths · above","sy=arpu sa=16 so=2 ss=pluck sr=above sv=close",{}],
     ["Trance arp","Pluck · up 3-3-2 · 16ths · echoes","sy=arp332 sa=16 so=2 ss=pluck sr=above sv=open",{delay:"dot"}],
@@ -28982,7 +29006,7 @@ function buildCountRow(m,cls,bres){
         if(k%cstep===0){
           const q=k/cstep;
           sp.dataset.ct=r*m.bp+t;      // only a labelled tick can light
-          sp.textContent=q===0?String(b+1):(cden%2===0&&q===cden/2?"+":"·");
+          sp.textContent=q===0?String(((b+(m.lead||0))%(m.cyc||m.beats))+1):(cden%2===0&&q===cden/2?"+":"·");   // a pickup counts from where it starts (patches/pickup-counts.py)
           if(grouped&&q===0&&kk>0) sp.classList.add("cs");   // a count inside a group
         }
         cell.appendChild(sp);
