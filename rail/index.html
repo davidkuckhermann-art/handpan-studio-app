@@ -3079,7 +3079,8 @@ body.simple.lslive #tpBtn .sptpl,body.simple #tpBtn.noword .sptpl{display:none}
 /* step 2, the frame (patches/simple-phone-frame.py) */
 #sphTabs,#sphL,#sphPan,#sphGear{display:none}
 /* the tabs are pinned to the screen's foot and the page keeps their height free: every room fits above them by itself */
-body.phone.simple{padding-bottom:var(--sph-tabs,64px) !important}
+html{--sph-tabsh:calc(var(--sph-tabs-base,54px) + max(4px, calc(env(safe-area-inset-bottom) * .5)))}   /* the tabs' height: their own part measured, the home bar's part from CSS (patches/simple-phone-tabs-measure.py) */
+body.phone.simple{padding-bottom:var(--sph-tabsh) !important}
 body.phone.simple header > :not(.hside):not(#sphL):not(#sphPan):not(#sphGear),
 body.phone.simple header .hside > :not(#sjSaveBtn):not(#linkBtn){display:none !important}
 body.phone.simple header{gap:8px; align-items:center; min-height:40px}
@@ -3114,7 +3115,7 @@ body.phone.simple #sphTabs svg{width:26px; height:26px; fill:none; stroke:curren
 body.phone.simple #sphTabs button[aria-current="page"]{color:var(--amber-ink,#A9660A)}
 body.phone.simple #sphTabs button[aria-current="page"] svg{stroke-width:2.1}
 /* the pages: the app's dialogs, shown in place between the header and the tabs */
-body.phone.simple dialog.sphpage[open]{position:fixed !important; inset:var(--sph-top,60px) 0 var(--sph-bot,70px) 0 !important; width:auto !important; max-width:none !important;
+body.phone.simple dialog.sphpage[open]{position:fixed !important; inset:var(--sph-top,60px) 0 var(--sph-tabsh) 0 !important; width:auto !important; max-width:none !important;
   height:auto !important; max-height:none !important; margin:0 !important; border:none !important; border-radius:0 !important; box-shadow:none !important;
   transform:none !important; z-index:4; background:var(--paper,var(--bg))}
 html.sphpaged body.phone.simple header #sjSaveBtn{display:none !important}
@@ -9154,12 +9155,17 @@ if(/\/phone\//.test(location.pathname)||new URLSearchParams(location.search).has
    overrides the stored choice for a look. */
 /* SIMPLE MODE (David, 8 Oct 2026; SIMPLE-MODE-PLAN.md; patches/simple-switch.py): set in the block below */
 var SIMPLE=false;
+/* A STORE ALREADY IN USE (David, 14 Oct 2026: "it should remember my selection from previous use of the app. If the app
+   is opened for the first time, the dialog can show" - patches/app-style-remembered.py): any hps.* key but the access keys,
+   which a gate writes before anything was used (the beta's first visit stores hps.sw.* and reloads). */
+function hpsStoreUsed(){ try{ for(var i=0;i<localStorage.length;i++){ var k=String(localStorage.key(i));
+  if(k.indexOf("hps.")===0&&!/^hps\.(k|k\.test|sw\.[a-z]+)$/.test(k)) return true; } }catch(e){} return false; }
 /* SIMPLE ON THE PHONE (SIMPLE-MODE-PLAN.md §7 step 1; patches/simple-phone-switch.py; David, 14 Oct 2026: "start on
    simple"): the phone build reads the same style, without the rail. Never chosen: a NEW phone (no hps.* key yet)
    starts on Simple, in the Jam; one already in use keeps Full - stored, so decided once. Not a tablet, the player or a frame. */
 if(document.body.dataset.phone&&!document.body.classList.contains("tablet")&&!document.documentElement.classList.contains("player")&&window===window.top)(function(){
   try{ var st=localStorage.getItem("hps.appstyle");
-    if(st==null){ var used=false; for(var i=0;i<localStorage.length;i++){ if(String(localStorage.key(i)).indexOf("hps.")===0){ used=true; break; } }
+    if(st==null){ var used=hpsStoreUsed();
       st=used?"full":"simple"; localStorage.setItem("hps.appstyle",st); if(!used) localStorage.setItem("hps.room","jam"); }
     SIMPLE=st==="simple"; }catch(e){}
   var q=new URLSearchParams(location.search).get("simple"); if(q==="1") SIMPLE=true; else if(q==="0") SIMPLE=false;
@@ -9176,7 +9182,9 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
   if(SIMPLE){ railOn=true; document.body.classList.add("simple"); document.documentElement.classList.add("simple"); }
   /* THE FIRST LAUNCH (patches/simple-first-launch.py): asked while the style has never been set - on the desktop,
      outside a frame, not during a ?simple= look - and decided here, so the welcome is the first thing painted */
-  try{ if(localStorage.getItem("hps.appstyle")==null&&simpleQ==null&&window===window.top) document.documentElement.classList.add("askstyle"); }catch(e){}
+  try{ if(localStorage.getItem("hps.appstyle")==null&&simpleQ==null&&window===window.top){
+    if(hpsStoreUsed()) localStorage.setItem("hps.appstyle","full");   /* in use before the question existed: Full, as it was */
+    else document.documentElement.classList.add("askstyle"); } }catch(e){}
   if(railOn){ document.body.classList.add("rail"); document.documentElement.classList.add("rail");
     /* THE LIGHT NOTATION STYLE rides the rail (22 Sep): hps.nstyle, default light; ?light=1|0 to look */
     var lightOn=true; try{ lightOn=(localStorage.getItem("hps.nstyle")||"light")==="light"; }catch(e){}
@@ -56980,7 +56988,10 @@ window.addEventListener("load",()=>setTimeout(()=>{ try{ rhyPrefetch(); }catch(e
 /* SIMPLE MODE'S SWITCH AND SETTINGS (SIMPLE-MODE-PLAN.md; patches/simple-switch.py). A style is stored and the page
    reloads in place - the room and the piece come back by themselves - so no half-switched state can exist. */
 function setAppStyle(v){ try{ localStorage.setItem("hps.appstyle",v); }catch(e){}
-  const u=new URL(location.href); u.searchParams.delete("simple"); location.replace(u.href); }
+  /* a REAL reload: location.replace to the same address with a #fragment (a shared piece, the lesson bulb's #p=) is a
+     jump within the page and loads nothing - Simple did not take (patches/app-style-remembered.py) */
+  const u=new URL(location.href); u.searchParams.delete("simple");
+  try{ history.replaceState(null,"",u.href); }catch(e){} location.reload(); }
 function simplePaint(){
   document.querySelectorAll("#stylePills button").forEach(b=>b.setAttribute("aria-pressed",(b.dataset.style==="simple")===SIMPLE?"true":"false"));
   const lr=$("ssListenRow");
@@ -57400,6 +57411,7 @@ function sphPlace(){
   document.documentElement.style.setProperty("--sph-top",top+"px");
   document.documentElement.style.setProperty("--sph-bot",bot+"px");
   document.documentElement.style.setProperty("--sph-tabs",Math.round(t.getBoundingClientRect().height)+"px");
+  document.documentElement.style.setProperty("--sph-tabs-base",Math.round(t.getBoundingClientRect().height-(parseFloat(getComputedStyle(t).paddingBottom)||0))+"px");   /* the part that does not change (patches/simple-phone-tabs-measure.py) */
 }
 function sphPaint(){
   if(!sphOn()) return;
