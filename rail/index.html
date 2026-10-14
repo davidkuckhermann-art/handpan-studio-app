@@ -1649,6 +1649,12 @@ body:not(.phone):not(.tablet) .pop.card:has(>.cwleft) .cwgrid .gr span{font:700 
 body:not(.phone):not(.tablet) .pop.card:has(>.cwleft) .cwgrid .gr i{height:18px; border-radius:4px; background:var(--rule2); display:grid; place-items:center; font:800 9.5px Figtree,"Helvetica Neue",Arial,sans-serif; font-style:normal; color:#fff}
 body:not(.phone):not(.tablet) .pop.card:has(>.cwleft) .cwgrid .gr i.q{background:#fff; border:1px solid var(--rule2)}
 body:not(.phone):not(.tablet) .pop.card:has(>.cwleft) .cwgrid .gr i.x{background:var(--ink2)}
+body:not(.phone):not(.tablet) .pop.card:has(>.cwleft) .cwdrm{padding:4px 10px}
+body:not(.phone):not(.tablet) .pop.card:has(>.cwleft) .cwpanrow{display:flex; align-items:center; gap:12px; margin:2px 10px 6px; padding:10px 12px; border:1px solid var(--rule); border-radius:10px}
+body:not(.phone):not(.tablet) .pop.card:has(>.cwleft) .cwpanrow b{font:800 13px Figtree,"Helvetica Neue",Arial,sans-serif}
+body:not(.phone):not(.tablet) .pop.card:has(>.cwleft) .cwpanrow .ctl{margin-left:auto}
+}
+/* ...FOR EVERY WIDTH (David, 14 Oct 2026: "The percussion menu is not implemented properly on mobile"; patches/perc-play-phone.py): these were inside the desktop card's @media (min-width:960px) block, so the phone and the tablet drew the page unstyled */
 /* THE PERCUSSION'S INSTRUMENTS (patches/perc-presets-mixer.py): the groove's grid, then a row per instrument */
 .pcmix .ttl{display:flex; justify-content:space-between; align-items:baseline}
 .pcmix .ttl em{font-style:normal; letter-spacing:0; text-transform:none; font-weight:600; font-size:11px}
@@ -1671,11 +1677,6 @@ body:not(.phone):not(.tablet) .pop.card:has(>.cwleft) .cwgrid .gr i.x{background
 .pcmix .pcrow .mxlv{grid-column:3; grid-row:1; align-self:end; position:relative; height:3px; margin:0 1px 5px; border-radius:2px; background:var(--rule2); overflow:hidden; pointer-events:none}   /* the instrument's live level under its slider, as the mixer's (patches/perc-meters.py) */
 .pcmix .pcrow .mxlv i{position:absolute; left:0; top:0; bottom:0; width:var(--lv,0%); background:var(--ink3)}
 .pcmix .pcrow .mxlv.hot i{background:#B8930A}
-body:not(.phone):not(.tablet) .pop.card:has(>.cwleft) .cwdrm{padding:4px 10px}
-body:not(.phone):not(.tablet) .pop.card:has(>.cwleft) .cwpanrow{display:flex; align-items:center; gap:12px; margin:2px 10px 6px; padding:10px 12px; border:1px solid var(--rule); border-radius:10px}
-body:not(.phone):not(.tablet) .pop.card:has(>.cwleft) .cwpanrow b{font:800 13px Figtree,"Helvetica Neue",Arial,sans-serif}
-body:not(.phone):not(.tablet) .pop.card:has(>.cwleft) .cwpanrow .ctl{margin-left:auto}
-}
 @media (min-width:960px){
 body:not(.phone):not(.tablet) .pop.card:has(>:is(.cpresets,.cwleft)){display:grid!important; width:min(1180px,calc(100vw - 32px)); height:min(810px,calc(100vh - 32px)); max-height:none; padding:0; overflow:hidden;
   grid-template-columns:340px minmax(0,1fr) minmax(0,1fr); grid-template-rows:auto auto auto minmax(0,1fr) auto;
@@ -1894,6 +1895,7 @@ body.phone:not(.tablet) .pop.card:has(>.dbar){top:calc(env(safe-area-inset-top,0
 /* the open category's variations: a list, a name and its line beside it, scrolling inside itself */
 .pop .cpage :is([data-gcb]>.pal,[data-pgb]>.pal,[data-bgb]>.bsgrid,[data-kgb]>.pal,[data-rgb]>.pal,.pal:has(>[data-sy])){display:block; position:relative; flex:0 1 auto!important; min-height:96px; overflow-y:auto;
   overscroll-behavior:contain; padding:0; margin:2px 10px 8px; background:none; border:1px solid var(--rule); border-radius:10px; min-width:0}
+.pop .cpage :is([data-gcb]>.pal,[data-pgb]>.pal,[data-bgb]>.bsgrid,[data-kgb]>.pal,[data-rgb]>.pal,.pal:has(>[data-sy])):not(:has(>:nth-child(3))){min-height:0}   /* a list of two is as high as its two rows (David, 14 Oct 2026: "only as high as necessary for the 2 styles"; patches/card-list-own-height.py) */
 .pop .cpage :is([data-gcb]>.pal,[data-pgb]>.pal,[data-bgb]>.bsgrid,[data-kgb]>.pal,[data-rgb]>.pal,.pal:has(>[data-sy]))>.bwseg{display:flex; align-items:baseline; gap:8px; width:100%; text-align:left;
   padding:8px 11px; border-radius:0; border-bottom:1px solid var(--rule2); background:none; box-shadow:none; white-space:nowrap;
   font:700 12.5px/1.25 Figtree,"Helvetica Neue",Arial,sans-serif; color:var(--ink)}
@@ -13331,6 +13333,16 @@ function sinkWitness(el){
     } else close();
   },250);
 }
+/* A FRESH STREAM AFTER iOS PAUSED THE SINK (David, 14 Oct 2026: "as soon as I start tabbing out of the app ... weird
+   glitches regarding the pitch"; patches/sink-fresh-stream.py): the element would play the backlog its paused stream
+   gathered, fast - so it is given a new MediaStreamDestination instead, and starts from now. A test: it notes itself. */
+function sinkFresh(why){
+  if(!iosSink||iosSink==="failed"||!ctx) return;
+  try{ const dest=ctx.createMediaStreamDestination(); try{ master.disconnect(); }catch(e){} master.connect(dest);
+    iosSink.srcObject=dest.stream; iosSink._stale=false; sinkArm("play"); iosSink.play().catch(()=>{});
+    audioNote("sink: a fresh stream ("+why+") - the paused stream's backlog dropped [fix test]"); }catch(e){ audioNote("sink: a fresh stream failed - "+e+" [fix test]"); }
+}
+document.addEventListener("visibilitychange",()=>{ try{ if(document.visibilityState==="visible"&&iosSink&&iosSink!=="failed"&&!iosSink.paused&&soundActive()) sinkFresh("back on screen"); }catch(e){} });
 const PHONE_SINK_OFF=false;
 function ensureSink(){
   setAudioSession();
@@ -13339,7 +13351,7 @@ function ensureSink(){
   if((!IOS&&!FRAMED_SAFARI)||!ctx) return;
   if(AUDIO_ROUTE==="direct"){ if(!ensureSink.noted){ ensureSink.noted=true; audioNote("audio route: direct (test) [diagnostic]"); } return; }
   if(iosSink&&iosSink!=="failed"){
-    if(iosSink.paused){ sinkArm("play"); iosSink.play().catch(()=>{}); }
+    if(iosSink.paused){ if(iosSink._stale) sinkFresh("started again after iOS paused it"); else { sinkArm("play"); iosSink.play().catch(()=>{}); } }
     return; }
   if(iosSink==="failed") iosSink=null;
   try{ const dest=ctx.createMediaStreamDestination(); const el=new Audio();
@@ -13359,6 +13371,7 @@ function ensureSink(){
          own sync — an armed token nobody spends is one that swallows the
          student's NEXT press, four seconds later */
       if(sinkOurs("pause")) return;
+      el._stale=true;   // its stream gathers a backlog from now on (patches/sink-fresh-stream.py)
       audioNote("iOS paused the sink"+(document.visibilityState==="hidden"?" (screen off)":" (on screen)"));
       if(!soundActive()||document.visibilityState!=="hidden") return;
       const at=(lastPaint>=0)?lastPaint:loopedPulse(nextPulse);
@@ -24746,7 +24759,7 @@ function gtrCabRowHTML(){ const cl=gtrSound==="clean"||gtrSound==="black", T=cl?
   return '<div class="ttl">Amp</div><div class="pal bwsw gsty" style="grid-template-columns:repeat('+ks.length+',1fr)">'
     +ks.map(q=>'<button class="bwseg'+(q===cur?' on':'')+'" data-gcab="'+q+'">'+(q==="off"?"Off":T[q].l)+'</button>').join("")+'</div>'; }
 function cardPlaySync(pop){ cardPreviewPaint(); cpLater(pop);
-  pop.querySelectorAll(".frdm").forEach(f=>{ const a=f.dataset.fra, on=pop.querySelector('.cpage [data-'+a+'].on'), v=on?+on.getAttribute("data-"+a):0;
+  pop.querySelectorAll(".frdm:not([data-frs])").forEach(f=>{ const a=f.dataset.fra, on=pop.querySelector('.cpage [data-'+a+'].on'), v=on?+on.getAttribute("data-"+a):0;
     f.querySelector("input").value=v; f.querySelector(".frval").textContent=(a==="hlv"?FREEDOM_SAYS_PAN:FREEDOM_SAYS)[v]||"";
     f.querySelector("input").disabled=!!pop.querySelector('.cpage [data-'+a+']:disabled'); });
   [["gtr","#gtrLeadBox"],["pno","#pnoLeadBox"],["bass","#bassPuBox"]].forEach(([k,s])=>{ const b=pop.querySelector(s); if(b) b.hidden=!puShown(k); });   // (patches/freedom-five-levels.py)   // greyed with its buttons - the handpan's outside the jam (patches/pan-freedom.py)
@@ -24757,7 +24770,8 @@ function cardPlaySync(pop){ cardPreviewPaint(); cpLater(pop);
     const on=l.querySelector(".on"); if(!on) return; const top=on.offsetTop-l.offsetTop, h=on.offsetHeight;   // the chosen row in view
     if(top<l.scrollTop||top+h>l.scrollTop+l.clientHeight) l.scrollTop=Math.max(0,top-(l.clientHeight-h)/2); }); }
 document.addEventListener("input",ev=>{ const r=ev.target.closest&&ev.target.closest(".pop .frdm input"); if(!r) return;
-  const f=r.closest(".frdm"), pop=r.closest(".pop"), b=pop.querySelector('.cpage [data-'+f.dataset.fra+'="'+r.value+'"]');
+  const f=r.closest(".frdm"); if(f.dataset.frs) return;   // a synth's own (patches/synth-freedom-slider.py)
+  const pop=r.closest(".pop"), b=pop.querySelector('.cpage [data-'+f.dataset.fra+'="'+r.value+'"]');
   if(b&&!b.classList.contains("on")&&!b.disabled) b.click(); cardPlaySync(pop); });
 document.addEventListener("click",ev=>{ const pop=ev.target.closest&&ev.target.closest(".pop.card"); if(pop&&ev.target.closest(".cpage")) cardPlaySync(pop); });   // after the cards' own handlers (the bass's box redraws)
 /* THE VARIATION PREVIEWS (David, 2 Oct 2026: "If a jam is running, the variation should be previewed inside the ongoing
@@ -26084,7 +26098,7 @@ function sinkSync(){
   if(!iosSink||iosSink==="failed") return;
   const active=soundActive();
   try{
-    if(active&&iosSink.paused){ sinkArm("play"); iosSink.play().catch(()=>{}); }
+    if(active&&iosSink.paused){ if(iosSink._stale) sinkFresh("the transport after iOS paused it"); else { sinkArm("play"); iosSink.play().catch(()=>{}); } }
     else if(!active&&!iosSink.paused){
       if(Date.now()<sinkHoldUntil) return;      // a tapped note is still ringing
       sinkArm("pause"); iosSink.pause();
@@ -53436,7 +53450,7 @@ function boot(){
         +synGroups(K).map(([g,l,s,ch])=>'<div data-sygb="'+g+'"'+(g===synGroupOf(synStyle)?'':' hidden')+'><div class="ttl">Variation</div>'+seg(ch,"sy",synStyle)
           +(g==="arp"?'<div class="ttl">Rate</div>'+seg(SYN_RATES,"sa",synRate," two")+'<div class="ttl">Range</div>'+seg(SYN_OCTS,"so",synOct):'')+'</div>').join("")
         +'<div class="ttl">Register</div>'+seg(PNO_REGS,"sr",synReg)
-        +'<div class="ttl">Freedom</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(5,1fr)">'+FREEDOM_STEPS.map(([k,l,tt])=>'<button class="bwseg'+(+k===synFree?' on':'')+'" data-sf="'+k+'" title="'+tt+'">'+l+'</button>').join("")+'</div>'   /* the piano's five steps (patches/synth-freedom.py) */
+        +'<div class="frdm" data-frs="1"><div class="ttl"><span>Freedom</span><em>how far a variation goes</em></div><input type="range" min="0" max="4" step="1" value="'+synFree+'" aria-label="Freedom" data-sfr><div class="frlr"><span>Steady</span><b class="frval">'+FREEDOM_SAYS[synFree]+'</b><span>Free</span></div></div>'   /* the other instruments' slider (patches/synth-freedom-slider.py) */
         +'<div class="ttl">Voicing</div>'+seg(SYN_VOICINGS,"sv",synVc," two")
         +'<div class="ttl">Brightness</div>'
         +'<div class="vol full"><input type="range" id="synBriR" min="-100" max="100" step="5" value="'+briPos(synBright)+'" aria-label="Brightness"><span class="val" id="synBriV">'+synBright+'%</span></div>'
@@ -53450,14 +53464,16 @@ function boot(){
         { const gb=ev.target.closest("[data-syg]");   /* a Style tile opens its variations and chooses nothing; one variation is chosen at once (patches/synth-steps.py) */
           if(gb){ const g=synGroups(K).find(x=>x[0]===gb.dataset.syg); if(!g) return; tileGroupOpen(pop,"syg","sygb",g[0]);
             if(g[3].length===1){ const one=pop.querySelector('[data-sy="'+g[3][0][0]+'"]'); if(one&&!one.classList.contains("on")) one.click(); } return; } }
-        const b=ev.target.closest("[data-ss],[data-sy],[data-sr],[data-sv],[data-sa],[data-so],[data-sf]"); if(!b) return;
+        const b=ev.target.closest("[data-ss],[data-sy],[data-sr],[data-sv],[data-sa],[data-so]"); if(!b) return;
         const [key,store,set]=b.dataset.ss!=null?["ss","hps."+K+"sound",v=>{ synSnd=v; }]:b.dataset.sy!=null?["sy","hps."+K+"style",v=>{ synStyle=v; }]
-          :b.dataset.sf!=null?["sf","hps."+K+"free",v=>{ synFree=+v; }]:b.dataset.sr!=null?["sr","hps."+K+"reg",v=>{ synReg=v; }]:b.dataset.sa!=null?["sa","hps."+K+"rate",v=>{ synRate=v; }]:b.dataset.so!=null?["so","hps."+K+"oct",v=>{ synOct=v; }]:["sv","hps."+K+"voicing",v=>{ synVc=v; }];
+          :b.dataset.sr!=null?["sr","hps."+K+"reg",v=>{ synReg=v; }]:b.dataset.sa!=null?["sa","hps."+K+"rate",v=>{ synRate=v; }]:b.dataset.so!=null?["so","hps."+K+"oct",v=>{ synOct=v; }]:["sv","hps."+K+"voicing",v=>{ synVc=v; }];
         const v=b.dataset[key]; as(()=>{ set(v); try{ localStorage.setItem(store,v); }catch(e){}
         pop.querySelectorAll("[data-"+key+"]").forEach(x=>x.classList.toggle("on",x.dataset[key]===v));
         if(key==="ss"){ $("synDesc").textContent=synSound().d; if(!synSound().edm) pop._edmOpen=false; synSndPaint(pop); }
         if(key==="sy") tileGroupOpen(pop,"syg","sygb",synGroupOf(v));   /* its tile follows a style a preset pressed (patches/synth-steps.py) */   // the EDM row follows (patches/edm-submenu-trap.py)
         SYN.chord=null; SYN.vc=null; }); paintSyn(); });   // the next count sounds the new choice
+      pop.addEventListener("input",ev=>{ const r=ev.target.closest&&ev.target.closest("[data-sfr]"); if(!r) return; const v=+r.value;   /* Freedom (patches/synth-freedom-slider.py) */
+        as(()=>{ synFree=v; try{ localStorage.setItem("hps."+K+"free",String(v)); }catch(e){} }); const w=r.parentElement.querySelector(".frval"); if(w) w.textContent=FREEDOM_SAYS[v]||""; });
       openPop(pop,sb);
       { const d=$("synDesc"); if(d){ const keep=d.textContent; let mx=0;   // the tallest description, so the card keeps one size (30 Sep 2026)
           for(const p of SYN_PRE){ d.textContent=p.d; mx=Math.max(mx,d.offsetHeight); }
