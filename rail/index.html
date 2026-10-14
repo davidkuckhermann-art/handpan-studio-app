@@ -13339,7 +13339,7 @@ function sinkWitness(el){
 function sinkFresh(why){
   if(!iosSink||iosSink==="failed"||!ctx) return;
   try{ const dest=ctx.createMediaStreamDestination(); try{ master.disconnect(); }catch(e){} master.connect(dest);
-    iosSink.srcObject=dest.stream; iosSink._stale=false; sinkArm("play"); iosSink.play().catch(()=>{});
+    iosSink.srcObject=dest.stream; iosSink._idle=false; sinkArm("play"); iosSink.play().catch(()=>{});
     audioNote("sink: a fresh stream ("+why+") - the paused stream's backlog dropped [fix test]"); }catch(e){ audioNote("sink: a fresh stream failed - "+e+" [fix test]"); }
 }
 document.addEventListener("visibilitychange",()=>{ try{ if(document.visibilityState==="visible"&&iosSink&&iosSink!=="failed"&&!iosSink.paused&&soundActive()) sinkFresh("back on screen"); }catch(e){} });
@@ -13351,7 +13351,7 @@ function ensureSink(){
   if((!IOS&&!FRAMED_SAFARI)||!ctx) return;
   if(AUDIO_ROUTE==="direct"){ if(!ensureSink.noted){ ensureSink.noted=true; audioNote("audio route: direct (test) [diagnostic]"); } return; }
   if(iosSink&&iosSink!=="failed"){
-    if(iosSink.paused){ if(iosSink._stale) sinkFresh("started again after iOS paused it"); else { sinkArm("play"); iosSink.play().catch(()=>{}); } }
+    if(iosSink.paused){ if(!iosSink._idle) sinkFresh("started again - it was paused while sound went on"); else { iosSink._idle=false; sinkArm("play"); iosSink.play().catch(()=>{}); } }
     return; }
   if(iosSink==="failed") iosSink=null;
   try{ const dest=ctx.createMediaStreamDestination(); const el=new Audio();
@@ -13371,7 +13371,7 @@ function ensureSink(){
          own sync — an armed token nobody spends is one that swallows the
          student's NEXT press, four seconds later */
       if(sinkOurs("pause")) return;
-      el._stale=soundActive();   // only a pause in the middle of sound leaves a backlog to drop - one after a stop would make the restart's first notes pile up (David, 14 Oct 2026; patches/sink-fresh-mid-play.py)
+      /* nothing marked here: only the app's own idle pause is clean (patches/sink-fresh-unless-idle.py) */
       audioNote("iOS paused the sink"+(document.visibilityState==="hidden"?" (screen off)":" (on screen)"));
       if(!soundActive()||document.visibilityState!=="hidden") return;
       const at=(lastPaint>=0)?lastPaint:loopedPulse(nextPulse);
@@ -26098,10 +26098,10 @@ function sinkSync(){
   if(!iosSink||iosSink==="failed") return;
   const active=soundActive();
   try{
-    if(active&&iosSink.paused){ if(iosSink._stale) sinkFresh("the transport after iOS paused it"); else { sinkArm("play"); iosSink.play().catch(()=>{}); } }
+    if(active&&iosSink.paused){ if(!iosSink._idle) sinkFresh("the transport - it was paused while sound went on"); else { iosSink._idle=false; sinkArm("play"); iosSink.play().catch(()=>{}); } }
     else if(!active&&!iosSink.paused){
       if(Date.now()<sinkHoldUntil) return;      // a tapped note is still ringing
-      sinkArm("pause"); iosSink.pause();
+      sinkArm("pause"); iosSink._idle=true; iosSink.pause();   // the one clean pause: the sound has stopped (patches/sink-fresh-unless-idle.py)
     }
   }catch(e){}
 }
