@@ -13466,6 +13466,16 @@ function ensureCtx(){
       sinkArm("play"); iosSink.play().catch(()=>{}); } };
 }
 let live=[];
+/* A FINISHED NOTE IS UNPLUGGED (David, 14 Oct 2026, on his iPhone: "a stutter until playback stops almost completely"
+   after minutes of playing - "build the unplug fix"; patches/unplug-finished-notes.py). A note's chain left plugged in
+   is pulled by the render thread every quantum until the garbage collector frees it; thousands of them starve the
+   engine. So when all of a note's sources have ended, its last own node `g` is disconnected (the chain above it leaves
+   the graph with it), and the per-note pump gain it fed (pumpOut's, marked __pump) once the last note using it is done. */
+function voicePlug(g,dest){ g.connect(dest); if(dest&&dest.__pump){ dest.__users=(dest.__users||0)+1; g.__out=dest; } return dest; }
+function voiceDone(g,srcs){ let n=srcs.length;
+  const done=()=>{ if(--n>0) return; const i=live.indexOf(g); if(i>=0) live.splice(i,1);
+    try{ g.disconnect(); }catch(e){} const o=g.__out; if(o&&--o.__users<=0){ try{ o.disconnect(); }catch(e){} } };
+  for(const s of srcs) s.onended=done; }
 /* ── TWO THINGS THE PAN MAY NOT DO, WHATEVER ASKS IT TO ─────────────────────
    David has now been hit twice by a chord nobody played — once when turning
    the pan's sound on from the popup, once when re-enabling the popups
@@ -13519,7 +13529,7 @@ function fire(buf,at,gain,rate){
   g.__at=st;
   src.start(st);
   live.push(g); if(live.length>120) live.splice(0,40);
-  src.onended=()=>{ const i=live.indexOf(g); if(i>=0) live.splice(i,1); };
+  voiceDone(g,[src]);
 }
 
 /* ---------------- the jam's bass (9 Sep) --------------------------------
@@ -13664,14 +13674,14 @@ function fireBassSmp(k,midi,st,ring,duck,art,dur,vel){
   else { const back=Math.min(0.09,ring*0.2);
   env.gain.setValueAtTime(lvl*duck,st); if(duck<1) env.gain.linearRampToValueAtTime(lvl,st+back);   // the strike gives way to the crowd
   env.gain.setValueAtTime(lvl,Math.max(st+back,end-0.08)); env.gain.linearRampToValueAtTime(0,end); }
-  if(lp){ src.connect(lp); lp.connect(env); } else src.connect(env); env.connect(ch); ch.connect(g); g.connect(bassOutAt(st));
+  if(lp){ src.connect(lp); lp.connect(env); } else src.connect(env); env.connect(ch); ch.connect(g); voicePlug(g,bassOutAt(st));
   if(bassLast&&bassLast.ctx===ctx&&bassLast.st<st&&bassLast.end>st){
     bassLast.ch.gain.setValueAtTime(1,st);
     bassLast.ch.gain.linearRampToValueAtTime(0,st+BASS_DAMP); }
   bassLast={ctx,ch,st,end};
   g.__at=st; src.start(st); src.stop(end+0.05);
   live.push(g); if(live.length>120) live.splice(0,40);
-  src.onended=()=>{ const i=live.indexOf(g); if(i>=0) live.splice(i,1); };
+  voiceDone(g,[src]);
 }
 /* THE EDM SOUNDS (David, 9 Oct 2026; patches/bass-edm-sounds.py) - built as Electro is, below */
 const BASS_EDM_SND=new Set(["electro","s808","reese"]);
@@ -13691,7 +13701,7 @@ function fireBass808(midi,st,ring,duck,art,dur,pk){
   if(duck<1) env.gain.linearRampToValueAtTime(lvl,st+Math.min(0.09,len*0.2));
   env.gain.setTargetAtTime(0,Math.max(st+0.06,duck<1?st+Math.min(0.09,len*0.2):0),E.decay);   // it dies away as a bass drum does (patches/edm-submenu-trap.py) - from when the duck has given the note back: a ramp after it would replace the decay and hold the note (patches/808-decay-fix.py)
   env.gain.setTargetAtTime(0,Math.max(st+0.07,end-0.04),0.012);  // and its end
-  sh.connect(env); env.connect(ch); ch.connect(g); g.connect(bassOutAt(st));
+  sh.connect(env); env.connect(ch); ch.connect(g); voicePlug(g,bassOutAt(st));
   if(bassLast&&bassLast.ctx===ctx&&bassLast.st<st&&bassLast.end>st){ bassLast.ch.gain.setValueAtTime(1,st); bassLast.ch.gain.linearRampToValueAtTime(0,st+BASS_DAMP); }
   bassLast={ctx,ch,st,end,midi,snd:"s808"};
   const oscs=[], osc=(mul,amp)=>{ const o=ctx.createOscillator(); o.type="sine";
@@ -13701,7 +13711,7 @@ function fireBass808(midi,st,ring,duck,art,dur,pk){
   osc(1,0.9); osc(2,0.12);
   g.__at=st; for(const o of oscs){ o.start(st); o.stop(end+0.05); }
   live.push(g); if(live.length>120) live.splice(0,40);
-  oscs[0].onended=()=>{ const i=live.indexOf(g); if(i>=0) live.splice(i,1); };
+  voiceDone(g,oscs);
 }
 /* THE REESE: four saws detuned against each other and a sine under them, through a low-pass that sways slowly, driven gently */
 const BASS_REESE={gain:0.589,det:18,lp:6,q:1.4,lfo:0.35,drive:1.5};   // gain: measured as the 808's (+4.6 dB at 1)
@@ -13718,7 +13728,7 @@ function fireBassReese(midi,st,ring,duck,art,dur,pk){
   env.gain.setValueAtTime(0,st); env.gain.linearRampToValueAtTime(lvl*duck,st+0.006);
   if(duck<1) env.gain.linearRampToValueAtTime(lvl,st+Math.min(0.09,len*0.2));
   env.gain.setValueAtTime(lvl,Math.max(st+0.007,end-0.05)); env.gain.linearRampToValueAtTime(0,end);
-  lp.connect(sh); sh.connect(env); env.connect(ch); ch.connect(g); g.connect(bassOutAt(st));
+  lp.connect(sh); sh.connect(env); env.connect(ch); ch.connect(g); voicePlug(g,bassOutAt(st));
   if(bassLast&&bassLast.ctx===ctx&&bassLast.st<st&&bassLast.end>st){ bassLast.ch.gain.setValueAtTime(1,st); bassLast.ch.gain.linearRampToValueAtTime(0,st+BASS_DAMP); }
   bassLast={ctx,ch,st,end};
   const oscs=[lfo], osc=(type,det,amp)=>{ const o=ctx.createOscillator(); o.type=type; o.frequency.value=f; o.detune.value=det;
@@ -13726,7 +13736,7 @@ function fireBassReese(midi,st,ring,duck,art,dur,pk){
   osc("sawtooth",-E.det,0.3); osc("sawtooth",E.det,0.3); osc("sawtooth",-E.det/3,0.25); osc("sawtooth",E.det/3,0.25); osc("sine",0,0.5);
   g.__at=st; for(const o of oscs){ o.start(st); o.stop(end+0.05); }
   live.push(g); if(live.length>120) live.splice(0,40);
-  oscs[1].onended=()=>{ const i=live.indexOf(g); if(i>=0) live.splice(i,1); };
+  voiceDone(g,oscs);
 }
 /* THE PUMP (David, 11 Oct 2026: "do I have a switch for the pump?" - "build the pump setting in the band card";
    patches/pump-setting.py; it replaces the bass's own pump of 9 Oct, patches/bass-edm-sounds.py). ONE SETTING, ONE GAIN
@@ -13756,7 +13766,7 @@ function pumpBeats(st,end){ const C=PUMP_CLK; if(!C||C.ctx!==ctx||!(C.pd>0)||!C.
   return null; }
 function pumpOut(k,st,len){ const dest=fxIn(k), lv=pumpNow(); if(!lv||!PUMP_VOICES.has(k)) return dest;
   const end=st+Math.max(0,len||0)+0.2, T=pumpBeats(st,end); if(!T) return dest;
-  const n=ctx.createGain(), F=PUMP_FLOOR[lv], tau=i=>PUMP_TAU*Math.max(0.05,T[Math.min(i,T.length-2)+1]-T[Math.min(i,T.length-2)]); n.connect(dest);
+  const n=ctx.createGain(), F=PUMP_FLOOR[lv], tau=i=>PUMP_TAU*Math.max(0.05,T[Math.min(i,T.length-2)+1]-T[Math.min(i,T.length-2)]); n.connect(dest); n.__pump=true;
   n.gain.setValueAtTime(1-(1-F)*Math.exp(-Math.max(0,st-T[0])/tau(0)),st); n.gain.setTargetAtTime(1,st,tau(0));   // where the note starts inside its beat
   for(let i=1;i<T.length&&T[i]<=end;i++){ n.gain.setTargetAtTime(F,T[i],0.003); n.gain.setTargetAtTime(1,T[i]+0.012,tau(i)); }
   return n; }
@@ -13789,7 +13799,7 @@ function fireBassElectro(midi,st,ring,duck,art,dur,pk){
   env.gain.setValueAtTime(0,st); env.gain.linearRampToValueAtTime(lvl*duck,st+0.003);
   if(duck<1) env.gain.linearRampToValueAtTime(lvl,st+Math.min(0.09,len*0.2));   // the strike gives way to the crowd
   env.gain.setValueAtTime(lvl,Math.max(st+0.004,end-0.03)); env.gain.linearRampToValueAtTime(0,end);   // held, then cut
-  lp.connect(sh); sh.connect(env); env.connect(ch); ch.connect(g); g.connect(bassOutAt(st));
+  lp.connect(sh); sh.connect(env); env.connect(ch); ch.connect(g); voicePlug(g,bassOutAt(st));
   if(bassLast&&bassLast.ctx===ctx&&bassLast.st<st&&bassLast.end>st){
     bassLast.ch.gain.setValueAtTime(1,st);
     bassLast.ch.gain.linearRampToValueAtTime(0,st+BASS_DAMP); }
@@ -13799,7 +13809,7 @@ function fireBassElectro(midi,st,ring,duck,art,dur,pk){
   osc("sawtooth",-8,0.45,1); osc("sawtooth",8,0.45,1); osc("square",0,0.3,1); osc("sine",0,0.4,0.5);
   g.__at=st; for(const o of oscs){ o.start(st); o.stop(end+0.05); }
   live.push(g); if(live.length>120) live.splice(0,40);
-  oscs[0].onended=()=>{ const i=live.indexOf(g); if(i>=0) live.splice(i,1); };
+  voiceDone(g,oscs);
 }
 function fireBass(name,at,dur,crowd,note){
   if(!ctx||!dry) return; sndAutoApply("bass");   /* its style's sound (patches/auto-sounds.py) */
@@ -13838,7 +13848,7 @@ function fireBass(name,at,dur,crowd,note){
   lp.frequency.setValueAtTime(Math.min(2200,f*(art==="mute"?5:22)),st);          // bright at the strike… (a muted one dark)
   lp.frequency.exponentialRampToValueAtTime(Math.max(120,f*5),st+Math.min(1.2,ring));  // …dark as it rings
   const ch=ctx.createGain(); ch.gain.value=1;   // the choke: only the next bass note moves it
-  lp.connect(env); env.connect(ch); ch.connect(g); g.connect(bassOutAt(st));   // its pan and its reverb (28 Sep 2026); through the pump when it pumps
+  lp.connect(env); env.connect(ch); ch.connect(g); voicePlug(g,bassOutAt(st));   // its pan and its reverb (28 Sep 2026); through the pump when it pumps
   /* A NEW NOTE DAMPS THE ONE STILL RINGING (David, 26 Sep 2026: B-flat on count 4 and F on count 5 - "only the first
      of the two chords ... is played"). Every note rings at least BASS_RING[0], so a chord a sixteenth long rang on
      under the next one and the new root was heard as the old chord's fifth. A bass player's string does not do
@@ -13880,7 +13890,7 @@ function fireBass(name,at,dur,crowd,note){
   g.__at=st;
   for(const o of oscs){ o.start(st); o.stop(end+0.05); }
   live.push(g); if(live.length>120) live.splice(0,40);
-  oscs[0].onended=()=>{ const i=live.indexOf(g); if(i>=0) live.splice(i,1); };
+  voiceDone(g,oscs);
 }
 
 /* ═══ THE GUITAR (David, 28 Sep 2026, patches/guitar-a.py) ═══════════════════════════════════════════════════════
@@ -14631,7 +14641,7 @@ function gtrStac(n,t){ const B=n.B; if(!ctx||!B||!B.stac||n.at==null||t-n.at>GTR
   const src=ctx.createBufferSource(); src.buffer=e.buf; src.playbackRate.value=Math.pow(2,(n.midi-T.c)/12);
   const a=ctx.createGain(); a.gain.value=n.e.lvl/e.lvl;   // GTR_RMS/e.lvl in place of the ordinary take's
   src.connect(a); a.connect(n.lp); src.start(n.at,e.off); src.stop(n.at+(e.buf.duration-e.off)/src.playbackRate.value+0.05);
-  src.onended=()=>{ const i=live.indexOf(n.g); if(i>=0) live.splice(i,1); };
+  voiceDone(n.g,[src]);
   n.src=src; }
 /* THE MUTED STROKES (David, 5 Oct 2026: "the muted strokes are too loud for hollow and clean"; patches/guitar-mute-level.py):
    a stroke damped within 60 ms of its start is a mute, and sounds at its sound's trim - a mute as far under an open stroke
@@ -14848,7 +14858,7 @@ function gtrNote(s,fret,t,vel,pm){
   const len=(e.buf.duration-e.off)/src.playbackRate.value;
   src.start(st,e.off); src.stop(st+len+0.05);
   g.__at=st; live.push(g); if(live.length>120) live.splice(0,40);
-  src.onended=()=>{ const i=live.indexOf(g); if(i>=0) live.splice(i,1); };
+  voiceDone(g,[src]);
   GTR.str[s]={src,env,fret,at:st,midi,vel,e,lp,g,B:GTR_BUF,pk};   // what a damping at once needs to swap it (patches/guitar-stac.py)
 }
 /* where the next subdivision of the bar starts (the bar's end after the last), in pulses */
@@ -15627,7 +15637,7 @@ function pnoNote(midi,t,vel,len,fin){
   if(len){ env.gain.setValueAtTime(pk,st+len); env.gain.setTargetAtTime(0,st+len,0.08); }
   src.start(st,e.off); src.stop(st+Math.min(dur,len?len+0.7:dur)+0.05);
   g.__at=st; live.push(g); if(live.length>120) live.splice(0,40);
-  src.onended=()=>{ const i=live.indexOf(g); if(i>=0) live.splice(i,1); };
+  voiceDone(g,[src]);
   if(!len) PNO.held.push({src,env});
 }
 /* THE PIANO'S HANDS, VOICED AND LED (David, 29 Sep 2026: "find nicer voicings for complex chords" - "Piano should also
@@ -16417,11 +16427,11 @@ function synRelease(t){ for(const h of SYN.held){ if(h.end<=t) continue;
 function synNote(midi,t,vel,len,atk,gate){
   if(!ctx) return; const P=synSound(); if(!SYN_NORM[P.id]) return;
   const st=Math.max(t,ctx.currentTime);
-  const g=ctx.createGain(); g.gain.value=synVol/100; g.connect(pumpOut(SYN_K,st,(len||0)+P.r*2));   /* through the band's Pump (patches/pump-setting.py) */   /* through its pedalboard (patches/instrument-fx.py) */   // `live`'s gain, as every voice keeps one
+  const g=ctx.createGain(); g.gain.value=synVol/100; voicePlug(g,pumpOut(SYN_K,st,(len||0)+P.r*2));   /* through the band's Pump (patches/pump-setting.py) */   /* through its pedalboard (patches/instrument-fx.py) */   // `live`'s gain, as every voice keeps one
   const h=synVoice(ctx,P,midi,st,len,g,atk==null?P.a:atk,vel,synBright/100,SYN_NORM[P.id]);
   if(gate) gate(h.gt,st);
   g.__at=st; live.push(g); if(live.length>120) live.splice(0,40);
-  h.srcs[h.srcs.length-1].onended=()=>{ const i=live.indexOf(g); if(i>=0) live.splice(i,1); };
+  voiceDone(g,h.srcs);
   SYN.held.push(h);
 }
 function synChord(pcs,name){
@@ -20418,9 +20428,9 @@ function kitHit(pc,v,t,tdb){   /* tdb: the groove's own trim for this drum, dB (
     if(Q&&Q.length===P.length&&Q[li]){ const QV=Q[li][n]||Q[li][0], qdb=Math.max(KIT_HATS.has(pc)||Q.length===1?-18:-9,Math.min(6,Math.max(...Q.db)+kitDb(vv)-Q.db[li])), w=B.w, r=kitRho(src.buffer,QV),
         k=1/Math.sqrt(Math.max(0.25,(1-w)*(1-w)+w*w+2*w*(1-w)*r));   // the two summed to one loudness
       g.gain.value*=(1-w)*k; const gq=ctx.createGain(); gq.gain.value=w/(1-w)*Math.pow(10,(qdb-gdb)/20);
-      const sq=ctx.createBufferSource(); sq.buffer=QV; sq.playbackRate.value=src.playbackRate.value; sq.connect(gq); gq.connect(g); sq.start(st); } }
+      const sq=ctx.createBufferSource(); sq.buffer=QV; sq.playbackRate.value=src.playbackRate.value; sq.connect(gq); gq.connect(g); sq.start(st); g.__sq=sq; } }
   if(pc==="hh_open"||pc==="hh_half") KIT.hho={g,t:st};
-  g.__at=st; live.push(g); if(live.length>120) live.splice(0,40); return g; }
+  g.__at=st; live.push(g); if(live.length>120) live.splice(0,40); voiceDone(g,g.__sq?[src,g.__sq]:[src]); return g; }
 /* FILLS AND TOUCHES (David, 4 Oct 2026: fills and variations "from the start", under Freedom and Activity;
    DRUMKIT-PLAN.md step 4, patches/kit-fills.py). THE RULE: at Freedom 1 (Fills) the kit may fill the end of a phrase - most
    likely at the end of a fourth phrase and of a table, less at a second, rarely elsewhere - the groove giving way to
@@ -20567,7 +20577,7 @@ function kitRiser(t,dur){ if(!ctx||!(dur>0.3)) return; const st=Math.max(t,ctx.c
   const env=ctx.createGain(), g=ctx.createGain(), lv=KIT_RISER*KIT_PK*(kitVol/100); g.gain.value=1;   // env swells, g is the one the silencers ramp
   env.gain.setValueAtTime(lv*Math.max(0.02,Math.pow((st-t)/dur,2)),st); env.gain.exponentialRampToValueAtTime(lv,end-0.03); env.gain.setTargetAtTime(0.0001,end-0.03,0.008);
   src.connect(bp); bp.connect(env); env.connect(g); g.connect(kitBus()); src.start(st); src.stop(end+0.08);
-  g.__at=st; live.push(g); if(live.length>120) live.splice(0,40); src.onended=()=>{ const i=live.indexOf(g); if(i>=0) live.splice(i,1); }; }
+  g.__at=st; live.push(g); if(live.length>120) live.splice(0,40); voiceDone(g,[src]); }
 /* THIS BAR OF THE TABLE'S TRANSITION (David, 11 Oct 2026: "pair up short tables in long metres too" - "for long transitions on
    tables with short time signatures, the transition can go over several bars"; patches/kit-trans-spans.py). TWO MEASURES,
    both the table's own:
@@ -47404,7 +47414,7 @@ function coStrike(pos,at,buf){    // one field: the sound at `at`, the flash whe
   const g=ctx.createGain(); g.gain.value=evGain({v:"field",f:pos,hand:"R"});   // a right-hand stroke's gain (the letter is the hand)
   src.connect(g); g.connect(dry); g.connect(send); src.start(when);
   const v={g,src}; coLive.push(v);
-  src.onended=()=>{ const i=coLive.indexOf(v); if(i>=0) coLive.splice(i,1); coHearSync(); };
+  src.onended=()=>{ const i=coLive.indexOf(v); if(i>=0) coLive.splice(i,1); try{ g.disconnect(); }catch(e){} coHearSync(); };
   coHearSync();
   const el=coGroupEl(pos), ms=Math.max(0,(when-now)*1000);
   coTimers.push(setTimeout(()=>pvFlash(el,["hT"]),ms));
@@ -51803,7 +51813,7 @@ function npTap(g){
   bankPlay(midi,buf=>{ if(!buf) return;
     const s=ctx.createBufferSource(); s.buffer=buf;
     const gn=ctx.createGain(); gn.gain.value=evGain({v:"field",f:pos,hand:"R"});
-    s.connect(gn); gn.connect(dry); gn.connect(send); s.start(ctx.currentTime+0.02); });
+    s.connect(gn); gn.connect(dry); gn.connect(send); s.onended=()=>{ try{ gn.disconnect(); }catch(e){} }; s.start(ctx.currentTime+0.02); });
   pvFlash(g,["hT"]);
 }
 /* DUPLICATE, FROM INSIDE THE WINDOW (David, 13 Oct 2026). The copy is the pan AS THE WINDOW SHOWS IT - the rows as
