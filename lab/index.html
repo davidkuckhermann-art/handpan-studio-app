@@ -163,6 +163,7 @@ body.preview .stagewrap{display:flex}
 .scrow>span:first-child{white-space:nowrap}
 label.sccheck{justify-content:flex-start; cursor:pointer}
 .scgrp:has(>.schead input:not(:checked)) .scrow{opacity:.4; pointer-events:none}   /* a group's lines wait for its switch */
+.stagecard:has(#fcpDesign option[value="panel"]:checked) label.scrow:has(>#fcpChordHands){display:none}   /* Panel look: the chord card has no hand colours, so no switch for them (patches/lab-card-no-hand-colours.py) */
 .stagecard .seg{flex:0 0 auto} .stagecard .seg.wide{display:flex} .stagecard .seg.wide button{flex:1 1 0; padding:5px 0}
 .stagecard .seg.tiny button{padding:4px 7px} .stagecard .seg.notes button{padding:4px 6px}
 .sccol{display:inline-flex; align-items:center; gap:6px}
@@ -550,7 +551,7 @@ body.tlane .scrub{border-radius:0}
          (paintSegs). patches/lab-preview-cards.py -->
     <aside class="stagecard" id="stageOpts">
       <span class="lbl" title="The Final Cut frame: the whole video, the table where it will sit — drag the table, its corner scales it, the window's corner sizes the window">Stage · 3840 × 2160</span>
-      <span class="seg tiny wide" id="faceSeg" title="How the table on the stage is written. Table: a slot's notes stacked, high over low. Tab: a lane for each hand - the left hand's notes above, the right hand's below - as the Studio's Tab view. Saved with the project. The stage only so far: an export writes the table form">
+      <span class="seg tiny wide" id="faceSeg" title="How the table on the stage is written. Table: a slot's notes stacked, high over low. Tab: a lane for each hand - the left hand's notes above, the right hand's below - as the Studio's Tab view. Saved with the project. On the stage and in the Final Cut files">
         <button data-v="table" class="on">Table</button><button data-v="tab">Tab</button>
       </span>
       <button class="btn" id="cropBtn" style="font-size:12px" hidden title="Draw the part of the video that shows the pan">Pan crop</button>
@@ -559,7 +560,6 @@ body.tlane .scrub{border-radius:0}
         <div class="schead">Design</div>
         <div class="scrow" title="How the notation is dressed on the stage. Classic: the framed table, the chord boxes, the structure boxes. Panel: one light panel with the table's name in its margin, the form as a strip under it, and one chord card - the chord sounding now, its notes and its fields on the pan. Saved with the piece. The Final Cut titles of the Panel look are not built yet: an export writes the classic ones"><span>Look</span><select hidden id="fcpDesign" style="font-size:12px"><option value="">Classic</option><option value="panel">Panel</option></select><span class="seg tiny" data-for="fcpDesign"></span></div>
         <div class="scrow" title="The Panel look's colours. Paper: off-white and amber. Copper: warm neutrals. Ink: the dark panel (no Final Cut titles yet). Saved with the piece"><span>Colours</span><select hidden id="fcpSkin" style="font-size:12px"><option value="">Paper</option><option value="copper">Copper</option><option value="ink">Ink</option></select><span class="seg tiny" data-for="fcpSkin"></span></div>
-        <label class="scrow sccheck" title="Panel look: a firm edge around the table, the arrangement bar and the chord card - on the stage, and a checkbox in each Final Cut title. Off: no edge; Paper then has a soft shadow on the stage, which Final Cut does not draw. Saved with the piece"><input type="checkbox" id="fcpOutline">Outline</label>
         <div class="scrow" title="The Panel look's rows. Banded: every other row - the first, the third - carries a soft tint in the colours chosen, as the Studio app's own table does, so the eye keeps its row. On the stage and in the Final Cut tables. Saved with the piece"><span>Rows</span><select hidden id="fcpRowBands" style="font-size:12px"><option value="">Plain</option><option value="on">Banded</option></select><span class="seg tiny" data-for="fcpRowBands"></span></div>
         <div class="scrow" title="The face of the table's symbols on the stage. Loopiejuice: the hand-drawn digits of the Final Cut titles. Studio: the Studio app's own (Inter Bold, a ghost as a bullet), at the same places and the same height. In the table and the chords of both looks, on the stage and in the Final Cut file (Final Cut needs Inter Bold installed). Saved with the piece"><span>Symbols</span><select hidden id="fcpSymbols" style="font-size:12px"><option value="">Loopiejuice</option><option value="studio">Studio</option></select><span class="seg tiny" data-for="fcpSymbols"></span></div>
       </div>
@@ -1372,7 +1372,7 @@ document.querySelectorAll("#edFaceSeg button").forEach(b=>b.onclick=()=>{ if(!is
 document.querySelectorAll("#faceSeg button").forEach(b=>b.onclick=()=>{
   state.face=b.dataset.v;
   document.querySelectorAll("#faceSeg button").forEach(x=>x.classList.toggle("on",x===b));
-  if(ready&&state.mode==="preview"){ cw.setView(state.face); requestAnimationFrame(fitFrame); drawFcpPreview(); labToast(state.face==="tab"?"Tab — a lane for each hand: left above, right below (on the stage only so far)":"Table — a slot's notes stacked"); }
+  if(ready&&state.mode==="preview"){ cw.setView(state.face); requestAnimationFrame(fitFrame); drawFcpPreview(); labToast(state.face==="tab"?"Tab — a lane for each hand: left above, right below — on the stage and in the Final Cut files":"Table — a slot's notes stacked"); }
 });
 
 /* ------------------------------------------------------------- the stage */
@@ -1521,7 +1521,7 @@ function drawFcpStage(){
     /* a stack's lines are one LINE apart as Motion sets them: the font's own line box (ascent + descent,
        1.20 em for Loopiejuice Mono, read from the font) plus the run's line spacing — 1.37 em was a
        guess and drew stacks taller and lower than David's render (17 Sep) */
-    const lineBox=s=>{ g.font=(s*k)+"px 'Loopiejuice Mono'"; const mt=g.measureText("8"); return (mt.fontBoundingBoxAscent+mt.fontBoundingBoxDescent)/k||1.2*s; };
+    const lineBox=s=>fcpLineBox()*s;   // the font's own box (FCP_LINE): a canvas answers differently from one engine to the next (patches/lab-fcp-font-metrics-fixed.py)
     if(stacked){ const pitch=lineBox(size)+(st0.lineSpacing||0); runs.forEach((r,i)=>{ const glyphText=r.text.replace(/^\n/,""); g.font=SF.font(r.style.size*k); g.fillStyle=fill(r.style); g.fillText(SF.tx(glyphText),X(cx),base(r.style,i,pitch)+SF.dy*r.style.size*k); }); return; }
     if(runs.length>1){ // fast notes side by side: each at the centre of its share of the slot (the font's advance at half size IS half a slot, so Final Cut lands the same — the canvas measure packed them, David, 16 Sep)
       g.font=(size*k)+"px 'Loopiejuice Mono'"; const pitch=g.measureText("8").width; let x=X(cx)-pitch*(runs.length-1)/2; const y=base(st0);   // one text block of N runs: Motion sets them by the font's advance (monospace), centred on the slot — the Preview measures the same advance (17 Sep)
@@ -1533,12 +1533,12 @@ function drawFcpStage(){
   const STY=fcpStyle();
   if(PANEL) fcpPanelHead(PX,labels); else for(let col=0;col<cols;col++){ const L=labels[col%barCols]; if(!L||L.text===" ") continue; const size=L.big?cglyph:cglyph*0.62; drawRuns([{text:L.text,style:{size,color:fcpRGB(STY.header)}}],fcpColX(m,col,bpr,pos,slotW).cx,top+70,cglyph); }   // the count's text sits where the template puts it: centre top+70, baseline 0.45·cglyph below, small labels on the big ones' baseline (17 Sep); the labels repeat per bar of the row, over their glyphs (0.30 em up), so the row did not move when the ink rule came in
   // cells
-  const TAB=state.face==="tab", lglyph=glyph*FCP_TAB.SIZE;   // THE STAGE'S TAB FORM (patches/lab-stage-tab.py): a lane for each hand
+  const TAB=state.face==="tab", lglyph=fcpTabSize(glyph);   // THE STAGE'S TAB FORM (patches/lab-stage-tab.py): a lane for each hand
   for(let r=0;r<rows;r++) for(let col=0;col<cols;col++){ const bar=r*bpr+Math.floor(col/barCols), cw2=col%barCols; if(bar>=tb.bars) continue;   // the bar this column belongs to, in a row of bpr bars
     const q0=tb.sec.pulse+bar*m.bp+cw2*per; const perPulse=[]; for(let i=0;i<per;i++) perPulse.push(c.byPulse.get(q0+i));
     const P=fcpColX(m,col,bpr,pos,slotW);
     const fast=fcpFastBeat(c,tb.sec.pulse+bar*m.bp+Math.floor(cw2/pos)*m.sub,m.sub,per), cyc=top-(r+0.5)*FCPV.RH;
-    if(TAB){ for(const [hand,dy] of FCP_TAB.LANES) drawRuns(fcpSlotText(perPulse.map(evs=>evs&&evs.filter(e=>(e.hand==="L"?"L":"R")===hand)),lglyph,fast),P.cx,cyc+dy*FCPV.RH+FCP_TAB.LIFT*lglyph,lglyph,P.w); }
+    if(TAB){ for(const [hand,dy] of FCP_TAB.LANES) drawRuns(fcpSlotText(perPulse.map(evs=>evs&&evs.filter(e=>(e.hand==="L"?"L":"R")===hand)),lglyph,fast,true),P.cx,cyc+fcpTabDy(dy,lglyph)+FCP_TAB.LIFT*lglyph,lglyph,P.w); }
     else drawRuns(fcpSlotText(perPulse,glyph,fast),P.cx,cyc,glyph,P.w); }
   // the section letter, right-aligned to the left of the table (the template's "A": Caveat 185 at x 12)
   if(!PANEL){ g.font=(185*k)+"px 'Caveat'"; g.textAlign="right"; g.fillStyle=fcpCSS(STY.label); if(!fcpNoLetter()) g.fillText(tbName(tb),X(12),Y(712.13)); }   // the template's own baseline (Position Y of its "A" layer): a Caveat capital's middle then sits on row 1's centre, as in David's renders (17 Sep)
@@ -1599,7 +1599,7 @@ function drawFcpStage(){
 const FCPP={GUT:180,HEAD:98,R:34,HAIR:3,BAR:10,GAP:30,FORM_H:118,CARD_W:1010,CARD_H:372,PIC_W:330,PAD:44,CAP:0.35,ASC:0.85,
   PANEL:"rgba(252,250,246,.97)",BAND:"rgba(23,21,15,.045)",LINE:"rgba(23,21,15,.13)",LINE2:"rgba(23,21,15,.07)",FIELD:"rgba(23,21,15,.10)",
   TEXT:"#17150F",MUTED:"#8B8375",NOW:"#FFD9A6",NOWBAR:"#E59315",LEFT:"rgb(51,153,51)",PURPLE:"#A21AF1",
-  HAND_R:"rgb(0,0,0)",HAND_L:"rgb(51,153,51)",SHADOW:1,EDGE:"",EDGE_W:3,INSET:0,V2:0,EYE:30,FORM_L:34,CNT:54,CNTB:62,NEXT:58,NEXT_W:0,PIC_R:136,PICNUM:"#fff",ROWBAND:"rgba(255,255,255,.75)",TAB_W:160,TAB_H:132,TAB_TOP:34,TAB_PAD:20,TAB_SIZE:64,
+  HAND_R:"rgb(0,0,0)",HAND_L:"rgb(51,153,51)",SHADOW:1,EDGE:"",EDGE_W:3,INSET:0,V2:0,EYE:30,FORM_L:34,CNT:54,CNTB:62,NEXT:58,NEXT_W:0,PIC_R:136,PICNUM:"#fff",ROWBAND:"rgba(255,255,255,.75)",TAB_W:160,TAB_H:132,TAB_TOP:34,TAB_PAD:20,TAB_SIZE:93,TILE_H:117,TILE_R:30,TILE_GAP:98,TILE_PAD:30,TILE_UP:41,TILE_MAX:190,TILE_WGT:700,TILE_F:"Inter, Figtree, sans-serif",TILE_CAP:0.364,
   F:"Figtree, 'Helvetica Neue', Arial, sans-serif"};   // CAP: half a Figtree capital's height, ASC: its baseline below the top of a line of 1 - both in letter sizes
 function fcpDesign(){ return state.fcp&&state.fcp.design==="panel"?"panel":""; }
 /* A SKIN IS A SET OF VALUES, NOT A SECOND PAINTER (David, 12 Oct 2026, the sheet's third picture marked - ChatGPT's colours
@@ -1637,7 +1637,7 @@ const FCP_SKINS={paper:Object.assign({},FCP_V2,{PANEL:"#FCFAF6",BAND:"#F2F0EC",L
     TEXT:"#F5F0E7",MUTED:"#A39A8B",NOW:"rgba(229,147,21,.40)",NOWBAR:"#F0A63A",LEFT:"rgb(127,208,143)",PURPLE:"#C77DFF",HAND_R:"#F5F0E7",HAND_L:"rgb(127,208,143)",
     R:26,BAR:8,SHADOW:0,EDGE:"rgba(255,255,255,.28)",EDGE_W:3,PICNUM:"#181511",ROWBAND:"rgba(255,255,255,.032)"})};
 function fcpSkin(){ const s=String(state.fcp&&state.fcp.skin||""); return /^copper/.test(s)?"copper":s==="ink"?"ink":"paper"; }   // the colour; copper2 and paper2 are pieces saved before 13 Oct
-function fcpOutline(){ const F=state.fcp||{}; return F.outline!=null?!!F.outline:(F.skin==="paper2"||F.skin==="copper2"||F.skin==="ink"); }   // said, or as the piece looked when it was saved
+function fcpOutline(){ return true; }   /* THE OUTLINE IS ALWAYS ON (David, 14 Oct 2026: "The outline can always be on, and the same actually goes for the notation table. We can take the outline off the option"): the table, the arrangement bar, the chord card and the letter's tile. A piece's saved fcp.outline is not read any more. (patches/lab-letter-tile.py) */
 /* NEXT CHORD IS OFF | COMPACT | SECTION (David, 13 Oct 2026: "at some point we had a version where the next chord was showing, but
    without separator line. Can you bring that option back?" - "it was a bit more space-efficient as well"). One card, three
    widths: the pan's zone and the chord's are the same in all three; to their right stands nothing (870), NEXT and the next
@@ -1664,9 +1664,27 @@ function fcpPanelDress(){ Object.assign(FCPP,FCPP0,FCP_SKINS[fcpSkin()]); FCPP.M
    the first row). On the panel's left edge, beside the first row of notes: TAB_W wide, TAB_H high, TAB_TOP under the row's
    top; the name centred in it, smaller where it is broader than the tab less its air. A fixed width - the Final Cut title is
    built to it. (patches/lab-letter-sidetab.py) */
-function fcpPanelTabBox(P){ if(fcpNoLetter()) return null; const {g,k,tb,top}=P, name=tbName(tb); let size=FCPP.TAB_SIZE; g.font="800 "+(size*k)+"px "+FCPP.F;
-  const w=g.measureText(name).width/k, room=FCPP.TAB_W-2*FCPP.TAB_PAD; if(w>room) size*=room/w;
-  return {name,size,x0:FCPV.FL-FCPP.TAB_W,x1:FCPV.FL,ya:top-FCPP.TAB_TOP,yb:top-FCPP.TAB_TOP-FCPP.TAB_H}; }
+/* THE LETTER HAS A TILE OF ITS OWN (David, 14 Oct 2026, of twelve mock-ups - mockups-section-letter.html: "Let's build 12"): set free of
+   the table, TILE_GAP to its left, its middle on the first row's. TILE_H high, a corner of TILE_R, the table's light colour and
+   the table's own edge line around it; as wide as the name asks - TILE_PAD of air at either side, never narrower than it is
+   high - and a name broader than TILE_MAX made smaller. The box is its OUTER edge. The stage only until the Final Cut titles
+   have it. (patches/lab-letter-tile.py)
+   ITS SIZE AND PLACE ARE DAVID'S, set in mockups-section-letter-tuner.html (14 Oct 2026: "Height 117, corner 30, letter 93, side air
+   30, from the table 98, up/down -41"): TILE_H, TILE_R, TAB_SIZE, TILE_PAD, TILE_GAP, and TILE_UP - its middle that far above the
+   first row's. */
+/* A NAME IS MEASURED BY ITS SHAPE, NOT BY ITS LETTERS (David, 14 Oct 2026: "the box of the section letter constantly changes size ... The
+   size for A1 ... would be the same as for A2 or A3"): every capital counts as the widest of A to H, every digit as the widest
+   digit, anything else as itself - and the name's own width where that is more still (a W, a word). Of a size of 1, in the
+   tile's face; {own, steady}. The stage and the file ask here. (patches/lab-letter-tile-steady.py) */
+function fcpTileW(name){ const g=fcpTileW.g||(fcpTileW.g=document.createElement("canvas").getContext("2d")); g.font=FCPP.TILE_WGT+" 100px "+FCPP.TILE_F;
+  const w=t=>g.measureText(t).width/100, R=fcpTileW.r||{}; let there=false; try{ there=document.fonts.check(FCPP.TILE_WGT+" 60px Inter"); }catch(e){}
+  if(R.cap==null||!there){ R.cap=Math.max(...[..."ABCDEFGH"].map(w)); R.dig=Math.max(...[..."0123456789"].map(w)); if(there) fcpTileW.r=R; }   // kept once the face is there
+  const own=w(String(name)); let steady=0; for(const ch of String(name)) steady+=/[A-Z]/.test(ch)?R.cap:/[0-9]/.test(ch)?R.dig:w(ch);
+  return {own,steady:Math.max(own,steady)}; }
+function fcpPanelTabBox(P){ if(fcpNoLetter()) return null; const {g,k,tb,top}=P, name=tbName(tb); let size=FCPP.TAB_SIZE; g.font=FCPP.TILE_WGT+" "+(size*k)+"px "+FCPP.TILE_F;   // THE LETTER IS INTER BOLD, the face of the table's symbols in the Studio's face (David, 14 Oct 2026: "adjust the boldness of the section letter so it is similar to the boldness of the symbols in the table" - Figtree Bold tried, a stem of 0.135 of its size against Inter Bold's 0.15 - then, shown both: "use Inter"). TILE_F, TILE_WGT; TILE_CAP: half an Inter capital's height, where CAP is Figtree's. Whatever Symbols is set to.
+  const NW=fcpTileW(name); let w=NW.steady*size; if(NW.own*size>FCPP.TILE_MAX){ size*=FCPP.TILE_MAX/(NW.own*size); w=FCPP.TILE_MAX; } else w=Math.min(w,FCPP.TILE_MAX);   // the name by its shape (fcpTileW); a name too broad is made smaller, as it was
+  const W=Math.max(FCPP.TILE_H,w+2*FCPP.TILE_PAD), x1=FCPV.FL-FCPP.TILE_GAP, mid=top-FCPV.RH/2+FCPP.TILE_UP;
+  return {name,size,x0:x1-W,x1,ya:mid+FCPP.TILE_H/2,yb:mid-FCPP.TILE_H/2}; }
 /* a cell's ink in the skin: the export's own black and green (and the underside's purple) are read, the skin's are written */
 function fcpPanelInk(c){ if(c===FCP_HAND.L) return FCPP.HAND_L; if(c===FCP_HAND.R||(c[0]===0&&c[1]===0&&c[2]===0)) return FCPP.HAND_R;
   if(Math.abs(c[0]-0.635)<0.01&&Math.abs(c[2]-0.945)<0.01) return FCPP.PURPLE; return "rgb("+c.slice(0,3).map(v=>Math.round(v*255)).join(",")+")"; }
@@ -1720,8 +1738,6 @@ function fcpPanelCardV2(P,o){ const {g,X,Y,k}=P, {ch,nx,cur,show,N,bx,rx,y,yb}=o
   if(nx&&M==="zone"){ fcpPanelSpaced(P,"NEXT",rx,ty-FCPP.ASC*E,E,"right"); fcpPanelName(P,nx.name,rx,base,FCPP.NEXT,"700",0.74,"right",FCPP.MUTED,FCPP.NEXT_W-50); } }
 $("fcpSkin").addEventListener("change",e=>{ const sp=state.fcp=Object.assign({dx:0,dy:0,s:1},state.fcp||{}); fcpSkinKeep(sp); if(e.target.value==="copper"||e.target.value==="ink") sp.skin=e.target.value; else delete sp.skin; markDirty(); drawFcpPreview();
   labToast(fcpDesign()==="panel"?"The panel in "+({copper:"Copper",ink:"Ink"}[sp.skin]||"Paper"):"Colours are the Panel look's — choose Look: Panel to see them"); });
-$("fcpOutline").addEventListener("change",e=>{ const sp=state.fcp=Object.assign({dx:0,dy:0,s:1},state.fcp||{}); fcpSkinKeep(sp); sp.outline=!!e.target.checked; markDirty(); drawFcpPreview();
-  labToast(fcpDesign()!=="panel"?"The outline is the Panel look's — choose Look: Panel to see it":sp.outline?"Outline on — on the stage and in the Final Cut titles":fcpSkin()==="paper"?"No outline — Paper has its soft shadow on the stage; Final Cut draws none":"No outline"); });
 $("fcpNext").addEventListener("change",e=>{ const sp=state.fcp=Object.assign({dx:0,dy:0,s:1},state.fcp||{}), v=e.target.value; delete sp.noNext; delete sp.next; if(v==="off") sp.noNext=true; else if(v==="compact") sp.next="compact"; markDirty(); drawFcpPreview();
   labToast(v==="off"?"The chord card without the next chord — the pan and the chord sounding":v==="compact"?"The next chord in the card's corner — compact, no line":"The next chord in a section of its own"); });
 /* EVERY OTHER ROW TINTED (David, 12 Oct 2026: "Can you give me colored bands as option? Similar to what the app uses?"). The
@@ -1763,9 +1779,8 @@ function fcpSym(){ return FCP_SYM[state.fcp&&state.fcp.symbols==="studio"?"studi
    Measured once the faces are there (fcpTablesOf waits for them). (patches/lab-studio-symbols-fcp.py) */
 const FCP_TRACK=0.12268925;
 function fcpFaceM(){ if(fcpFaceM.v) return fcpFaceM.v; const g=document.createElement("canvas").getContext("2d"), SF=FCP_SYM.studio;
-  const box=f=>{ g.font=f; const m=g.measureText("8"); return (m.fontBoundingBoxAscent+m.fontBoundingBoxDescent)/100; };
   g.font="100px 'Loopiejuice Mono'"; const adv=g.measureText("8").width/100;
-  const v={adv,line:box("100px 'Loopiejuice Mono'")-box(SF.font(100)),w:t=>{ g.font=SF.font(100); return g.measureText(t).width/100; }};   // adv: Loopiejuice's advance; line: its line box less Inter's at SCALE - both of the size; w: a word's width in the Studio's face
+  const v={adv,line:(FCP_LINE.loopie.asc+FCP_LINE.loopie.desc)-(FCP_LINE.inter.asc+FCP_LINE.inter.desc)*SF.scale,w:t=>{ g.font=SF.font(100); return g.measureText(t).width/100; }};   // adv: Loopiejuice's advance; line: its line box less Inter's at SCALE - both of the size; w: a word's width in the Studio's face
   let there=false; try{ there=document.fonts.check("700 60px Inter")&&document.fonts.check("60px 'Loopiejuice Mono'"); }catch(e){}
   if(there) fcpFaceM.v=v; return v; }
 function fcpFaceRuns(runs,chord){ if(fcpSym()===FCP_SYM.loopie||!runs||!runs.length) return runs;
@@ -1788,8 +1803,16 @@ function fcpFaceRuns(runs,chord){ if(fcpSym()===FCP_SYM.loopie||!runs||!runs.len
    middle: a cell's text sits 0.15 of its size below its centre line by the template's rule, which in half a row's height put
    the lower lane on the row's line. Columns, marker, lines and both looks are untouched. The stage only.
    (patches/lab-stage-tab.py) */
-const FCP_TAB={SIZE:0.7,LIFT:0.15,LANES:[["L",0.25],["R",-0.25]]};
-function fcpStageOnly(){ const a=[]; if(fcpDesign()==="panel"&&!FCP_PANEL_FAMILY[fcpSkin()]) a.push("the Panel look in these colours"); if(state.face==="tab") a.push("the Tab form");   // what the stage shows and a Final Cut file does not carry yet (the families of FCP_PANEL_FAMILY have their titles; the chord card's notes are written in the stage's face). 13 Oct: the two later tests had stood behind a comment on this line since 12 Oct and were never made
+const FCP_TAB={SIZE:0.7,LIFT:0.15,LANES:[["L",0.25],["R",-0.25]],GAP:50/108.5};
+/* THE TAB FORM IN A NARROW TABLE (David, 14 Oct 2026, of a 4x6 table: "there is a big gap between the right and left hand rows" - "why
+   are the symbols so small here?"). A lane's symbol was SIZE of the cell's glyph, which narrow columns have already made
+   smaller - shrunk twice. fcpTabSize: the smaller of what the lane's height holds (SIZE of the full glyph) and what the
+   column holds (the cell's glyph). fcpTabDy: a lane's centre line is GAP of its symbol's size from the row's - what a
+   sixteen-column table has always had, so it does not move - and never more than the lane's share of the row (LANES).
+   The stage and the file ask both. (patches/lab-tab-lanes-closer.py) */
+function fcpTabSize(glyph){ return Math.min(FCPV.GLYPH*FCP_TAB.SIZE,glyph); }
+function fcpTabDy(dy,lg){ return Math.sign(dy)*Math.min(Math.abs(dy)*FCPV.RH,FCP_TAB.GAP*lg); }
+function fcpStageOnly(){ const a=[]; if(fcpDesign()==="panel"&&!FCP_PANEL_FAMILY[fcpSkin()]) a.push("the Panel look in these colours");   // what the stage shows and a Final Cut file does not carry yet (the families of FCP_PANEL_FAMILY have their titles; the chord card's notes are written in the stage's face). 13 Oct: the two later tests had stood behind a comment on this line since 12 Oct and were never made
   return a.length?a.join(" and ").replace(/^t/,"T")+(a.length>1?" are":" is")+" on the stage only so far — a file carries the table form"+(fcpDesign()==="panel"&&FCP_PANEL_FAMILY[fcpSkin()]?"":", in the classic titles"):""; }
 $("fcpSymbols").addEventListener("change",e=>{ const sp=state.fcp=Object.assign({dx:0,dy:0,s:1},state.fcp||{}); if(e.target.value==="studio") sp.symbols="studio"; else delete sp.symbols; markDirty(); drawFcpPreview();
   try{ document.fonts.load("700 60px Inter").then(()=>drawFcpPreview()).catch(()=>{}); }catch(err){}   // the stage is a canvas: the face has to be loaded before it is asked for
@@ -1797,7 +1820,7 @@ $("fcpSymbols").addEventListener("change",e=>{ const sp=state.fcp=Object.assign(
 /* a card from its left top (x0, y1) to its right bottom (x1, y0), in the table's units: its shadow and its fill, and the
    canvas left CLIPPED to it for what is drawn inside - the caller restores */
 function fcpPanelCard(P,x0,y1,x1,y0,tab){ const {g,X,Y,k}=P; g.save();
-  if(!fcpPanelCard.fonts){ fcpPanelCard.fonts=1; try{ Promise.all(["800 60px Figtree","700 60px Figtree"].map(f=>document.fonts.load(f))).then(()=>drawFcpPreview()).catch(()=>{}); }catch(e){} }   // the stage is a canvas: Figtree has to be loaded before it is asked for
+  if(!fcpPanelCard.fonts){ fcpPanelCard.fonts=1; try{ Promise.all(["800 60px Figtree","700 60px Figtree","700 60px Inter"].map(f=>document.fonts.load(f))).then(()=>drawFcpPreview()).catch(()=>{}); }catch(e){} }   // the stage is a canvas: Figtree has to be loaded before it is asked for
   if(tab){   // the card with a tab on its left edge: one outline for both - around the card, and on its way up the left side out around the tab
     const xa=X(x0), xb=X(x1), xl=X(tab.xl), yT=Y(y1), yz=Y(y0), ta=Y(tab.ya), tz=Y(tab.yb), r=FCPP.R*k;
     const path=()=>{ g.beginPath(); g.moveTo(xa+r,yT); g.arcTo(xb,yT,xb,yT+r,r); g.arcTo(xb,yz,xb-r,yz,r); g.arcTo(xa,yz,xa,yz-r,r);
@@ -1827,9 +1850,7 @@ function fcpPanelName(P,name,x,y,size,weight,small,align,fill,maxW){ const {g,X,
 /* THE TABLE'S FURNITURE: the panel, the margin column and the head as bands, the marker, the hairlines */
 function fcpPanelChrome(P){
   const {g,m,pos,bpr,barCols,rows,slotW,top,bottom,bcells,grouped,lit}=P, x0=FCPV.FL-FCPP.MARGIN, x1=FCPV.FR, y1=top+FCPP.HEAD, R=(a,b,c2,d,f)=>fcpPanelRect(P,a,b,c2,d,f), H=FCPP.HAIR/2;
-  const TB=fcpPanelTabBox(P);   // the name's tab, or none (patches/lab-letter-tab.py)
-  fcpPanelCard(P,x0,y1,x1,bottom,TB&&{xl:TB.x0,ya:TB.ya,yb:TB.yb});
-  if(TB) R(TB.x0,TB.ya,TB.x1,TB.yb,FCPP.BAND);
+  fcpPanelCard(P,x0,y1,x1,bottom);   // a plain card: the letter stands on a tile of its own (fcpPanelHead; patches/lab-letter-tile.py)
   R(x0,y1,FCPV.FL,bottom,FCPP.BAND); R(FCPV.FL,y1,x1,top,FCPP.BAND);
   if(fcpRowBands()) for(let r=0;r<rows;r+=2) R(FCPV.FL,top-r*FCPV.RH,x1,top-(r+1)*FCPV.RH,FCPP.ROWBAND);   // the odd rows, as the Studio's table (patches/lab-panel-rowbands.py)
   if(lit){ const ls=fcpLitSpan(m,lit.k,appMarkMode()), xa=FCPV.FL+((lit.bb||0)*m.beats+ls.c0)*pos*slotW, xb=xa+ls.counts*pos*slotW, ya=top-(lit.row||0)*FCPV.RH;   // the lit span, by the classic marker's own rule
@@ -1846,8 +1867,11 @@ function fcpPanelChrome(P){
 function fcpPanelHead(P,labels){ const {g,X,Y,k,m,pos,bpr,barCols,cols,slotW,top,tb}=P, shrink=Math.min(1,slotW/((FCPV.FR-FCPV.FL)/16)); g.textAlign="center"; g.textBaseline="alphabetic";
   for(let col=0;col<cols;col++){ const L=labels[col%barCols]; if(!L||!L.text||L.text===" ") continue; const size=(L.big?FCPP.CNTB:FCPP.CNT)*shrink, word=/^[0-9a-z+]+$/i.test(L.text)?L.text:"·";   // the font's ghost dot is a plain dot here
     g.font=(L.big?"800 ":"700 ")+(size*k)+"px "+FCPP.F; g.fillStyle=L.big?FCPP.TEXT:FCPP.MUTED; g.fillText(word,X(fcpColX(m,col,bpr,pos,slotW).cx),Y(top+FCPP.HEAD/2-FCPP.CAP*size)); }
-  const TB=fcpPanelTabBox(P); if(!TB) return;   // the name, in its tab on the panel's top-left corner
-  g.font="800 "+(TB.size*k)+"px "+FCPP.F; g.textAlign="center"; g.fillStyle=FCPP.TEXT; g.fillText(TB.name,X((TB.x0+TB.x1)/2),Y((TB.ya+TB.yb)/2-FCPP.CAP*TB.size)); }
+  const TB=fcpPanelTabBox(P); if(!TB) return;   // the name, on its tile beside the first row
+  { const e=FCPP.EDGE_W*k, x=X(TB.x0), y=Y(TB.ya), w=(TB.x1-TB.x0)*k, h=(TB.ya-TB.yb)*k, r=FCPP.TILE_R*k;   // the edge as the cards have it: the shape in the edge's colour, the fill EDGE_W inside it
+    g.beginPath(); g.roundRect(x,y,w,h,r); g.fillStyle=FCPP.EDGE||FCPP.OUT||FCPP.LINE; g.fill();
+    g.beginPath(); g.roundRect(x+e,y+e,w-2*e,h-2*e,Math.max(0,r-e)); g.fillStyle=FCPP.PANEL; g.fill(); }
+  g.font=FCPP.TILE_WGT+" "+(TB.size*k)+"px "+FCPP.TILE_F; g.textAlign="center"; g.fillStyle=FCPP.TEXT; g.fillText(TB.name,X((TB.x0+TB.x1)/2),Y((TB.ya+TB.yb)/2-FCPP.TILE_CAP*TB.size)); }
 /* THE PIECE'S PAN, WHERE THE STUDIO DRAWS IT: every field's centre and size read from the Studio's own drawing of the
    pan (panViewSVG), so a pan with a turned layout, an inner field or an underside is the one the player knows. Read
    again every second and a half - a layout can change in the Studio while the Lab is open. */
@@ -1856,7 +1880,7 @@ function fcpPanGeom(){ const now=Date.now(), C=fcpPanGeom.c; if(C&&now-C.at<1500
     const fields=[...sv.querySelectorAll("g[data-f]")].map(e=>{ const b=e.querySelector("circle.pvbase")||e.querySelector("circle:not(.pvhit)"); return b?{f:String(e.dataset.f),x:+b.getAttribute("cx"),y:+b.getAttribute("cy"),r:+b.getAttribute("r")}:null; }).filter(Boolean);
     if(fields.length) v={cx:+rim.getAttribute("cx"),cy:+rim.getAttribute("cy"),R:+rim.getAttribute("r"),fields}; }catch(e){}
   fcpPanGeom.c={at:now,v}; return v; }
-function fcpPanelNoteFill(nt){ return (state.fcp&&state.fcp.chordHands)?(nt.hand==="L"?FCPP.LEFT:FCPP.TEXT):(nt.bot?FCPP.PURPLE:FCPP.TEXT); }   // the classic chord box's rule (fcpChordNotes)
+function fcpPanelNoteFill(nt){ return nt.bot?FCPP.PURPLE:FCPP.TEXT; }   /* THE CHORD CARD HAS NO HAND COLOURS (David, 13 Oct 2026: "we can get rid of the hand colors option for the chord card"): its notes in the text's colour, the underside's in purple; Hand colours stays the classic chord boxes' (patches/lab-card-no-hand-colours.py) */   // the classic chord box's rule (fcpChordNotes)
 /* THE PAN'S DOTS ARE SMALLER (David, 12 Oct 2026, of the chord card in Final Cut - asked what was not right about the tone fields:
    "Dots too big or heavy"). In the three-zone card (Copper +, Ink) a field was drawn at 0.84 of its size on the Studio's pan
    and a lit one at 0.98, the ding with them: lit fields and ding stood as black discs that nearly touched. Now 0.66 and 0.78 -
@@ -1927,7 +1951,7 @@ document.querySelectorAll(".stagecard .seg[data-for]").forEach(s=>s.addEventList
   sel.selectedIndex=+b.dataset.i; sel.dispatchEvent(new Event("change",{bubbles:true})); paintSegs(); }));
 document.addEventListener("change",e=>{ if(e.target&&e.target.closest&&e.target.closest(".stagecard")) paintSegs(); });
 paintSegs();
-function paintFcpTiming(){ const S=fcpStyle(); $("fcpHeaderC").value=S.header; $("fcpLabelC").value=S.label; const b=state.fcp&&state.fcp.bpr; $("fcpBpr").value=(b===1||b===2)?String(b):""; $("fcpChords").checked=fcpChordsOn(); $("fcpStruct").checked=!!(state.fcp&&state.fcp.structure); const F=state.fcp||{}; $("fcpChordHands").checked=!!F.chordHands; $("fcpChordsAs").value=F.chordsAs==="boxes"?"boxes":""; $("fcpStructAs").value=F.structAs==="boxes"?"boxes":""; $("fcpChordCount").value=F.chordCount?String(F.chordCount):""; $("fcpChordKind").value=F.chordKind==="names"?"names":""; $("fcpLetter").value=F.noLetter?"off":""; $("fcpLetterOn").checked=!F.noLetter; $("fcpDesign").value=F.design==="panel"?"panel":""; $("fcpSymbols").value=F.symbols==="studio"?"studio":""; $("fcpSkin").value=fcpSkin()==="paper"?"":fcpSkin(); $("fcpOutline").checked=fcpOutline(); $("fcpNext").value={off:"off",compact:"compact",zone:""}[fcpNextMode()]; $("fcpRowBands").value=F.rowBands?"on":""; $("fcpPanNums").checked=!F.noPanNums; paintSegs(); }
+function paintFcpTiming(){ const S=fcpStyle(); $("fcpHeaderC").value=S.header; $("fcpLabelC").value=S.label; const b=state.fcp&&state.fcp.bpr; $("fcpBpr").value=(b===1||b===2)?String(b):""; $("fcpChords").checked=fcpChordsOn(); $("fcpStruct").checked=!!(state.fcp&&state.fcp.structure); const F=state.fcp||{}; $("fcpChordHands").checked=!!F.chordHands; $("fcpChordsAs").value=F.chordsAs==="boxes"?"boxes":""; $("fcpStructAs").value=F.structAs==="boxes"?"boxes":""; $("fcpChordCount").value=F.chordCount?String(F.chordCount):""; $("fcpChordKind").value=F.chordKind==="names"?"names":""; $("fcpLetter").value=F.noLetter?"off":""; $("fcpLetterOn").checked=!F.noLetter; $("fcpDesign").value=F.design==="panel"?"panel":""; $("fcpSymbols").value=F.symbols==="studio"?"studio":""; $("fcpSkin").value=fcpSkin()==="paper"?"":fcpSkin(); $("fcpNext").value={off:"off",compact:"compact",zone:""}[fcpNextMode()]; $("fcpRowBands").value=F.rowBands?"on":""; $("fcpPanNums").checked=!F.noPanNums; paintSegs(); }
 /* PREVIEW › CHORDS (David, 16 Sep: "give me a way to activate the chord tab under the notation table and
    also to export it for the Final Cut export"; 17 Sep: one switch, saved with the piece): on = the
    Studio's chord card under the Lab's table, the row on the stage, a chord title per table in the export */
@@ -5239,21 +5263,27 @@ $("fcpBoxes").addEventListener("change",e=>{ const sp=state.fcp=Object.assign({d
    was three circles and two opacities; and the pan shows no hands ("we never need the hands for the chord pan
    graphic"). tools-cell-moti.py builds them; the classic titles are as they were. (patches/lab-fcp-v4.py) */
 const FCP_PANEL_FAMILY={paper:"HPD Panel v4 Paper",copper:"HPD Panel v4 Copper"};   // v3 (13 Oct): a colour is one build, with an Outline checkbox in every title and a Next chord checkbox in the card (patches/lab-outline-next.py)
-const FCP_PANEL_SWITCH=side=>(side.switches&&side.switches.outline?[{name:"Outline",key:side.switches.outline,value:fcpOutline()?"1":"0"}]:[]).concat(side.switches&&side.switches.row_bands?[{name:"Row bands",key:side.switches.row_bands,value:fcpRowBands()?"1":"0"}]:[]);   // the colour choices that have titles (tools-cell-moti.py SKINS)
+const FCP_PANEL_SWITCH=side=>(side.switches&&side.switches.outline?[{name:"Outline",key:side.switches.outline,value:fcpOutline()?"1":"0"}]:[]).concat(Array.isArray(side.row_bands)?side.row_bands.map(b=>({name:b.name,key:b.key,value:fcpRowBands()?"1":"0"})):side.switches&&side.switches.row_bands?[{name:"Row bands",key:side.switches.row_bands,value:fcpRowBands()?"1":"0"}]:[]);   /* v4c: a band a published opacity, set here - no checkbox (patches/lab-fcp-bands-published.py) */   // the colour choices that have titles (tools-cell-moti.py SKINS)
 const FCP_PANEL_SAID={used:0,missing:new Set(),left:new Set()};
 async function fcpPanelTemplate(beats,sub,groups,bpr,need){   // need: the rows the table has (v4: four or fewer take the four-row title)   // the look's title for this grid, or null: the look is not chosen, its colours have no titles, or this grid's is not built
   if(fcpDesign()!=="panel") return null;
   const fam=FCP_PANEL_FAMILY[fcpSkin()]; if(!fam){ FCP_PANEL_SAID.left.add("the Panel look in these colours has no titles yet — the classic ones are written"); return null; }
-  if(fcpSkin()==="paper"&&!fcpOutline()) FCP_PANEL_SAID.left.add("Final Cut draws no shadow — without the outline the panel stands bare there");
   const side=await fcpPanelTableSide(fam,fcpKey(beats,sub,groups,bpr),need);
   if(!side) FCP_PANEL_SAID.missing.add(fcpKey(beats,sub,groups,bpr));
-  else if(fcpRowBands()&&!(side.switches&&side.switches.row_bands)) FCP_PANEL_SAID.left.add("banded rows need the Table v2 titles — the tables are written plain");
+  if(side&&!fcpNoLetter()&&!(side.sliders&&side.sliders["Letter tile"])) FCP_PANEL_SAID.left.add("the section letter's tile is on the stage only so far — Final Cut still shows the tab at the table's side");
+  if(side&&fcpRowBands()&&!Array.isArray(side.row_bands)) FCP_PANEL_SAID.left.add("banded rows need the v4c table titles — none installed for "+fcpKey(beats,sub,groups,bpr)+", so Final Cut draws it without bands");
   return side; }
 /* 'TABLE V2' FIRST (David, 13 Oct 2026: "the banded rows don't seem to export to FCP, can you fix that?"): a Panel table's
    title has its row bands and a Row bands checkbox since Table v2 (tools-cell-moti.py); the morning's plain title is
    asked for where that one is not installed. FCP_PANEL_SWITCH sets the checkbox. (patches/lab-fcp-row-bands.py) */
 async function fcpPanelTableSide(fam,key,need){
-  for(const ck of (need>=1&&need<=4?[fam+" "+key+" 4r",fam+" "+key]:[fam+" "+key])){   // v4: the four-row title where the table fits it, else the eight-row one
+  /* v4b FIRST (David, 13 Oct 2026: "the row bands are activated, but don't show any difference"): a v4 table's bands were switched by
+     their fill's opacity, which a checkbox of our titles does not move in Final Cut; a v4b table's by their scale, which it
+     does. The v4 table where a colour's v4b is not installed. (patches/lab-fcp-bands-v4b.py) */
+  /* v4c FIRST (David, 14 Oct 2026, of the v4b tables from an import: "Still nothing"): a checkbox drew the bands when ticked by hand and
+     not when the file set it; a v4c table has each band's opacity published and the file sets that (FCP_PANEL_SWITCH). */
+  const famB=fam.replace(" v4 "," v4b "), famC=fam.replace(" v4 "," v4c "), famD=fam.replace(" v4 "," v4d "), famE=fam.replace(" v4 "," v4e "), famF=fam.replace(" v4 "," v4f "), fams=famB!==fam?[famF,famE,famD,famC,famB,fam]:[fam], /* v4e: the tile goes with the Section Letter checkbox when it is unticked by hand in Final Cut (David, 14 Oct: "deactivating the section Letter and Final Cut should also take away the whole section letter box"); v4f: the letter and its tile one box, moved and sized by hand in the inspector - X Position, Y Position, Letter size ("can you give me control over the size and the exact position of the section letter with its box in Final Cut?") */ tiers=need>=1&&need<=4?[key+" 4r",key]:[key];   // v4: the four-row title where the table fits it, else the eight-row one
+  for(const ck of fams.flatMap(f=>tiers.map(k=>f+" "+k))){
     if(FCP_TEMPLATES[ck]===undefined){ try{ const r=await fetch("fcp-templates/"+ck+".json?t="+Date.now()); FCP_TEMPLATES[ck]=r.ok?await r.json():null; }catch(e){ FCP_TEMPLATES[ck]=null; } }
     if(FCP_TEMPLATES[ck]) return FCP_TEMPLATES[ck]; }
   return null; }
@@ -5262,9 +5292,16 @@ function fcpCssRGB(css){ const s=String(css), h=/^#([0-9a-f]{6})$/i.exec(s), m=/
 function fcpPanelRuns(runs){ return runs.map(r=>Object.assign({},r,{style:Object.assign({},r.style,{color:fcpCssRGB(fcpPanelInk(r.style.color))})})); }   // a cell's runs in the skin's ink
 function fcpPanelCount(L,side){ const P=side.panel, shrink=side.count_glyph/P.count, size=(L.big?P.count_big:P.count)*shrink, word=!L.text||L.text===" "?" ":/^[0-9a-z+]+$/i.test(L.text)?L.text:"·";
   return [{text:word,style:{font:"Figtree",face:L.big?"ExtraBold":"Bold",size,color:fcpCssRGB(L.big?FCPP.TEXT:FCPP.MUTED),baseline:-FCPP.CAP*(size-side.count_glyph)}}]; }
-function fcpPanelLabel(name,side){ const P=side.panel, room=P.tab_w?P.tab_w-2*P.tab_pad:P.gut-30; let size=P.label_size;   // made smaller where it is broader than the margin, as on the stage - and kept on the template's middle line
-  try{ const g=fcpPanelLabel.g||(fcpPanelLabel.g=document.createElement("canvas").getContext("2d")); g.font="800 100px "+FCPP.F; const w=g.measureText(name).width/100*size; if(w>room) size*=room/w; }catch(e){}
-  return [{text:name,style:{font:"Figtree",face:"ExtraBold",size,color:fcpCssRGB(FCPP.TEXT),alignment:"center",baseline:FCPP.CAP*(P.label_size-size)}}]; }
+/* THE LETTER'S TILE IN THE FILE (David, 14 Oct 2026: "Let's build 12"; v4d tables): the tile as the stage rules it (fcpPanelTabBox), from
+   the sidecar's numbers - the name at the title's letter size, smaller where it is broader than the tile's text room; the
+   tile as wide as the name with its side air, never narrower than it is high; v, the Letter tile slider's value for that
+   width. (patches/lab-fcp-letter-tile.py) */
+function fcpPanelTile(name,side){ const P=side.panel, T=P.tile; let size=P.label_size, w=0;
+  try{ const g=fcpPanelLabel.g||(fcpPanelLabel.g=document.createElement("canvas").getContext("2d")); const NW=fcpTileW(name); w=NW.steady*size; if(NW.own*size>T.text){ size*=T.text/(NW.own*size); w=T.text; } else w=Math.min(w,T.text); }catch(e){}   // the name by its shape, as the stage (fcpTileW)
+  const W=Math.max(T.h,w+2*T.pad); return {size,W,v:+(T.full*Math.max(0,Math.min(1,(W-T.w0)/(T.w1-T.w0)))).toFixed(5)}; }
+function fcpPanelLabel(name,side){ const P=side.panel, room=P.tile?P.tile.text:P.tab_w?P.tab_w-2*P.tab_pad:P.gut-30; let size=P.label_size;   // made smaller where it is broader than the margin, as on the stage - and kept on the template's middle line
+  try{ const g=fcpPanelLabel.g||(fcpPanelLabel.g=document.createElement("canvas").getContext("2d")); g.font=P.tile?FCPP.TILE_WGT+" 100px "+FCPP.TILE_F:"800 100px "+FCPP.F; const w=g.measureText(name).width/100*size; if(w>room) size*=room/w; }catch(e){}
+  return [{text:name,style:{font:P.tile?"Inter":"Figtree",face:P.tile?"Bold":"ExtraBold",size,color:fcpCssRGB(FCPP.TEXT),alignment:"center",baseline:FCPP.CAP*P.label_size-(P.tile?FCPP.TILE_CAP:FCPP.CAP)*size}}]; }   // on its tile the letter is Inter Bold, a capital's middle on the tile's (the title sets its baseline CAP of label_size under it); an older title's tab keeps Figtree ExtraBold
 function fcpPanelSaid(){ const S=FCP_PANEL_SAID, a=[]; if(S.used) a.push(S.used+" in the Panel look"+(S.cards?", "+S.cards+" chord card"+(S.cards===1?"":"s"):"")); if(S.missing.size) a.push("no Panel title for "+[...S.missing].join(", ")+" (classic written there)"); a.push(...S.left);
   return a.length?" · "+a.join(" · "):""; }
 /* THE PANEL LOOK'S ARRANGEMENT BAR TITLE (David, 12 Oct 2026: "build the arrangement bar and the chord card"). The template
@@ -5313,6 +5350,17 @@ function fcpPanelNameRuns(name,size,face,small,fill,align,maxW,out){   // out.w:
    run before it, its place up or down its own baseline shift (a capital's middle on the dot's, as the stage draws it).
    An invisible glyph leads the line and carries the way to the first number - a space at a line's start may not be kept.
    nums: [{text,size,x,y}] from the pan's middle, y upward. (patches/lab-card-numbers-one-line.py) */
+/* A FIELD GOES INTO THE SLOT OF ITS NUMBER (David, 14 Oct 2026, of the card's settings in Final Cut: "So that tone field 3 in the Final
+   Cut settings correlates to tone field 3 on the handpan"). A card's slots are named for what they hold - the ding's, then
+   Field 1, Field 2 ... (the sidecar's card.names) - and the file fills them so: the ding ("0") into the first, tone field k
+   into slot k, a field with no number or beyond the slots into the free ones from the end. It filled them in the order the
+   Studio draws the pan (1, 3, 5 ... round the ring, the ding last): Field 2 was tone field 3. A card without names is
+   filled as before. (patches/lab-fcp-field-slots.py) */
+function fcpPanSlots(G,C){ const n=C.keys.length, F=(G&&G.fields)||[]; if(!C.names) return F.slice(0,n);
+  const slots=new Array(n), rest=[];
+  for(const f of F){ const id=String(f.f), k=/^\d+$/.test(id)?+id:-1; if(k>=0&&k<n&&!slots[k]) slots[k]=f; else rest.push(f); }
+  for(let i=n-1;i>=1&&rest.length;i--) if(!slots[i]) slots[i]=rest.shift();
+  return slots; }
 function fcpPanelNumLine(nums,C){ const L=C.num_line, it0=(nums||[]).filter(Boolean); if(!L||!it0.length) return [{text:" ",style:{size:C.num_size||40,color:[0,0,0]}}];
   const g=fcpPanelLabel.g||(fcpPanelLabel.g=document.createElement("canvas").getContext("2d")); g.font="800 100px Figtree"; const W=t=>g.measureText(t).width/100;
   const fill=fcpCssRGB(FCPP.PICNUM), it=it0.map(q=>{ const w=W(q.text)*q.size; return {q,w,o:q.x-w/2}; }).sort((a,b)=>a.o-b.o), LEAD=10;
@@ -5330,7 +5378,7 @@ function fcpPanelChordTitles(cs,CR,tb,o){ const SL=cs.sliders, C=cs.card, m=tb.m
       {name:"Beat Opacity",key:cs.marker.opacity_key,value:"0"},{name:"Bar Opacity",key:cs.marker.bar_opacity_key,value:R.dark?"0":"1"}].concat(FCP_PANEL_SWITCH(cs))
       .concat(cs.switches&&cs.switches.next_chord?[{name:"Next chord",key:cs.switches.next_chord,value:nextOn?"1":"0"}]:[])
       .concat(V2C?[{name:"Next line",key:cs.switches.next_line,value:mode==="zone"?"1":"0"},{name:"Card width",key:SL["Card width"].key,value:String(+(C.width_full*extra/C.next_w).toFixed(5))}]:[]);
-    C.keys.forEach((K,i)=>{ const f=G&&G.fields[i], id="Field "+(i+1); if(!f){ params.push({name:id+" Size",key:K.size,value:"0"}); return; }
+    const slots=fcpPanSlots(G,C); C.keys.forEach((K,i)=>{ const f=slots[i], id=(C.names&&C.names[i])||"Field "+(i+1); if(!f){ params.push({name:id+" Size",key:K.size,value:"0"}); return; }
       const nt=lit.get(f.f), left=false, x=(f.x-G.cx)*sc, y=-(f.y-G.cy)*sc, d=2*f.r*(nt?FCP_PANDOT.lit:FCP_PANDOT.unlit)*sc;
       params.push({name:id+" X",key:K.x,value:n01((x+C.pan.span)/(2*C.pan.span))},{name:id+" Y",key:K.y,value:n01((y+C.pan.span)/(2*C.pan.span))},{name:id+" Size",key:K.size,value:n01(d/C.pan.slot)},
         ...(K.state?[{name:id+" State",key:K.state,value:String(+((nt?1:0)/(C.states||2)).toFixed(6))}]   // v4: one circle a field, unlit or lit - the pan shows no hands
@@ -5483,7 +5531,14 @@ function fcpStructRow(tb,c){   // {parts:[{label,x,y}], cur, box, n} for the tab
   /* one box per pass, its letter with the pass's variation mark (A B A B'), from the app's rule (22 Sep) */
   let parts=[]; try{ parts=cw.arrRuns().map(r=>{ const mark=cw.passMark(r); return {label:r.base+mark,base:r.base,mark,from:r.ais[0],to:r.ais[r.ais.length-1]}; }); }catch(e){}
   if(!parts.length) arr.forEach((nm,i)=>{ const label=String(nm).replace(/\s*\d+$/,"")||String(nm); const L=parts[parts.length-1]; if(L&&L.label===label) L.to=i; else parts.push({label,base:label,mark:"",from:i,to:i}); });
-  const ai=c.secStarts.findIndex(x=>x.pulse===tb.sec.pulse), cur=parts.findIndex(P=>ai>=P.from&&ai<=P.to), n=parts.length;
+  /* A PICKUP AND AN ENDING ARE NO PARTS OF THE FORM (David, 14 Oct 2026, of a pickup's table: "we should keep it as separate table now that I
+     see it. But it should not show up in the form"): a part whose sections are all of role pickup or ending is left out;
+     while a pickup's table is showing the strip lights the part it leads into, while an ending's the part it closes. The
+     stage's strip and the Final Cut title alike. (patches/lab-form-no-pickup-ending.py) */
+  const EDGE=(()=>{ let secs={}; try{ secs=appEval("piece").sections||{}; }catch(e){} return i=>{ const s=secs[arr[i]]; return s&&(s.role==="pickup"||s.role==="ending")?s.role:""; }; })();
+  parts=parts.filter(P=>{ for(let i=P.from;i<=P.to;i++) if(!EDGE(i)) return true; return false; });
+  const ai=c.secStarts.findIndex(x=>x.pulse===tb.sec.pulse), own=parts.findIndex(P=>ai>=P.from&&ai<=P.to),
+    cur=own>=0?own:EDGE(ai)==="pickup"?parts.findIndex(P=>P.from>ai):EDGE(ai)==="ending"?parts.map(P=>P.to<ai).lastIndexOf(true):-1, n=parts.length;
   /* A LONG NAME GETS A BROADER BOX (David, 12 Oct 2026: "when a section has a longer name (for example, 'groove' or 'Bridge')
      broader so the section name can be displayed properly"). One or two letters: the square and its large letter, as before. A
      longer name: its letters at FCPW.SIZE of a box's height, its box as wide as the name needs with FCPW.PAD around it, in
@@ -5657,10 +5712,15 @@ function fcpGlyph(ev){
   return String(ev.f==null?"?":ev.f);
 }
 function fcpRank(ev){ if(ev.v==="ghost") return -2; if(ev.v==="perc") return -1; if(ev.f===0) return 0; const n=parseInt(ev.f,10); return isFinite(n)?n:0.5; }   // a stack reads top-down: high fields first, the ding last
-function fcpCell(evs,glyph){
+/* THE TABLE FORM'S LONE SYMBOL (David, 13 Oct 2026: "for table (not tab), can we make the full size symbols a tiny bit smaller?"
+   - 5 %, "yes" - and "can you make only the ghost note dots another 5% smaller?"): a slot's one symbol at ALL of the cell's
+   glyph, a ghost's dot at GHOST of that, raised by BASE of what it lost so its middle stays the cell's (the fast notes'
+   rule). Stacks, fast notes and the Tab form's lanes (tab) keep their sizes. (patches/lab-table-symbols-smaller.py) */
+const FCP_FULL={ALL:0.95,GHOST:0.95};
+function fcpCell(evs,glyph,tab){
   if(!evs||!evs.length) return [{text:" ",style:{size:glyph,color:FCP_HAND.R}}];
   const sorted=evs.slice().sort((a,b)=>fcpRank(b)-fcpRank(a)).slice(0,4), N=sorted.length;
-  if(N===1) return [{text:fcpGlyph(sorted[0]),style:{size:glyph,color:FCP_HAND[sorted[0].hand]||FCP_HAND.R}}];
+  if(N===1){ const tx=fcpGlyph(sorted[0]), size=tab?glyph:glyph*FCP_FULL.ALL*(tx==="§"?FCP_FULL.GHOST:1), st={size,color:FCP_HAND[sorted[0].hand]||FCP_HAND.R}; if(size!==glyph) st.baseline=FCPV.BASE*(glyph-size); return [{text:tx,style:st}]; }
   const S=FCP_STACK[N], size=glyph*S.size, lead=1.37*size, pitch=lead+S.lineSpacing*size;
   const baseline=((N-1)*pitch)/2-0.45*size+0.45*glyph;   // the block's centre on the cell's centre (the template's baseline sits 0.45·glyph below it)
   return sorted.map((ev,i)=>({text:(i?"\n":"")+fcpGlyph(ev),style:{size,color:FCP_HAND[ev.hand]||FCP_HAND.R,lineSpacing:S.lineSpacing*size,baseline}}));
@@ -5671,13 +5731,51 @@ function fcpCell(evs,glyph){
    BASE IS WHAT IS DRAWN". The template is chosen by the DRAWN grid, beats × base,
    and a slot that spans several stored pulses shows their glyphs side by side,
    smaller — as the Studio draws them. */
-function fcpSlotText(perPulse,glyph,fastBeat){ // perPulse: the events of each stored pulse inside one drawn slot; fastBeat: the beat holds fast notes somewhere, so every slot of it is small (the app's way)
-  if(perPulse.length===1) return fcpCell(perPulse[0],glyph);
+function fcpSlotText(perPulse,glyph,fastBeat,tab){ // perPulse: the events of each stored pulse inside one drawn slot; fastBeat: the beat holds fast notes somewhere, so every slot of it is small (the app's way)
+  if(perPulse.length===1) return fcpCell(perPulse[0],glyph,tab);
   const later=perPulse.slice(1).some(e=>e&&e.length);
-  if(!later&&!fastBeat) return fcpCell(perPulse[0],glyph);
+  if(!later&&!fastBeat) return fcpCell(perPulse[0],glyph,tab);
   const size=glyph/perPulse.length, baseline=0.45*(glyph-size);   // two fast notes in a slot at half size (1.15× overran the slot — David, 16 Sep), four at a quarter; raised so their centre is the cell's
   return perPulse.map(evs=>{ const e=evs&&evs.slice().sort((a,b)=>fcpRank(b)-fcpRank(a))[0]; return e?{text:fcpGlyph(e),style:{size,color:FCP_HAND[e.hand]||FCP_HAND.R,baseline}}:{text:" ",style:{size,color:FCP_HAND.R,baseline}}; });
 }
+/* THE TAB FORM IN THE FILE (David, 13 Oct 2026: "tab notation still imports to FCP as table"). The stage's rule (FCP_TAB): a
+   slot is read once and written once a lane - its events parted by hand, each part through fcpSlotText at the lane's size.
+   Here the lanes that hold a note are the LINES of the cell's one text, as a stack's notes are. A line's place is the
+   stage's: dy of a row above the row's centre line, raised by LIFT of the lane's size; the cell's text has its baseline
+   BASE of the cell's glyph under that centre line, so a lane's line is raised by A = dy*RH + (LIFT-BASE)*lane + BASE*glyph
+   and whatever the run itself asks (fast notes, a stack). One lane: one line, by its baseline alone. Two: every run
+   carries the first line's A, and a later line the spacing that is left of the step down to it after the font's line
+   box - the stage's own reading of a stack (drawRuns). A stack inside a lane beside a filled other lane mixes sizes: a
+   guess. (patches/lab-fcp-tab-form.py) */
+/* A FACE'S LINE BOX IS ITS FONT FILE'S, NOT A BROWSER'S ANSWER (David, 14 Oct 2026: "in FCP ... the symbols of a chord are sitting a bit too
+   close. In the lab ... it's perfect"). A canvas was asked for Loopiejuice Mono's ascent and descent: Chrome says 1.20 of
+   the size, the Lab's Mac app (WebKit) said 1.15, and the file's line spacing came out 3.6 too tight - read in the file he
+   imported. Ascent and descent of a size of 1, from the fonts' hhea tables (read 14 Oct 2026); Final Cut lays its lines by
+   these. Nothing written into a file is measured on a canvas but widths. (patches/lab-fcp-font-metrics-fixed.py) */
+const FCP_LINE={loopie:{asc:0.955,desc:0.245},inter:{asc:0.9688,desc:0.2412}};
+function fcpLineBox(){ return FCP_LINE.loopie.asc+FCP_LINE.loopie.desc; }
+/* FROM ONE LINE DOWN TO THE NEXT Final Cut steps the upper line's descent, the lower line's ascent - each of its own size - and
+   the line spacing OF THE UPPER LINE (David, 14 Oct 2026, of a hand's two notes beside the other hand's one: "a bit too close to
+   the line below ... In the preview it's better"; measured in his pictures - the stack's digits 54.3 apart in Final Cut,
+   46.4 on the stage, as that rule predicts of what was written). fcpLineAD: a face's ascent and descent, of a size of 1,
+   read from the font. (patches/lab-fcp-tab-line-steps.py) */
+function fcpLineAD(studio){ return studio?FCP_LINE.inter:FCP_LINE.loopie; }   // from the font files (FCP_LINE), not a canvas
+function fcpTabRuns(perPulse,glyph,fast){
+  const lg=fcpTabSize(glyph), box=fcpLineBox(), studio=fcpSym()!==FCP_SYM.loopie, lines=[];
+  for(const [hand,dy] of FCP_TAB.LANES){
+    const runs=fcpSlotText(perPulse.map(evs=>evs&&evs.filter(e=>(e.hand==="L"?"L":"R")===hand)),lg,fast,true);
+    if(!runs.some(r=>r.text.trim())) continue;   // an empty lane is no line
+    const off=fcpTabDy(dy,lg)+(FCP_TAB.LIFT-FCPV.BASE)*lg+FCPV.BASE*glyph, parts=[]; runs.forEach(r=>{ if(r.text.startsWith("\n")||!parts.length) parts.push([]); parts[parts.length-1].push(r); });
+    const s0=runs[0].style, pitch=box*s0.size+(s0.lineSpacing||0);   // a stack's own step, where the lane holds one
+    parts.forEach((p,i)=>lines.push({runs:p.map(r=>({text:r.text.replace(/^\n/,""),style:Object.assign({},r.style)})),A:off+(p[0].style.baseline||0)-i*pitch,size:p[0].style.size})); }
+  if(!lines.length) return [{text:" ",style:{size:glyph,color:FCP_HAND.R}}];
+  const A0=lines[0].A, out=[];
+  const AD=fcpLineAD(studio), W=s=>studio?FCP_SYM.studio.scale*s:s;   // the written face's ascent and descent; a size as it is written
+  lines.forEach((L,k)=>{ const up=lines[k+1]?L:lines[k-1], lo=lines[k+1]||L;   // the step this line's spacing rules: down to the next line - the last line repeats the one above it
+    const sp=lines.length>1?(up.A-lo.A)-(AD.desc*W(up.size)+AD.asc*W(lo.size)):null;
+    for(const r of L.runs){ r.style.baseline=A0; if(sp!=null) r.style.lineSpacing=sp; else delete r.style.lineSpacing; }
+    const rr=fcpFaceRuns(L.runs); if(k&&rr.length) rr[0]=Object.assign({},rr[0],{text:"\n"+rr[0].text}); out.push(...rr); });
+  return out; }
 function fcpFastBeat(c,q0,sub,per){ if(per<=1) return false; for(let q=q0;q<q0+sub;q++){ if((q-q0)%per!==0){ const e=c.byPulse.get(q); if(e&&e.length) return true; } } return false; }   // a beat with a note off the drawn grid
 /* THE MARKER'S SPAN IN A GROUPED BAR follows the app's Marker follows setting (David,
    16 Sep: "the way the marker behaves can be controlled by the marker follow setting,
@@ -5871,9 +5969,23 @@ function fcpSpans(tables,sm,c,solo){   // solo: this piece without the pieces be
   if(next) S[S.length-1].meetOut=S[S.length-1].exit>=next.entry-1e-3;
   return S;
 }
+/* AN EMPTY CELL HOLDS A BLANK THAT IS NOT A SPACE (David, 14 Oct 2026, in Final Cut: a double-click on a right-hand symbol "selects a
+   cell that sits somewhere left of where I click" - in his pictures the EMPTY cell three columns to the left where that
+   cell held nothing, the symbol itself where it held a note; a space set to size 1 by hand: "the fix seems to work. Can
+   we do it in a way that those empty cells are still clickable?"). A title's texts lie one over the other, the left
+   ones on top. An empty cell was a space at the cell's full size, and Final Cut gives a text that is only space a
+   place to be clicked that reaches far to the right along the foot of the row; a cell with a glyph never did it. So
+   an empty cell of the table holds U+2800 - the braille pattern with no dot, a glyph and not a space - in Apple
+   Braille Regular (a system font; the look's faces have no such glyph and would draw a box), at BLANK of the cell's
+   size: a box of its own, in its own cell, that can be double-clicked and typed over. Every other text that is only
+   space - the rows beyond the table's, unused counts, an absent next chord - is written at size 1 (fcpTablesOf's end).
+   (patches/lab-fcp-blank-cells-small.py) */
+const FCP_BLANK={ch:"\u2800",font:"Apple Braille",face:"Regular",size:0.6};
+function fcpBlankCell(glyph){ return [{text:FCP_BLANK.ch,style:{font:FCP_BLANK.font,face:FCP_BLANK.face,size:+(FCP_BLANK.size*glyph).toFixed(3),color:FCP_HAND.R}}]; }
 async function fcpTablesOf(staticMarker,clipSet){   // the open piece's titles for the tables file, or {why} it has none to give (exportFcpTables writes the file); clipSet: the markers file - the table's own marker off and a clip per lit beat instead
   const clips=[], MK=clipSet&&FCPXML.SETS[clipSet]&&FCPXML.SETS[clipSet].box;
-  if(fcpSym()!==FCP_SYM.loopie){ try{ await document.fonts.load("700 60px Inter"); await document.fonts.load("60px 'Loopiejuice Mono'"); }catch(e){} }   // the Studio's symbols are placed by measure (fcpFaceRuns): both faces have to be there
+  if(fcpSym()!==FCP_SYM.loopie){ try{ await document.fonts.load("700 60px Inter"); await document.fonts.load("60px 'Loopiejuice Mono'"); }catch(e){} }
+  if(state.face==="tab"){ try{ await document.fonts.load("60px 'Loopiejuice Mono'"); }catch(e){} }   // the lanes' step is read from the font's line box (fcpTabRuns)   // the Studio's symbols are placed by measure (fcpFaceRuns): both faces have to be there
   /* staticMarker (⌥ on the menu item): Row and Beat as plain values, no keyframes.
      16 Sep 2026: the first tables import landed, then Final Cut crashed the moment
      David opened an inspector tab for the title (FFChanDoublePercentToSourcePixel
@@ -5901,7 +6013,7 @@ async function fcpTablesOf(staticMarker,clipSet){   // the open piece's titles f
       else if(nm==="A") texts.push(side.skin?fcpPanelLabel(fcpNoLetter()?" ":tb.sec.name,side):[{text:fcpNoLetter()?" ":tb.sec.name,style:{font:"Caveat",size:185,color:fcpRGB(STY.label),alignment:"right"}}]);   // the label's colour (David, 16 Sep)
       else if((mm=/^Count (\d+)$/.exec(nm))){ const L=labels[(+mm[1]-1)%barCols]||{text:" ",big:false}; texts.push(side.skin?fcpPanelCount(L,side):[{text:L.text,style:{size:L.big?cglyph:cglyph*0.62,color:fcpRGB(STY.header)}}]); }   // the header's; the labels repeat per bar of the row
       else if((mm=/^Cell (\d+)\.(\d+)$/.exec(nm))){ const r=+mm[1]-1, col=+mm[2]-1; const cols=(side.bars||1)*barCols, bar=r*bpr+Math.floor(col/barCols), cw2=col%barCols;   // the bar this column belongs to, in a row of bpr bars
-        if(r<rows&&col<cols&&bar<tb.bars){ const q0=tb.sec.pulse+bar*m.bp+cw2*per; const perPulse=[]; for(let i=0;i<per;i++) perPulse.push(c2.byPulse.get(q0+i)); { const rr=fcpFaceRuns(fcpSlotText(perPulse,glyph,fcpFastBeat(c2,tb.sec.pulse+bar*m.bp+Math.floor(cw2/pos)*m.sub,m.sub,per))); texts.push(side.skin?fcpPanelRuns(rr):rr); } }
+        if(r<rows&&col<cols&&bar<tb.bars){ const q0=tb.sec.pulse+bar*m.bp+cw2*per; const perPulse=[]; for(let i=0;i<per;i++) perPulse.push(c2.byPulse.get(q0+i)); { const fb=fcpFastBeat(c2,tb.sec.pulse+bar*m.bp+Math.floor(cw2/pos)*m.sub,m.sub,per), rr0=state.face==="tab"?fcpTabRuns(perPulse,glyph,fb):fcpFaceRuns(fcpSlotText(perPulse,glyph,fb)), rr=rr0.some(r=>String(r.text).trim())?rr0:fcpBlankCell(glyph); texts.push(side.skin?fcpPanelRuns(rr):rr); }   /* Tab: a lane a line (patches/lab-fcp-tab-form.py) */ }
         else texts.push([{text:" ",style:{size:glyph,color:FCP_HAND.R}}]); }
       else texts.push([{text:" ",style:{size:glyph,color:FCP_HAND.R}}]);
     }
@@ -5932,7 +6044,9 @@ async function fcpTablesOf(staticMarker,clipSet){   // the open piece's titles f
     titles.push({t:t0,dur:t1-t0,name:tb.sec.name+" — "+side.name,template:{name:side.name,uid:side.uid},transform,fadeIn,fadeOut,
       params:[{name:"Rows",key:SL.Rows.key,value:String(+((rows-1)/SL.Rows.n).toFixed(6))}]
         .concat(side.switches&&side.switches.section_letter?[{name:"Section Letter On/Off",key:side.switches.section_letter,value:"1"}]:[])   // the letter is OFF by default in David's template
-        .concat(side.switches&&side.switches.letter_tab?[{name:"Letter tab",key:side.switches.letter_tab,value:fcpNoLetter()?"0":"1"}]:[]).concat(side.skin?FCP_PANEL_SWITCH(side):[])   // the Panel look's tab goes with the letter (patches/lab-fcp-panel-v2.py)
+        .concat(side.switches&&side.switches.letter_tab?[{name:"Letter tab",key:side.switches.letter_tab,value:fcpNoLetter()?"0":"1"}]:[])
+        .concat(side.panel&&side.panel.tile&&side.sliders["Letter tile"]?[{name:"Letter tile",key:side.sliders["Letter tile"].key,value:String(fcpPanelTile(tb.sec.name,side).v)},{name:"Letter tile show",key:side.sliders["Letter tile show"].key,value:fcpNoLetter()?"0":String(side.panel.tile.full)}]:[])   /* v4d: the tile's width and its showing, two sliders (patches/lab-fcp-letter-tile.py) */
+        .concat(side.skin?FCP_PANEL_SWITCH(side):[])   // the Panel look's tab goes with the letter (patches/lab-fcp-panel-v2.py)
         .concat(side.switches&&side.switches.group_lines?[{name:side.switches.group_lines_label||"Divide",key:side.switches.group_lines,value:fcpBoxes()==="halves"?"0":"1"}]:[])   // the boxes: the groups (on, "Divide 4 to 2/2") or the halves (off)
         .concat(staticMarker||MK
         ?[{name:"Row",key:SL.Row.key,value:"0"},{name:"Beat",key:SL.Beat.key,value:"0"}]
@@ -6026,7 +6140,8 @@ async function fcpTablesOf(staticMarker,clipSet){   // the open piece's titles f
                 params:[{name:"Part",key:ss.sliders.Part.key,value:"0"}].concat(wide&&ss.sliders.Width?[{name:"Width",key:ss.sliders.Width.key,value:String(+(Math.round((Math.min(ss.sliders.Width.max,P.w)-ss.sliders.Width.from)/ss.sliders.Width.quarter)/ss.sliders.Width.n).toFixed(6))}]:[]).concat(ss.marker?[param("Marker Opacity",ss.marker.opacity_key,cur=>cur===pi?1:0)]:[]),texts:ss.text_order.map(nm=>nm==="Part 1"?ptext(P,k):[{text:" ",style:{size:g0,color:[0,0,0]}}])});
               chordTitles++; structTitles++; }); } } } } }
   const last=tables[tables.length-1]; chapters.push({t:last.tb,close:true,label:last.tail?"end":(MARK_LABELS.get(Math.round(last.tb*1000))||"end")});
-  if(!titles.length){ const m0=[...missing][0], mm=/^(\d+)x(\d+)(?: ([\d-]+))?$/.exec(m0)||[]; return {why:"No template for "+[...missing].join(", ")+" — build it: python3 tools-cell-moti.py "+mm[1]+" "+mm[2]+(mm[3]?" --groups "+mm[3]:"")+", then install it and copy its .json into fcp-templates/"}; }
+  if(!titles.length){ const m0=[...missing][0], mm=/^(\d+)x(\d+)(?: ([\d-]+))?$/.exec(m0)||[]; return {why:"No Final Cut title for a table of "+[...missing].join(", ")+" (beats × positions in a beat) — nothing could be written. It has to be built first: tools-cell-moti.py "+mm[1]+" "+mm[2]+(mm[3]?" --groups "+mm[3]:"")}; }   // the words are David's to read (14 Oct 2026: "why this error message?"); the command is for whoever builds it
+  for(const T of titles) T.texts=T.texts.map(t=>t.some(r=>String(r.text).trim())?t:[{text:" ",style:{size:1,color:[0,0,0]}}]);   // what is only space is written at size 1: nothing to click, nothing to take a click (an empty CELL holds fcpBlankCell's glyph instead)
   return {titles,chapters,bars,beats:clips,missing,tooTall,missingChords,tooManyChords,chordTitles,structTitles,_lastEnd:Math.max(...spans.map(s=>s.lastEnd))};
 }
 async function exportFcpTables(staticMarker){
