@@ -13923,6 +13923,7 @@ const GTR_PU_PUSH=[{pos:[2]},{pos:[2]},{pos:[3,2]},{pos:[6,2]}];
    it varies. A new improvising style: draw through passDraw, add its line to VARIES. */
 let PLAYPASS=0, PLAYPREV=null;
 const VARIES={kit:()=>!!kitLv,pan:()=>panLiveOn(),bass:()=>bassPuOn()||bassFunkOdd(),gtr:()=>gtrLive||gtrStyle==="flow"||gtrStyle==="flowch"||gtrStyle==="flowsolo"||(gtrStyle==="strum"&&gtrStrum==="jzfree"),   /* the bass's Pickup (patches/bass-pickup.py) */
+  syn:()=>synFree>0, syn2:()=>(SYN2.free||0)>0,   /* the synths' Freedom (patches/synth-freedom.py) */
   pno:()=>pnoStyle==="flow"||pnoStyle==="flowsp"||pnoStyle==="flowch"||pnoStyle==="flowsolo"||pnoStyle==="flowcb"||pnoStyle==="flowcbg"||pnoStyle==="jcomp"||pnoStyle==="fkfree"||pnoLive};   /* the piano's Flow and Comping (patches/piano-pass-rule.py) */
 function passHash(x){ let h=Math.imul((Math.round(x*16)|0)^0x9e3779b9,2654435761)>>>0; h^=h>>>15; h=Math.imul(h,2246822519)>>>0; h^=h>>>13; return (h>>>0)/4294967296; }
 function passDraw(key,place,salt){ let k=0; for(const c of String(key)) k=(k*31+c.charCodeAt(0))|0; return passHash(place*7+(salt||0)*131+k*0.37+7919*PLAYPASS); }
@@ -16426,6 +16427,7 @@ function synDelayLv(t){ const S=SYN.dS, E=SYN.dE; if(!(E>S)) return 1; return Ma
 function synPulse(p2,rel,m,sec,at,free){
   if(!free&&SYN_K==="syn"){ const W=wtBar("syn",sec,rel,m);   /* Synth 2 has no written bars: it plays its style (patches/synth-2.py) */ if(W){ synPlayWritten(p2,rel,m,sec,at,W); return; }
     const S=wtStyleAt("syn",sec,rel,m); if(S){ wtAsStyle("syn",S,()=>synPulse(p2,rel,m,sec,at,true)); return; } }   // a written bar plays what is written (30 Sep 2026)
+  if(synFree>0&&!SYNFR_IN&&synReady()){ SYNFR_IN=true; try{ synFreedom(p2,rel,m,sec,at); } finally{ SYNFR_IN=false; } return; }   // Freedom (patches/synth-freedom.py)
   if(synStyle==="pan"){ synFollow(p2,at); return; }
   if(synStyle==="panplus"){ synFollowPlus(p2,rel,m,sec,at); return; }   // Handpan plus (patches/synth-follow-plus.py)
   const rb=((rel%m.bp)+m.bp)%m.bp, pd=pulseDurOf(p2);
@@ -16492,9 +16494,76 @@ function synFollowPlus(p2,rel,m,sec,at){
   const step=m.sub%2===0?m.sub/2:m.sub; if((p2-F.p)%step) return;            // the eighths after the last stroke
   const name=chordInForceAt(p2,sec,m), pcs=name&&chordPCs(name);
   let midi=F.top+12;                                                         // the shimmer: the last note an octave up
-  if(F.k%2===0&&pcs){ const r=pcs[0]; midi=F.top+((((r-F.top)%12)+12)%12||12); }   // the high pedal: the chord's root above the line
+  let kind=F.k%2===0&&pcs?"pedal":"shimmer";
+  if(synFree>=2){ const d=passDraw(SYN_K,p2,61); kind=d<0.12?"rest":d<0.4?"pedal":d<0.65?"shimmer":pcs&&pcs.length>2?"tone":"pedal"; }   // Freedom's Live: the fills vary (patches/synth-freedom.py)
+  if(kind==="rest"){ F.k++; return; }
+  if(kind==="pedal"&&pcs){ const r=pcs[0]; midi=F.top+((((r-F.top)%12)+12)%12||12); }   // the high pedal: the chord's root above the line
+  if(kind==="tone"){ const r=pcs[passDraw(SYN_K,p2,62)<0.5?1:2]; midi=F.top+((((r-F.top)%12)+12)%12||12); }   // the chord's third or fifth above the line
   while(midi>96) midi-=12;
   synNote(midi,at,Math.min(1,.8*F.g)*0.42*Math.pow(0.78,F.k),0.35,Math.min(P.a,.02)); F.k++;
+}
+/* FREEDOM FOR THE SYNTHS (David, 14 Oct 2026: "Should we give the synth also a freedom option?" - "it should play its own
+   variations, not follow the Handpan" - "Plain Handpan should behave like all other synth styles regarding the freedom
+   setting"; patches/synth-freedom.py). One layer in front of every style: synPulse hands the pulse here when Freedom is
+   above Off; the style itself plays through synPulse again (SYNFR_IN), and the step adds - Phrases a run into a chord
+   change, Live half a bar's touch of its own, Listen another's figure for a bar and the band's draw for its runs, Jam all
+   of it more often and an answer to the handpan's phrase ends. Every choice is passDraw of the place and the pass. */
+var SYNFR_IN=false;
+function synFrP(p){ return actP(SYN_K,p*(synFree>=4?1.6:1)); }
+function synFreeRead(key){ let v=0; try{ v=+(localStorage.getItem(key)||0); }catch(e){} return v>=0&&v<=4?Math.round(v):0; }
+function synFreedom(p2,rel,m,sec,at){
+  const F=synFree, bi=Math.floor(Math.max(0,rel)/m.bp+1e-9), t=rel-bi*m.bp, b0=p2-t;
+  if(F>=3&&m.beats===4&&(m.den||4)===4&&m.bp%16===0){ const fig=synListenFig(b0,sec,bi,m); if(fig){ synFigPulse(fig,p2,t,m,sec,at); return; } }
+  synRunPulse(p2,t,m,at,F);
+  if(F>=4) synAnswerPulse(p2,t,m,at);
+  const vr=F>=2?synVaryAt(b0,t<m.bp/2?0:1):null;
+  if(!vr){ synPulse(p2,rel,m,sec,at,true); return; }
+  const sn=synNote, off=t%m.sub!==0;
+  synNote=function(mi,tt,g,d,a){ const up=mi+12<=100?mi+12:mi;
+    if(vr==="thin"){ if(off) return; return sn(mi,tt,g,d,a); }            // only the notes on the beats
+    if(vr==="lift") return sn(up,tt,g,d,a);                               // the half bar an octave up
+    sn(mi,tt,g,d,a); if(up!==mi) sn(up,tt,g*0.45,d,a); };                 // the octave above, softly
+  try{ synPulse(p2,rel,m,sec,at,true); } finally{ synNote=sn; }
+}
+/* LIVE: about one half bar in five, one of three touches */
+function synVaryAt(b0,h){ const k=b0*2+h; if(passDraw(SYN_K,k,41)>=synFrP(0.22)) return null; return ["octave","lift","thin"][Math.min(2,Math.floor(passDraw(SYN_K,k,43)*3))]; }
+/* PHRASES: in the beat before a new chord its fifth and third below the root, then the root as it arrives */
+function synRunPulse(p2,t,m,at,F){
+  const o=t%m.sub, bs=p2-o;
+  const chordAt=q=>{ if(q<0||(C&&q>=C.total)) return null; const e=secOfPulse(q); if(!e||!piece.sections[e.name]) return null; return chordInForceAt(q,e,SM(piece,e.name)); };
+  const run=nx=>{ const a=chordAt(nx-m.sub), b=chordAt(nx); if(!b||a===b) return null;
+    const d=F>=3?passDraw("band",nx,7):passDraw(SYN_K,nx,47); if(d>=synFrP(F===1?0.45:0.55)) return null;
+    const pcs=chordPCs(b); return pcs&&pcs.length>=2?pcs:null; };
+  const base=60+(SYN_FOLLOW_SHIFT[synReg]||0), rootAbove=r=>{ let x=base; while(((x%12)+12)%12!==r) x++; return x; };
+  if(o===0){ const pcs=run(p2); if(pcs) synNote(rootAbove(pcs[0]),at,0.5,0.3,0.01); return; }
+  const offs=m.sub>=4&&m.sub%4===0?[m.sub/2,3*m.sub/4]:m.sub===3?[1,2]:m.sub%2===0?[m.sub/2]:[]; const i=offs.indexOf(o); if(i<0) return;
+  const pcs=run(bs+m.sub); if(!pcs) return; const R=rootAbove(pcs[0]), th=((pcs[1]-pcs[0])%12+12)%12;
+  const notes=offs.length===2?[R-7,R-th]:[R-th]; synNote(notes[i],at,0.34+0.08*i,0.18,0.01);
+}
+/* JAM: the handpan's written phrase ends with a beat of silence before the bar line - its last two notes an octave up */
+function synAnswerPulse(p2,t,m,at){
+  const b0=p2-t; let last=-1; const notes=[];
+  for(let q=0;q<m.bp;q++){ const T=panTones(b0+q,true); if(T.length){ last=q; notes.push(Math.max(...T.map(x=>x.midi))); } }
+  if(last<0||notes.length<2) return;
+  const g0=Math.ceil((last+1)/m.sub)*m.sub; if(m.bp-g0<m.sub) return;
+  const pos=[g0,g0+Math.floor(m.sub/2)], i=pos.indexOf(t); if(i<0||(i===1&&pos[1]===pos[0])) return;
+  if(passDraw(SYN_K,b0,59)>=synFrP(0.5)) return;
+  let mi=notes[notes.length-2+i]+(SYN_FOLLOW_SHIFT[synReg]||0)+12; while(mi>96) mi-=12;
+  synNote(mi,at,0.4-0.05*i,0.25,0.01);
+}
+/* LISTEN: about one bar in four, another's figure as short chords in the synth's own sound */
+function synListenFig(b0,sec,bi,m){
+  const key=SYN_K+"|"+b0+"|"+PLAYPASS; if(SYN.lfk===key) return SYN.lf; SYN.lfk=key; SYN.lf=null;
+  if(passDraw(SYN_K,b0,53)>=synFrP(0.25)) return null;
+  const src=["drm","gtr","pno"], s0=Math.min(2,Math.floor(passDraw(SYN_K,b0,57)*3));
+  for(let j=0;j<3;j++){ const f=bandFig(src[(s0+j)%3],sec.name,bi,m); if(f&&/x/.test(f)){ SYN.lf=f; break; } }
+  return SYN.lf; }
+function synFigPulse(fig,p2,t,m,sec,at){
+  if(t===0){ synRelease(at); SYN.chord=null; }
+  const st=m.bp/16; if(t%st) return; if(fig[t/st]!=="x") return;
+  const name=chordInForceAt(p2,sec,m), pcs=name&&chordPCs(name); if(!pcs) return;
+  const base=60+(SYN_FOLLOW_SHIFT[synReg]||0);
+  for(const pc of pcs.slice(0,3)){ let x=base; while(((x%12)+12)%12!==pc) x++; synNote(x,at,0.45,0.12,0.005); }
 }
 
 /* ---------------- the jam's rhythm track (8 Sep 2026; WGG's core since 11 Sep)
@@ -20713,6 +20782,7 @@ let pnoVol=mixGet("hps.pnovol",100,0,225), pnoPan=mixGet("hps.pnopan",0,-100,100
 /* THE SYNTH'S SETTINGS (29 Sep 2026, patches/synth-a.py): one setting per device, as the piano's */
 let synOn=false;
 const synPick=(k,list,d)=>{ let s=null; try{ s=localStorage.getItem(k); }catch(e){} return list.some(x=>(x.id||x[0])===s)?s:d; };
+let synFree=synFreeRead("hps.synfree");   /* Freedom, 0 Off to 4 Jam (patches/synth-freedom.py) */
 let synSnd=synPick("hps.synsound",SYN_PRE,"warm"), synStyle=synPick("hps.synstyle",SYN_STYLES,"held"),
     synReg=synPick("hps.synreg",PNO_REGS,"around"), synVc=synPick("hps.synvoicing",SYN_VOICINGS,"close"), synRate=synPick("hps.synrate",SYN_RATES,"8"), synOct=synPick("hps.synoct",SYN_OCTS,"2");   /* the arpeggios' rate (patches/synth-steps.py) */
 let synVol=mixGet("hps.synvol",100,0,225), synBright=mixGet("hps.synbright",100,40,250), synPan=mixGet("hps.synpan",0,-100,100), synRev=mixGet("hps.synrev",30,0,60);
@@ -20731,12 +20801,13 @@ const SYN2={snd:synPick("hps.syn2sound",SYN2_SOUNDS.map(id=>[id]),"pluck"), styl
   reg:synPick("hps.syn2reg",PNO_REGS,"above"), vc:synPick("hps.syn2voicing",SYN_VOICINGS,"close"),
   vol:mixGet("hps.syn2vol",100,0,225), bright:mixGet("hps.syn2bright",100,40,250), P:{chord:null,held:[],last:-9,ctx:null,vc:null}};
 let syn2Pan=mixGet("hps.syn2pan",0,-100,100), syn2Rev=mixGet("hps.syn2rev",30,0,60);
+SYN2.free=synFreeRead("hps.syn2free");   /* Synth 2's own Freedom (patches/synth-freedom.py) */
 function synAs2(fn){ if(SYN_K==="syn2") return fn();
-  const S=[synSnd,synStyle,synRate,synOct,synReg,synVc,synVol,synBright,SYN];
-  [synSnd,synStyle,synRate,synOct,synReg,synVc,synVol,synBright,SYN]=[SYN2.snd,SYN2.style,SYN2.rate,SYN2.oct,SYN2.reg,SYN2.vc,SYN2.vol,SYN2.bright,SYN2.P]; SYN_K="syn2";
+  const S=[synSnd,synStyle,synRate,synOct,synReg,synVc,synVol,synBright,SYN,synFree];
+  [synSnd,synStyle,synRate,synOct,synReg,synVc,synVol,synBright,SYN,synFree]=[SYN2.snd,SYN2.style,SYN2.rate,SYN2.oct,SYN2.reg,SYN2.vc,SYN2.vol,SYN2.bright,SYN2.P,SYN2.free||0]; SYN_K="syn2";
   try{ return fn(); }
-  finally{ [SYN2.snd,SYN2.style,SYN2.rate,SYN2.oct,SYN2.reg,SYN2.vc,SYN2.vol,SYN2.bright,SYN2.P]=[synSnd,synStyle,synRate,synOct,synReg,synVc,synVol,synBright,SYN];
-    [synSnd,synStyle,synRate,synOct,synReg,synVc,synVol,synBright,SYN]=S; SYN_K="syn"; } }
+  finally{ [SYN2.snd,SYN2.style,SYN2.rate,SYN2.oct,SYN2.reg,SYN2.vc,SYN2.vol,SYN2.bright,SYN2.P,SYN2.free]=[synSnd,synStyle,synRate,synOct,synReg,synVc,synVol,synBright,SYN,synFree];
+    [synSnd,synStyle,synRate,synOct,synReg,synVc,synVol,synBright,SYN,synFree]=S; SYN_K="syn"; } }
 /* in the lists, or out of them: after the synth, wherever the synth is */
 function syn2Sync(){ const want=!!syn2Show&&VOICES.some(v=>v[0]==="syn"), key=x=>Array.isArray(x)?x[0]:x;
   const put=(L,item)=>{ const i=L.findIndex(x=>key(x)==="syn2");
@@ -53365,6 +53436,7 @@ function boot(){
         +synGroups(K).map(([g,l,s,ch])=>'<div data-sygb="'+g+'"'+(g===synGroupOf(synStyle)?'':' hidden')+'><div class="ttl">Variation</div>'+seg(ch,"sy",synStyle)
           +(g==="arp"?'<div class="ttl">Rate</div>'+seg(SYN_RATES,"sa",synRate," two")+'<div class="ttl">Range</div>'+seg(SYN_OCTS,"so",synOct):'')+'</div>').join("")
         +'<div class="ttl">Register</div>'+seg(PNO_REGS,"sr",synReg)
+        +'<div class="ttl">Freedom</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(5,1fr)">'+FREEDOM_STEPS.map(([k,l,tt])=>'<button class="bwseg'+(+k===synFree?' on':'')+'" data-sf="'+k+'" title="'+tt+'">'+l+'</button>').join("")+'</div>'   /* the piano's five steps (patches/synth-freedom.py) */
         +'<div class="ttl">Voicing</div>'+seg(SYN_VOICINGS,"sv",synVc," two")
         +'<div class="ttl">Brightness</div>'
         +'<div class="vol full"><input type="range" id="synBriR" min="-100" max="100" step="5" value="'+briPos(synBright)+'" aria-label="Brightness"><span class="val" id="synBriV">'+synBright+'%</span></div>'
@@ -53378,9 +53450,9 @@ function boot(){
         { const gb=ev.target.closest("[data-syg]");   /* a Style tile opens its variations and chooses nothing; one variation is chosen at once (patches/synth-steps.py) */
           if(gb){ const g=synGroups(K).find(x=>x[0]===gb.dataset.syg); if(!g) return; tileGroupOpen(pop,"syg","sygb",g[0]);
             if(g[3].length===1){ const one=pop.querySelector('[data-sy="'+g[3][0][0]+'"]'); if(one&&!one.classList.contains("on")) one.click(); } return; } }
-        const b=ev.target.closest("[data-ss],[data-sy],[data-sr],[data-sv],[data-sa],[data-so]"); if(!b) return;
+        const b=ev.target.closest("[data-ss],[data-sy],[data-sr],[data-sv],[data-sa],[data-so],[data-sf]"); if(!b) return;
         const [key,store,set]=b.dataset.ss!=null?["ss","hps."+K+"sound",v=>{ synSnd=v; }]:b.dataset.sy!=null?["sy","hps."+K+"style",v=>{ synStyle=v; }]
-          :b.dataset.sr!=null?["sr","hps."+K+"reg",v=>{ synReg=v; }]:b.dataset.sa!=null?["sa","hps."+K+"rate",v=>{ synRate=v; }]:b.dataset.so!=null?["so","hps."+K+"oct",v=>{ synOct=v; }]:["sv","hps."+K+"voicing",v=>{ synVc=v; }];
+          :b.dataset.sf!=null?["sf","hps."+K+"free",v=>{ synFree=+v; }]:b.dataset.sr!=null?["sr","hps."+K+"reg",v=>{ synReg=v; }]:b.dataset.sa!=null?["sa","hps."+K+"rate",v=>{ synRate=v; }]:b.dataset.so!=null?["so","hps."+K+"oct",v=>{ synOct=v; }]:["sv","hps."+K+"voicing",v=>{ synVc=v; }];
         const v=b.dataset[key]; as(()=>{ set(v); try{ localStorage.setItem(store,v); }catch(e){}
         pop.querySelectorAll("[data-"+key+"]").forEach(x=>x.classList.toggle("on",x.dataset[key]===v));
         if(key==="ss"){ $("synDesc").textContent=synSound().d; if(!synSound().edm) pop._edmOpen=false; synSndPaint(pop); }
