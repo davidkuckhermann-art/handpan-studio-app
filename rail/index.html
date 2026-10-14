@@ -1738,6 +1738,12 @@ body:not(.phone):not(.tablet) .pop.card:has(>:is(.cpresets,.cwleft))[data-cwf~="
 /* EVERY INSTRUMENT IN THE WIDE CARD'S HEAD (David, 5 Oct 2026; patches/card-head-instruments.py): a segmented control, the open
    one raised in white with its name, an instrument that is off dimmed */
 .pophead .phset{display:none}
+/* ON THE PHONE THE NAME OPENS EVERY INSTRUMENT (David, 14 Oct 2026: "single click opening a row with all the instruments (including
+   band)"; patches/card-head-phone-jump.py): the head wraps and the row takes its width */
+body.phone .pop.card>.pophead[data-vk]>:is(.phico,span){cursor:pointer}
+body.phone .pop.card>.pophead.phopen{flex-wrap:wrap}
+body.phone .pop.card>.pophead.phopen .phset{display:flex; flex-wrap:wrap; justify-content:center; order:20; flex:1 0 100%; gap:2px; padding:3px; margin-top:6px; background:var(--rule2); border-radius:10px}
+body.phone .pop.card>.pophead.phopen .phi b{display:none}   /* the head says the name already: one line of icons */
 @media (min-width:960px){
   body:not(.phone):not(.tablet) .pop.card:is(:has(>:is(.cpresets,.cwleft)),.bandpop)>.pophead .phset{display:inline-flex; align-items:center; gap:2px; padding:3px; background:var(--rule2); border-radius:10px; flex:0 1 auto; min-width:0}
   body:not(.phone):not(.tablet) .pop.card:is(:has(>:is(.cpresets,.cwleft)),.bandpop)>.pophead:has(.phset)>:is(.phico,span){display:none}
@@ -13305,11 +13311,20 @@ try{ if(navigator.mediaDevices&&navigator.mediaDevices.addEventListener)
 /* 1 · the route, a test: "element" as always, or "direct" - read once, as the element route cannot be undone in a page */
 const AUDIO_ROUTE=(()=>{ try{ return localStorage.getItem("hps.audioroute")==="direct"?"direct":"element"; }catch(e){ return "element"; } })();
 /* 2 · the witness: how fast the element's clock runs against real time, one log line per stretch more than 1 % off */
+/* THE ENGINE REBUILDS ITSELF WHEN ITS CLOCK KEEPS RUNNING OFF (David, 14 Oct 2026: "constantly glitching again. A restart of the
+   app fixed the issues" - "Build the self-rebuild"; patches/audio-self-rebuild.py): the witness marks it, the next Play rebuilds
+   in its gesture; 4 s on end stops playback for that Play; two rebuilds a page at most - iOS gives only a handful of contexts */
+let audioClockOff=null;
+function audioClockStop(ep){ ep.stopped=true; audioClockOff={why:"context "+Math.round(ep.cLo*100)+" %, 4 s on end"};
+  audioNote("the engine's clock keeps running off - playback stopped, the next Play rebuilds it [self-rebuild]");
+  const at=(lastPaint>=0)?lastPaint:loopedPulse(nextPulse); try{ stop(); }catch(e){} if(pendingStart==null&&!loopSec&&at>=0) pendingStart=at;
+  try{ toast("The sound was struggling - press play to refresh it"); }catch(e){} }
 function sinkWitness(el){
   if(sinkWitness.on) return; sinkWitness.on=true;
   let ep=null, bg=0, dead=0;
   const pct=x=>x==null?"n/a":Math.round(x*100)+" %";
   const close=()=>{ if(!ep) return;
+    if((ep.cLo<0.975||ep.cHi>1.025)&&performance.now()-ep.t>=2000) audioClockOff=audioClockOff||{why:"context "+pct(ep.cLo)+" to "+pct(ep.cHi)};   // the next Play rebuilds (patches/audio-self-rebuild.py)
     audioNote("clock off for "+((performance.now()-ep.t)/1000).toFixed(1)+" s - sink "+pct(ep.sHi)+(ep.sLo!=null&&ep.sLo<0.99?" (low "+pct(ep.sLo)+")":"")
       +", context "+pct(ep.cHi)+(ep.cLo<0.99?" (low "+pct(ep.cLo)+")":"")+(ep.bg?", after the background":"")+" [diagnostic]");
     ep=null; };
@@ -13330,6 +13345,7 @@ function sinkWitness(el){
     if((rs!=null&&Math.abs(rs-1)>0.025)||Math.abs(rc-1)>0.025){
       if(!ep) ep={t, sHi:rs, sLo:rs, cHi:rc, cLo:rc, bg:!!bg&&t-bg<8000};
       else { if(rs!=null){ ep.sHi=Math.max(ep.sHi??rs,rs); ep.sLo=Math.min(ep.sLo??rs,rs); } ep.cHi=Math.max(ep.cHi,rc); ep.cLo=Math.min(ep.cLo,rc); }
+      if(ep&&Math.abs(rc-1)>0.025&&!ep.stopped&&t-ep.t>=4000&&soundActive()&&document.visibilityState==="visible") audioClockStop(ep);   // (patches/audio-self-rebuild.py)
     } else close();
   },250);
 }
@@ -22415,6 +22431,9 @@ async function start(){
      rebuilt, the worse his audio got. So Play asks for the cheap cures first,
      inside the gesture where iOS grants them, and keeps the rebuild for the
      case where nothing else answered. */
+  if(audioClockOff){ const k=audioClockOff; audioClockOff=null;   // the witness saw the engine's clock run off (patches/audio-self-rebuild.py)
+    if(ctxMade<4){ audioNote("play: the engine's clock ran off ("+k.why+") - rebuilding it (context #"+(ctxMade+1)+") [self-rebuild]"); try{ await reviveAudio(); }catch(e){} }
+    else { audioNote("play: the clock ran off again - two rebuilds already, a restart of the app is needed [self-rebuild]"); try{ toast("The sound engine is struggling - please restart the app"); }catch(e){} } }
   { let why=audioPathBroken();
     if(why){
       try{ await ctx.resume(); }catch(e){}            // 1 · the engine, in the gesture
@@ -25738,6 +25757,20 @@ document.addEventListener("click",e=>{ const t=e.target.closest&&e.target.closes
   if(t.hasAttribute("data-bdsave")) bandSave(); });
 window.addEventListener("resize",()=>{ const p=document.querySelector(".pop.card.bandpop"); if(p) bandRender(p); });
 document.addEventListener("click",ev=>{ const b=ev.target.closest&&ev.target.closest(".pophead [data-phnav]"); if(!b) return; ev.preventDefault(); ev.stopPropagation(); cardNav(+b.dataset.phnav); },true);
+/* THE PHONE CARD'S HEAD: A TAP ON THE NAME OPENS EVERY INSTRUMENT, A SWIPE STEPS (David, 14 Oct 2026: "can you give me swipe for
+   the instrument selector (top left)? Also single click opening a row with all the instruments (including band)" - "phone only";
+   patches/card-head-phone-jump.py). The row is the head's own .phset; < and > step through cardNav, and so does the swipe. */
+let phSwipe=null, phSwiped=0;
+document.addEventListener("touchstart",ev=>{ phSwipe=null; if(!document.body.classList.contains("phone")||ev.touches.length!==1) return;
+  const h=ev.target.closest&&ev.target.closest(".pop.card>.pophead[data-vk]"); if(!h||ev.target.closest(".phtrk,.popx,.phset")) return;
+  const t=ev.touches[0]; phSwipe={x:t.clientX,y:t.clientY,at:Date.now()}; },{passive:true,capture:true});
+document.addEventListener("touchend",ev=>{ const s=phSwipe; phSwipe=null; if(!s) return; const t=ev.changedTouches&&ev.changedTouches[0]; if(!t) return;
+  const dx=t.clientX-s.x, dy=t.clientY-s.y;
+  if(Math.abs(dx)>=40&&Math.abs(dx)>1.5*Math.abs(dy)&&Date.now()-s.at<800){ phSwiped=Date.now(); cardNav(dx<0?1:-1); } },{capture:true});
+document.addEventListener("click",ev=>{ if(!document.body.classList.contains("phone")) return;
+  const n=ev.target.closest&&ev.target.closest(".pop.card>.pophead[data-vk]>:is(.phico,span)"); if(!n) return;
+  if(Date.now()-phSwiped<500) return;                                   // the tap that ended a swipe
+  ev.preventDefault(); ev.stopPropagation(); n.parentElement.classList.toggle("phopen"); },true);
 /* A RIGHT-CLICK MUTES (David, 6 Oct 2026: "please give me mute/unmute on right click for the instrument icon row"): a
    right-click on an instrument's icon in the card's head switches it off or on (voiceSet, as the jam's strip does); the card
    stays on the instrument it shows */
