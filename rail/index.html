@@ -1491,6 +1491,7 @@ body:not(.phone) .pop.card .vol input[type=range],body.tablet .pop.card .vol inp
 .pop .bdr .bdx{position:absolute; right:38px; top:50%; transform:translateY(-50%); font-style:normal; font-size:15px; line-height:1; color:var(--ink3); padding:3px 6px; border-radius:6px}
 .pop .bdr .bdx:hover{color:var(--clay); background:var(--dust)}
 .pop .bdempty{margin:6px 0; padding:16px 14px; border:1px dashed var(--rule); border-radius:10px; font:500 12.5px/1.45 Figtree,"Helvetica Neue",Arial,sans-serif; color:var(--ink3)}
+.pop .bdio{display:flex; flex-wrap:wrap; gap:8px; margin:8px 0 2px}   /* Export band preset, Import preset (patches/band-export-import.py) */
 .pop .bdempty b{color:var(--ink2)}
 @media (min-width:960px){
 body:not(.phone):not(.tablet) .pop.card.bandpop{display:grid!important; width:min(1180px,calc(100vw - 32px)); height:min(810px,calc(100vh - 32px)); max-height:none; padding:0; overflow:hidden;
@@ -26011,13 +26012,43 @@ function bandApply(key){ const b=bandGet(key); if(!b) return; const open=documen
   percMixSet(b.percmix||{});   // the percussion's instruments: the band's, or all at 100 %, centre, playing (patches/perc-presets-mixer.py)
   pumpSet(b.pump||0);   // the band's Pump (patches/pump-setting.py)
   bandSetLast(key); try{ voicePaint(); }catch(e){} if(open) openBand(bv); }
-function bandSave(){ const M=bandMine(), cur=bandGet(bandLast()), open=document.querySelector(".pop.card.bandpop");
-  let n=null; try{ n=prompt("Save as my band - its name:",cur&&cur.mine&&!bandEdited(cur)?cur.n:cur?cur.n+" - mine":"My band"); }catch(e){} n=(n||"").trim().slice(0,40); if(!n) return;
+/* EXPORT AND IMPORT A BAND PRESET (David, 15 Oct 2026: "Export Band Preset, which exports the currently active complete
+   band preset with all the settings for all the different instruments" - "Import preset" - ".band.hps";
+   patches/band-export-import.py). ONE RECORD: what Save as my band keeps (bandSnap) - never the handpan's pattern, the
+   player's own; your drum groove the band plays goes with it, and the own kit that groove names */
+function bandSnap(n){
   const it={n,s:"",on:VOICES.filter(([k])=>voiceOnOf(k)).map(v=>v[0]),mix:{}};
   for(const k of MX_K){ const c=mxGet(k); it.mix[k]=c.p==null?{v:c.v}:{v:c.v,p:c.p,r:c.r}; }
   for(const k of bandKs()){ const t=cardDo(k,pop=>cpSnap(pop,k)); if(t) it[k]=t; }   // the drums too (David, 5 Oct 2026)
   it.pump=pumpNow(); it.percmix=JSON.parse(JSON.stringify(PERCMIX));   // the percussion's instruments (patches/perc-presets-mixer.py)
   it.s=it.on.map(k=>vxName(k)).join(", ");
+  return it; }
+function bandFileName(n){ return (String(n).replace(/[\\\/:*?"<>|]+/g," ").trim()||"My band")+".band.hps"; }
+function bandExport(){ const cur=bandGet(bandLast()); let n=null; try{ n=prompt("Export band preset - its name:",cur?cur.n:"My band"); }catch(e){} n=(n||"").trim().slice(0,40); if(!n) return;
+  const it=bandSnap(n), G=[], K=[], m=Array.isArray(it.kit)&&/(?:^|\s)kgp=(\S+)/.exec(it.kit[2]||""), g=m&&kitMineGet().find(x=>x.id===m[1]);
+  if(g){ G.push(g); const k=g.kit&&kitMineKits().find(x=>x.id===g.kit); if(k) K.push(k); }
+  const f={type:"handpan-studio-band",v:1,exported:new Date().toISOString().slice(0,10),band:it,grooves:G,kits:K};
+  const url=URL.createObjectURL(new Blob([JSON.stringify(f,null,1)],{type:"application/octet-stream"})), a=document.createElement("a");
+  a.href=url; a.download=bandFileName(n); a.style.display="none"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),10000);
+  openBand("mine"); if(typeof toast==="function") toast("Exported: "+bandFileName(n)); }
+function bandImport(){ const inp=document.createElement("input"); inp.type="file"; inp.style.display="none"; document.body.appendChild(inp);
+  inp.addEventListener("change",()=>{ const file=inp.files&&inp.files[0]; inp.remove(); if(!file) return;
+    file.text().then(s=>bandImportText(s)).catch(()=>toast("That file could not be read")); });
+  inp.click(); }
+function bandImportText(s){ let f=null; try{ f=JSON.parse(s); }catch(e){}
+  const b=f&&f.type==="handpan-studio-band"&&f.band; if(!b||!b.n||!Array.isArray(b.on)){ toast("That is not a band preset (.band.hps)"); return false; }
+  const it=JSON.parse(JSON.stringify(b)), GL=kitMineGet(), KL=kitMineKits(), km={}, gm={}, fresh=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+  for(const k of Array.isArray(f.kits)?f.kits:[]){ if(!k||!k.id||!k.src) continue; const have=KL.find(x=>x.id===k.id);
+    if(have&&JSON.stringify(have)===JSON.stringify(k)) continue; const nk=Object.assign({},k); if(have) nk.id=fresh("uk"); km[k.id]=nk.id; KL.push(nk); }
+  for(const g of Array.isArray(f.grooves)?f.grooves:[]){ if(!g||!g.id||!g.p||!Array.isArray(g.m)) continue; const ng=Object.assign({},g); if(ng.kit&&km[ng.kit]) ng.kit=km[ng.kit];
+    const have=GL.find(x=>x.id===g.id); if(have&&JSON.stringify(have)===JSON.stringify(ng)) continue; if(have) ng.id=fresh("my"); gm[g.id]=ng.id; GL.push(ng); }
+  if(Object.keys(km).length) kitMineKitsPut(KL); if(Object.keys(gm).length) kitMinePut(GL);
+  if(Array.isArray(it.kit)&&it.kit[2]) it.kit[2]=it.kit[2].replace(/(^|\s)kgp=(\S+)/,(x,a,id)=>a+"kgp="+(gm[id]||id));
+  const M=bandMine(), base=String(it.n).slice(0,36); let n=String(it.n).slice(0,40), j=2; while(M.some(x=>x.n===n)) n=base+" "+(j++); it.n=n;
+  M.push(it); bandMineSave(M); bandApply("m:"+(M.length-1)); openBand("mine"); toast("Imported: "+n); return true; }
+function bandSave(){ const M=bandMine(), cur=bandGet(bandLast()), open=document.querySelector(".pop.card.bandpop");
+  let n=null; try{ n=prompt("Save as my band - its name:",cur&&cur.mine&&!bandEdited(cur)?cur.n:cur?cur.n+" - mine":"My band"); }catch(e){} n=(n||"").trim().slice(0,40); if(!n) return;
+  const it=bandSnap(n);   /* (patches/band-export-import.py) */
   const i=M.findIndex(x=>x.n===n); if(i>=0) M[i]=it; else M.push(it); bandMineSave(M); bandSetLast("m:"+(i>=0?i:M.length-1));
   try{ voicePaint(); }catch(e){} if(open||true) openBand("mine"); if(typeof toast==="function") toast("Saved: "+n); }
 function bandDelete(i){ const M=bandMine(), b=M[i]; if(!b) return; let ok=true; try{ ok=confirm("Delete "+b.n+"?"); }catch(e){} if(!ok) return;
@@ -26149,13 +26180,15 @@ function bandRender(pop){ pop=pop||document.querySelector(".pop.card.bandpop"); 
     +(mine?'<i class="bdx" data-bdx="'+key.slice(2)+'" title="Delete this band">×</i>':'')+'</button>'; };
   const L=pop.querySelector(":scope>.bdlist"), st=L.scrollTop;
   if(v==="mine"){ const M=bandMine(); L.innerHTML=M.length?'<div class="bdl">'+M.map((b,i)=>row("m:"+i,b,true)).join("")+'</div>'
-      :'<div class="bdempty">Set the band up as you like it - who plays, their settings, the mix - then <b>Save as my band</b>: it is kept here, under its own name.</div>'; }
+      :'<div class="bdempty">Set the band up as you like it - who plays, their settings, the mix - then <b>Save as my band</b>: it is kept here, under its own name.</div>';
+    L.insertAdjacentHTML("beforeend",'<div class="bdio"><button type="button" class="ctl" data-bdexp title="Save the band as it is now to a .band.hps file - every instrument\u2019s settings and the mix">Export band preset</button>'
+      +'<button type="button" class="ctl" data-bdimp title="Add a band from a .band.hps file to My bands">Import preset</button></div>'); }   /* (patches/band-export-import.py) */
   else L.innerHTML=BAND_PRESETS.map(([g,B],gi)=>'<div class="bdgrp">'+g+'</div><div class="bdl">'+B.map((b,i)=>row(gi+":"+i,{n:b[0],s:b[1],on:b[2].on})).join("")+'</div>').join("");
   L.scrollTop=st;
   if(!MXD) pop.querySelector(":scope>.bdmix").innerHTML=bdMixHTML(wide);   /* the band's Activity (patches/activity.py) */
   const f=pop.querySelector(":scope>.bdfoot"); f.querySelector("[data-bdback]").disabled=!ed; f.querySelector("[data-bdsave]").classList.toggle("amb",ed||!cur);
   try{ localStorage.setItem("hps.bandview",pop.dataset.bv); }catch(e){} }
-document.addEventListener("click",e=>{ const t=e.target.closest&&e.target.closest("#bandBtn,#bandChip,.pop.bandpop [data-bdv],.pop.bandpop [data-bdk],.pop.bandpop [data-bdx],.pop.bandpop [data-bdplay],.pop.bandpop [data-bdback],.pop.bandpop [data-bdsave],.pop.bandpop [data-bdact]"); if(!t) return;
+document.addEventListener("click",e=>{ const t=e.target.closest&&e.target.closest("#bandBtn,#bandChip,.pop.bandpop [data-bdv],.pop.bandpop [data-bdk],.pop.bandpop [data-bdx],.pop.bandpop [data-bdplay],.pop.bandpop [data-bdback],.pop.bandpop [data-bdsave],.pop.bandpop [data-bdact],.pop.bandpop [data-bdexp],.pop.bandpop [data-bdimp]"); if(!t) return;
   if(t.id==="bandBtn"||t.id==="bandChip"){ e.stopPropagation(); openBand(); return; }
   const pop=t.closest(".pop");
   if(t.dataset.bdx!=null){ e.stopPropagation(); bandDelete(+t.dataset.bdx); return; }
@@ -26164,6 +26197,8 @@ document.addEventListener("click",e=>{ const t=e.target.closest&&e.target.closes
   if(t.hasAttribute("data-bdplay")){ if(typeof cardPreviewEnd==="function") cardPreviewEnd(); Promise.resolve(togglePlay()).finally(()=>setTimeout(()=>bandRender(),250)); return; }
   if(t.dataset.bdact){ actSet(+t.dataset.bdact); return; }   /* the band's Activity (patches/activity.py) */
   if(t.hasAttribute("data-bdback")){ const k=bandLast(); if(k) bandApply(k); return; }
+  if(t.hasAttribute("data-bdexp")){ bandExport(); return; }
+  if(t.hasAttribute("data-bdimp")){ bandImport(); return; }   /* (patches/band-export-import.py) */
   if(t.hasAttribute("data-bdsave")) bandSave(); });
 window.addEventListener("resize",()=>{ const p=document.querySelector(".pop.card.bandpop"); if(p) bandRender(p); });
 document.addEventListener("click",ev=>{ const b=ev.target.closest&&ev.target.closest(".pophead [data-phnav]"); if(!b) return; ev.preventDefault(); ev.stopPropagation(); cardNav(+b.dataset.phnav); },true);
