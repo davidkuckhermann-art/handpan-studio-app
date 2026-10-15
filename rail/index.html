@@ -2899,7 +2899,12 @@ body.rail.jam:not(.phone) #secLabel{display:none!important}   /* THE JAM'S TABLE
 #sjBand .sjbandhead{display:flex; align-items:center; justify-content:space-between; gap:8px 12px; flex-wrap:wrap}
 #sjBand .sjbandhead h3{margin:0}
 #sjBandFace button{padding:4px 10px; min-height:0}   /* the switch stays on the heading's line in a narrow card */
-#sjBand .sjfaces{display:grid; margin-top:8px; overflow:hidden}
+#sjBand .sjfaces{display:grid; margin-top:8px; overflow:hidden; position:relative}
+/* THE CARD IS AS TALL AS THE FACE IT SHOWS (David, 16 Oct 2026, on the iPad: "The band card seems to have too much empty space
+   on the bottom when it's on the side and also when it's on the bottom"): the faces shared one cell, so Bands stood in the
+   height of Who plays' tiles; the faces not shown leave the flow and still slide */
+#sjBand:not([data-face="bands"]) .sjface[data-face="bands"],#sjBand:not([data-face="who"]) .sjface[data-face="who"],
+#sjBand:not([data-face="off"]) .sjface[data-face="off"]{position:absolute; top:0; left:0; right:0}
 #sjBand .sjface{grid-area:1/1; min-width:0; transition:transform .32s ease, opacity .32s ease, visibility 0s}
 #sjBand[data-face="bands"] .sjface[data-face="who"]{transform:translateX(104%); opacity:0; visibility:hidden; pointer-events:none;
   transition:transform .32s ease, opacity .32s ease, visibility 0s linear .32s}
@@ -3012,6 +3017,7 @@ body:not(.phone) #sjCards #sjPanSlot:not(:has(#panwrap:not(.hidden))){display:no
 #sjPanSlot #panwrap.hidden ~ .sjpanfoot{display:none}
 #sjPanSlot .sjpanfoot{display:flex; justify-content:center; align-items:center; gap:10px; margin-top:10px}
 #sjSaveDlg input{width:100%; box-sizing:border-box; margin:6px 0 14px; font-size:16px; padding:10px 12px}
+#sjSaveDlg .sjsaveband{display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 16px; font:600 14px Figtree,"Helvetica Neue",Arial,sans-serif; color:var(--ink2)}   /* (patches/simple-save-band-switch.py) */
 /* SIMPLE MODE'S PLAY ALONG (patches/simple-play.py; mockups-simple-play.html): the room that is neither practice nor editor */
 #sjSong,#spParts,#spFit{display:none}
 /* the My pan window in simple mode: no choice to explain - what happens, in one sentence (patches/simple-transposed.py) */
@@ -3366,8 +3372,8 @@ body.phone.simple:not(.tablet):not(.inpractice):not(.editing) #sjCards{margin:0}
 body.phone.simple:not(.tablet) #sjPanSlot{position:relative}
 body.phone.simple:not(.tablet) #sjPanSlot .sjpanfoot{position:absolute; top:2px; right:0; margin:0; z-index:2}
 body.phone.simple:not(.tablet) #sjPanFoot .sjlab{display:none}
-body.phone.simple:not(.tablet) #sjLabels{flex-direction:column; gap:2px}
-body.phone.simple:not(.tablet) #sjLabels button{padding:6px 9px; font-size:12.5px; min-width:0; white-space:nowrap}
+body.phone.simple:not(.tablet) #sjLabels{flex-direction:column; align-items:stretch; gap:2px; border-radius:10px}   /* stacked, but a segmented control - a rounded track and equal segments; the pills' round ends had made it a capsule (David, 16 Oct 2026: "doesn't look proper"). Side by side it took 27 px from the pan */
+body.phone.simple:not(.tablet) #sjLabels button{padding:6px 10px; font-size:12.5px; min-width:0; white-space:nowrap; border-radius:8px; text-align:center}
 body.phone.simple:not(.tablet) #sjLabels .lg{display:none}
 body.phone.simple:not(.tablet) #sjLabels .sh{display:inline}
 /* the transport: Speed, the BPM control and Play at the drawer's resting height; the drawer never opens */
@@ -10468,8 +10474,10 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
 </div>
 <dialog id="sjSaveDlg" aria-labelledby="sjSaveTtl">
   <h3 id="sjSaveTtl">Save this jam</h3>
-  <p class="sjex">Your chords, your band and how the handpan plays are kept together. You'll find the jam in the Library, under My Jams.</p>
+  <p class="sjex">Your chords and how the handpan plays are kept together, and your band if you switch it on. You'll find the jam in the Library, under My Jams.</p>
   <input id="sjSaveName" type="text" maxlength="40" aria-label="The jam's name">
+  <!-- the Library's own band switch, Off as it opens (patches/simple-save-band-switch.py) -->
+  <div class="sjsaveband" id="sjSaveBand" role="group" aria-label="Save the band with it"><span>Save band with the jam</span><span class="pills"><button type="button" data-libband="0" aria-pressed="true">Off</button><button type="button" data-libband="1" aria-pressed="false">On</button></span></div>
   <div class="row"><span class="spacer"></span><button class="ctl" id="sjSaveNo" type="button">Cancel</button><button class="ctl" id="sjSaveOk" type="button">Save</button></div>
 </dialog>
 
@@ -37453,8 +37461,8 @@ var libBandOn=false;
 function libBandPaint(){ const w=$("libBand"); if(!w) return; const sb=$("saveBtn");
   w.hidden=!!(sb&&sb.hidden)||!allowed("savelocal");
   const l=$("libBandL1"); if(l) l.textContent=jamLibSaveHere()?"Save band with the jam":"Save band with the piece";
-  w.querySelectorAll("[data-libband]").forEach(b=>b.setAttribute("aria-pressed",String((b.dataset.libband==="1")===libBandOn))); }
-document.addEventListener("click",e=>{ const b=e.target.closest&&e.target.closest("#libBand [data-libband]"); if(!b) return; libBandOn=b.dataset.libband==="1"; libBandPaint(); });
+  document.querySelectorAll("#libBand [data-libband],#sjSaveBand [data-libband]").forEach(b=>b.setAttribute("aria-pressed",String((b.dataset.libband==="1")===libBandOn))); }   /* + simple mode's Save this jam (patches/simple-save-band-switch.py) */
+document.addEventListener("click",e=>{ const b=e.target.closest&&e.target.closest("#libBand [data-libband],#sjSaveBand [data-libband]"); if(!b) return; libBandOn=b.dataset.libband==="1"; libBandPaint(); });
 function bandSongSwitchHTML(){ return ""; }   /* the switch stands beside Save in the Library now (patches/band-save-switch.py) */
 function openPiece(p){
   loadPiece(p);                       // adopts the piece's own pan on arrival
@@ -57974,7 +57982,7 @@ function sjWire(){
     panLabels=b.dataset.l==="note"?"note":"num"; try{ localStorage.setItem("hps.panlabels",panLabels); }catch(x){}
     edPanFor=null; renderPanPanel(); paintPanMenu(); sjPaint(); });
   const dlg=$("sjSaveDlg"), nm=$("sjSaveName");
-  $("sjSaveBtn").addEventListener("click",()=>{ nm.value=jamTitle(); openDlg(dlg); setTimeout(()=>{ nm.focus(); nm.select(); },50); });
+  $("sjSaveBtn").addEventListener("click",()=>{ libBandOn=false; libBandPaint();   /* Off every time, as the Library (patches/simple-save-band-switch.py) */ nm.value=jamTitle(); openDlg(dlg); setTimeout(()=>{ nm.focus(); nm.select(); },50); });
   $("sjSaveNo").addEventListener("click",()=>dlg.close());
   $("sjSaveOk").addEventListener("click",()=>{ const n=nm.value.trim().slice(0,40); if(!n){ nm.focus(); return; }
     jamSaveToLib(n); try{ jamLibCur={name:n,slots:jamSlotsKey()}; }catch(x){} dlg.close(); });
