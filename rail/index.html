@@ -3341,7 +3341,17 @@ body.phone.simple.tablet #sjPanSlot{background:var(--card); border:1px solid var
    span the phone: the desktop's `margin:18px auto` outranked the phone's margin:0, and an auto margin in the body's column
    shrank #sjCards to its content (patches/simple-phone-pan-page.py) */
 body.phone.simple:not(.tablet) #sjPanSlot{background:none; border:0; border-radius:0; padding:0}
-body.phone.simple:not(.tablet):not(.inpractice):not(.editing) #sjCards{margin-left:0; margin-right:0}
+body.phone.simple:not(.tablet):not(.inpractice):not(.editing) #sjCards{margin:0}   /* the phone's own margin:0, all four sides (patches/simple-phone-pan-corner.py) */
+/* THE LABELS IN THE PAN PAGE'S CORNER (David, 15 Oct 2026: "place the selector ... somewhere in a corner, so there is more
+   space for the pan"; patches/simple-phone-pan-corner.py): upright, short, in the top-right corner; it takes no row */
+#sjLabels .sh{display:none}
+body.phone.simple:not(.tablet) #sjPanSlot{position:relative}
+body.phone.simple:not(.tablet) #sjPanSlot .sjpanfoot{position:absolute; top:2px; right:0; margin:0; z-index:2}
+body.phone.simple:not(.tablet) #sjPanFoot .sjlab{display:none}
+body.phone.simple:not(.tablet) #sjLabels{flex-direction:column; gap:2px}
+body.phone.simple:not(.tablet) #sjLabels button{padding:6px 9px; font-size:12.5px; min-width:0; white-space:nowrap}
+body.phone.simple:not(.tablet) #sjLabels .lg{display:none}
+body.phone.simple:not(.tablet) #sjLabels .sh{display:inline}
 /* the transport: Speed, the BPM control and Play at the drawer's resting height; the drawer never opens */
 body.phone.simple #drawerHead,body.phone.simple #prow2,body.phone.simple #drawerExtra,body.phone.simple #drawerExtraAnchor,body.phone.simple #drawerShade{display:none !important}
 body.phone.simple #transport{padding:6px 2px 6px !important; margin:0 !important; border-top:1px solid var(--rule2,var(--rule)); box-shadow:none !important; background:var(--paper,var(--bg)) !important;
@@ -10403,7 +10413,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
 <div id="sjCards">
   <div class="sjcol">
     <div id="sjPanSlot"><div class="sjpanfoot" id="sjPanFoot"><span class="sjlab">Labels</span><span class="pills" id="sjLabels" role="group" aria-label="Labels">
-      <button type="button" data-l="num" aria-pressed="false">Numbers</button><button type="button" data-l="note" aria-pressed="false">Note names</button></span></div></div>
+      <button type="button" data-l="num" aria-pressed="false" title="Numbers"><span class="lg">Numbers</span><span class="sh">1 2 3</span></button><button type="button" data-l="note" aria-pressed="false" title="Note names"><span class="lg">Note names</span><span class="sh">C D E</span></button></span></div></div>
     <section class="sjcard" id="sjChords">
       <!-- THE HANDPAN PATTERN AT THE TOP OF YOUR CHORDS (patches/simple-pattern-to-chords.py) -->
       <div class="sjhpat">
@@ -58389,6 +58399,19 @@ if(sphOn()){ const full=sphPaint; sphPaint=function(){ full.apply(this,arguments
   sphPaint(); }
 /* no scrolling on the table pages (patches/simple-phone-fit.py): the card takes what the table leaves, and fits it */
 const SPH_CARDS=["sjChords","sjBand","sjSong","sjPanSlot"];
+/* THE PAN CLEARS THE CORNER (patches/simple-phone-pan-corner.py): the Labels control stands in the Pan page's top-right
+   corner; while the drawn rim would come within 10 px of it, the drawing steps down - measured, so any table, phone and
+   pan holds. A control in the page's flow (the tablet) is not in the way of anything. */
+function ccClearCorner(avail){
+  const ft=$("sjPanFoot"), svg=$("pvsvg"), slot=$("sjPanSlot"); if(slot) slot.style.paddingTop="";
+  if(!ft||!svg||!slot||getComputedStyle(ft).position!=="absolute"||!ft.offsetWidth) return;
+  const rim=svg.querySelector("circle"); if(!rim) return;
+  const hits=()=>{ const c=rim.getBoundingClientRect(), f=ft.getBoundingClientRect(), r=c.width/2, cx=c.left+r, cy=c.top+c.height/2;
+    const nx=Math.max(f.left,Math.min(cx,f.right)), ny=Math.max(f.top,Math.min(cy,f.bottom)); return Math.hypot(cx-nx,cy-ny)<r+10; };
+  const centre=()=>{ slot.style.paddingTop=""; slot.style.paddingTop=Math.max(0,Math.floor((avail-slot.offsetHeight)/2))+"px"; };   // the pan in the middle of its page
+  let w=svg.getBoundingClientRect().width; centre();
+  for(let i=0;i<40&&w>110&&hits();i++){ w=Math.max(110,w-6); svg.style.width=Math.floor(w)+"px"; centre(); }   // each step down also moves it away from the corner
+}
 function sphFitCard(){
   if(!sphOn()) return;
   if(TABLET){ SPH_CARDS.forEach(id=>{ const c=$(id); if(c) c.style.zoom=""; });   // a tablet's cards share the room and scroll (patches/simple-tablet-room.py)
@@ -58412,7 +58435,7 @@ function sphFitCard(){
   let need=card.offsetHeight; if(!(avail>0)||!(need>0)) return;
   /* THE PAN FILLS ITS PAGE (David, 15 Oct 2026: "The pan tab is too small"; patches/simple-phone-pan-page.py): the drawing
      is drawn to the room the page leaves under the switch, grown or shrunk - the full app's measurement (panSvgFit) */
-  if(pic){ const pb=$("panbox"); if(pb&&pb.offsetHeight){ panSvgFit(pb,avail-(card.offsetHeight-pb.offsetHeight)); need=card.offsetHeight; } }
+  if(pic){ const pb=$("panbox"); if(pb&&pb.offsetHeight){ panSvgFit(pb,avail-(card.offsetHeight-pb.offsetHeight)); ccClearCorner(avail); need=card.offsetHeight; } }
   /* then the card, words and all, never below 80% - under that it scrolls */
   const z=need>avail?Math.max(.8,avail/need):1;
   if(z<0.999) card.style.zoom=String(Math.floor(z*1000)/1000);
