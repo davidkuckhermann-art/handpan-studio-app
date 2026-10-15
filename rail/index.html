@@ -26097,6 +26097,7 @@ function bandApply(key){ const b=bandGet(key); if(!b) return; const open=documen
   for(const k of bandKs()){ const t=b[k]; if(!t) continue; let pk=null, p=null;
     if(typeof t==="string"){ pk=bandKeyOfName(k,t); p=pk&&cpGet(k,pk); } else if(Array.isArray(t)) p=t;
     if(!p) continue; cardDo(k,pop=>presetApply(pop,k,p)); cpSetLast(k,pk||""); }
+  bandXtraApply(b);   /* after the presets: a groove resets swing to its own (patches/band-carries-sound-extras.py) */
   SOLO.clear(); for(const [k] of VOICES){ const want=b.on.includes(k); if(voiceOnOf(k)!==want) voiceSet(k,want?"on":"mute"); }
   const M=b.mix||BAND_MIX0; for(const k of MX_K){ const m=M[k]; if(!m) continue; mxSet(k,"v",m.v); if(MX_MIX[k]){ if(m.p!=null) mxSet(k,"p",m.p); if(m.r!=null) mxSet(k,"r",m.r); } }
   percMixSet(b.percmix||{});   // the percussion's instruments: the band's, or all at 100 %, centre, playing (patches/perc-presets-mixer.py)
@@ -26106,12 +26107,29 @@ function bandApply(key){ const b=bandGet(key); if(!b) return; const open=documen
    band preset with all the settings for all the different instruments" - "Import preset" - ".band.hps";
    patches/band-export-import.py). ONE RECORD: what Save as my band keeps (bandSnap) - never the handpan's pattern, the
    player's own; your drum groove the band plays goes with it, and the own kit that groove names */
+/* A BAND CARRIES THE SOUND SETTINGS NO INSTRUMENT PRESET NAMES (David, 15 Oct 2026: "add all five"; patches/band-carries-sound-extras.py):
+   the electronic kit, the drums' own swing, the lowest bass note, the synths' Brightness and Freedom - read from each card's
+   own controls, put back through them (their input event), after the instrument's presets */
+const BAND_XTRA={kit:[["kek","[data-kek]"],["sw","#kitSwR"]],bass:[["low","#bassLowR"]],
+  syn:[["bri",'input[aria-label="Brightness"]'],["free","input[data-sfr]"]],syn2:[["bri",'input[aria-label="Brightness"]'],["free","input[data-sfr]"]]};
+function bandXtraSnap(){ const X={};
+  for(const k of bandKs()){ const L=BAND_XTRA[k]; if(!L) continue;
+    try{ const v=cardDo(k,pop=>{ const o={}; for(const [n,sel] of L){ if(n==="kek"){ const b=pop.querySelector("[data-kek].on"); if(b) o.kek=b.dataset.kek; continue; }
+        const el=pop.querySelector(sel); if(el&&el.value!=="") o[n]=+el.value; } return o; }); if(v&&Object.keys(v).length) X[k]=v; }catch(e){} }
+  return X; }
+function bandXtraApply(b){ const X=b&&b.xtra; if(!X||typeof X!=="object") return;
+  for(const k of bandKs()){ const L=BAND_XTRA[k], v=X[k]; if(!L||!v) continue;
+    try{ cardDo(k,pop=>{ for(const [n,sel] of L){ if(v[n]==null) continue;
+        if(n==="kek"){ const btn=pop.querySelector('[data-kek="'+v.kek+'"]'); if(btn) btn.click(); continue; }
+        const el=pop.querySelector(sel); if(!el) continue; el.value=String(v[n]);
+        el.dispatchEvent(new Event("input",{bubbles:true})); el.dispatchEvent(new Event("change",{bubbles:true})); } }); }catch(e){} } }
 function bandSnap(n){
   const it={n,s:"",on:VOICES.filter(([k])=>voiceOnOf(k)).map(v=>v[0]),mix:{}};
   for(const k of MX_K){ const c=mxGet(k); it.mix[k]=c.p==null?{v:c.v}:{v:c.v,p:c.p,r:c.r}; }
   for(const k of bandKs()){ const t=cardDo(k,pop=>cpSnap(pop,k)); if(t) it[k]=t; }   // the drums too (David, 5 Oct 2026)
   it.pump=pumpNow(); it.percmix=JSON.parse(JSON.stringify(PERCMIX));   // the percussion's instruments (patches/perc-presets-mixer.py)
   it.s=it.on.map(k=>vxName(k)).join(", ");
+  it.xtra=bandXtraSnap();   /* the sound settings no preset names (patches/band-carries-sound-extras.py) */
   return it; }
 function bandFileName(n){ return (String(n).replace(/[\\\/:*?"<>|]+/g," ").trim()||"My band")+".band.hps"; }
 function bandExport(){ const cur=bandGet(bandLast()); let n=null; try{ n=prompt("Export band preset - its name:",cur?cur.n:"My band"); }catch(e){} n=(n||"").trim().slice(0,40); if(!n) return;
@@ -57520,7 +57538,7 @@ function sjPatMenu(){
 /* BAND PRESETS IN SIMPLE MODE (patches/simple-band-presets.py): eight of the app's band presets as cards, the full list
    behind More bands, a band applied by the full app's bandApply; the card's two faces, Bands | Who plays */
 /* DAVID'S EIGHT BANDS (patches/simple-band-eight.py): the library's preset, and the name simple mode gives it */
-const SJ_BANDS=[["Handpan, Percussion, Bass and Guitar","World Per\u00adcus\u00adsion & Bass"],["Acoustic trio","Spanish Style Guitar Ensemble"],
+const SJ_BANDS=[["Handpan, Percussion, Bass and Guitar","Perc & Bass"],["Acoustic trio","Guitar Trio"],   /* shorter (David, 15 Oct 2026: "World Percussion & Bass to simply Perc & Bass", "Spanish Style guitar trio to simply guitar trio") */
   ["Handpan & Jazz Piano","Piano Trio"],["Acoustic Pop","Acoustic Pop"],["Funk","Funk"],["Lo-fi chill","Lo-Fi Chill"],["Ambient","Ambient"],
   ["Drum & Bass","Drum&\u200bBass"]];   // may wrap after the &
 function sjBandLabel(n){ const x=SJ_BANDS.find(([k])=>k===n); return x?x[1]:n; }
