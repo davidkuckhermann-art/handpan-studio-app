@@ -3336,7 +3336,12 @@ body.phone.simple #sjTiles .sjtile svg{width:28px; height:28px}
 body.phone.simple #sjTiles .sjtile .sjemo{height:30px; font-size:25px}
 body.phone.simple #sjTiles .sjtile .sjemo svg{width:30px; height:30px}
 body.phone.simple #sjPatBtn{width:100%; padding-top:9px; padding-bottom:9px}
-body.phone.simple #sjPanSlot{background:var(--card); border:1px solid var(--rule); border-radius:16px; padding:10px}
+body.phone.simple.tablet #sjPanSlot{background:var(--card); border:1px solid var(--rule); border-radius:16px; padding:10px}
+/* THE PHONE'S PAN PAGE HAS NO FRAME (David, 15 Oct 2026: "the same style as in the non-simple ui (no frame)"), and the cards
+   span the phone: the desktop's `margin:18px auto` outranked the phone's margin:0, and an auto margin in the body's column
+   shrank #sjCards to its content (patches/simple-phone-pan-page.py) */
+body.phone.simple:not(.tablet) #sjPanSlot{background:none; border:0; border-radius:0; padding:0}
+body.phone.simple:not(.tablet):not(.inpractice):not(.editing) #sjCards{margin-left:0; margin-right:0}
 /* the transport: Speed, the BPM control and Play at the drawer's resting height; the drawer never opens */
 body.phone.simple #drawerHead,body.phone.simple #prow2,body.phone.simple #drawerExtra,body.phone.simple #drawerExtraAnchor,body.phone.simple #drawerShade{display:none !important}
 body.phone.simple #transport{padding:6px 2px 6px !important; margin:0 !important; border-top:1px solid var(--rule2,var(--rule)); box-shadow:none !important; background:var(--paper,var(--bg)) !important;
@@ -28880,6 +28885,42 @@ function flowPhoneFit(wrap,land){
       bare?"0px":Math.max(0,Math.min(64,Math.round(h-snapped)))+"px");
   } else if(sd) sd.style.removeProperty("--sdslack");
 }
+/* THE PAN'S DRAWING TAKES THE ROOM IT IS GIVEN - moved out of fitPortraitStack word for word (15 Oct 2026,
+   patches/simple-phone-pan-page.py) so the simple phone's Pan page is sized by the same measurement: as wide as the
+   card less its padding and the flanking badges, as tall as `leftover` less the card's own chrome, 110 to 430 */
+function panSvgFit(box,leftover){
+    const svg=$("pvsvg");
+    if(svg){
+      const cs=getComputedStyle(box);
+      const padX=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight);
+      // only the FLANKING badges take width from the drawing
+      const pw=svg.closest("#pvwrap");
+      // the flanks cost their own width plus the REAL gap either side — a
+      // guessed 12px here quietly shrank the drawing by the difference
+      const gap=pw?parseFloat(getComputedStyle(pw).columnGap||getComputedStyle(pw).gap)||0:0;
+      const sidesW=pw&&pw.classList.contains("sides")
+        ? [...box.querySelectorAll(".pvside")].reduce((s,e)=>s+e.offsetWidth+gap,0) : 0;
+      const wAvail=box.clientWidth-padX-sidesW;
+      /* an SVG element has NO offsetHeight — it is not an HTMLElement, and
+         reading it gives undefined, which turned the whole size into NaN and
+         the assignment into a silent no-op. Measure the rect. */
+      const chrome=box.offsetHeight-svg.getBoundingClientRect().height;
+      const hAvail=leftover-chrome;
+      /* THE FLOOR WAS A CEILING IN DISGUISE. `max(150, …)` meant that once the
+         room fell under 150px the drawing stopped shrinking and the card
+         simply overflowed the row, which is clipped — measured at 42px on a
+         600pt screen in Table (David, 1 Sep: "if they are pushed out of the
+         screen, they should go smaller rather than being pushed out"). A pan
+         at 110px is small but still a pan; below that the card guard beneath
+         takes over and scales the whole thing. */
+      const size=Math.max(110,Math.min(wAvail,hAvail,430));
+      svg.style.width=Math.floor(size)+"px";
+      svg.style.maxWidth="none";
+      svg.style.height="auto";
+    }
+}
+/* the simple phone's Pan page, which sphFitCard fits to the page (a tablet's cards are fitted to each other) */
+function sphPanPage(box){ try{ return sphOn()&&!TABLET&&!!$("sjPanSlot")&&$("sjPanSlot").contains(box); }catch(e){ return false; } }
 function fitPortraitStack(sc,z,designW){
   const wrap=$("scorewrap"), bar=$("transport");
   const top=wrap.getBoundingClientRect().top;
@@ -29018,35 +29059,8 @@ function fitPortraitStack(sc,z,designW){
      the leftover height minus the card's own chrome — and set in definite
      pixels, which is also what WebKit needs to lay an svg out at all. */
   if(panOn){
-    const svg=$("pvsvg");
-    if(svg){
-      const cs=getComputedStyle(box);
-      const padX=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight);
-      // only the FLANKING badges take width from the drawing
-      const pw=svg.closest("#pvwrap");
-      // the flanks cost their own width plus the REAL gap either side — a
-      // guessed 12px here quietly shrank the drawing by the difference
-      const gap=pw?parseFloat(getComputedStyle(pw).columnGap||getComputedStyle(pw).gap)||0:0;
-      const sidesW=pw&&pw.classList.contains("sides")
-        ? [...box.querySelectorAll(".pvside")].reduce((s,e)=>s+e.offsetWidth+gap,0) : 0;
-      const wAvail=box.clientWidth-padX-sidesW;
-      /* an SVG element has NO offsetHeight — it is not an HTMLElement, and
-         reading it gives undefined, which turned the whole size into NaN and
-         the assignment into a silent no-op. Measure the rect. */
-      const chrome=box.offsetHeight-svg.getBoundingClientRect().height;
-      const hAvail=leftover-chrome;
-      /* THE FLOOR WAS A CEILING IN DISGUISE. `max(150, …)` meant that once the
-         room fell under 150px the drawing stopped shrinking and the card
-         simply overflowed the row, which is clipped — measured at 42px on a
-         600pt screen in Table (David, 1 Sep: "if they are pushed out of the
-         screen, they should go smaller rather than being pushed out"). A pan
-         at 110px is small but still a pan; below that the card guard beneath
-         takes over and scales the whole thing. */
-      const size=Math.max(110,Math.min(wAvail,hAvail,430));
-      svg.style.width=Math.floor(size)+"px";
-      svg.style.maxWidth="none";
-      svg.style.height="auto";
-    }
+    if(sphPanPage(box)){ try{ sphFitCard(); }catch(e){} return; }   // the simple phone's Pan page: handed to sphFitCard, which fits it to the page's own room, now (patches/simple-phone-pan-page.py)
+    panSvgFit(box,leftover);
   } else {
     let cz=1.2;
     if(bh>0&&leftover>0) cz=Math.min(cz,leftover/bh);
@@ -33708,7 +33722,7 @@ paintChordVoice();
    over a table, and the card's track steps aside while it shows. patches/chord-card-still.py
    CC is a var: a render before these lines have run finds it undefined, not in a let's dead zone. */
 var CC=null;
-function chordCardOn(){ try{ return localStorage.getItem("hps.chordcard")==="1"; }catch(e){ return false; } }
+function chordCardOn(){ try{ return localStorage.getItem("hps.chordcard")!=="0"; }catch(e){ return true; } }   /* THE CARD BY DEFAULT (David, 15 Oct 2026): only a stored Chips ("0") keeps the chips (patches/chord-card-default.py) */
 function ccStripOn(){ try{ return localStorage.getItem("hps.ccstrip")==="1"; }catch(e){ return false; } }
 function ccLab(f){ return isBotPos(f)?String(botIdx(f)):(f===0?"D":String(f)); }
 function ccNameHTML(n){ const m=String(n).match(/^([A-G])([♭♯b#]?)(.*)$/);
@@ -33813,7 +33827,7 @@ function ccFit(el,lines){ const W=el.querySelector(".ccbody").clientWidth; if(!W
   for(const e of lines){ e.style.fontSize=""; const w=e.scrollWidth; if(room>0&&w>room){ const fs=parseFloat(getComputedStyle(e).fontSize)*room/w;
     e.style.fontSize="calc(var(--u)*"+(fs/u).toFixed(1)+")"; } } }
 function paintChordCard(){ const on=chordCardOn(); $("ccChips").setAttribute("aria-pressed",String(!on)); $("ccCard").setAttribute("aria-pressed",String(on)); }
-function setChordCard(on){ try{ if(on) localStorage.setItem("hps.chordcard","1"); else localStorage.removeItem("hps.chordcard"); }catch(e){}
+function setChordCard(on){ try{ localStorage.setItem("hps.chordcard",on?"1":"0"); }catch(e){}   // Chips is a choice now, stored
   paintChordCard(); if(piece) render(); }
 $("ccChips").addEventListener("click",()=>setChordCard(false));
 $("ccCard").addEventListener("click",()=>setChordCard(true));
@@ -58396,8 +58410,9 @@ function sphFitCard(){
   const pic=card.id==="sjPanSlot"?$("panwrap"):null; if(pic) pic.style.zoom="";
   const avail=box.clientHeight-(parseFloat(getComputedStyle(box).paddingTop)||0)-2;
   let need=card.offsetHeight; if(!(avail>0)||!(need>0)) return;
-  /* a picture yields first: the Pan card's drawing shrinks (to 60%) before its words do */
-  if(pic&&need>avail){ const h=pic.offsetHeight, zp=Math.max(.6,(h-(need-avail))/h); pic.style.zoom=String(Math.floor(zp*1000)/1000); need=card.offsetHeight; }
+  /* THE PAN FILLS ITS PAGE (David, 15 Oct 2026: "The pan tab is too small"; patches/simple-phone-pan-page.py): the drawing
+     is drawn to the room the page leaves under the switch, grown or shrunk - the full app's measurement (panSvgFit) */
+  if(pic){ const pb=$("panbox"); if(pb&&pb.offsetHeight){ panSvgFit(pb,avail-(card.offsetHeight-pb.offsetHeight)); need=card.offsetHeight; } }
   /* then the card, words and all, never below 80% - under that it scrolls */
   const z=need>avail?Math.max(.8,avail/need):1;
   if(z<0.999) card.style.zoom=String(Math.floor(z*1000)/1000);
