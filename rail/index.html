@@ -3073,6 +3073,15 @@ body.simple:not(.inpractice):not(.editing) #spFit{display:inline-flex}
 #spFit{white-space:nowrap}
 #spParts{flex-wrap:wrap; row-gap:8px}
 #spParts .spbars{flex:1 1 max-content; min-width:0}   /* THE STRIP ASKS FOR ITS WHOLE WIDTH: on the row when there is room, a row of its own when not (patches/simple-form-row.py) */
+/* THE STRIP FITS ITS ROOM (David, 16 Oct 2026; patches/simple-strip-fit.py): full - the row shared by tables from nothing, none
+   wider than 44 px a table, none under 10; compact - cards as wide as their names, wrapping. The white lines stay in both. */
+#spParts .spbars.spfull .spsec{flex-basis:0; max-width:calc(var(--n) * 44px + (var(--n) - 1) * 2px + 6px)}
+#spParts .spbars.spfull .spticks button{min-width:10px}
+#spParts .spbars.spcompact{flex-wrap:wrap; overflow:visible}
+#spParts .spbars.spcompact .spsec{flex:0 0 auto !important; justify-content:center; min-width:34px; padding:5px 5px 6px}
+#spParts .spbars.spcompact button.spsl{font-size:12.5px; align-self:center}
+#spParts .spbars.spcompact .spticks{align-self:stretch}
+#spParts .spbars.spcompact .spsec.here{min-width:calc(var(--n) * 14px + 10px)}
 #sjCards .sjtiles{grid-template-columns:repeat(auto-fill,minmax(78px,1fr))}
 @media (max-width:1100px){
   body.simple #sjCards{grid-template-columns:minmax(0,1fr) !important; padding:0 12px !important}
@@ -3199,6 +3208,9 @@ body.simple:not(.inpractice):not(.editing) #spFit{display:inline-flex}
 #ssPane .sshear{display:inline-flex; align-items:center; gap:12px; border:none; background:none; font:inherit; font-size:16px; font-weight:700; color:var(--ink); cursor:pointer}
 #ssPane .sshear i{width:54px; height:54px; border-radius:50%; background:var(--dixie); color:#fff; display:grid; place-items:center}
 #ssPane .sshear svg{width:24px; height:24px; fill:currentColor}
+#ssPane .ssacts{display:flex; align-items:center; justify-content:center; gap:10px 22px; flex-wrap:wrap}   /* patches/simple-pan-choose.py */
+#ssPane #ssChoose{font-size:15px; padding:12px 20px}
+#ssPane #ssChoose[hidden]{display:none}
 /* SIMPLE MODE'S SONGS (patches/simple-library.py; mockups-simple-library.html) */
 #slLevel,#libDlg .sltip{display:none}
 body.simple #slLevel{display:block; padding:0 14px 10px}
@@ -11979,7 +11991,11 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
     <div class="sscount" id="ssCount"></div>
     <div class="sshint" id="ssHint"></div>
     <div class="sspan" id="ssPan"></div>
+    <div class="ssacts">
     <button type="button" class="sshear" id="ssHear"><i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 5.5 17.5 12 6.5 18.5z"/></svg></i>Hear the scale</button>
+    <!-- CHOOSE THIS PAN (David, 16 Oct 2026; patches/simple-pan-choose.py): the version shown becomes your pan -->
+    <button type="button" class="plgo" id="ssChoose" hidden>Choose this pan</button>
+    </div>
   </div>
   <div class="row ppfoot"><span class="spacer"></span><button class="ctl" id="ppClose">Close</button></div>
 </dialog>
@@ -58009,10 +58025,10 @@ function spPaint(){
      chips' own name, letter and variation sign - the one in play lit with its table marked, a tap on a name to its start */
   const runs=arrRuns(), run=runs.find(r=>r.ais.includes(cur))||runs[0], nameOf=r=>{ let m=""; try{ m=passMark(r)||""; }catch(x){} return (r.base||"")+m; };
   { const P=$("spPartBars"); if(P){ let h=""; runs.forEach(r=>{ const here=r===run, done=!here&&r.ais[r.ais.length-1]<cur, nm=nameOf(r);
-      h+='<span class="spsec'+(here?' here':done?' done':'')+'" style="flex-grow:'+r.ais.length+'"><button type="button" class="spsl" data-ai="'+r.ais[0]+'" aria-label="'+nm.replace(/"/g,'')+'">'+nm.replace(/[<>&"]/g,'')+'</button><span class="spticks">';
+      h+='<span class="spsec'+(here?' here':done?' done':'')+'" style="flex-grow:'+r.ais.length+';--n:'+r.ais.length+'"><button type="button" class="spsl" data-ai="'+r.ais[0]+'" aria-label="'+nm.replace(/"/g,'')+'">'+nm.replace(/[<>&"]/g,'')+'</button><span class="spticks">';
       r.ais.forEach(ai=>{ h+='<button type="button" data-ai="'+ai+'" class="'+(ai===cur?'here':ai<cur?'done':'')+'" title="Table '+(ai+1)+'" aria-label="Table '+(ai+1)+'"></button>'; });
       h+='</span></span>'; });
-    if(P.innerHTML!==h) P.innerHTML=h; } }
+    if(P.innerHTML!==h) P.innerHTML=h; spFitStrip(); } }
   { const w=$("spWhere"); if(w){ const k=run?run.ais.indexOf(cur):-1, nm=run?nameOf(run).replace(/[<>&"]/g,''):'';
       w.innerHTML=run&&nm?'<b class="spsn">'+nm+'</b> <small>'+(run.ais.length>1?'table '+(k+1)+' of '+run.ais.length+' · ':'')+(cur+1)+' / '+es.length+'</small>'
         :'Table '+(cur+1)+' <small>of '+es.length+'</small>'; } }
@@ -58032,6 +58048,12 @@ function spPaint(){
     const F=B.querySelector(".spfacts"), fact=(l,v)=>{ const s=document.createElement("span"); s.className="spfact"; s.append(l+" "); const b=document.createElement("b"); b.textContent=v; s.append(b); F.append(s); };
     if(t.dif) fact("Level",LV[t.dif]||t.dif); fact("Length",len); if((t.genre||[])[0]) fact("Feel",ST[t.genre[0]]||t.genre[0]); }
 }
+/* THE STRIP FITS ITS ROOM (David, 16 Oct 2026; patches/simple-strip-fit.py; mockups-simple-navigator-fit.html): drawn full,
+   and if that overflows its row, compact - one measurement, made afresh each time from full */
+function spFitStrip(){ const P=$("spPartBars"); if(!P||!P.clientWidth) return;
+  P.classList.remove("spcompact"); P.classList.add("spfull");
+  if(P.scrollWidth>P.clientWidth+0.5){ P.classList.remove("spfull"); P.classList.add("spcompact"); } }
+try{ new ResizeObserver(()=>spFitStrip()).observe($("spParts")); }catch(e){}
 function spWire(){
   $("spPartBars").addEventListener("click",e=>{ const b=e.target.closest("button[data-ai]"); if(b){ spGo(+b.dataset.ai); sjPaint(); } });
   $("spRepeat").addEventListener("click",e=>{ const b=e.target.closest("button[data-r]"); if(!b) return;
@@ -58052,11 +58074,12 @@ function ssPaneShow(){
     $("ssCount").textContent=(top+bot)+" notes"+(bot?" · "+top+" on top, "+bot+" underneath":"");
     try{ panSvgInto($("ssPan"),panViewSVG(derive(L),"",{under:true}),"ss"); }catch(e){ $("ssPan").innerHTML=""; } }
   $("ssYours").hidden=id!==myPanId;
+  { const c=$("ssChoose"); if(c) c.hidden=id===myPanId; }   /* patches/simple-pan-choose.py */
   const mine=!!$("ppMine")&&$("ppMine").getAttribute("aria-pressed")==="true", h=$("ssHint"), k=mine?"mine":"lib";
   if(h.dataset.k!==k){ h.dataset.k=k; h.innerHTML=mine
     ?'<div><span class="n">1</span><span><b>Tap one of your pans to choose it.</b> It shows here, and the play button plays its whole scale.</span></div>'
     :'<div><span class="n">1</span><span><b>Pick the number of notes.</b> Each number <span class="ex">10</span> is a version of the scale with that many tone fields. Tap one to see it here.</span></div>'
-     +'<div><span class="n">2</span><span><b>Then tap the scale\'s name to choose it.</b> The version shown here becomes your pan.</span></div>'; }
+     +'<div><span class="n">2</span><span><b>Then tap Choose this pan.</b> The version shown here becomes your pan.</span></div>'; }
 }
 function ssWire(){
   if(!SIMPLE) return;
@@ -58066,6 +58089,9 @@ function ssWire(){
   mo.observe(d,{attributes:true,attributeFilter:["open"]});
   { const l=$("ppList"); if(l) mo.observe(l,{childList:true}); }
   $("ssHear").addEventListener("click",()=>{ const L=panById($("ssPane").dataset.id||ssPaneId()); if(L) panPreview(L); });
+  /* Choose this pan does what a tap on the row does (patches/simple-pan-choose.py) */
+  $("ssChoose").addEventListener("click",()=>{ const id=ssPaneId(); if(!panById(id)) return;
+    if(ppBrowse){ const go=ppBrowse.go; ppBrowseEnd(); $("panPickDlg").close(); go(id); } else choosePan(id); });
 }
 try{ ssWire(); }catch(e){}
 /* THE TWO STEPS CLOSE FOR GOOD (David, 14 Oct 2026: "an x top right so I can close it. Once closed, it doesn't come back";
@@ -58287,7 +58313,7 @@ function sphTitle(){ const p=sphPageOpen();
   if(p==="menuDlg") return "Settings"; if(p==="libDlg") return "Library"; if(p==="panPickDlg") return "My handpan";
   if(plOn) return "Today"; if(learnOn||quizOn||cpOn) return "Practice"; if(jamOn) return "Jam"; return "Play"; }   // the room is Play, as the rail says (David, 16 Oct 2026)
 function sphBackTo(){ const p=sphPageOpen();
-  if(p==="menuDlg"||p==="libDlg") return "Back"; if(p) return null;
+  if(p==="menuDlg"||p==="libDlg"||p==="panPickDlg") return "Back"; if(p) return null;   /* My handpan too (David, 16 Oct 2026; patches/simple-pan-choose.py) */
   if(quizOn||cpOn||plOn) return "Practice"; return null; }
 function sphClosePages(keep){ for(const id of SPH_PAGES){ if(id===keep) continue; const d=$(id); if(d&&d.open) d.close(); } }
 function sphGo(t){
