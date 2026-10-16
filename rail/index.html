@@ -19671,8 +19671,15 @@ function bassStyleEl(nm){
    style, then the piece's - the menu's choice; in a jam or an exercise the room's, Root on every entry. The override
    switch (temporary) plays the menu's style in every bar, written ones included. */
 var BASSROOM="root", BASSOV=false;
+/* THE BAND'S BASS STYLE IS NOT THE PIECE'S (David, 16 Oct 2026; patches/band-bass-not-in-piece.py): outside the editor a style
+   chosen - by a band or the bass's menu - is kept here, for every piece (one band), and remembered; only the editor writes
+   the piece's own. A piece with its own style plays it when opened (loadPiece clears this). */
+var BASSPLAY=(()=>{ try{ return localStorage.getItem("hps.bassplay")||null; }catch(e){ return null; } })();
+function bassPlaySet(v){ BASSPLAY=v||null; try{ if(BASSPLAY) localStorage.setItem("hps.bassplay",BASSPLAY); else localStorage.removeItem("hps.bassplay"); }catch(e){} }
+function bassEditingNow(){ try{ return !!editing; }catch(e){ return false; } }   // editing is a let further down
+function bassPlayStyle(){ return (!bassEditingNow()&&BASSPLAY)||(piece&&piece.bassStyle)||"root"; }
 function bassInRoom(){ try{ return !!(jamOn||cpOn); }catch(e){ return false; } }   // jamOn is a let further down: a read before its line throws
-function bassPieceStyle(){ return edKeep("bass",bassInRoom()?(BASSROOM||"root"):((piece&&piece.bassStyle)||"root")); }   /* a limited bass keeps its styles (patches/editions-limits-free.py) */
+function bassPieceStyle(){ return edKeep("bass",bassInRoom()?(BASSROOM||"root"):bassPlayStyle()); }   /* a limited bass keeps its styles (patches/editions-limits-free.py) */
 function bassStyleFor(sec,bi){ const b=sec&&bi!=null&&sec.styb&&sec.styb.bass&&sec.styb.bass[bi];   // the bar's own, a loop's (30 Sep 2026)
   return edKeep("bass",BASSOV?bassPieceStyle():((b&&b.y)||(sec&&sec.bassStyle)||bassPieceStyle())); }
 function bassPieceHasOwn(){
@@ -19740,6 +19747,7 @@ document.addEventListener("click",e=>{
     document.querySelectorAll("#bassPop [data-bgb]").forEach(x=>{ x.hidden=x.dataset.bgb!==BASSGRP; }); return; }
   if(s&&!s.disabled){ const k=s.dataset.bms; BASSGRP=null;
     if(bassInRoom()) BASSROOM=k;
+    else if(!bassEditingNow()) bassPlaySet(k);   // outside the editor: the band's (patches/band-bass-not-in-piece.py)
     else if(k!==((piece&&piece.bassStyle)||"root")){ snapshot(); if(k==="root") delete piece.bassStyle; else piece.bassStyle=k; }
     bassRedraw();
     if(k==="kick"&&!(window.HPSWGG&&HPSWGG.loaded&&HPSWGG.loaded()&&HPSWGG.groove()))
@@ -25436,8 +25444,8 @@ const CPV_ADAPT={
         try{ v[3]=gtrAutoSound(); } finally{ gtrStyle=o[0]; gtrStrum=o[1]; gtrPick=o[2]; } }
       return v; }, paint:()=>{ if(window.paintGtr) paintGtr(); }, on:()=>gtrOn, ready:()=>{ gtrReady(); return !!GTR_BUFS[gtrSetOf(gtrSound)]&&gtrAmpReady(); }},
   pno:{attr:"ps", get:()=>pnoStyle, set:v=>{ pnoStyle=v; PNO.chord=null; }, to:v=>v, paint:()=>{ if(window.paintPno) paintPno(); }, on:()=>pnoOn, ready:()=>pnoReady()},
-  bass:{attr:"bms", get:()=>bassInRoom()?BASSROOM:((piece&&piece.bassStyle)||"root"),
-    set:v=>{ if(bassInRoom()) BASSROOM=v; else if(piece){ if(v==="root") delete piece.bassStyle; else piece.bassStyle=v; } BASSPLAN=null; },
+  bass:{attr:"bms", get:()=>bassInRoom()?BASSROOM:bassPlayStyle(),
+    set:v=>{ if(bassInRoom()) BASSROOM=v; else if(!bassEditingNow()) bassPlaySet(v); else if(piece){ if(v==="root") delete piece.bassStyle; else piece.bassStyle=v; } BASSPLAN=null; },   /* the band's, not the piece's (patches/band-bass-not-in-piece.py) */
     to:v=>v, paint:()=>{ render(); if(window.paintBass) paintBass(); }, on:()=>bassOn, ready:()=>!BASS_SETS[bassSound]||bassSmpReady(bassSound)},
   kit:{attr:"kgp", get:()=>kitPick, set:v=>{ kitPick=v; }, to:v=>v, paint:()=>{ try{ paintKit(); }catch(e){} }, on:()=>!!kitOn,   /* the drums' grooves (patches/drum-play-tiles.py) */
     ready:()=>{ try{ return !!kitReady(kitFolderNow()); }catch(e){ return true; } }},
@@ -37365,6 +37373,7 @@ function savedPieces(){ try{return JSON.parse(localStorage.getItem("hps.tunes")|
 function setSaved(l){ return keepWork("hps.tunes",JSON.stringify(l)); }   /* true when kept (patches/save-not-kept.py) */
 function loadPiece(p){
   BASSOV=false;   // the bass override is for now, not for the next piece (28 Sep 2026)
+  if(p&&p.bassStyle) bassPlaySet(null);   // a piece with its own bass style plays it (patches/band-bass-not-in-piece.py)
   if(bookOk(p)){ loadBook(p); return; }
   if(book&&!book.chapters.includes(p)){ book=null; bookCur=-1; }   // a piece chosen from elsewhere: the book is closed
   p=migratePiece(p);   // a piece from before 5 Sep 2026 carries the old hand tokens
@@ -57959,6 +57968,9 @@ function sjBandsPaint(){
   const sp=[], L=[]; { const s=songRoom()&&songHasBand(piece)?bandGet("s:"):null; if(s) sp.push(["s:",s,"Piece's band"]); const y=bandYours(); if(y) sp.push(["y:",y,"Your band"]); }
   SJ_BANDS.forEach(n=>{ const k=sjBandKey(n), b=k&&bandGet(k); if(b) L.push([k,b,n]); });
   const playing=L.find(([,b])=>bandPlays(b))||sp.find(([,b])=>bandPlays(b));
+  /* TWO ROWS (David, 16 Oct 2026; patches/simple-band-two-rows.py): eight tiles - Piece's band and Your band take the last
+     presets' places, Drum&Bass first, never the band that plays nor the one last chosen */
+  { const last=bandLast(); for(let i=L.length-1;i>=0&&sp.length+L.length>8;i--){ const k=L[i][0]; if((playing&&playing[0]===k)||k===last) continue; L.splice(i,1); } }
   /* A CHANGED PRESET STAYS LIT, MARKED "· edited" (David, 16 Oct 2026; patches/simple-band-edited.py): with none playing as a
      card, the band last chosen stays lit - the full app's mark beside its name, a dot where the tile is narrow */
   const lastK=bandLast(), edK=!playing&&!bandResting()&&sp.concat(L).some(([k])=>k===lastK)?lastK:null;
