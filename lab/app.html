@@ -3902,6 +3902,8 @@ body.slotlines .bar.nowbar .beat>.slot.smark::before{background:var(--sc-thru2)}
 .count span.cnow::after{content:""; position:absolute; left:1px; right:1px; bottom:-3px;
   height:2.5px; background:var(--dixie); border-radius:2px}
 .sym{font-size:23px; font-weight:700; line-height:1.02; color:var(--sc-ink); font-variant-numeric:tabular-nums}
+.sym.xo{opacity:.22}   /* a note left out as difficult to play: its colour very light (patches/exclude-hard-notes.py) */
+body.simple #pmXoutRow{display:none}
 /* THE FLAM'S GRACE AND THE ROLL'S TILDE (David, 5 Sep 2026 — mockups-effects.html).
    .fl steps left by --fln, which flamNudgeFit() measures once per table: a
    quarter of a glyph when the slot can spare it, less when it cannot, nothing
@@ -11211,6 +11213,10 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
       <button id="pmHands1" title="Minimal necessary adjustment to your pan layout">1</button>
       <button id="pmHands2" title="Adapt to a more ergonomic hand pattern where it's helpful">2</button>
       <button id="pmHands3" title="Calculate a new hand pattern for your pan layout">3</button></span></div>
+  <div class="drow" id="pmXoutRow"><span>Exclude notes difficult to play</span>
+    <span class="pills" role="group" aria-label="Exclude notes difficult to play">
+      <button id="pmXoutOff" title="Play every note as written">Off</button>
+      <button id="pmXoutOn" title="Where no two hands can play a chord, the fewest notes are left out - greyed and silent. The bass (above all when it is the chord's root) and the melody stay where possible, then the third">On</button></span></div>
   <!-- KEEP THIS INSTRUMENT AS YOUR OWN (David, 20 Sep: “give me an option to save this pan to my pans,
        so I can edit it afterwards and customize it further”). It copies the pan on show — notes, underside
        and whatever layout has been dragged for it — into My pans, where the ✎ opens it for editing. It
@@ -12237,7 +12243,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
 <div id="toast" role="status"></div>
 <script src="../bank.js?v=2"></script>
 <script src="sync-map.js?v=4"></script>
-<script src="staff.js?v=39"></script>   <!-- THE STAFF VIEW (22 Sep 2026): classical notation beneath the table, drawn from the score by window.StaffView — STAFF-VIEW.md; bump ?v= when it changes; the phone and player builds rewrite the path -->
+<script src="staff.js?v=40"></script>   <!-- THE STAFF VIEW (22 Sep 2026): classical notation beneath the table, drawn from the score by window.StaffView — STAFF-VIEW.md; bump ?v= when it changes; the phone and player builds rewrite the path -->
 <script src="clicks.js?v=1"></script>   <!-- THE CLICK EAR (20 Sep 2026): snaps and claps for table practice — four even clicks are a count-in with its tempo, two quick ones a stop. Judged by bench/clicks/run.js; bump ?v= when it changes -->   <!-- THE TEMPO-MAP ENGINE (SUITE.md phase 1, 14 Sep 2026): moved out of this file; the Lab loads the same one. Bump ?v= when it changes — a ?v= on the page does not bust a script. -->
 <script>
 "use strict";
@@ -13068,7 +13074,10 @@ function handSides(P){ return handGeom(P); }
    kept for the transposer's chord check; assignHands weighs a pair by how far apart it is (handPairCost) */
 function handPair(P){ const ring=zigzag((P.fields||[]).length), adj=new Set(); const pr=(a,b)=>{ adj.add(a+"|"+b); adj.add(b+"|"+a); };
   for(let k=0;k<ring.length;k++) pr(ring[k],ring[(k+1)%ring.length]); pr(0,1); pr(0,2);
-  const nb=(P.bottom||[]).length; for(let i=1;i+2<=nb;i++) pr(botPos(i),botPos(i+2));
+  /* NO TWO BOTTOM NOTES IN ONE HAND (David, 17 Oct 2026: "let's actually define 2 bottom notes with one hand as impossible
+     for now"). Two underside neighbours on one side were a pair until then; assignHands already charged a hand on a bottom
+     note anything else (bottomBusy). Measured over the 30 built-in pieces with chords, to all 120 pans: 2 of 3570 maps
+     changed, both a tie between two bottom notes on F2 Voyager 16 (C4 to C#3, not F3); the report's awkward list grew in 152. */
   return (a,b)=>adj.has(a+"|"+b); }
 /* ═══════════════════════════════════════════════════════════════════════
    HANDS — David's interview of 18 Sep 2026 (HANDS.md is the spec; this is the cost model).
@@ -21552,6 +21561,54 @@ let panOrient=localStorage.getItem("hps.panorient")==="1"?"1":"2";   // 2 centre
    where the layout makes a hard no-go; "off" - exactly as written, and the hand rule reads the pan as the standard
    draws it (handGeom). Stored as "3" | "1" | "min" | "0": the values of the morning keep their meaning. */
 let handMode=(()=>{ try{ const v=localStorage.getItem("hps.handlayout"); return v==="0"?"off":v==="min"?"min":v==="3"?"new":"on"; }catch(e){ return "on"; } })();
+/* EXCLUDE NOTES DIFFICULT TO PLAY (David, 17 Oct 2026; patches/exclude-hard-notes.py): an Off | On beside Adapt hand
+   pattern, in the transposition card and the pan menu; Off by default, never in simple mode, and only while Adapt hand
+   pattern is not Off ("the option should only be available when 'adapt hand pattern' is not off" - greyed then, the
+   choice kept). ONE CHECK, the transposer's
+   own: a moment whose notes no two hands can share (splittable over handPair - at most two a hand, two in one hand a pair
+   it can strike, a bottom note never with a top note, nor with another bottom note since 17 Oct) loses the FEWEST
+   notes that make it playable, and of those ways the one that keeps, in this order: the bass when it is the chord's root,
+   the melody (the highest note), the bass, the chord's third, as many different notes as it can, the notes played most
+   ("keep bass and melody intact, then fill up harmony, 3rds have priority. Bass note has highest priority if it's the
+   root of the chord"). What it leaves out is greyed wherever a note is drawn and silent wherever one sounds; the piece is
+   not touched. A flam's grace is not in the chord: it is struck before it. */
+let xoutOn=(()=>{ try{ return localStorage.getItem("hps.xout")==="1"; }catch(e){ return false; } })();
+let XOUT=new WeakSet(), XOUTN=0;
+function xoutBuild(){
+  XOUT=new WeakSet(); XOUTN=0;
+  if(!xoutOn||handMode==="off"||SIMPLE||!piece||!myPan) return;   // only while the hands may be adapted
+  try{
+    const tr=mode==="trans"&&!!MAP, P=tr?myPan:(srcPan||myPan), pair=handPair(P);
+    const posOf=ev=>{ if(!ev||ev.v!=="field"||ev.flam) return null; const fo=foreignOf(ev); if(fo) return fo.pos;
+      if(tr){ const back=standInPos(ev); if(back!=null) return back; const f=MAP[ev.f]; return f==null?null:f; } return ev.f; };
+    const pcOf=f=>((P.posMidi(f)%12)+12)%12, plays=new Map();
+    for(const nm in piece.sections) for(const bar of piece.sections[nm].bars||[]) for(const ev of bar){ const f=posOf(ev); if(f!=null) plays.set(f,(plays.get(f)||0)+1); }
+    const most=Math.max(1,...plays.values());
+    for(const nm in piece.sections){ const sec=piece.sections[nm]; let m=null;
+      for(const bar of sec.bars||[]){ const byT=new Map();
+        for(const ev of bar){ const f=posOf(ev); if(f==null) continue; if(!byT.has(ev.t)) byT.set(ev.t,[]); byT.get(ev.t).push([ev,f]); }
+        for(const [t,list] of byT){
+          const u=[...new Set(list.map(x=>x[1]))].filter(f=>P.posMidi(f)!=null);
+          if(u.length<3||u.length>12||splittable(u,pair)) continue;
+          const srt=u.slice().sort((a,b)=>P.posMidi(a)-P.posMidi(b)), lo=srt[0], hi=srt[srt.length-1];
+          if(!m) m=SM(piece,nm);
+          let pcs=null; try{ const sp=barChordSpans(bar,m).filter(s=>s&&s.name&&s.t<=t).pop(); pcs=sp?chordPCs(sp.name):null; }catch(e){}
+          const third=pcs?pcs[1]:null, rootBass=!!pcs&&pcOf(lo)===pcs[0];
+          let best=null, bestN=-1, bestS=-1;
+          for(let mask=1;mask<(1<<u.length);mask++){
+            const S=u.filter((f,k)=>(mask>>k)&1); if(S.length<bestN||!splittable(S,pair)) continue;
+            const pc=new Set(S.map(pcOf)), has=f=>S.includes(f);
+            const s=(has(lo)&&rootBass?10000:0)+(has(hi)?1000:0)+(has(lo)?100:0)+(third!=null&&pc.has(third)?10:0)+2*pc.size
+              +S.reduce((a,f)=>a+(plays.get(f)||0),0)/(most*u.length+1);   // the last term stays under 1: a tie-break only
+            if(S.length>bestN||s>bestS){ best=S; bestN=S.length; bestS=s; } }
+          if(!best) continue;
+          for(const [ev,f] of list) if(!best.includes(f)){ XOUT.add(ev); XOUTN++; } } } }
+  }catch(e){ XOUT=new WeakSet(); XOUTN=0; }
+}
+function setXout(v){
+  xoutOn=!!v; try{ localStorage.setItem("hps.xout",xoutOn?"1":"0"); }catch(e){}
+  paintPanMenu(); refresh();
+}
 let HANDSTD=false;   // true only while ownHands asks what the rule answers on the standard layout
 /* deliberately NOT persisted: customising is something you finish, and a
    student who reopens the app inside a drag mode has lost their tap-to-hear
@@ -22067,6 +22124,7 @@ function panTones(p2,home){   // home: the strokes the table holds, not this pas
   const out=[];
   for(const ev of (home?((C&&C.byPulse.get(p2))||[]):panEventsAt(p2))){   // what this pass plays (patches/pan-live.py), or with home what is written
     if(ev.v!=="field"||ev.flam||ev.bass||ev.run) continue;   // a jam's transition run is not the pattern (29 Sep 2026)
+    if(XOUT.has(ev)) continue;   // left out as difficult to play
     const art=ev.art||"open"; if(art==="mute"||art==="ghost") continue;
     const midi=evPitch(ev.base!=null?Object.assign({},ev,{f:ev.base}):ev); if(midi==null) continue;   // the pattern's own note under a melody (29 Sep 2026)
     out.push({midi,g:evGain(ev),stac:art==="stac"}); }
@@ -22202,6 +22260,7 @@ document.addEventListener("click",e=>{ const b=e.target.closest&&e.target.closes
 function takRate(s){ if(s!=="tak") return 1; const d=(typeof myPan!=="undefined"&&myPan&&myPan.ding)||50; return Math.pow(2,(d-50)/12); }
 function fireEvent(ev,at){
   if(ev.v==="ghost") return;   // ghosts are notated, not sounded (David, 26 Aug: silent for now)
+  if(XOUT.has(ev)) return;   // left out as difficult to play (patches/exclude-hard-notes.py)
   if(ev.v==="perc"){
     const hand=ev.hand==="R"?"L":"R";       // the bank's names are the old tokens: the right hand's sample is "…L"
     const buf=bankBuf("p_"+ev.s+hand)||percBuf(ev.s==="tak"?"tak":ev.s);
@@ -24676,8 +24735,8 @@ function sameTimeGroups(p){
 }
 /* Can these places be divided between two hands at all? Each hand takes at
    most two, and two in one hand must be a pair it can strike (handPair — the
-   ring's neighbours, the ding with 1 or 2, and two underside notes a step
-   apart on the same side). More than four notes at one moment, nobody can. */
+   ring's neighbours, the ding with 1 or 2; never two underside notes, since
+   17 Oct). More than four notes at one moment, nobody can. */
 function splittable(fs,pair){
   const n=fs.length;
   if(n<=2) return true;
@@ -24767,7 +24826,7 @@ function lineKept(p,S,T,m,adj,ovRaw){          // adj: the shift transSolve was 
 function transpose(){
   TRANSHOW=transHowNow(); TRANSADJ=transAdjFor(srcPan,myPan,TRANSHOW);
   const r=transSolve(piece,srcPan,myPan,TRANSHOW,overrides[myPanId]||{});
-  MAP=r.m; REPORT=r.report;
+  MAP=r.m; REPORT=r.report; xoutBuild();
   transHands();
 }
 /* THE TRANSPOSER AS A PURE FUNCTION (23 Sep 2026, for "fits my pan"). Everything
@@ -25016,7 +25075,7 @@ function transHands(){
        is the slap on beat 2 played with the left hand while it sits between two left-hand notes?" — the notes
        beside it were showing their re-derived hands and the slap was showing its old one. */
     for(const bar of sec.bars||[]){ const cb=[]; for(const ev of bar){ if(ev.v!=="field"){ const c=Object.assign({},ev); delete c.ha; if(seed&&seed.has(ev)) c.hand=seed.get(ev); cb.push(c); links.push([c,ev]); continue; }
-        let f=ev.f; const fo=foreignOf(ev); if(fo){ if(fo.pos===null) continue; f=fo.pos; } else { const back=standInPos(ev); if(back!=null) f=back; else { f=MAP[f]; if(f===null||f===undefined) continue; } }
+        if(XOUT.has(ev)) continue; let f=ev.f; const fo=foreignOf(ev); if(fo){ if(fo.pos===null) continue; f=fo.pos; } else { const back=standInPos(ev); if(back!=null) f=back; else { f=MAP[f]; if(f===null||f===undefined) continue; } }
         const c=Object.assign({},ev,{f:ref?ev.f:f}); delete c.ha; if(seed&&seed.has(ev)) c.hand=seed.get(ev); cb.push(c); links.push([c,ev]); }
       cs.bars.push(cb); }
     copy.sections[nm]=cs; }
@@ -25036,7 +25095,7 @@ function transHands(){
     /* WORKED OUT ONCE, KEPT WHILE NOTHING IT READS HAS CHANGED (as ownHands does): fresh is the default on another
        scale now, and a fresh asking on every refresh() is a tenth of a second and more. */
     const base=build(false).links;
-    const sig=[way,own,TURN,panOrient,handMode].join("|")+"|"+JSON.stringify([myPan.pan||null,panLayouts()[(myPan.pan||{}).id]||null,
+    const sig=[way,own,TURN,panOrient,handMode,xoutOn,XOUTN].join("|")+"|"+JSON.stringify([myPan.pan||null,panLayouts()[(myPan.pan||{}).id]||null,
       (srcPan&&srcPan.pan)||null,(piece&&piece.panTurn)||0,piece.meter,piece.sub,piece.groups,piece.sections,base.map(l=>l[0].f)]);
     let h;
     if(TRANSMEMO&&TRANSMEMO.sig===sig&&TRANSMEMO.h.length===base.length) h=TRANSMEMO.h;
@@ -28279,7 +28338,7 @@ function glyphFor(ev,disp){
   let t=base;
   if(ev.art==="mute"){ cls+=" mu"; st=muInk(base); t+='<i class="mb"></i>'; }
   if(ev.accent){ cls+=" ac"; t+='<i class="ab"></i>'; }   // the accent's > (24 Sep 2026) — .sym.ac>.ab   // the bar over the note — .sym.mu>.mb, centred on the ink
-  return {t,cls:cls+fxCls(ev),st};
+  return {t,cls:cls+fxCls(ev)+(XOUT.has(ev)?" xo":""),st};
 }
 function locOf(pulse){
   let acc=0;
@@ -32037,6 +32096,8 @@ function paintPanMenu(){
   $("pmZoomVal").textContent=Math.round(panZoom*100)+"%";
   for(const [id,v] of [["pmHandsOff","off"],["pmHands1","min"],["pmHands2","on"],["pmHands3","new"]]){ const b=$(id);   // as written · the hard no-gos · where it helps · all new
     if(b) b.setAttribute("aria-pressed",String(handMode===v)); }
+  { const a=$("pmXoutOn"), b=$("pmXoutOff"); const dis=handMode==="off";   // only while the hands may be adapted
+    if(a){ a.setAttribute("aria-pressed",String(xoutOn)); a.disabled=dis; } if(b){ b.setAttribute("aria-pressed",String(!xoutOn)); b.disabled=dis; } }
   { const on=!!(piece&&piece.panTurn);      // the piece's own turn (the transposition card's is the map's, and temporary)
     const a=$("pmTurnOn"), b=$("pmTurnOff");
     if(a) a.setAttribute("aria-pressed",String(on)); if(b) b.setAttribute("aria-pressed",String(!on)); }
@@ -32094,6 +32155,8 @@ function openPanMenu(){ paintPanMenu(); openDlg($("panMenuDlg")); }
   on("pmHands1",()=>setHandMode("min"));
   on("pmHands2",()=>setHandMode("on"));
   on("pmHands3",()=>setHandMode("new"));
+  on("pmXoutOff",()=>setXout(false));
+  on("pmXoutOn",()=>setXout(true));
   /* SAVE THIS PAN TO MY PANS (David, 20 Sep) — silent, as he asked: no dialog,
      no question, just the copy and a line saying where it went. The menu is
      closed FIRST because a showModal() dialog paints in the top layer and the
@@ -32193,6 +32256,7 @@ function paintPan(pi){
        the hand is already told by the colour of the field that lights. Two
        things blinking for one stroke is one too many. */
     if(ev.v==="ghost") continue;
+    if(XOUT.has(ev)) continue;   // left out as difficult to play
     if(ev.v==="perc"){
       // tak wears two glyphs, one per side — light the one for this hand
       const id=ev.s==="tak"?(handOf(ev)==="L"?"pvp-tak2":"pvp-tak"):("pvp-"+ev.s);
@@ -33103,6 +33167,7 @@ function staffBars(bars){
     if(!e) return e;
     let o=e;
     if(e.v==="field"){ const f=staffPos(e); if(f!==e.f) o={...e,f}; }
+    if(XOUT.has(e)) o={...o,xo:true};   // left out as difficult to play: staff.js greys the head
     if(shift&&e.chord) o={...o,chord:shiftChordName(e.chord,shift,myPan)};
     return o; })); }
 /* THE STAFF READS THE SAME CHORD THE TABLE SHOWS (David, 24 Sep 2026, with the screen
@@ -34766,6 +34831,11 @@ function renderReport(){
       +hb("on","2","Adapt to a more ergonomic hand pattern where it's helpful")
       +hb("new","3","Calculate a new hand pattern for your pan layout")
       +'</span></div>'
+      +'<div class="pinrow"><span class="pinnote">Exclude notes difficult to play:</span>'
+      +'<span class="pills xopills" role="group" aria-label="Exclude notes difficult to play">'
+      +'<button data-xo="0" aria-pressed="'+(!xoutOn)+'"'+(handMode==="off"?" disabled":"")+' title="Play every note as written">Off</button>'
+      +'<button data-xo="1" aria-pressed="'+xoutOn+'"'+(handMode==="off"?" disabled":"")+' title="Where no two hands can play a chord, the fewest notes are left out - greyed and silent. The bass (above all when it is the chord\'s root) and the melody stay where possible, then the third">On</button>'
+      +'</span></div>'
       +'<div class="pinrow"><span class="pinnote">Turn the pan around:</span>'
       +'<span class="pills ttpills" role="group" aria-label="Turn the pan around">'
       +tb(false,"Normal","The pan as it is built")
@@ -34779,6 +34849,7 @@ function renderReport(){
        :way==="switch"?(THANDN?moved+" — where this pan plays better another way.":"No hand had to move.")
        :(handMode==="on"?"Another scale, so the hands are worked out anew: ":"New hand pattern: ")+(THANDN?hands+" differ"+(THANDN===1?"s":"")+" from the written pattern.":"the same as the written pattern."));
     h+='<div class="pinrow"><span class="pinnote fitparts">'+said+'</span></div>';
+    if(xoutOn&&!SIMPLE&&handMode!=="off") h+='<div class="pinrow"><span class="pinnote fitparts">'+(XOUTN?XOUTN+' note'+(XOUTN===1?'':'s')+' left out where no two hands can play the chord - greyed and silent.':'Every chord can be played with two hands - nothing left out.')+'</span></div>';
     /* THE OFFER, in David's own words (20 Sep): "Isn't this amount of tonefield length on the other side?
        Turning the handpan around can help to stay closer to the original hand pattern." */
     if(adv&&T&&T.share>=0.6&&!turn)
@@ -34854,6 +34925,9 @@ function renderReport(){
   R.querySelectorAll(".thpills button[data-hm]").forEach(b=>b.addEventListener("click",()=>{
     if(handMode===b.dataset.hm) return;
     setHandMode(b.dataset.hm);          // the pan menu's setting: one for the app, remembered
+  }));
+  R.querySelectorAll(".xopills button[data-xo]").forEach(b=>b.addEventListener("click",()=>{
+    const v=b.dataset.xo==="1"; if(!b.disabled&&xoutOn!==v) setXout(v);   // the pan menu's setting too: one for the app, remembered
   }));
   R.querySelectorAll(".ttpills button[data-tt]").forEach(b=>b.addEventListener("click",()=>{
     const v=b.dataset.tt==="1"; if(transTurnNow()===v) return;
@@ -34951,7 +35025,7 @@ function refresh(){
      For my pan, because it doesn't make any sense in edit mode"): the editor
      works on the piece as written, whatever the remembered choice is, and the
      choice comes back with reading. */
-  if(mode==="trans"&&!editing&&piece.writtenFor!==myPanId) transpose(); else {MAP=null;REPORT=null;}
+  if(mode==="trans"&&!editing&&piece.writtenFor!==myPanId) transpose(); else {MAP=null;REPORT=null;xoutBuild();}
   ownHands();   /* …and on its OWN pan the hands follow the layout it was given (patches/hands-follow-layout.py); the key of what the hand rule reads is taken here */
   render(); renderPanPanel(); renderReport();
   updateLinkBtn();
