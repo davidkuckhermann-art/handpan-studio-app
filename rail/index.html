@@ -13076,6 +13076,7 @@ const BUILTIN_PANS=[
  {id:"e-kurd-10", name:"E Kurd 10", ding:"E3", fields:["B3","C4","D4","E4","F♯4","G4","A4","B4","D5"], tier:1, fam:"aeolian", scale:"e-kurd"},
  {id:"e-kurd-21", name:"E Kurd 21", ding:"E3", fields:["B3","C4","D4","E4","F♯4","G4","A4","B4","C5","D5","E5","F♯5","G5","A5"], bottom:["B2","C3","D3","F♯3","G3","A3"], tier:1, fam:"aeolian", scale:"e-kurd"},
  {id:"e-kurd-22", name:"E Kurd 22", ding:"E3", fields:["B3","C4","D4","E4","F♯4","G4","A4","B4","C5","D5","E5","F♯5","G5","A5"], bottom:["C3","D3","F♯3","G3","A3","B5","C6"], tier:1, fam:"aeolian", scale:"e-kurd"},
+ {id:"e-la-sirena-18", name:"E La Sirena 18", ding:"E3", fields:["G3","B3","C♯4","D4","E4","F♯4","G4","B4","C♯5","D5","E5","F♯5"], bottom:["B2","D3","F♯3","A3","A4"], tier:1, fam:"integral", scale:"e-la-sirena", layout:{f:{0:{x:215,y:231},1:{x:209.5,y:372},2:{x:105.3,y:322.9},3:{x:313.1,y:335.5},4:{x:63.7,y:231.1},5:{x:361.5,y:251},6:{x:80.3,y:134.9},7:{x:364.2,y:158.1},8:{x:150.4,y:67.8},9:{x:302.9,y:75.5},10:{x:215.8,y:110.9},11:{x:164.8,y:155.9},12:{x:274.7,y:161.1}},b:{0:{x:23.8,y:386},1:{x:393.3,y:396.6},2:{x:444.5,y:118.5},3:{x:-20.8,y:144.8},4:{x:330.7,y:5.9}},cyc:[11,12],cycs:0.83,ringR:163}},   /* David's own instrument, its fields where they are (patches/library-pan-layout.py) */
  {id:"e-la-sirena-20", name:"E La Sirena 20", ding:"E3", fields:["G3","B3","C♯4","D4","E4","F♯4","G4","B4","C♯5","D5","E5","F♯5"], bottom:["B2","C♯3","D3","F♯3","G5","B5","C♯6"], tier:1, fam:"integral", scale:"e-la-sirena"},
  {id:"e-phrygian-21", name:"E Phrygian 21", ding:"E3", fields:["A3","B3","C4","D4","E4","F4","G4","A4","B4","C5","D5","E5"], bottom:["C3","D3","F3","G3","F5","G5","A5","B5"], tier:2, fam:"other", scale:"e-phrygian"},
  {id:"e-romanian-hijaz-20", name:"E Romanian Hijaz 20", ding:"E3", fields:["A3","B3","C4","D♯4","E4","F♯4","G4","A4","B4","C5","D♯5","E5"], bottom:["B2","C3","F♯3","G3","G5","A5","C6"], tier:2, fam:"hijaz", scale:"e-romanian-hijaz"},
@@ -21787,8 +21788,16 @@ function applyNotaOpts(){
   document.body.classList.toggle("slotlines",slotLines);
   document.body.classList.toggle("mkline",mkStyle==="line");
 }
-function panLayouts(){ try{return panKeysIn(JSON.parse(localStorage.getItem("hps.panlayout")||"{}"))}catch(e){return{}} }
-function setPanLayouts(o){ try{localStorage.setItem("hps.panlayout",JSON.stringify(o))}catch(e){}
+/* A LIBRARY PAN CARRIES ITS FIELDS' PLACES (David, 18 Oct 2026: "please add the functionality that library pans carry the
+   positions of their tone fields"; patches/library-pan-layout.py): a built-in pan's own layout stands beneath the
+   player's - the player's arrangement wins, Reset goes back to the pan's own, and storage keeps only what differs from it */
+function builtinLayouts(){ const o={}; try{ BUILTIN_PANS.forEach(p=>{ if(p.layout) o[p.id]=p.layout; }); }catch(e){} return o; }
+function panLayouts(){ let s; try{ s=panKeysIn(JSON.parse(localStorage.getItem("hps.panlayout")||"{}")); }catch(e){ s={}; }
+  const B=builtinLayouts(); for(const id in B) if(!Object.prototype.hasOwnProperty.call(s,id)) s[id]=JSON.parse(JSON.stringify(B[id]));
+  return s; }
+function setPanLayouts(o){ const B=builtinLayouts(), w={};   // what equals the pan's own layout is not stored (patches/library-pan-layout.py)
+  for(const id in o){ if(B[id]&&JSON.stringify(o[id])===JSON.stringify(B[id])) continue; w[id]=o[id]; }
+  try{localStorage.setItem("hps.panlayout",JSON.stringify(w))}catch(e){}
   handsAfterLayout(); }   /* every layout change is saved here, so here the hands hear of it (patches/hands-follow-layout.py) */
 function layoutFor(id){ const l=panLayouts()[id]; return (l&&(l.f||l.b))?l:null; }
 let panOn=(localStorage.getItem("hps.pan")||"0")==="1";       // the pan companion panel
@@ -54816,7 +54825,7 @@ function boot(){
   $("sgReset").addEventListener("click",()=>{
     panSnapshot();
     const all=panLayouts(); delete all[myPan.pan.id]; setPanLayouts(all);
-    renderPanPanel(); toast("Back to the standard circle");
+    renderPanPanel(); toast(builtinLayouts()[myPan.pan.id]?"Back to this pan's own layout":"Back to the standard circle");   /* (patches/library-pan-layout.py) */
   });
   $("sgDone").addEventListener("click",()=>setSuggest(false));
   $("orient1").addEventListener("click",()=>setOrient("1"));
