@@ -3030,6 +3030,11 @@ body:not(.phone) #sjCards #sjPanSlot:not(:has(#panwrap:not(.hidden))){display:no
 #sjCards .sjpatbtn .lvl.easy,.sjpatpop .sjpat .lvl.easy{color:var(--green); border-color:var(--green-soft); background:var(--green-soft)}
 #sjCards .sjpatex{margin:8px 0 0; font-size:14px}
 .sjpatpop{width:min(460px,calc(100vw - 32px)); padding:5px 10px 10px}
+/* the choosers as pages on the phone (patches/simple-pick-pages.py) */
+body.phone.simple #sjPickDlg.sphpage[open]{overflow-y:auto; padding:6px 12px 24px}
+#sjPickDlg .sjpatpop{width:auto; max-width:560px; margin:0 auto; padding:0; max-height:none; overflow:visible}
+#sjPickDlg .sjpatpop .sjpat{padding:13px 10px}
+#sjPickDlg .ttl{font-size:9.5px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3); padding:14px 10px 4px}
 .sjpatpop .sjpat{display:grid; grid-template-columns:22px 1fr auto; gap:12px; align-items:center; width:100%; text-align:left; border:1.5px solid transparent;
   background:none; border-radius:10px; padding:10px 10px; font:inherit; color:var(--ink); cursor:pointer}
 .sjpatpop .sjpat:hover{background:var(--dust)}
@@ -58755,7 +58760,7 @@ function sjPatMenu(){
     return '<button type="button" class="sjpat'+(on?' on':'')+'" data-p="'+id+'" aria-pressed="'+on+'"><span class="rad"></span><span><b>'+String(p.name).replace(/[<&]/g,"")+'</b><span>'+ex+'</span></span><span class="lvl'+(lvl==="Easy"?' easy':'')+'">'+lvl+'</span></button>'; }).join("");
   pop.addEventListener("click",e=>{ const b=e.target.closest(".sjpat"); if(!b||!jam) return;
     jamPreviewStop(); jam.patternId=b.dataset.p; jamFitSlots(); applyJam(); closePop(); sjPaint(); });
-  openPop(pop,$("sjPatBtn"));
+  sjPickOpen(pop,$("sjPatBtn"),"Patterns");   // a page on the phone (patches/simple-pick-pages.py)
 }
 /* BAND PRESETS IN SIMPLE MODE (patches/simple-band-presets.py): eight of the app's band presets as cards, the full list
    behind More bands, a band applied by the full app's bandApply; the card's two faces, Bands | Who plays */
@@ -58815,7 +58820,7 @@ function sjBandMenu(){
   pop.innerHTML='<div class="ttl">Choose a band</div>'+BAND_PRESETS.map(([g,L],gi)=>'<div class="ttl">'+cpEsc(g)+'</div>'+L.map((b,i)=>{ const k=gi+":"+i, on=bandPlays(bandGet(k));
     return '<button type="button" class="sjpat'+(on?' on':'')+'" data-band="'+k+'" aria-pressed="'+on+'"><span class="rad"></span><span><b>'+cpEsc(sjBandLabel(b[0]))+'</b><span>'+cpEsc(b[1])+'</span></span><span class="ic" aria-hidden="true">'+sjBandIcons(b[2].on)+'</span></button>'; }).join("")).join("");
   pop.addEventListener("click",e=>{ const b=e.target.closest("[data-band]"); if(!b) return; closePop(); sjBandUse(b.dataset.band); });
-  openPop(pop,$("sjBandMore"));
+  sjPickOpen(pop,$("sjBandMore"),"Bands");   // a page on the phone (patches/simple-pick-pages.py)
 }
 function sjWire(){
   if(!SIMPLE) return;
@@ -59216,6 +59221,22 @@ function sphWire(){
   addEventListener("resize",()=>sphPaint());
   sphPaint();
 }
+/* THE PATTERN AND BAND CHOOSERS ARE PAGES ON THE PHONE (David, 18 Oct 2026: "can you also open the pattern selector full
+   screen please, instead of just above the button?" - More bands the same; the desktop and the iPad keep the pop-up;
+   patches/simple-pick-pages.py): the menu's own rows, moved into a page of the phone's frame - the header's Back and
+   title, the tabs live; a choice closes it (the menu's own handler chooses first) */
+function sjPickOpen(pop,anchor,title){
+  const d=$("sjPickDlg");
+  if(!sphOn()||!d){ openPop(pop,anchor); return; }
+  pop.classList.remove("pop");
+  { const t=pop.querySelector(".ttl"); if(t) t.remove(); }   // the header says it
+  d.dataset.title=title; d.setAttribute("aria-label",title); d.replaceChildren(pop); openDlg(d); d.scrollTop=0; sphPaint();
+}
+{ const d=document.createElement("dialog"); d.id="sjPickDlg"; document.body.appendChild(d);
+  d.addEventListener("click",e=>{ if(e.target.closest("[data-p],[data-band]")) d.close(); });
+  SPH_PAGES.push("sjPickDlg");
+  const t=sphTitle; sphTitle=function(){ return sphPageOpen()==="sjPickDlg"?($("sjPickDlg").dataset.title||""):t(); };
+  const b=sphBackTo; sphBackTo=function(){ return sphPageOpen()==="sjPickDlg"?"Back":b(); }; }
 try{ sphWire(); }catch(e){}
 /* step 3, the Jam (patches/simple-phone-jam.py) */
 const SPH_CARD={jam:"chords",play:"song"};
@@ -59472,11 +59493,17 @@ try{ sliWire(); }catch(e){}
 try{ if(SIMPLE&&quizOn&&!QZ) renderQuizSetup(); }catch(e){}   // the same for the quizzes (step 8a's wiring came after the boot's room too)
 /* NO CHORD NAME TOUCHES ITS TILE (David, 8 Oct 2026; patches/simple-chordfit.py): 28 px where it fits, else the tile's
    inner width less a margin - measured, so every name and every window width obey the same rule */
+/* ONE SIZE FOR THE ROW (David, 18 Oct 2026: "sometimes chord names are displayed with a different baseline";
+   patches/simple-pick-pages.py): each name was shrunk to its own button, so a short one stood large and the shrunk ones
+   sat higher - now the row takes the largest size at which every name fits */
 function sjFitChords(){
-  document.querySelectorAll("#sjChordList .sjchd").forEach(t=>{ const b=t.querySelector("b"); if(!b) return;
-    b.style.fontSize="";
-    const cs=getComputedStyle(t), room=t.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight)-6, w=b.getBoundingClientRect().width;
-    if(room>0&&w>room) b.style.fontSize=(Math.floor(28*room/w*10)/10)+"px"; });
+  const B=[...document.querySelectorAll("#sjChordList .sjchd")].map(t=>[t,t.querySelector("b")]).filter(([,b])=>b);
+  B.forEach(([,b])=>{ b.style.fontSize=""; });
+  let k=1;
+  B.forEach(([t,b])=>{ const cs=getComputedStyle(t), room=t.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight)-6, w=b.getBoundingClientRect().width;
+    if(room>0&&w>room) k=Math.min(k,room/w); });
+  const fs=k<1?(Math.floor(28*k*10)/10)+"px":"";
+  B.forEach(([,b])=>{ b.style.fontSize=fs; });
 }
 { const c=$("sjChordList"); if(c&&window.ResizeObserver) new ResizeObserver(()=>{ try{ if(SIMPLE) sjFitChords(); }catch(e){} }).observe(c); }   // the card's own size, not the window's
 applyFeatures();   /* THE SWITCHES, again: boot has moved the rows to where this device keeps them, and the last controls are built */
