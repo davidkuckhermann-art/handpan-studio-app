@@ -527,7 +527,7 @@ function keepsFor(grand,names,o){
   if(o&&o.bassOnly)return[e=>!!e.bass];
   const ex=extraStaves(o), own=e=>!e.bass&&!e.inst;   // the handpan's own events
   const k=grand?[e=>own(e)&&(e.v==="perc"||stepOf(nameOf(names,e.f))>=MIDDLE_C),e=>own(e)&&e.v!=="perc"&&stepOf(nameOf(names,e.f))<MIDDLE_C]:[ex.length?own:null];
-  for(const s of ex)k.push(s.key==="bass"?e=>!!e.bass:e=>e.inst===s.key);
+  for(const s of ex)k.push(s.key==="bass"?e=>!!e.bass:s.split?e=>e.inst===s.key&&(e.v==="rest"||(stepOf(nameOf(names,e.f))>=MIDDLE_C)===(s.split==="hi")):e=>e.inst===s.key);   /* a split voice: its side of middle C, its rests on both (patches/piano-two-staves.py) */
   return k;
 }
 /* bars a..b of a table, with its tuplet ranges renumbered to match -- a range
@@ -547,8 +547,12 @@ function slice(input,a,b){
         rather than cut again;
      4. only a table whose four bars fit at no size is cut below four.
    The ink's floor is spacing()'s, which is linear in the staff space. */
+/* ROOM FOR THE BRACE (David, 17 Oct 2026: "yes, please fix that"; patches/staff-brace-room.py): a brace reaches 2.3 spaces left
+   of the staves plus half its stroke, and the SVG starts at 0 - so a drawing with one (the handpan's two staves, a split
+   voice) starts its staves 2.6 spaces in. Asked by plan() and render() alike, so a line is planned in the width it is drawn in. */
+function braceRoom(opts){const o=opts||{};if(!((o.grand&&!o.bassOnly)||extraStaves(o).some(v=>v&&v.split)))return o;return{...o,left:(o.left||0)+2.6*(o.sp||8)};}
 function plan(input,opts){
-  opts=opts||{};const n=(input.bars||[]).length,sp=opts.sp||8,minSp=Math.min(opts.minSp||sp,sp);
+  opts=braceRoom(opts);const n=(input.bars||[]).length,sp=opts.sp||8,minSp=Math.min(opts.minSp||sp,sp);
   const width=opts.width||900,side=(opts.left||0)+(opts.right||0),least=Math.min(n,opts.least||4);
   if(!n)return{per:0,sp,pages:1};
   const key=opts.key||keyFor(input.pan),nKey=key.flats.length+key.sharps.length;
@@ -589,9 +593,11 @@ function build(input,opts){
   /* A STAFF CLEARS THE ONE ABOVE (David, 30 Sep 2026: "the notations are curently overcrossing"): 3.5 spaces under it, and
      lower where its highest ink - a note, a stem, its name - would come within 1.2 spaces of it */
   let sysT=null,sysB=null;   // the system's first staff line and its last, for the line that joins them (patches/staff-print-score.py)
+  let hiTop=null;const braceOf=(x,y1,y2)=>{const s=(y2-y1)/(3.98*sp),w=.25*s*sp;   /* THE ENGRAVED BRACE (David, 17 Oct 2026: "more in style with traditional staff notation"; patches/staff-brace-glyph.py): Leland's own brace, U+E000 - its ink 3.98 spaces tall and 0.25 wide at the staff's font size - scaled evenly to the two staves, its right edge 0.3 spaces before the line that joins them. One function for the handpan's two staves and a split voice. */
+    return `<rect x="${x}" y="${y1.toFixed(1)}" width="${(E.thin*sp).toFixed(2)}" height="${(y2-y1).toFixed(1)}" fill="${COL.ink}"/>`+`<text transform="translate(${(x-.3*sp-w).toFixed(2)} ${y2.toFixed(2)}) scale(${s.toFixed(4)})" font-family="Leland" font-size="${(4*sp).toFixed(2)}" fill="${COL.ink}">\uE000</text>`};
   const stackExtras=prev=>ex.forEach((v,i)=>{let top=prev+3.5*sp,bs=extraStaff(top,i,v);
     const over=Math.min(bs.extentTop,bs.clefTop,bs.topY-2*sp)-(prev+1.2*sp);if(over<0){top-=over;bs=extraStaff(top,i,v)}
-    parts.push({inner:bs.bands+bs.inner,extentTop:bs.extentTop,extentBot:Math.max(bs.extentBot,bs.clefBot)});if(sysT==null)sysT=bs.topY;sysB=bs.botY;prev=Math.max(bs.extentBot,bs.clefBot);if(W==null)W=bs.W});
+    if(v.split==="hi")hiTop=bs.topY;parts.push({inner:bs.bands+bs.inner+(v.split==="lo"&&hiTop!=null?braceOf(base.left,hiTop,bs.botY):""),extentTop:bs.extentTop,extentBot:Math.max(bs.extentBot,bs.clefBot)});if(sysT==null)sysT=bs.topY;sysB=bs.botY;prev=Math.max(bs.extentBot,bs.clefBot);if(W==null)W=bs.W});
   const cols=mode==="grid"?spacing(bars,ctx,keeps,bars.length*ctx.ppb*base.pw,sp):null;
   if(opts.panHidden&&ex.length&&!opts.bassOnly){ stackExtras(200-3.5*sp); }   /* the handpan's own staff hidden: the instruments' alone (patches/staff-pan-hide.py) */
   else if(opts.bassOnly){
@@ -603,8 +609,7 @@ function build(input,opts){
     const b=staff(bars,ctx,{...base,top:t.extentBot+gap,clef:"f",keep:keeps[1],cols,barNumbers:false,numbersRow:false,collect:!!opts.numbersRow});
     W=t.W;sysT=t.topY;sysB=b.botY;
     const x=base.left,y1=t.topY,y2=b.botY,ym=(y1+y2)/2;
-    let brace=`<rect x="${x}" y="${y1.toFixed(1)}" width="${(E.thin*sp).toFixed(2)}" height="${(y2-y1).toFixed(1)}" fill="${COL.ink}"/>`;
-    brace+=`<path d="M${(x-.5*sp).toFixed(1)} ${y1.toFixed(1)} Q${(x-2.3*sp).toFixed(1)} ${(y1+(y2-y1)*.28).toFixed(1)} ${(x-1.1*sp).toFixed(1)} ${ym.toFixed(1)} Q${(x-2.3*sp).toFixed(1)} ${(y1+(y2-y1)*.72).toFixed(1)} ${(x-.5*sp).toFixed(1)} ${y2.toFixed(1)}" fill="none" stroke="${COL.ink}" stroke-width="${(.26*sp).toFixed(2)}" stroke-linecap="round"/>`;
+    let brace=braceOf(x,y1,y2);   // the engraved brace and the joining line (patches/staff-brace-glyph.py)
     let bands="";const bandTop=t.noteTop,bandH=b.noteBot-t.noteTop;   // the notes' own reach, not the picture's (David, 24 Sep 2026)
     if(mode==="grid"&&opts.bands!==false){for(let bi=0;bi<bars.length;bi++)for(let be=0;be<ctx.beats;be++){const ed=t.laid[bi].edges,bx=ed[be];bands+=`<rect class="sv-band${opts.band&&opts.band.bar===base.firstBar+bi&&opts.band.beat===be?" on":""}" data-bar="${base.firstBar+bi}" data-beat="${be}" x="${bx.toFixed(1)}" y="${bandTop.toFixed(1)}" width="${(ed[be+1]-ed[be]).toFixed(1)}" height="${bandH.toFixed(1)}" rx="${(sp*.6).toFixed(1)}" fill="${COL.band}"/>`}}
     let extentBot=b.extentBot,rows="";
@@ -641,7 +646,7 @@ function ensureFont(url){
 
 /* ---------- public ---------- */
 function render(el,input,opts){
-  opts=opts||{};
+  opts=braceRoom(opts);
   /* the clefs and the instruments' names a little in from the joining line; the staff lines still meet it (patches/staff-system-line-gap.py) */
   if(opts.systemLine&&extraStaves(opts).length)opts={...opts,inset:.5*(opts.sp||8)};
   ensureFont(opts.fontUrl);
