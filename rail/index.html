@@ -49514,7 +49514,7 @@ async function coPlay(){
   notes.forEach((f,i)=>coStrike(f,t0+i*0.2,ms[i]!=null?bankBuf("o"+ms[i]):null));
   coHearSync();
 }
-function coShow(c,hear){
+function coShow(c,hear,keep){
   coCur=c;
   $("coName").innerHTML=fmtChord(c.name);
   const fam=c.group==="Triads"?"Triad":c.group.replace(" chords"," chord");
@@ -49527,7 +49527,7 @@ function coShow(c,hear){
   for(const f of voicing){ const g=coGroupEl(f); if(g) g.classList.add("csug"); }
   $("coList").querySelectorAll(".jchord").forEach(b=>b.classList.toggle("sel",b.dataset.n===c.name));
   const sel=$("coList").querySelector(".jchord.sel"); if(sel&&sel.scrollIntoView) sel.scrollIntoView({block:"nearest"});
-  if(hear) coPlay(); else coHush();
+  if(hear) coPlay(); else if(!keep) coHush();   // keep: draw it, leave what sounds (patches/modes-progression-in-time.py)
 }
 /* `host`: render the same cards somewhere else -- the scale browser's twin
    pane passes its own list element. The dialog's own counts line belongs to
@@ -49688,20 +49688,42 @@ function mdLight(m){
 }
 function mdUnlight(){ mdCur=null; const host=$("coPan"); if(host) host.querySelectorAll(".pvf.clit").forEach(g=>g.classList.remove("clit","csug"));
   $("coName").textContent=""; $("coWhisper").textContent=""; $("coFields").innerHTML=""; }
-/* a progression: the overview's own arpeggio for each chord (coShow), one every 1.8 s, twice round */
-function mdPlay(p,btn){
-  mdStop(); const row=btn.closest(".mdprog"); if(!row) return;
+/* A PROGRESSION, IN TIME AND RINGING ON (David, 19 Oct 2026: "played in time and the sustain of the notes is not cut
+   off"; patches/modes-progression-in-time.py): every sample decoded first, then the whole of it scheduled on the audio
+   clock - a chord a bar of 4/4 at MD_BPM, its voicing upward on the eighths (sixteenths past eight notes), twice round -
+   with nothing hushed between chords. The pan, the name and the chip follow by timers aimed at the same clock. */
+const MD_BPM=90;
+async function mdPlay(p,btn){
+  mdStop(); coHush(); const row=btn.closest(".mdprog"); if(!row) return;
   btn.dataset.on="1"; btn.innerHTML=MD_STOP;
-  const els=[...row.querySelectorAll(".jchord")], seq=mdProgs[p]; let t=0;
-  for(let r=0;r<2;r++) seq.forEach((tr,j)=>{ mdTimers.push(setTimeout(()=>{
-    document.querySelectorAll(".comodes .jchord.now").forEach(x=>x.classList.remove("now"));
-    if(els[j]) els[j].classList.add("now"); if(tr.item) coShow(tr.item,true); },t)); t+=1800; });
-  mdTimers.push(setTimeout(()=>{ mdStop(); if(mdCur) mdLight(mdCur); },t));
+  const gen=coGen, pan=coPanObj||myPan, els=[...row.querySelectorAll(".jchord")], seq=mdProgs[p];
+  const vs=seq.map(tr=>tr.item?coVoicing(tr.item):[]);
+  wakeAudio();
+  try{ await Promise.all([...new Set(vs.flat().map(f=>pan.posMidi(f)).filter(m=>m!=null))].map(m=>bankDecode("o"+m))); }catch(e){}
+  if(gen!==coGen||!btn.dataset.on) return;          // stopped, or something else played, while the samples loaded
+  const beat=60/MD_BPM, bar=4*beat, t0=ctx.currentTime+0.12; let k=0;
+  const at=t=>Math.max(0,(t-ctx.currentTime)*1000);
+  for(let r=0;r<2;r++) seq.forEach((tr,j)=>{
+    const t=t0+(k++)*bar, v=vs[j], step=v.length>8?beat/4:beat/2;
+    v.forEach((f,i)=>{ const m=pan.posMidi(f); coStrike(f,t+i*step,m!=null?bankBuf("o"+m):null); });
+    mdTimers.push(setTimeout(()=>{ if(gen!==coGen){ mdUi(); return; }
+      document.querySelectorAll(".comodes .jchord.now").forEach(x=>x.classList.remove("now"));
+      if(els[j]) els[j].classList.add("now"); if(tr.item) coShow(tr.item,false,true); },at(t)));
+  });
+  const end=t0+k*bar; coArpUntil=end;              // a tap on the pan meanwhile stops it, as it stops an arpeggio
+  mdTimers.push(setTimeout(()=>{ mdUi(); if(gen===coGen&&mdCur) mdLight(mdCur); },at(end)));   // the last chord rings out
+  coHearSync();
 }
-function mdStop(){
+/* the progression's buttons and chips back to rest - the sound is left alone */
+function mdUi(){
   for(const x of mdTimers) clearTimeout(x); mdTimers=[];
   document.querySelectorAll(".comodes .mdgo[data-on]").forEach(b=>{ delete b.dataset.on; b.innerHTML=MD_PLAY; });
   document.querySelectorAll(".comodes .jchord.now").forEach(x=>x.classList.remove("now"));
+}
+/* stop: a progression still playing is cut with everything the overview sounds */
+function mdStop(){
+  const on=!!document.querySelector(".comodes .mdgo[data-on]");
+  mdUi(); if(on) coHush();
 }
 /* Hear the scale, in Modes: from the lowest home note up an octave, on the pan's own fields */
 async function mdScale(){
