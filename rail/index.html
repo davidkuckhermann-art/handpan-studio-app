@@ -4857,10 +4857,15 @@ body.phone .comodes{padding:6px 14px 24px}
 .comodes .jchord .rn{display:block; font-size:11px; font-weight:800; color:var(--ink3); letter-spacing:.02em; line-height:1.1}
 .comodes .jchord.absent{opacity:.45; border-style:dashed; cursor:default}
 .comodes .mdprogs{display:flex; flex-direction:column; gap:8px}
-.comodes .mdprog{display:flex; align-items:center; gap:4px; flex-wrap:wrap}
+.comodes .mdprog{display:flex; align-items:center; gap:4px; flex-wrap:nowrap}   /* one line (patches/modes-partial-chords.py) */
 .comodes .mdprog .ar{color:var(--ink3); font-weight:700; font-size:12px}
 .comodes .mdprog .jchord .jcf{display:none}
-.comodes .mdprog .jchord{min-width:0; padding:4px 8px 5px}
+.comodes .mdprog .jchord{flex:1 1 0; min-width:0; padding:4px 4px 5px}
+.comodes .mdprog .jchord b{white-space:nowrap}
+.comodes .mdprog .jchord .miss,.comodes .mdprog .ar{flex:none}
+.comodes .mdprog .jchord .miss{display:none}
+/* the Chords side's Incomplete switch stays on its side: the modes show every chord they play (patches/modes-partial-chords.py) */
+#chordOvDlg.hidealmost .comodes .jchord.almost,#ppTwin.hidealmost .comodes .jchord.almost{display:inline-flex}
 .comodes .mdprog .jchord.now{background:var(--dixie-soft); border-color:var(--dixie)}
 .comodes .mdgo{width:30px; height:30px; border-radius:50%; border:0; background:var(--dixie); color:#fff; display:grid;
   place-items:center; cursor:pointer; flex:none; padding:0}
@@ -12491,7 +12496,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
 <div id="toast" role="status"></div>
 <script src="../bank.js?v=2"></script>
 <script src="../sync-map.js?v=4"></script>
-<script src="staff.js?v=43"></script>   <!-- THE STAFF VIEW (22 Sep 2026): classical notation beneath the table, drawn from the score by window.StaffView — STAFF-VIEW.md; bump ?v= when it changes; the phone and player builds rewrite the path -->
+<script src="staff.js?v=46"></script>   <!-- THE STAFF VIEW (22 Sep 2026): classical notation beneath the table, drawn from the score by window.StaffView — STAFF-VIEW.md; bump ?v= when it changes; the phone and player builds rewrite the path -->
 <script src="../clicks.js?v=1"></script>   <!-- THE CLICK EAR (20 Sep 2026): snaps and claps for table practice — four even clicks are a count-in with its tempo, two quick ones a stop. Judged by bench/clicks/run.js; bump ?v= when it changes -->   <!-- THE TEMPO-MAP ENGINE (SUITE.md phase 1, 14 Sep 2026): moved out of this file; the Lab loads the same one. Bump ?v= when it changes — a ?v= on the page does not bust a script. -->
 <script>
 "use strict";
@@ -13761,6 +13766,8 @@ function derive(pan){
        them learning what one is. A position is 0, 1..n, or "b1".. */
     posMidi:(p)=>isBotPos(p)?(bottom[botIdx(p)-1]?bottom[botIdx(p)-1].midi:null)
                             :(p===0?ding:(fields[p-1]?fields[p-1].midi:null)),
+    /* the number a place SHOWS - a bottom note as the numbering setting has it (patches/staff-bottom-numbers.py) */
+    posNo:function(p){ return isBotPos(p)?String(botNo(p,this)):(p===0?"D":String(p)); },
     posLabel:(p)=>isBotPos(p)?(bottom[botIdx(p)-1]?bottom[botIdx(p)-1].label:"—")
                              :(p===0?pan.ding:(fields[p-1]?fields[p-1].label:"—")),
     posIv:(p)=>{ const m=isBotPos(p)?(bottom[botIdx(p)-1]||{}).midi
@@ -24634,13 +24641,16 @@ function buildPrintSheet(){
   const saveSec=viewSec, saveEd=editing, saveFlowW=flowW;
   try{
     editing=false;           // the page is the reading table, never the editor's
+    let prBarN=0;   // the bars printed so far: the staff counts through the piece (patches/staff-print-bar-numbers.py)
+    const prPk=(()=>{ try{ const pk=edgePk(piece); return pk?{nm:pk,split:false}:edgeFind(piece,"pickup"); }catch(e){ return null; } })();   // the pickup, unnumbered (patches/staff-print-pickup-unnumbered.py)
     secs.forEach(x=>{ const it=typeof x==="string"?{nm:x,label:x,pass:null}:x, nm=it.nm;
       const box=prEl("div","prsec"), fit=prEl("div","prfit"), inner=prEl("div","prinner");
       box.append(prEl("div","prlbl",it.label), fit); fit.appendChild(inner);
       inner.style.width=drawW+"px";
       stage.appendChild(box); blocks.push({box,fit,inner,nm,pass:it.pass});
       viewSec=nm;
-      if(staff) prStaffInto(inner,nm,colW,it.pass);
+      if(staff){ const pu=!!prPk&&nm===prPk.nm&&prBarN===0, f=pu?(prPk.split?-1:false):prBarN;   // a pickup table: none; a pickup bar: 0
+        blocks[blocks.length-1].first=f; const n=prStaffInto(inner,nm,colW,it.pass,undefined,f)||0; prBarN+=pu?(prPk.split?n-1:0):n; }
       else if(prView==="flow") renderFlowSection(inner,nm,null,null);
       else renderTableView(inner,prView==="tab");
       if(!prChords) inner.querySelectorAll(".flow.strip").forEach(f=>f.classList.remove("strip"));
@@ -24661,7 +24671,7 @@ function buildPrintSheet(){
       sks=fitTo(tallest());
       if(sks<1){
         const w=colW/sks;
-        blocks.forEach(b=>{ b.inner.innerHTML=""; b.inner.style.setProperty("width",w.toFixed(1)+"px","important"); prStaffInto(b.inner,b.nm,w,b.pass,colW); });   // drawn in a box that wide
+        blocks.forEach(b=>{ b.inner.innerHTML=""; b.inner.style.setProperty("width",w.toFixed(1)+"px","important"); prStaffInto(b.inner,b.nm,w,b.pass,colW,b.first); });   // drawn in a box that wide
         sks=Math.min(sks,fitTo(tallest()));   // drawn wider, a system may have grown a little
         /* THE SCALE IS THE DRAWING'S OWN SIZE, never a transform: WebKit's printing breaks pages by the layout box, and a
            transformed system kept its full drawn height there - a page's second system ran past the end and was clipped (patches/staff-print-fixes.py) */
@@ -24767,12 +24777,12 @@ function buildPrintSheet(){
      - the staff's own Advanced settings ride along, and heads:false with them,
        because that is what the screen draws.
    Chord names follow the print dialog's own switch, which staff.js supports. */
-function prStaffInto(host,nm,colW,pass,barW){   // barW: the printed width, when drawn wider to be scaled (patches/staff-print-spacing.py)   // pass: the ensemble's, else null (patches/export-ensemble.py)
+function prStaffInto(host,nm,colW,pass,barW,first){   // first: the bar this table starts on, counted through the print (patches/staff-print-bar-numbers.py)   // barW: the printed width, when drawn wider to be scaled (patches/staff-print-spacing.py)   // pass: the ensemble's, else null (patches/export-ensemble.py)
   if(typeof StaffView==="undefined"||!piece) return;
   const sec=piece.sections[nm]; if(!sec) return;
   const m=SM(piece,nm), ppb=(m.sub||4)*(m.beats||4);
   /* the bars a line holds: plan(), in the draw below (patches/staff-print-plan.py) */
-  const pp0=PLAYPASS;
+  const pp0=PLAYPASS; let nBars=0;
   try{
     const ens=pass!=null, H=ens?expHeard():null;
     if(ens) PLAYPASS=pass;   // the ensemble: each table as its own pass plays it
@@ -24785,13 +24795,15 @@ function prStaffInto(host,nm,colW,pass,barW){   // barW: the printed width, when
        at the next): the screen's own plan() - the whole table on a line if its ink fits, else split evenly - in the
        drawing's units, so a drawing made wider to be scaled holds what the printed line will (patches/staff-print-plan.py) */
     const per=StaffView.plan(input,{width:colW,sp:8,minSp:8,least:1,grand:!!staffOpts.grand,bass:prBass,staves:ex.staves}).per||sec.bars.length;
+    nBars=input.bars.length;
     StaffView.render(host,input,
-      {...ex,bass:prBass,numbers:!!staffOpts.numbers,grand:!!staffOpts.grand,heads:false,chords:!!prChords,clefFrom:staffFields(piece),barNumbers:false,   // no bar numbers on the staff (David, 23 Sep 2026)
+      {...ex,bass:prBass,numbers:!!staffOpts.numbers,grand:!!staffOpts.grand,heads:false,chords:!!prChords,clefFrom:staffFields(piece),barNumbers:first===false?false:"line",firstBar:first||0,   /* false: a pickup table (patches/staff-print-pickup-unnumbered.py) */   // the print numbers each line's first bar, through the piece (David, 19 Oct 2026); the app none (23 Sep)
        band:null,bands:false,fixed:true,perSystem:sec.bars.length>per?per:0,systemLine:true,   // the staves joined, as a score (patches/staff-print-score.py)
        width:colW,sp:8,
        fontUrl:(/\/phone\//.test(location.pathname)||/\/player\//.test(location.pathname))?"../fonts/Leland.otf":"fonts/Leland.otf"});
   }catch(e){ host.innerHTML=""; console.warn("staff print:",e); }
   finally{ PLAYPASS=pp0; }
+  return nBars;
 }
 function prDone(){
   const s=$("prSheet");
@@ -34280,6 +34292,10 @@ function chordPCs(name){
   // dim added for jam mode (26 Aug — David: "you forgot the E diminished"),
   // then 7ths and 9ths (his picker groups). Inference (panTriads) stays
   // maj/min triads only, so existing pieces' guessed chords do not change.
+  /* sus2 / sus4: the root, the suspended tone, the 5th (patches/sus-chords.py) - read as a major triad before */
+  const su=String(name).match(/^([A-Ga-g])([b♭#♯]?)\s*sus([24])$/);
+  if(su){ let r=PC[su[1].toUpperCase()]; if(su[2]==="#"||su[2]==="♯")r++; if(su[2]==="b"||su[2]==="♭")r--;
+    r=((r%12)+12)%12; return [r,(r+(su[3]==="2"?2:5))%12,(r+7)%12]; }
   const m=String(name).match(/^([A-Ga-g])([b♭#♯]?)\s*(maj|min|dim|m)?\s*(7♭5|7b5|9|7)?/);
   if(!m) return null;
   let r=PC[m[1].toUpperCase()];
@@ -39290,6 +39306,17 @@ function jamChordDefs(){
            on the def because the switch and any later rule want to know. */
         lt:q==="dim"||!(h3&&h5)});
     }
+    /* SUS CHORDS (David, 19 Oct 2026; patches/sus-chords.py): sus2 = 1 2 5, sus4 = 1 4 5. The suspended tone names the
+       chord and must be on the pan; the 5th may be absent, captioned as in the other families. Drawn lighter (lt). */
+    for(const [q,ts] of [["sus2",N9],["sus4",(r+5)%12]]){
+      if(!pcs.has(ts)) continue;
+      const h5=pcs.has(P5);
+      out.push({name:spellPc(r)+q,group:"Sus chords",root:r,
+        under:needsUnder(r,ts,h5?P5:null),
+        degs:{"1":r,"3":ts,"5":h5?P5:r},
+        pcs:[r,ts,P5].filter(p=>pcs.has(p)),
+        miss:h5?null:"5th",lt:true});
+    }
     /* A CHORD MAY NOT BE NAMED AFTER A NOTE THE PAN HAS NOT GOT (David, 30
        Aug: "the Dmin chord is labelled a Dmin7♭5. What's the deal with the
        ♭5?"). Sevenths may miss exactly one tone — his rule, 26 Aug — but that
@@ -39335,7 +39362,7 @@ function jamChordDefs(){
         miss:gone.length?gone[0][0]:null,lt:true});
     }
   }
-  const gi={"Triads":0,"7th chords":1,"9th chords":2};
+  const gi={"Triads":0,"Sus chords":1,"7th chords":2,"9th chords":3};   // sus right after the triads (patches/sus-chords.py)
   out.sort((a,b)=>gi[a.group]-gi[b.group]||((a.miss?1:0)-(b.miss?1:0))
     ||(((a.root-d+12)%12)-((b.root-d+12)%12))||a.name.localeCompare(b.name));
   return out;
@@ -43018,7 +43045,7 @@ function qzSpellGrouped(def){
 }
 const QLONG={maj:"major",min:"minor",dim:"diminished","7":"dominant 7th",
   maj7:"major 7th",min7:"minor 7th","min7♭5":"half-diminished","9":"dominant 9th",
-  maj9:"major 9th",min9:"minor 9th"};
+  maj9:"major 9th",min9:"minor 9th",sus2:"suspended 2nd",sus4:"suspended 4th"};   // (patches/sus-chords.py)
 function qzLongName(def){
   const m=String(def.name).match(/^([A-G][♯♭]?)(.*)$/);
   if(!m) return "";
@@ -49609,6 +49636,17 @@ function mdKeys(){
   const rank=P=>{ const k=P.set.indexOf(ding), d=P.F.modes[k]; return P.missing.length*100+(P.F.k==="maj"?0:10)+(d&&d.rare?5:0)+(k<0?9:P.F.order.indexOf(k)*0.1); };
   return out.sort((a,b)=>rank(a)-rank(b));
 }
+/* A CHORD THE PAN HAS ONLY PART OF still sounds, with what it has (David, 19 Oct 2026; patches/modes-partial-chords.py):
+   the shape coItems holds, from every field whose pitch is one of the triad's; null when fewer than two of them are there */
+const MD_TRI={maj:[0,4,7],min:[0,3,7],dim:[0,3,6],aug:[0,4,8]}, MD_TONE=["root","3rd","5th"];
+function mdPartial(root,q,name){
+  const iv=MD_TRI[q]; if(!iv) return null;
+  const pan=coPanObj||myPan, pcs=iv.map(x=>(root+x)%12);
+  const E=pan.posList().map(f=>({f,m:pan.posMidi(f)})).filter(e=>e.m!=null&&pcs.includes(e.m%12)).sort((a,b)=>a.m-b.m);
+  const have=pcs.map(pc=>E.some(e=>e.m%12===pc)); if(have.filter(Boolean).length<2) return null;
+  const fields=E.map(e=>e.f);
+  return {name,group:"Triads",miss:MD_TONE.filter((t,i)=>!have[i]).join(" and ")||null,fields,sug:fields,partial:true};
+}
 function mdMode(P,k){
   const def=P.F.modes[k], pcs=mdPanPcs();
   const abs=[...P.set.slice(k),...P.set.slice(0,k)], nm=[...P.names.slice(k),...P.names.slice(0,k)];
@@ -49618,7 +49656,7 @@ function mdMode(P,k){
     const q=a===4&&b===7?"maj":a===3&&b===7?"min":a===3&&b===6?"dim":a===4&&b===8?"aug":"?";
     const lo=q==="min"||q==="dim";
     const rn=mdAcc(((rel[i]-MD_MAJ[i])+18)%12-6)+(lo?MD_NUM[i].toLowerCase():MD_NUM[i])+(q==="dim"?"°":q==="aug"?"+":"");
-    const item=coItems.find(c=>c.group==="Triads"&&mdPc(c.name)===abs[i]&&mdQ(c.name)===q)||null;
+    const item=coItems.find(c=>c.group==="Triads"&&mdPc(c.name)===abs[i]&&mdQ(c.name)===q)||mdPartial(abs[i],q,nm[i]+q);
     return {rn,item,name:nm[i]+q};
   });
   const deg=rel.map((s,i)=>mdAcc(((s-MD_MAJ[i])+18)%12-6)+(i+1));

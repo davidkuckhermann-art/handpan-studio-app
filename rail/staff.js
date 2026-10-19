@@ -70,7 +70,7 @@ function panNames(pan){
   if(!pan)return{ding:null,fields:[],bottom:[]};
   if(typeof pan.posLabel==="function"){
     const fields=(pan.fields||[]).map((f,i)=>pan.posLabel(i+1)),bottom=(pan.bottom||[]).map((b,i)=>pan.posLabel("b"+(i+1)));
-    return{ding:pan.posLabel(0),fields,bottom};
+    return{ding:pan.posLabel(0),fields,bottom,no:typeof pan.posNo==="function"?(p=>pan.posNo(p)):null};   // the number each place SHOWS (patches/staff-bottom-numbers.py)
   }
   const nm=x=>typeof x==="string"?x:(x&&x.label)||null;
   return{ding:nm(pan.ding),fields:(pan.fields||[]).map(nm),bottom:(pan.bottom||[]).map(nm)};
@@ -78,7 +78,7 @@ function panNames(pan){
 /* A NAMED PITCH ("p:F2", the bass line - 28 Sep 2026) stands for itself and carries no pan number */
 const isPitch=f=>typeof f==="string"&&f.charCodeAt(0)===112&&f.charCodeAt(1)===58;
 function nameOf(names,f){return isPitch(f)?f.slice(2):f===0?names.ding:isBot(f)?names.bottom[+String(f).slice(1)-1]:names.fields[f-1]}
-function labelOf(f){return isPitch(f)?"":f===0?"D":isBot(f)?String(+String(f).slice(1)):String(f)}
+function labelOf(f,names){return isPitch(f)?"":f===0?"D":isBot(f)?String(names&&names.no?names.no(f):+String(f).slice(1)):String(f)}   // a bottom note as the app numbers it (patches/staff-bottom-numbers.py)
 function keyFor(pan){
   const names=panNames(pan);const notes=[names.ding,...names.fields,...names.bottom].map(parse).filter(Boolean);
   let best=null;
@@ -351,8 +351,10 @@ function staff(bars,ctx,o){
     for(const l of key.flats){if(!C.perc)g+=glyph(G.flat,cx,yW(KEYPOS.flats[l]+C.keyOff));cx+=.9*sp}   // a percussion staff draws no key (30 Sep 2026)
     for(const l of key.sharps){if(!C.perc)g+=glyph(G.sharp,cx,yW(KEYPOS.sharps[l]+C.keyOff));cx+=.9*sp}
     if(timeSig){cx+=.4*sp;const wide=beats>9;g+=glyph(G.ts(beats),cx,yW(topS-2));g+=glyph(G.ts(den),cx+(wide?E.tsW*sp*.45:0),yW(bottom+2))}}
+  /* the line's first bar, over its clef (patches/staff-print-bar-numbers.py) */
+  if(barNumbers==="line"&&laid.length&&firstBar>=0)g+=   /* a pickup bar (0) has none (patches/staff-print-pickup-unnumbered.py) */`<text x="${(left+.4*sp+(o.inset||0)).toFixed(1)}" y="${(topY-1.7*sp).toFixed(1)}" font-family="${FONT}" font-weight="600" font-size="${sp*1.1}" fill="${COL.count}">${firstBar+1}</text>`;
   laid.forEach((L,i)=>{if(i>0)g+=rect(L.x0-E.thin*sp/2,topY,E.thin*sp,4*sp);
-    if(barNumbers)g+=`<text x="${(L.x0+2).toFixed(1)}" y="${(topY-1.7*sp).toFixed(1)}" font-family="${FONT}" font-weight="600" font-size="${sp*1.1}" fill="${COL.count}">${firstBar+i+1}</text>`;
+    if(barNumbers===true)g+=`<text x="${(L.x0+2).toFixed(1)}" y="${(topY-1.7*sp).toFixed(1)}" font-family="${FONT}" font-weight="600" font-size="${sp*1.1}" fill="${COL.count}">${firstBar+i+1}</text>`;
     });
   const xL=laid[laid.length-1].x1;
   if(xE!=null){}                                                         // the end repeat stands for the bar line
@@ -412,7 +414,7 @@ function staff(bars,ctx,o){
       /* STACCATO (the bass line, 28 Sep 2026): a dot beyond the head furthest from the stem */
       if(!it.tie&&hs.some(h=>h.ev&&h.ev.stac)){const far=up?hs[0]:hs[hs.length-1],sy=y(far.step)+(up?1.3:-1.3)*sp;g+=glyph(G.dot,it.x+(E.headW/2-.2)*sp,sy);if(up)attMax=Math.max(attMax,sy+.5*sp);else attMin=Math.min(attMin,sy-.5*sp)}
       if(!it.tie&&hs.some(h=>h.ev&&h.ev.accent)){const far=FS!=null?(up?hs[hs.length-1]:hs[0]):up?hs[0]:hs[hs.length-1],ay=FS!=null?y(far.step)+(up?-4.6:4.6)*sp:y(far.step)+(up?1.8:-1.8)*sp;if(FS!=null){g+=glyph(G.accA,it.x,ay);if(up)attMin=Math.min(attMin,ay-.8*sp);else attMax=Math.max(attMax,ay+.8*sp)}else g+=glyph(up?G.accB:G.accA,it.x,ay);if(up)attMax=Math.max(attMax,ay+.8*sp);else attMin=Math.min(attMin,ay-.8*sp)}
-      if(numbers||numbersRow||collect){const rows=[...hs].reverse().map(hd=>({label:hd.perc?"×":labelOf(hd.f),bot:isBot(hd.f),fill:colour?(COL[hd.hand]||COL.ink):COL.ink}));it.rows=rows;if(!it.tie)over.push({x:it.x+E.headW*sp/2,rows})}
+      if(numbers||numbersRow||collect){const rows=[...hs].reverse().map(hd=>({label:hd.perc?"×":labelOf(hd.f,names),bot:isBot(hd.f),fill:colour?(COL[hd.hand]||COL.ink):COL.ink}));it.rows=rows;if(!it.tie)over.push({x:it.x+E.headW*sp/2,rows})}
       if(it.den>1){const aTop=hs[hs.length-1],aBot=hs[0];const anchorFar=up?y(aBot.step)-(aBot.perc?E.xUpSE[1]:E.stemUpSE[1])*sp:y(aTop.step)-(aTop.perc?E.xDownNW[1]:E.stemDownNW[1])*sp;const tip=it.tipY!=null?it.tipY:(up?Math.min(y(hi)-(it.dot&&it.den>=8?4.25:3.5)*sp,midY):Math.max(y(lo)+3.5*sp,midY));   /* a flag's tail hangs 3.27 spaces below its tip, onto the dot of a dotted note on a 3.5 stem; the stem grows, the dot stays by its head (23 Sep 2026) */it.tipY=tip;const y1=Math.min(tip,anchorFar),y2=Math.max(tip,anchorFar);g+=rect(stemX-E.stem*sp/2,y1,E.stem*sp,y2-y1);
         /* THE PICTURE HOLDS EVERY STEM (David, 23 Sep 2026: "The notation is cut off at the bottom"): its ends set the
            staff's edges, with the 0.74 spaces an unbeamed stem-up 32nd's flag rises past the tip; a beam lies between
@@ -422,7 +424,7 @@ function staff(bars,ctx,o){
         if(hs.some(h=>h.ev&&h.ev.roll)&&!it.tie){const my=(anchorFar+tip)/2;g+=glyph(G.trem2,stemX-.6*sp,my+.6*sp)}}
       if(it.tie&&i>0){const p=L.items.slice(0,i).reverse().find(q=>!q.rest);if(p){hs.forEach((hd,k)=>{const ph=p.heads[k]||p.heads[0];const yy=y(hd.step)+(up?.8:-.8)*sp;let xa=ph.x+E.headW*sp+.15*sp,xb=hd.x-.15*sp;if(xb-xa<1.2*sp){xa=ph.x+E.headW*sp*.5;xb=hd.x+E.headW*sp*.5}const mx=(xa+xb)/2,bul=(up?1:-1)*Math.max(.85*sp,Math.min(1.1*sp,(xb-xa)*.28));g+=`<path d="M${xa.toFixed(2)} ${yy.toFixed(2)}Q${mx.toFixed(2)} ${(yy+bul).toFixed(2)} ${xb.toFixed(2)} ${yy.toFixed(2)}Q${mx.toFixed(2)} ${(yy+bul+.22*sp*(up?1:-1)).toFixed(2)} ${xa.toFixed(2)} ${yy.toFixed(2)}Z" fill="${COL.ink}"/>`})}}
       if(numbers&&!it.tie){const cx=it.x+E.headW*sp/2,fsz=sp*1.25,stepY=1.3*sp;const tipTop=(it.den>1&&up)?Math.min(it.tipY,y(hi)):y(hi);let yy=Math.min(tipTop,yW(topS))-0.9*sp-(it.tup&&!it.tup.plain?2.0*sp:0);
-        [...hs].forEach(hd=>{const l={t:hd.perc?"×":labelOf(hd.f),fill:colour?(COL[hd.hand]||COL.ink):COL.ink,bot:isBot(hd.f)};g+=text(l.t,cx,yy,fsz,l.fill,'text-anchor="middle"');if(l.bot)g+=rect(cx-.5*sp,yy+.3*sp,sp,.14*sp,l.fill);attMin=Math.min(attMin,yy-fsz);yy-=stepY})}
+        [...hs].forEach(hd=>{const l={t:hd.perc?"×":labelOf(hd.f,names),fill:colour?(COL[hd.hand]||COL.ink):COL.ink,bot:isBot(hd.f)};g+=text(l.t,cx,yy,fsz,l.fill,'text-anchor="middle"');if(l.bot)g+=rect(cx-.5*sp,yy+.3*sp,sp,.14*sp,l.fill);attMin=Math.min(attMin,yy-fsz);yy-=stepY})}
     });
     /* tuplet numbers and brackets: one per range that is not a plain division; the number sits beyond the beam,
        a bracket joins the units when they are not one beamed group */
@@ -576,7 +578,7 @@ function plan(input,opts){
 function build(input,opts){
   const ctx=makeCtx(input,opts);const {names}=ctx;
   const sp=opts.sp||8,mode=opts.mode||"grid";
-  const base={sp,left:opts.left||0,inset:opts.inset||0,right:opts.right||0,keep:null,numbers:!!opts.numbers,numbersRow:!!opts.numbersRow,collect:false,band:opts.band||null,barNumbers:opts.barNumbers!==false&&!opts.numbers,timeSig:opts.timeSig!==false,firstBar:opts.firstBar||0,repeats:opts.repeats||null,prelude:opts.prelude!==false,colour:opts.colour!==false,heads:opts.heads!==false,chords:!!opts.chords,mode,width:opts.width,pw:opts.pw||13.5,finalBar:!!opts.finalBar,label:opts.label||null,bands:opts.bands};
+  const base={sp,left:opts.left||0,inset:opts.inset||0,right:opts.right||0,keep:null,numbers:!!opts.numbers,numbersRow:!!opts.numbersRow,collect:false,band:opts.band||null,barNumbers:opts.barNumbers==="line"?"line":(opts.barNumbers!==false&&!opts.numbers),timeSig:opts.timeSig!==false,firstBar:opts.firstBar||0,repeats:opts.repeats||null,prelude:opts.prelude!==false,colour:opts.colour!==false,heads:opts.heads!==false,chords:!!opts.chords,mode,width:opts.width,pw:opts.pw||13.5,finalBar:!!opts.finalBar,label:opts.label||null,bands:opts.bands};
   const bars=input.bars||[];
   let parts=[],W;
   /* the staves' filters, said once (keepsFor): spacing() and plan() read the same bars the staves draw */
@@ -664,7 +666,7 @@ function render(el,input,opts){
   }
   if(per&&bars.length>per){   // systems of `per` bars, stacked
     const parts=[];let H=0,W=0,key=null,clef=null;
-    for(let i=0;i<bars.length;i+=per){const r=build(slice(input,i,i+per),{...opts,pw,firstBar:i,timeSig:i===0&&opts.timeSig!==false});parts.push(r.svg);H+=r.H;W=Math.max(W,r.W);key=r.key;clef=r.clef}
+    for(let i=0;i<bars.length;i+=per){const r=build(slice(input,i,i+per),{...opts,pw,firstBar:(opts.firstBar||0)+i,timeSig:i===0&&opts.timeSig!==false});parts.push(r.svg);H+=r.H;W=Math.max(W,r.W);key=r.key;clef=r.clef}
     const svg=parts.join("");if(el){el.innerHTML=svg}return{svg,W,H,key,clef,systems:parts.length};
   }
   const r=build(input,{...opts,pw});
