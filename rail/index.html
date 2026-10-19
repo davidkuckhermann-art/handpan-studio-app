@@ -4531,6 +4531,7 @@ body.phone .ccmid>.ccshape{left:auto; right:calc(var(--u)*30); top:calc(var(--u)
 .ccard .ccmore{display:none !important}   /* the arrow gave way to the settings everywhere (patches/chord-card-only.py) */
 .ccard.nonext .ccnx{display:none}
 .ccard.nonext:not(.tall) .ccmain{grid-template-columns:calc(var(--u)*330) minmax(0,1fr)}
+body.phone:not(.tablet) .ccard.nonext:not(.tall) .ccsw,body.phone:not(.tablet) .ccard.nonext:not(.tall) .ccbody{--u:max(calc(100cqw/1120),min(calc(100cqw/870),var(--ccmaxu,100vh)))}   /* the compact card grows into the room, never below its usual size (patches/chord-card-phone-grow.py) */
 .ccpop{min-width:230px}
 .ccpop .ccprow{display:flex; flex-direction:column; gap:6px; margin-top:12px}
 .ccpop .ccplab{font-size:10.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--ink3); font-weight:700}
@@ -4562,6 +4563,7 @@ body.phone .ccmid>.ccshape{left:auto; right:calc(var(--u)*30); top:calc(var(--u)
   font:700 calc(var(--u)*76)/1 Inter,Figtree,sans-serif; white-space:nowrap}
 .ccnotes .sym{font-size:inherit; line-height:1; color:var(--ink)}
 .ccnotes .sym.bt,.ccnotes .btcap{max-width:none}
+.ccnotes .btcap::before{inset:auto 0; top:calc(50% + var(--btdy,0em)); height:.94em; transform:translateY(-50%); border-radius:.26em}   /* the single badge's ground, on the measured ink (patches/chord-card-refit.py) */
 .cctrack{position:absolute; left:calc(var(--u)*44); right:calc(var(--u)*44); top:calc(var(--u)*327); display:flex; gap:calc(var(--u)*13); min-width:0}
 .cctrack i{display:block; flex:0 1 calc(var(--u)*46); height:calc(var(--u)*8); border-radius:9px; background:var(--rule)}
 .cctrack i.done{background:var(--ink3)}
@@ -34474,6 +34476,13 @@ function ccStripOn(){ try{ return localStorage.getItem("hps.ccstrip")==="1"; }ca
 /* THE TALL CHORD CARD (David, 18 Oct 2026; patches/chord-card-tall.py): the shape, remembered on the device; the design width of its units */
 function ccTall(){ try{ return localStorage.getItem("hps.cctall")==="1"; }catch(e){ return false; } }
 function ccDW(){ return ccTall()?420:1120; }
+/* THE PHONE'S COMPACT CARD GROWS INTO THE ROOM (David, 19 Oct 2026; patches/chord-card-phone-grow.py): the largest unit the
+   free height below the card allows - its height in units read from the card as it stands, the room to #belowrow's foot */
+function ccPhoneRoom(el){ if(!(PHONE&&!TABLET)||!el||!el.isConnected) return;
+  const b=$("belowrow"), main=el.querySelector(".ccmain"); if(!b||!main||!el.offsetHeight) return;
+  const u=main.getBoundingClientRect().height/372; if(!(u>0)) return;
+  const k=el.getBoundingClientRect().height/u, room=b.getBoundingClientRect().bottom-el.getBoundingClientRect().top-8;
+  const v=room>0?(room/k).toFixed(2)+"px":""; if(el.style.getPropertyValue("--ccmaxu")!==v) el.style.setProperty("--ccmaxu",v); }
 /* THE CHORD CARD'S SETTINGS (David, 18 Oct 2026; patches/chord-card-settings.py): Next shown unless switched off;
    the gear's panel - three segmented controls, the panel repainted after each choice */
 function ccNext(){ try{ return localStorage.getItem("hps.ccnext")!=="0"; }catch(e){ return true; } }
@@ -34548,6 +34557,10 @@ function ccMake(){
   el.querySelector(".ccshape").addEventListener("click",e=>{ e.stopPropagation(); ccSetPop(e.currentTarget); });   // the chord card's settings (patches/chord-card-settings.py)
   if(PHONE&&!TABLET){ const s=el.querySelector(".ccshape"), m=el.querySelector(".ccmid"); if(s&&m) m.appendChild(s); }   // the phone: in the chevron's place (patches/chord-card-phone-cog.py)
   ccShapePaint(el);
+  // the name and the notes refit whenever the CHORD column's width changes - Next chord, the layout, the corners (patches/chord-card-refit.py)
+  try{ let mw=0; const mid=el.querySelector(".ccmid"); new ResizeObserver(es=>{ const w=Math.round(es[0].contentRect.width); if(w===mw) return; mw=w;
+    try{ ccFit(el,[el.querySelector(".ccname"),el.querySelector(".ccnotes")]); }catch(_){} }).observe(mid); }catch(_){}
+  if(PHONE&&!TABLET) try{ const ro=new ResizeObserver(()=>ccPhoneRoom(el)); ro.observe(el); const b=$("belowrow"); if(b) ro.observe(b); }catch(_){}   // (patches/chord-card-phone-grow.py)
   // the bar refits whenever the card's width changes - a new shape, the grid's corners, the window (patches/chord-card-settings.py)
   try{ let rw=0; new ResizeObserver(es=>{ const w=Math.round(es[0].contentRect.width); if(w===rw) return; rw=w; try{ if(el.classList.contains("open")) ccStripFit(); }catch(_){} }).observe(el); }catch(_){}
   return {el,data:[],tkey:"",pan:"",key:"",i:-1,paintedT:""};
@@ -34612,7 +34625,10 @@ function chordCardPaint(){
    in the card's own units so it still scales with the card (one rule for the name and the notes) */
 function ccFit(el,lines){ const W=el.querySelector(".ccbody").clientWidth; if(!W) return; const u=W/ccDW(), room=el.querySelector(".ccmid").clientWidth-88*u;
   for(const e of lines){ e.style.fontSize=""; const w=e.scrollWidth; if(room>0&&w>room){ const fs=parseFloat(getComputedStyle(e).fontSize)*room/w;
-    e.style.fontSize="calc(var(--u)*"+(fs/u).toFixed(1)+")"; } } }
+    e.style.fontSize="calc(var(--u)*"+(fs/u).toFixed(1)+")"; } }
+  /* the bottom notes' ground on the digits' ink, measured as a single badge is (patches/chord-card-refit.py) */
+  el.querySelectorAll(".ccnotes .btcap,.ccnotes .sym.bt").forEach(b=>{ if(b.closest(".btcap")&&b.classList.contains("sym")) return;
+    const s=b.classList.contains("btcap")?b.querySelector(".sym"):b; if(s) try{ b.style.setProperty("--btdy",badgeInkDy(s)+"em"); }catch(_){} });  try{ ccPhoneRoom(el); }catch(_){} }   // the room, measured whenever the card is fitted (patches/chord-card-phone-grow.py)
 function paintChordCard(){}   // no Chips | Card any more (patches/chord-card-only.py)
 function setChordCard(on){ try{ localStorage.setItem("hps.chordcard",on?"1":"0"); }catch(e){}   // Chips is a choice now, stored
   paintChordCard(); if(piece) render(); }
