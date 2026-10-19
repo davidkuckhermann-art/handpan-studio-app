@@ -34296,6 +34296,10 @@ function chordPCs(name){
   const su=String(name).match(/^([A-Ga-g])([b♭#♯]?)\s*sus([24])$/);
   if(su){ let r=PC[su[1].toUpperCase()]; if(su[2]==="#"||su[2]==="♯")r++; if(su[2]==="b"||su[2]==="♭")r--;
     r=((r%12)+12)%12; return [r,(r+(su[3]==="2"?2:5))%12,(r+7)%12]; }
+  /* X5, a power chord: the root and the 5th (patches/no-third-chords.py) - read as a major triad before */
+  const pw=String(name).match(/^([A-Ga-g])([b♭#♯]?)\s*5$/);
+  if(pw){ let r=PC[pw[1].toUpperCase()]; if(pw[2]==="#"||pw[2]==="♯")r++; if(pw[2]==="b"||pw[2]==="♭")r--;
+    r=((r%12)+12)%12; return [r,(r+7)%12]; }
   const m=String(name).match(/^([A-Ga-g])([b♭#♯]?)\s*(maj|min|dim|m)?\s*(7♭5|7b5|9|7)?/);
   if(!m) return null;
   let r=PC[m[1].toUpperCase()];
@@ -39306,6 +39310,11 @@ function jamChordDefs(){
            on the def because the switch and any later rule want to know. */
         lt:q==="dim"||!(h3&&h5)});
     }
+    /* A TRIAD WITHOUT ITS 3RD (David, 19 Oct 2026: "Once, as a power chord"; patches/no-third-chords.py): where the pan has
+       neither 3rd on this root, the root and the 5th, once, as X5 - incomplete, "no 3rd" */
+    if(!pcs.has(M3)&&!pcs.has(m3)&&pcs.has(P5))
+      out.push({name:spellPc(r)+"5",group:"Triads",root:r,under:needsUnder(r,P5),
+        degs:{"1":r,"3":r,"5":P5},pcs:[r,P5],miss:"3rd",lt:true});
     /* SUS CHORDS (David, 19 Oct 2026; patches/sus-chords.py): sus2 = 1 2 5, sus4 = 1 4 5. The suspended tone names the
        chord and must be on the pan; the 5th may be absent, captioned as in the other families. Drawn lighter (lt). */
     for(const [q,ts] of [["sus2",N9],["sus4",(r+5)%12]]){
@@ -39335,7 +39344,8 @@ function jamChordDefs(){
          it is (7, min7, maj7), so both must be on the pan -- an E7 whose 7th
          is missing is a plain E major triad and was offered as an E7 until
          22 Sep 2026. The 5th may still be absent, captioned as before. */
-      if(!pcs.has(t3)||!pcs.has(t7)) continue;
+      if(!pcs.has(t7)) continue;
+      if(!pcs.has(t3)&&(pcs.has(M3)||pcs.has(m3))) continue;   // without its 3rd only where the pan has neither (patches/no-third-chords.py)
       if(q==="min7♭5"&&!pcs.has(t5)) continue;
       out.push({name:spellPc(r)+q,group:"7th chords",root:r,
         under:needsUnder(r,t3,t5,t7),
@@ -39352,7 +39362,8 @@ function jamChordDefs(){
          available. That one would then be available without the 7" -- EXCEPT
          in maj9, where the word "maj" names the major 7th itself, and without
          it the chord is an add9 under a false name. */
-      if(!pcs.has(t3)||!pcs.has(N9)) continue;
+      if(!pcs.has(N9)) continue;
+      if(!pcs.has(t3)&&(pcs.has(M3)||pcs.has(m3))) continue;   // without its 3rd only where the pan has neither (patches/no-third-chords.py)
       if(q==="maj9"&&!pcs.has(t7)) continue;
       out.push({name:spellPc(r)+q,group:"9th chords",root:r,
         under:needsUnder(r,t3,t5,t7,N9),
@@ -39362,7 +39373,7 @@ function jamChordDefs(){
         miss:gone.length?gone[0][0]:null,lt:true});
     }
   }
-  const gi={"Triads":0,"Sus chords":1,"7th chords":2,"9th chords":3};   // sus right after the triads (patches/sus-chords.py)
+  const gi={"Triads":0,"7th chords":1,"9th chords":2,"Sus chords":3};   // sus at the bottom (David, 19 Oct 2026; patches/no-third-chords.py)
   out.sort((a,b)=>gi[a.group]-gi[b.group]||((a.miss?1:0)-(b.miss?1:0))
     ||(((a.root-d+12)%12)-((b.root-d+12)%12))||a.name.localeCompare(b.name));
   return out;
@@ -43045,7 +43056,7 @@ function qzSpellGrouped(def){
 }
 const QLONG={maj:"major",min:"minor",dim:"diminished","7":"dominant 7th",
   maj7:"major 7th",min7:"minor 7th","min7♭5":"half-diminished","9":"dominant 9th",
-  maj9:"major 9th",min9:"minor 9th",sus2:"suspended 2nd",sus4:"suspended 4th"};   // (patches/sus-chords.py)
+  maj9:"major 9th",min9:"minor 9th",sus2:"suspended 2nd",sus4:"suspended 4th","5":"power chord"};   // (patches/no-third-chords.py)   // (patches/sus-chords.py)
 function qzLongName(def){
   const m=String(def.name).match(/^([A-G][♯♭]?)(.*)$/);
   if(!m) return "";
@@ -53729,8 +53740,31 @@ function panAudition(buf,at,gain){
   const src=ctx.createBufferSource(); src.buffer=buf; const g=ctx.createGain(); g.gain.value=gain;
   src.connect(g); g.connect(dry); g.connect(send); src.start(Math.max(at,ctx.currentTime));
   src.onended=()=>{ try{ g.disconnect(); }catch(e){} };
+  return {src,g};   // kept by the selector, so its close can stop it (patches/scale-selector-sound.py)
 }
 function panFieldEl(host,f){ return host?host.querySelector(isBotPos(f)?'.pvf[data-b="'+(botIdx(f)-1)+'"]':'.pvf[data-f="'+f+'"]'):null; }
+/* THE SCALE SELECTOR OWNS ITS SOUND (David, 19 Oct 2026; patches/scale-selector-sound.py): what it starts stops when it
+   closes, by any way out, and Space plays the selected scale instead of the piece behind it */
+let PP_LIVE=[];
+const ppWiredClose=new WeakSet();
+function ppLiveAdd(v){ if(!v) return; PP_LIVE.push(v);
+  v.src.addEventListener("ended",()=>{ const i=PP_LIVE.indexOf(v); if(i>=0) PP_LIVE.splice(i,1); }); }
+function ppSounding(){ return PP_LIVE.length>0||(typeof coSounding==="function"&&coSounding()); }
+function ppHush(){
+  panPreviewGen++;                                  // a preview still waiting for its samples does not start
+  try{ mdStop(); }catch(e){} try{ coHush(); }catch(e){}
+  if(ctx){ const now=ctx.currentTime;
+    for(const v of PP_LIVE){ try{ v.g.gain.cancelScheduledValues(now); v.g.gain.setValueAtTime(v.g.gain.value,now);
+      v.g.gain.linearRampToValueAtTime(0,now+0.05); v.src.stop(now+0.06); }catch(e){} } }
+  PP_LIVE=[];
+}
+function ppWireClose(){ const d=$("panPickDlg"); if(d&&!ppWiredClose.has(d)){ ppWiredClose.add(d); d.addEventListener("close",ppHush); } }
+function ppSpace(){
+  if(ppSounding()){ ppHush(); return; }
+  if(document.querySelector("#ppTwin #coHear")){ coHearToggle(); return; }       // the twin pane: its own Hear (Modes: the mode)
+  const ss=$("ssPane"); if(ss&&ss.offsetParent){ const L=panById(ss.dataset.id||ssPaneId()); if(L){ panPreview(L,$("ssPan")); return; } }
+  const p=panById(ppBrowse?ppBrowse.cur:myPanId); if(p) panPreview(p);
+}
 function panPreview(p,host){
   wakeAudio();              // every sounding control wakes the path — and holds it, lengthened below to the whole run
   const ms=[midiOf(p.ding),...p.fields.map(midiOf),...(p.bottom||[]).map(midiOf)]
@@ -53747,7 +53781,7 @@ function panPreview(p,host){
     if(gen!==panPreviewGen) return;    // a newer preview has been asked for
     const t0=ctx.currentTime+0.08;
     const lit=new Map(); if(host){ try{ const P=derive(p); for(const f of P.posList()){ const m=P.posMidi(f), el=panFieldEl(host,f); if(m!=null&&el){ if(!lit.has(m)) lit.set(m,[]); lit.get(m).push(el); } } }catch(e){} }
-    ms.forEach((m,i)=>{ const at=t0+i*0.16; panAudition(bankBuf("o"+m)||synthBuf(m,"open"),at,0.9);
+    ms.forEach((m,i)=>{ const at=t0+i*0.16; ppLiveAdd(panAudition(bankBuf("o"+m)||synthBuf(m,"open"),at,0.9));
       for(const el of lit.get(m)||[]) setTimeout(()=>pvFlash(el,["hT"]),Math.max(0,(at-ctx.currentTime)*1000)); });   // (patches/hear-the-scale.py)
     try{ sinkHold(0.08+(ms.length-1)*0.16+SINK_HOLD); }catch(e){}   // the whole run, and the last note's ring
   });
@@ -53911,6 +53945,7 @@ function edAdoptPan(quiet){
   return true;
 }
 function renderPanPick(){
+  ppWireClose();   // what the selector starts stops when it closes (patches/scale-selector-sound.py)
   const L=$("ppList"); if(!L) return;
   L.innerHTML="";
   $("ppLib").setAttribute("aria-pressed",ppView==="lib");
@@ -56134,6 +56169,10 @@ function boot(){
     if(e.key==="Escape"&&$("panZoom").classList.contains("on")){
       e.preventDefault(); closePanZoom(); return; }
     if(e.key==="Escape"&&landIdx>=0){ e.preventDefault(); landClose(0); return; }
+    /* the scale selector open: Space is the selected scale's, never the piece's behind it (patches/scale-selector-sound.py) */
+    if(e.key===" "&&!typing&&$("panPickDlg").open&&!$("chordOvDlg").open&&!$("panZoom").classList.contains("on")){
+      if(tag==="BUTTON") try{ tg.blur(); }catch(x){}
+      e.preventDefault(); ppSpace(); return; }
     if(e.key===" "&&!typing){
       /* a button that still holds focus from the last click — Play itself,
          usually — would ALSO fire its click on the key-up in some engines and
