@@ -49742,12 +49742,25 @@ function mdUnlight(){ mdCur=null; const host=$("coPan"); if(host) host.querySele
    off"; patches/modes-progression-in-time.py): every sample decoded first, then the whole of it scheduled on the audio
    clock - a chord a bar of 4/4 at MD_BPM, its voicing upward on the eighths (sixteenths past eight notes), twice round -
    with nothing hushed between chords. The pan, the name and the chip follow by timers aimed at the same clock. */
+/* THE PROGRESSION'S BASS, BY THE JAM'S LINE (David, 20 Oct 2026: "The jam's rule: below A3"; patches/progression-bass-a3.py,
+   replacing progression-root-bass.py's root-first rule): from A3 (JV_BASS_TOP) up every note plays - a 3rd or 5th may sit
+   below the root; below A3 only the root, its lowest copy; a non-root note there is skipped where the chord has it from
+   A3 up, else kept (its highest copy) so no tone is lost */
+function mdBassRoot(fields,root){
+  const pan=coPanObj||myPan;
+  const E=fields.map(f=>({f,m:pan.posMidi(f)})).filter(e=>e.m!=null).sort((a,b)=>a.m-b.m);
+  if(root==null) return E.map(e=>e.f);
+  const hi=E.filter(e=>e.m>=JV_BASS_TOP), lo=E.filter(e=>e.m<JV_BASS_TOP), have=new Set(hi.map(e=>e.m%12)), keep=[];
+  const r=lo.find(e=>e.m%12===root); if(r){ keep.push(r); have.add(root); }
+  for(let i=lo.length-1;i>=0;i--){ const e=lo[i], pc=e.m%12; if(e===r||have.has(pc)) continue; have.add(pc); keep.push(e); }
+  return [...keep,...hi].sort((a,b)=>a.m-b.m).map(e=>e.f);
+}
 const MD_BPM=90;
 async function mdPlay(p,btn){
   mdStop(); coHush(); const row=btn.closest(".mdprog"); if(!row) return;
   btn.dataset.on="1"; btn.innerHTML=MD_STOP;
   const gen=coGen, pan=coPanObj||myPan, els=[...row.querySelectorAll(".jchord")], seq=mdProgs[p];
-  const vs=seq.map(tr=>tr.item?coVoicing(tr.item):[]);
+  const vs=seq.map(tr=>tr.item?mdBassRoot(coVoicing(tr.item),mdPc(tr.item.name)):[]);   // the root in the bass (patches/progression-root-bass.py)
   wakeAudio();
   try{ await Promise.all([...new Set(vs.flat().map(f=>pan.posMidi(f)).filter(m=>m!=null))].map(m=>bankDecode("o"+m))); }catch(e){}
   if(gen!==coGen||!btn.dataset.on) return;          // stopped, or something else played, while the samples loaded
