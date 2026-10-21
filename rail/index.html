@@ -727,7 +727,7 @@ html[data-lum="dark"][data-sheet="toned"] body:not(.light)
 #prDlg #prFits{margin:-2px 2px 6px; text-align:right}
 #prDlg #prFits b{color:var(--ink)}
 #prDlg .prauto{font-size:12px; padding:4px 9px; margin-left:6px}
-#prDlg .pvstage #prSheet{position:static; left:auto; visibility:visible; zoom:var(--pvz,.6); background:transparent; margin:0 auto; padding:32px 0 40px}
+#prDlg .pvstage #prSheet{position:static; left:auto; visibility:visible; transform:scale(var(--pvz,.6)); transform-origin:0 0; background:transparent; margin:0; padding:32px 0 40px}   /* a transform, not a zoom: WebKit draws no text under 9 px in a zoom (patches/print-preview-transform.py) */
 #prDlg .pvstage #prSheet > .score > #score{display:flex; flex-wrap:wrap; justify-content:center; gap:32px}
 #prDlg .pvstage #prSheet .prpage{box-shadow:0 1px 3px rgba(0,0,0,.12),0 6px 22px rgba(0,0,0,.10); flex:0 0 auto;
   box-sizing:content-box; padding:47.25px 45.35px}   /* the paper's 12 mm margins round the printable area (patches/print-preview-edges.py) */
@@ -736,6 +736,10 @@ html[data-lum="dark"][data-sheet="toned"] body:not(.light)
 @media (max-width:640px){ #prDlg[open]{grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr) auto}
   #prDlg .pvpanel{max-height:55vh; border-left:0; border-top:1px solid var(--rule)} }
 #prSheet .prfit{overflow:hidden}                 /* the unscaled layout width must not widen the page */
+/* A TABLE'S BOX NEVER CUTS ITS FOOT (David, 21 Oct 2026; patches/print-fit-no-cut.py - a safeguard): its height is the one
+   measured when the sheet was built, and a device that lays the drawing out taller when it prints lost the bottom line (a
+   tester's Android PDF: every Flow table one hand-line short). The width is still clipped; the height is not */
+@supports (overflow:clip){ #prSheet .prfit{overflow:visible; overflow-x:clip} }
 #prSheet .prinner{transform-origin:0 0}
 /* the card's own look stays on screen: here it is only the tokens' carrier */
 #prSheet .score{min-width:0; border:none; border-radius:0; padding:0; box-shadow:none; background:transparent}
@@ -787,6 +791,17 @@ body.phone #prRow, body.tablet #prRow{display:none}
   html.prOn body > :not(#prSheet){display:none !important}
   html.prOn #prSheet{position:static; visibility:visible; left:auto}
   html.prOn #prSheet, html.prOn #prSheet *{-webkit-print-color-adjust:exact; print-color-adjust:exact}
+}
+/* THE PAGE IS THE SHEET, ON EVERY DEVICE (David, 21 Oct 2026; patches/print-phone-page.py): the phone frames the page as
+   one fixed, unscrolling screen (html.phone, body.phone), which printed blank; and its own !important rules outranked the
+   one above that leaves only the sheet. In a cascade layer an !important rule wins over every unlayered one */
+@layer hpsprint{
+  @media print{
+    html.prOn, html.prOn body{position:static !important; inset:auto !important; width:auto !important; height:auto !important;
+      overflow:visible !important; display:block !important; transform:none !important; padding:0 !important; margin:0 !important}
+    html.prOn body > :not(#prSheet){display:none !important}
+    html.prOn #prSheet{position:static !important; visibility:visible !important; left:auto !important}
+  }
 }
 *{box-sizing:border-box}
 html,body{margin:0}
@@ -3231,6 +3246,13 @@ body.secnav-row #scorecard>#spParts{margin:0 -1px 0 0; padding:8px 10px 9px; box
   background:color-mix(in srgb, color-mix(in srgb, var(--sc-edge), var(--dixie)) 3%, transparent); border:1px solid var(--sc-rule)}
 body.secnav-row #scorecard:has(#score>.nrow:nth-child(odd of .nrow):nth-last-child(1 of .nrow))>#spParts{background:transparent}
 body.light.secnav-row #scorecard>#spParts{border-color:var(--lt-row) transparent; box-shadow:inset 1.5px 0 0 var(--lt-bar), inset -1.5px 0 0 var(--lt-bar)}
+/* THE EDITOR'S ⋯ (patches/section-row-editor.py): at the strip's right end, the Piece sheet - add, remove, rename sections.
+   The dots' ink is centred in its box (3, 8, 13 on 16) */
+#spParts>.spmore{display:none}
+body.editing.spstrip #spParts>.spmore{display:grid; place-items:center; flex:none; margin-left:auto; width:34px; height:30px; padding:0;
+  border:1px solid var(--rule); border-radius:9px; background:var(--card); color:var(--ink2); cursor:pointer}
+body.editing.spstrip #spParts>.spmore:hover{background:var(--dust); color:var(--ink)}
+#spParts>.spmore svg{width:16px; height:16px; fill:currentColor}
 body.phone #secNavRow{display:none}
 /* Parts in full screen: the row in line above the table, the label it names stood down */
 body.rail.fs.secnav-parts:not(.editing):not(.phone) #scorecard>#headnav{position:static; margin:0 0 8px; max-width:100%}
@@ -7939,6 +7961,7 @@ body.phone:not(.tablet) #psDonePin{display:none}
 body:not(.phone) dialog.flat#pieceDlg[open]{top:14px; left:0; right:0; margin:0 auto; transform:none}
 #psArr .aslot.dragging.copying{cursor:copy}   /* after .aslot.dragging in the file would not do: this rule stands before it, so it is the more specific one */
 #psArr .pspick{width:100%; display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:7px 9px; background:var(--dust); border-radius:10px}
+#psArr .pspick .chip[data-nm]{touch-action:none; cursor:grab; user-select:none}   /* dragged into the arrangement (patches/sections-drag-in.py) */
 #psArr .pspick .pslead{font-size:10px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3); margin-right:2px}
 #pieceDlg .pslab{font-size:10px; font-weight:800; letter-spacing:.12em; text-transform:uppercase;
   color:var(--ink3); margin:12px 0 4px}
@@ -10663,7 +10686,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
     change your music — a field keeps its number wherever it sits.</p>
 </div>
  <!-- SIMPLE MODE'S PLAY ALONG: the parts strip and Loop this table - "Repeat this part" until 12 Oct (patches/simple-play.py) -->
- <div id="spParts"><span class="spwhere" id="spWhere"></span><span class="spbars" id="spPartBars"></span><span class="sprep">Loop this table<span class="pills" id="spRepeat" role="group" aria-label="Loop this table"><button type="button" data-r="0" aria-pressed="true">Off</button><button type="button" data-r="1" aria-pressed="false">On</button></span></span></div>
+ <div id="spParts"><span class="spwhere" id="spWhere"></span><span class="spbars" id="spPartBars"></span><span class="sprep">Loop this table<span class="pills" id="spRepeat" role="group" aria-label="Loop this table"><button type="button" data-r="0" aria-pressed="true">Off</button><button type="button" data-r="1" aria-pressed="false">On</button></span></span><button type="button" class="spmore" id="spMore" title="Sections…" aria-label="Sections…"><svg viewBox="0 0 16 16"><circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/></svg></button></div>   <!-- the editor's ⋯ (patches/section-row-editor.py) -->
  <div class="score" id="scorecard">
   <!-- A-/A+, TOP RIGHT, on the section label's line (David, 17 Oct 2026; patches/top-row-size.py) -->
   <span id="secTools" role="group" aria-label="Notation size"></span>
@@ -12570,7 +12593,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
        actually played, so it is what you look at when you open this sheet. -->
   <h4 class="pslab">Arrangement</h4>
   <div id="psArr"></div>
-  <p class="hint">Drag a chip to change the order · ⌥-drag copies it · tap the ✕ to take it out — the table itself stays · a table in the row beneath appends it.</p>
+  <p class="hint">Drag a chip to change the order · ⌥-drag copies it · tap the ✕ to take it out — the table itself stays · a table in the row beneath appends it, or drag it to its place.</p>
   <h4 class="pslab">Tables</h4>
   <div id="psList"></div>
   <div class="row" style="gap:8px; margin:8px 0 2px">
@@ -25110,6 +25133,10 @@ function prPreview(){
   const PW=prLand?1122.5:793.7, PH=prLand?793.7:1122.5;   // the paper, margins and all (patches/print-preview-edges.py)
   const sw=st.clientWidth-64, zH=(st.clientHeight-72)/PH, z2=(sw-32)/(2*PW), z=Math.max(.1,Math.min(zH,z2>=.42?z2:sw/PW,1));
   sh.style.setProperty("--pvz",z.toFixed(3)); sh.style.width=(sw/z).toFixed(0)+"px";
+  /* SCALED BY A TRANSFORM, which keeps the room of its full size: the right and the bottom give back what the scale leaves,
+     the left centres it in the stage (patches/print-preview-transform.py) */
+  { const W=sw/z, H=sh.offsetHeight; sh.style.marginLeft=((st.clientWidth-sw)/2).toFixed(1)+"px";
+    sh.style.marginRight=(-(W*(1-z))).toFixed(1)+"px"; sh.style.marginBottom=(-(H*(1-z))).toFixed(1)+"px"; }
   st.scrollTop=y;
   /* what the size gives, under it */
   const v=prView, r=prRange(v), staff=v==="staff", three=prL3&&(v==="table"||v==="tab"), rg=$("prSize");
@@ -26916,7 +26943,7 @@ function cardGrid(){
   { const st=$("staffrow"); if(st&&st.parentNode!==br) br.insertBefore(st,br.firstChild); }
   cgZones();                                          // each card in its area (patches/card-grid-areas.py)
   for(const k of CG_ALL){ const e=cgEl(k), z=cgZone(cgArea(k)); if(!e||!z) continue;
-    const nav=k==="nav", free=nav?secNav==="bar"&&(cgInZone(e)||e.parentNode===$("scorewrap")):cgInZone(e);   // the section bar joins from above the table, as Bar only (patches/section-bar-card.py)
+    const nav=k==="nav", free=nav?secNavEff()==="bar"&&(cgInZone(e)||e.parentNode===$("scorewrap")):cgInZone(e);   // the section bar joins from above the table, as Bar only (patches/section-bar-card.py)
     if(free&&e.parentNode!==z) z.appendChild(e); }
   { const sp=$("spParts"); if(sp){ const on=cgInZone(sp); sp.classList.toggle("spmin",on&&!!CG.nav.m); sp.classList.toggle("spvert",on&&!!CG.nav.v); cgNavTools(); } }   // the card's shapes on the grid only
   cgHandles();
@@ -38206,6 +38233,10 @@ function psDragArr(A){
       +(e.clientY-st.oy-r.top)+"px)";            // …then put it under the finger
   };
   A.addEventListener("pointerdown",e=>{
+    /* A WHITE PILL PICKED UP (patches/sections-drag-in.py): its chip is made when it moves, below */
+    { const pk=e.target.closest(".pspick .chip[data-nm]"); if(pk&&A.contains(pk)){ const r=pk.getBoundingClientRect();
+        st={chip:null,pick:pk,id:e.pointerId,x0:e.clientX,y0:e.clientY,ox:e.clientX-r.left,oy:e.clientY-r.top,moved:false,copy:false};
+        try{ pk.setPointerCapture(e.pointerId); }catch(err){} return; } }
     const chip=e.target.closest(".aslot"); if(!chip||!A.contains(chip)) return;
     const r=chip.getBoundingClientRect();
     st={chip,id:e.pointerId,x0:e.clientX,y0:e.clientY,ox:e.clientX-r.left,oy:e.clientY-r.top,moved:false,copy:!!e.altKey};   // Alt held as the drag begins: a copy
@@ -38215,7 +38246,11 @@ function psDragArr(A){
     if(!st||e.pointerId!==st.id) return;
     if(!st.moved){
       if(Math.abs(e.clientX-st.x0)+Math.abs(e.clientY-st.y0)<8) return;
-      st.moved=true; st.chip.classList.add("dragging");
+      st.moved=true;
+      if(st.pick){ const c=document.createElement("button"); c.type="button"; c.className="chip aslot"; c.dataset.nm=st.pick.dataset.nm;
+        c.innerHTML=st.pick.dataset.nm+' <span class="x">✕</span>'; A.insertBefore(c,st.pick.closest(".pspick"));   // a new chip, at the end of the order
+        st.chip=c; st.pick.dataset.dragged="1"; }
+      st.chip.classList.add("dragging");
       st.chip.dataset.dragged="1";               // so the drop is not read as a tap
       /* ALT-DRAG COPIES (David, 12 Oct 2026: "let me Alt-drag the arrangement pills in order to copy a section"): a twin
          stays where the chip stood and the chip travels on. Both name the same entry (data-ai), so the drop below,
@@ -38240,13 +38275,17 @@ function psDragArr(A){
   const drop=e=>{
     if(!st||(e&&e.pointerId!==st.id)) return;
     const s=st; st=null;
+    if(!s.chip) return;   // a white pill tapped, not dragged: its click appends it (patches/sections-drag-in.py)
     s.chip.classList.remove("dragging","copying"); s.chip.style.transition=""; s.chip.style.transform="";
     if(!s.moved) return;
-    const order=slots().map(c=>+c.dataset.ai);
-    const same=order.every((v,i)=>v===i);
+    // a new chip dropped back on the white row: nothing added (patches/sections-drag-in.py)
+    if(s.pick){ const R=s.pick.closest(".pspick").getBoundingClientRect();
+      if(e&&e.clientX>=R.left&&e.clientX<=R.right&&e.clientY>=R.top&&e.clientY<=R.bottom){ s.chip.remove(); return; } }
+    const sl=slots(), order=sl.map(c=>c.dataset.ai===undefined?-1:+c.dataset.ai);   // -1: a new chip, named by its table
+    const same=order.length===piece.arrangement.length&&order.every((v,i)=>v===i);
     if(same) return;
     snapshot();
-    piece.arrangement=order.map(i=>piece.arrangement[i]);
+    piece.arrangement=sl.map((c,j)=>order[j]<0?c.dataset.nm:piece.arrangement[order[j]]);
     const ns=order.indexOf(selAi); if(ns>=0) selAi=ns;
     loopSec=null;                                // the bars sit somewhere else now
     refresh(); renderPieceDlg();
@@ -38440,8 +38479,9 @@ function renderPieceDlg(){
   { const pick=document.createElement("div"); pick.className="pspick";
     const lead=document.createElement("span"); lead.className="pslead"; lead.textContent="＋ Add"; pick.appendChild(lead);
     for(const nm of Object.keys(piece.sections)){
-      const c=document.createElement("button"); c.className="chip"; c.textContent=nm; c.title="Append "+nm+" to the arrangement";
-      c.addEventListener("click",()=>{ snapshot(); piece.arrangement.push(nm); refresh(); renderPieceDlg(); });
+      const c=document.createElement("button"); c.className="chip"; c.textContent=nm; c.dataset.nm=nm; c.title="Tap to append "+nm+" · drag it to its place in the arrangement";
+      c.addEventListener("click",()=>{ if(c.dataset.dragged==="1"){ c.dataset.dragged=""; return; }   // a drag placed it (patches/sections-drag-in.py)
+        snapshot(); piece.arrangement.push(nm); refresh(); renderPieceDlg(); });
       pick.appendChild(c);
     }
     A.appendChild(pick); }
@@ -60045,7 +60085,7 @@ function spGo(ai){ const es=arrEntries(), e=es[ai]; if(!e) return; const rep=spR
 /* the rooms where a piece is read: Simple's Play along; in the full app the Play room - not the jam, the editors or the
    practice rooms (patches/section-strip-full.py) */
 function spStripRoom(){ if(SIMPLE) return spPlayRoom(); const B=document.body.classList;
-  return secNav!=="parts"&&!jamOn&&!editing&&!B.contains("inpractice")&&!["gedit","cp","tuner","dg","plog"].some(c=>B.contains(c)); }   // Parts: the row at the top left instead (patches/section-nav-choice.py)
+  return secNavEff()!=="parts"&&!jamOn&&!B.contains("inpractice")&&!["gedit","cp","tuner","dg","plog"].some(c=>B.contains(c)); }   // the arrangement editor too, as the table row (patches/section-row-editor.py)   // Parts: the row at the top left instead (patches/section-nav-choice.py)
 function spPaint(){
   { const on=!PHONE&&spStripRoom()&&!!(piece&&piece.arrangement&&piece.arrangement.length);
     if(document.body.classList.contains("spstrip")!==on) document.body.classList.toggle("spstrip",on); }
@@ -60107,15 +60147,20 @@ try{ if(!SIMPLE){ spWire(); const mo=new MutationObserver(()=>spPaint());
    hps.secnav - the one place that moves the strip and says which it is (body.secnav-below | -row | -parts) */
 var secNav="bar"; try{ const v=localStorage.getItem("hps.secnav"); if(v==="row"||v==="parts") secNav=v; }catch(e){}   // Above and Below of the first round are the bar now (patches/section-bar-card.py)
 function secNavPlace(){
-  const B=document.body.classList; ["row","parts"].forEach(k=>{ if(B.contains("secnav-"+k)!==(secNav===k)) B.toggle("secnav-"+k,secNav===k); });
+  const B=document.body.classList, N=secNavEff(); ["row","parts"].forEach(k=>{ if(B.contains("secnav-"+k)!==(N===k)) B.toggle("secnav-"+k,N===k); });
   document.querySelectorAll("#secNavPills button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.sn===secNav)));
   const sp=$("spParts"), sc=$("scorecard"); if(PHONE||!sp||!sc) return;
-  if(secNav==="row"){ if(sc.lastElementChild!==sp) sc.appendChild(sp); }
-  else if(!(secNav==="bar"&&cgOn()&&cgInZone(sp))&&sc.previousElementSibling!==sp) sc.before(sp);   // the bar: the card grid places it (patches/section-bar-card.py)
+  if(N==="row"){ if(sc.lastElementChild!==sp) sc.appendChild(sp); }
+  else if(!(N==="bar"&&cgOn()&&cgInZone(sp))&&sc.previousElementSibling!==sp) sc.before(sp);   // the bar: the card grid places it (patches/section-bar-card.py)
   if(!cgInZone(sp)){ sp.style.left=sp.style.top=sp.style.width=""; sp.classList.remove("spmin","spvert"); }   // off the grid: its own shape
   try{ spPaint(); headNavPlace(); spFitStrip(); }catch(e){} try{ cgSoon(); }catch(e){} }   // the strip stands down first: headNavPlace reads whether the row shows
 try{ secNavPlace(); $("secNavPills").addEventListener("click",e=>{ const b=e.target.closest("button[data-sn]"); if(!b||b.dataset.sn===secNav) return;
   secNav=b.dataset.sn; try{ localStorage.setItem("hps.secnav",secNav); }catch(x){} secNavPlace(); }); }catch(e){}
+/* THE PLACE IN USE (patches/section-row-editor.py): the arrangement editor's is the table row, whatever the setting; a change
+   of room places the strip again (secNavPlace's own body classes change nothing here, so it settles) */
+function secNavEff(){ const B=document.body.classList; return B.contains("editing")&&!B.contains("gedit")?"row":secNav; }
+try{ let was=secNavEff(); new MutationObserver(()=>{ const n=secNavEff(); if(n!==was){ was=n; secNavPlace(); } }).observe(document.body,{attributes:true,attributeFilter:["class"]});
+  $("spMore").addEventListener("click",()=>openPieceDlg()); }catch(e){}
 /* SIMPLE MODE'S SCALE SELECTOR (SIMPLE-MODE-PLAN.md step 6; patches/simple-scales.py): the pane shows the version the twin
    would - a size pill's, else the pan in hand - drawn and played by the app's own panViewSVG and panPreview */
 function ssPaneId(){ return ppTwinPick||(ppBrowse?ppBrowse.cur:myPanId); }
