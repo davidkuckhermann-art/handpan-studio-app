@@ -352,7 +352,10 @@ function staff(bars,ctx,o){
     for(const l of key.sharps){if(!C.perc)g+=glyph(G.sharp,cx,yW(KEYPOS.sharps[l]+C.keyOff));cx+=.9*sp}
     if(timeSig){cx+=.4*sp;const wide=beats>9;g+=glyph(G.ts(beats),cx,yW(topS-2));g+=glyph(G.ts(den),cx+(wide?E.tsW*sp*.45:0),yW(bottom+2))}}
   /* the line's first bar, over its clef (patches/staff-print-bar-numbers.py) */
-  if(barNumbers==="line"&&laid.length&&firstBar>=0)g+=   /* a pickup bar (0) has none (patches/staff-print-pickup-unnumbered.py) */`<text x="${(left+.4*sp+(o.inset||0)).toFixed(1)}" y="${(topY-1.7*sp).toFixed(1)}" font-family="${FONT}" font-weight="600" font-size="${sp*1.1}" fill="${COL.count}">${firstBar+1}</text>`;
+  /* a named staff has its name where the number stands - over the clef - so the number stands on the name's line, just
+     past it: about .62 of the name's size a letter, then a space (David, 21 Oct 2026; patches/staff-bar-number-beside-name.py) */
+  const bnX=voiceY!=null?left+.2*sp+(o.inset||0)+String(o.voice).length*.62*1.15*sp+.8*sp:left+.4*sp+(o.inset||0), bnY=voiceY!=null?voiceY:topY-1.7*sp;
+  if(barNumbers==="line"&&laid.length&&firstBar>=0)g+=   /* a pickup bar (0) has none (patches/staff-print-pickup-unnumbered.py) */`<text x="${bnX.toFixed(1)}" y="${bnY.toFixed(1)}" font-family="${FONT}" font-weight="600" font-size="${sp*1.1}" fill="${COL.count}">${firstBar+1}</text>`;
   laid.forEach((L,i)=>{if(i>0)g+=rect(L.x0-E.thin*sp/2,topY,E.thin*sp,4*sp);
     if(barNumbers===true)g+=`<text x="${(L.x0+2).toFixed(1)}" y="${(topY-1.7*sp).toFixed(1)}" font-family="${FONT}" font-weight="600" font-size="${sp*1.1}" fill="${COL.count}">${firstBar+i+1}</text>`;
     });
@@ -478,14 +481,14 @@ function staff(bars,ctx,o){
         if(parts.length>1)t+=`<tspan font-size="${(fsz*.68).toFixed(2)}" dy="${(-raise).toFixed(2)}">b</tspan><tspan font-size="${fsz}" dy="${raise.toFixed(2)}">${parts[1]}</tspan>`;
         g+=t+`</text>`;chordTop=Math.min(chordTop,cy-1.5*sp)})})}
   if(mode==="grid"&&o.bands!==false){laid.forEach((L,bi)=>{for(let b=0;b<beats;b++){const bx=L.edges[b];bands+=`<rect class="sv-band${band&&band.bar===firstBar+bi&&band.beat===b?" on":""}" data-bar="${firstBar+bi}" data-beat="${b}" x="${bx.toFixed(1)}" y="${noteTop.toFixed(1)}" width="${(L.edges[b+1]-L.edges[b]).toFixed(1)}" height="${(noteBot-noteTop).toFixed(1)}" rx="${(sp*.6).toFixed(1)}" fill="${COL.band}"/>`}})}
-  const extentTop=Math.min(noteTop,chordTop,o.label?topY-5.8*sp:Infinity), extentBotRaw=noteBot;
+  const extentTop=Math.min(noteTop,chordTop,o.label?topY-5.8*sp:Infinity,barNumbers==="line"&&laid.length&&firstBar>=0?bnY-.9*sp:Infinity), extentBotRaw=noteBot;   // the bar number is ink: it was cut where the notes sat lower (patches/staff-bar-number-beside-name.py)
   /* …AND THE PICTURE HOLDS ITS CLEF (patches/staff-clef-in-crop.py): the crop is the note ink, and the clef is not note ink.
      Returned apart, so only the picture widens - the band, the chords and the numbers row keep measuring the notes. */
   const clefInk=prelude&&E.clefInk[clef], clefY=yW(C.glyphStep);
   const clefTop=Math.min(clefInk?clefY-(clefInk[0]+.2)*sp:Infinity,voiceY!=null?voiceY-1.1*sp:Infinity), clefBot=clefInk?clefY+(clefInk[1]+.2)*sp:-Infinity;
   let extentBot=extentBotRaw;
   if(numbersRow&&!collect){const ny=extentBotRaw+2*sp;let maxRows=1;over.forEach(oo=>{maxRows=Math.max(maxRows,oo.rows.length);oo.rows.forEach((r,k)=>{const yy=ny+k*1.45*sp;g+=text(r.label,oo.x,yy,sp*1.5,r.fill,'text-anchor="middle"');if(r.bot)g+=rect(oo.x-.6*sp,yy+.35*sp,1.2*sp,.16*sp,r.fill)})});extentBot=ny+(maxRows-1)*1.45*sp+1.2*sp}
-  return{inner:g,bands,W,topY,botY,extentTop,extentBot,clefTop,clefBot,noteTop,noteBot,preludeW,over,laid};
+  return{inner:g,bands,W,topY,botY,extentTop,voiceTop:voiceY!=null?voiceY-.95*sp:Infinity,extentBot,clefTop,clefBot,noteTop,noteBot,preludeW,over,laid};
 }
 
 /* ---------- the context of a section ---------- */
@@ -584,7 +587,7 @@ function build(input,opts){
   /* the staves' filters, said once (keepsFor): spacing() and plan() read the same bars the staves draw */
   const keeps=keepsFor(opts.grand,names,opts);
   const ex=extraStaves(opts);   // the instruments' staves, in order under the handpan's (30 Sep 2026)
-  const extraStaff0=(top,i,v,x)=>staff(bars,ctx,{...base,top,clef:(v.clef&&v.clef!=="auto")?v.clef:((v.prefer&&v.prefer[0])||"f"),keep:keeps[keeps.length-ex.length+i],cols,barNumbers:false,numbers:false,numbersRow:false,collect:false,chords:false,voice:v.label||"",...(x||{})});
+  const extraStaff0=(top,i,v,x)=>staff(bars,ctx,{...base,top,clef:(v.clef&&v.clef!=="auto")?v.clef:((v.prefer&&v.prefer[0])||"f"),keep:keeps[keeps.length-ex.length+i],cols,barNumbers:opts.panHidden&&i===0?base.barNumbers:false,numbers:false,numbersRow:false,collect:false,chords:false,voice:v.label||"",...(x||{})});   // only the top staff: the first instrument when the handpan's is hidden (patches/staff-bar-number-beside-name.py)
   /* THE KIT (patches/staff-drum-kit.py): one staff, two voices - the hands with stems up, then the feet with stems down and no
      rests, drawn over it at the same columns */
   const extraStaff=(top,i,v)=>{ if(v.key!=="kit") return extraStaff0(top,i,v); const kk=keeps[keeps.length-ex.length+i];
@@ -599,7 +602,7 @@ function build(input,opts){
     return `<rect x="${x}" y="${y1.toFixed(1)}" width="${(E.thin*sp).toFixed(2)}" height="${(y2-y1).toFixed(1)}" fill="${COL.ink}"/>`+`<text transform="translate(${(x-.3*sp-w).toFixed(2)} ${y2.toFixed(2)}) scale(${s.toFixed(4)})" font-family="Leland" font-size="${(4*sp).toFixed(2)}" fill="${COL.ink}">\uE000</text>`};
   const stackExtras=prev=>ex.forEach((v,i)=>{let top=prev+3.5*sp,bs=extraStaff(top,i,v);
     const over=Math.min(bs.extentTop,bs.clefTop,bs.topY-2*sp)-(prev+1.2*sp);if(over<0){top-=over;bs=extraStaff(top,i,v)}
-    if(v.split==="hi")hiTop=bs.topY;parts.push({inner:bs.bands+bs.inner+(v.split==="lo"&&hiTop!=null?braceOf(base.left,hiTop,bs.botY):""),extentTop:bs.extentTop,extentBot:Math.max(bs.extentBot,bs.clefBot)});if(sysT==null)sysT=bs.topY;sysB=bs.botY;prev=Math.max(bs.extentBot,bs.clefBot);if(W==null)W=bs.W});
+    if(v.split==="hi")hiTop=bs.topY;parts.push({inner:bs.bands+bs.inner+(v.split==="lo"&&hiTop!=null?braceOf(base.left,hiTop,bs.botY):""),extentTop:bs.extentTop,nameTop:bs.voiceTop,extentBot:Math.max(bs.extentBot,bs.clefBot)});if(sysT==null)sysT=bs.topY;sysB=bs.botY;prev=Math.max(bs.extentBot,bs.clefBot);if(W==null)W=bs.W});
   const cols=mode==="grid"?spacing(bars,ctx,keeps,bars.length*ctx.ppb*base.pw,sp):null;
   if(opts.panHidden&&ex.length&&!opts.bassOnly){ stackExtras(200-3.5*sp); }   /* the handpan's own staff hidden: the instruments' alone (patches/staff-pan-hide.py) */
   else if(opts.bassOnly){
@@ -621,7 +624,7 @@ function build(input,opts){
   }else{
     const cf=opts.clef?{clef:opts.clef}:clefFor(input.pan,opts.clefFrom);
     const s=staff(bars,ctx,{...base,top:200,clef:cf.clef,keep:keeps[0],cols,voice:ex.length?"Handpan":""}); /* named among the instruments (30 Sep 2026) */W=s.W;sysT=s.topY;sysB=s.botY;
-    parts=[{inner:s.bands+s.inner,extentTop:Math.min(s.extentTop,s.clefTop),extentBot:Math.max(s.extentBot,s.clefBot)}];
+    parts=[{inner:s.bands+s.inner,extentTop:Math.min(s.extentTop,s.clefTop),extentBot:Math.max(s.extentBot,s.clefBot),nameTop:s.voiceTop}];
     stackExtras(Math.max(s.extentBot,s.clefBot));
   }
   /* ONE LINE JOINS THE SYSTEM'S STAVES (David, 7 Oct 2026: "can the instruments be connected by a vertical line similar to
@@ -629,7 +632,7 @@ function build(input,opts){
      to the last's bottom line, the grand staff's own line; one staff alone has none */
   if(opts.systemLine&&ex.length&&sysT!=null&&sysB>sysT+4.5*sp)
     parts.push({inner:`<rect x="${base.left}" y="${sysT.toFixed(1)}" width="${(E.thin*sp).toFixed(2)}" height="${(sysB-sysT).toFixed(1)}" fill="${COL.ink}"/>`,extentTop:sysT,extentBot:sysB});
-  const top=Math.min(...parts.map(p=>p.extentTop)),bot=Math.max(...parts.map(p=>p.extentBot));
+  const top=Math.min(...parts.map(p=>Math.min(p.extentTop,p.nameTop==null?Infinity:p.nameTop))),bot=   /* the top staff's name is inside the drawing - it was cut where nothing else rose so high (patches/staff-bar-number-beside-name.py) */Math.max(...parts.map(p=>p.extentBot));
   const H=bot-top;
   const svg=`<svg class="sv" viewBox="0 ${top.toFixed(1)} ${W.toFixed(1)} ${H.toFixed(1)}" ${opts.fixed?`width="${W.toFixed(0)}" height="${H.toFixed(0)}"`:""} xmlns="http://www.w3.org/2000/svg">${parts.map(p=>p.inner).join("")}</svg>`;
   return{svg,W,H,key:ctx.key,clef:opts.grand?"grand":(opts.clef||clefFor(input.pan,opts.clefFrom).clef),fits:cols?cols.fits:true,need:cols?cols.floor:0,room:cols?bars.length*ctx.ppb*base.pw:0};
@@ -666,10 +669,10 @@ function render(el,input,opts){
   }
   if(per&&bars.length>per){   // systems of `per` bars, stacked
     const parts=[];let H=0,W=0,key=null,clef=null;
-    for(let i=0;i<bars.length;i+=per){const r=build(slice(input,i,i+per),{...opts,pw,firstBar:(opts.firstBar||0)+i,timeSig:i===0&&opts.timeSig!==false});parts.push(r.svg);H+=r.H;W=Math.max(W,r.W);key=r.key;clef=r.clef}
+    for(let i=0;i<bars.length;i+=per){const r=build(slice(input,i,i+per),{...opts,pw,firstBar:(opts.firstBar||0)+i,timeSig:i===0&&opts.timeSig!==false,barNumbers:i===0&&opts.bareFirst?false:opts.barNumbers});/* bareFirst: the first line's number stands with the table's name (patches/staff-bar-number-beside-name.py) */parts.push(r.svg);H+=r.H;W=Math.max(W,r.W);key=r.key;clef=r.clef}
     const svg=parts.join("");if(el){el.innerHTML=svg}return{svg,W,H,key,clef,systems:parts.length};
   }
-  const r=build(input,{...opts,pw});
+  const r=build(input,{...opts,pw,barNumbers:opts.bareFirst?false:opts.barNumbers});
   if(el){el.innerHTML=r.svg}
   return r;
 }
