@@ -25015,7 +25015,7 @@ function prDone(){
     if(sc){ sc.innerHTML=""; if(prHome.style!=null) sc.setAttribute("style",prHome.style);
       prHome.parent.insertBefore(sc,prHome.next&&prHome.next.parentNode===prHome.parent?prHome.next:null); }
   }
-  prOn=false; prHome=null;
+  prOn=false; prHome=null; prKept=false;   // a kept copy goes with the sheet (patches/print-keep-copy.py)
   if(s) s.remove();
   document.documentElement.classList.remove("prOn");
   { const pc=$("prPageCss"); if(pc) pc.remove(); }   // the paper's size goes with the sheet (patches/print-landscape.py)
@@ -25026,6 +25026,21 @@ function prDone(){
     if(matchMedia("print").matches){ let n=0; const t=setInterval(()=>{ if(!matchMedia("print").matches||++n>100){ clearInterval(t); render(); try{ renderPanPanel(); }catch(e){} } },100); } }
 }
 let prTitle=null;
+/* THE PAGE STAYS FOR A PRINT DRAWN AGAIN (David, 22 Oct 2026; patches/print-keep-copy.py): Safari on the iPhone fires afterprint
+   after its first preview and draws the page again when the paper changes - by then the sheet was gone, and A4 printed blank.
+   On afterprint the live notation goes home at once and a still copy of the sheet stays, for print only; the first tap or
+   key back in the app, or the next print, takes it down (prDone). The copy keeps the id score for the print look's rules */
+var prKept=false;
+function prKeep(){
+  const s=$("prSheet"); if(!s||!prOn||!prHome){ prDone(); return; }
+  const sc=$("score"); if(!sc){ prDone(); return; }
+  sc.replaceWith(sc.cloneNode(true));                 // the still copy, where the live notation stood in the sheet
+  sc.innerHTML=""; if(prHome.style!=null) sc.setAttribute("style",prHome.style);
+  prHome.parent.insertBefore(sc,prHome.next&&prHome.next.parentNode===prHome.parent?prHome.next:null);
+  prOn=false; prHome=null; prKept=true;
+  render(); try{ renderPanPanel(); }catch(e){}
+  if(matchMedia("print").matches){ let n=0; const t=setInterval(()=>{ if(!matchMedia("print").matches||++n>100){ clearInterval(t); render(); try{ renderPanPanel(); }catch(e){} } },100); }
+}
 /* THE PRINT'S NAME (David, 27 Sep 2026): a jam prints under the name the app gives it - its saved name, else
    "Jam in D minor" - not the lent piece's bare "Jam"; the file name, the heading, the footer and the hint ask here */
 function prName(fb){ return (jamOn&&typeof jamTitle==="function"&&jamTitle())||(piece&&piece.title)||fb||"Untitled"; }
@@ -25151,9 +25166,9 @@ function prPreview(){
   else f.innerHTML=(three?"3 per page":prN>1?prN+" side by side":v==="flow"?"Full width":"1 per row")+pages;
 }
 addEventListener("resize",()=>{ const d=$("prDlg"); if(d&&d.open) prPvLater(120); });
-addEventListener("afterprint",()=>{ if(prOn) setTimeout(prDone,0); });
+addEventListener("afterprint",()=>{ if(prOn) setTimeout(prKeep,0); });   // the notation home, a still copy for a print drawn again (patches/print-keep-copy.py)
 for(const t of ["pointerdown","keydown"])
-  addEventListener(t,()=>{ if(prOn&&!$("prDlg").open) prDone(); },true);
+  addEventListener(t,()=>{ if((prOn||prKept)&&!$("prDlg").open) prDone(); },true);   // a kept copy too (patches/print-keep-copy.py)
 /* ══ WHERE THE FILE GOES ══════════════════════════════════════════════════
    David asked for a location prompt, saw what it cost, and dropped it the same
    hour: "let's drop that extra dialog box for now. Let's have the app save to
