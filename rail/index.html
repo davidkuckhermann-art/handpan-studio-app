@@ -26968,8 +26968,8 @@ function cardGrid(){
   for(const r in CGS.rooms){ const L=CGS.rooms[r]; if(L&&!L.nav) L.nav={x:0,w:16,o:-2,a:"top"}; }   // saved before the bar was a card (patches/section-bar-card.py)
   CG=CGS.rooms[cgRoom()];
   document.body.classList.add("cardgrid");
-  if(mr.parentNode!==br) br.insertBefore(mr,br.firstChild);
-  { const st=$("staffrow"); if(st&&st.parentNode!==br) br.insertBefore(st,br.firstChild); }
+  if(!cgInZone(mr)) br.insertBefore(mr,br.firstChild);   // from home only - a card in another area stays there (patches/card-grid-area-loop.py)
+  { const st=$("staffrow"); if(st&&!cgInZone(st)) br.insertBefore(st,br.firstChild); }
   cgZones();                                          // each card in its area (patches/card-grid-areas.py)
   for(const k of CG_ALL){ const e=cgEl(k), z=cgZone(cgArea(k)); if(!e||!z) continue;
     const nav=k==="nav", free=nav?secNavEff()==="bar"&&(cgInZone(e)||e.parentNode===$("scorewrap")):cgInZone(e);   // the section bar joins from above the table, as Bar only (patches/section-bar-card.py)
@@ -34609,6 +34609,20 @@ function turnStaffPage(d){
   if(p!==staffPage){ staffPage=p; renderStaff(); } }
 $("staffPrev").addEventListener("click",()=>turnStaffPage(-1));
 $("staffNext").addEventListener("click",()=>turnStaffPage(1));
+/* CLICK TO NAVIGATE IN THE STAFF (David, 22 Oct 2026; patches/staff-click-seek.py): a click puts the playhead on the start
+   of the beat under it, as a click in the table does - seekToPulse, which snaps to the cell and carries playback on. The
+   staff's own beat bands are the map: the one nearest the click across, then up and down, in the system clicked */
+function staffSeekAt(ev){
+  if(editing||!piece||!viewSec||!piece.sections[viewSec]) return;
+  const svg=ev.target&&ev.target.closest?ev.target.closest("svg.sv"):null; if(!svg) return;
+  let best=null, bd=Infinity;
+  svg.querySelectorAll(".sv-band").forEach(b=>{ const r=b.getBoundingClientRect();
+    const dx=Math.max(r.left-ev.clientX,0,ev.clientX-r.right), dy=Math.max(r.top-ev.clientY,0,ev.clientY-r.bottom);
+    const d=dx*1e4+dy; if(d<bd){ bd=d; best=b; } });
+  if(!best) return;
+  const m=SM(piece,viewSec);
+  seekToPulse(viewFromPulse()+(+best.dataset.bar)*m.bp+(+best.dataset.beat)*m.sub); }
+$("staffbox").addEventListener("click",staffSeekAt);
 /* THE PAGE TURNS ONE BEAT EARLY (David, 23 Sep 2026): on the last beat of a page the next one is already in view, as a
    page-turner does for a pianist. The beat AFTER this one decides the page; past the table's end that is its first bar. */
 function paintStaff(bar,beat){ staffBand={bar,beat}; if(!(staffOn&&staffPlace())) return;
@@ -46979,6 +46993,32 @@ function plRecAlign(R){
   const clear=ks.every(t=>at(t+bd)>8*med+1e-6);
   return clear?{b1:Math.max(0,est+bd),src:"clicks"}:{b1:Math.max(0,est),src:"estimate"};
 }
+/* A TAKE BEGINS AT THE COUNT-IN (David, 22 Oct 2026; patches/take-starts-at-count-in.py): a microphone opened again for
+   the next take first hands over the last take's sound, so everything before the count-in's first click is silenced -
+   the click found by its tones in the alignment's envelope, the silence ending a window before it with a 4 ms fade;
+   a click not heard clearly, 60 ms before where it should be. T is either recorder's take (jam parcels [[ch]] or the
+   Practice log's chunks); the peak is taken again for the automatic level. Returns the seconds silenced. */
+function recQuietBefore(T,a){
+  if(!T||!T.pcm||!T.env||!a||a.b1==null||T.click!=="sv"||!(T.ciOff&&T.ciOff.length)) return 0;
+  const fr=T.win/T.sr, env=T.env, t1=a.b1-Math.max(...T.ciOff);
+  const i0=Math.max(0,Math.round((t1-0.06)/fr)), i1=Math.min(env.length,Math.round((t1+0.04)/fr));
+  let im=-1, mx=0; for(let i=i0;i<i1;i++) if(env[i]>mx){ mx=env[i]; im=i; }
+  const pre=env.slice(Math.max(0,i0-Math.round(1/fr)),i0).sort((p,q)=>p-q), med=pre.length?pre[pre.length>>1]:0;
+  let cut=t1-0.06;
+  if(im>=0&&mx>8*med+1e-9){ let j=im; while(j>0&&env[j-1]>0.03*mx) j--; cut=(j-1)*fr; }
+  const n=Math.max(0,Math.min(T.frames,Math.round(cut*T.sr)));
+  if(!n) return 0;
+  const fd=Math.min(n,Math.round(0.004*T.sr)), f0=n-fd; let o=0, gone=0;
+  for(const p of T.pcm){ const chs=ArrayBuffer.isView(p)?[p]:p, len=chs[0].length;
+    if(o>=n) break;
+    for(const ch of chs) for(let i=0;i<len&&o+i<n;i++){ const k=o+i, v=ch[i], m=v<0?-v:v; if(m>gone) gone=m;
+      ch[i]=k<f0?0:Math.round(v*(0.5-0.5*Math.cos(Math.PI*(k-f0)/fd))); }
+    o+=len; }
+  if(gone/32768>=T.peak-1e-4){ let pk=0;   // the loudest moment was in what is now silent
+    for(const p of T.pcm) for(const ch of (ArrayBuffer.isView(p)?[p]:p)) for(let i=0;i<ch.length;i++){ const m=ch[i]<0?-ch[i]:ch[i]; if(m>pk) pk=m; }
+    T.peak=pk/32768; }
+  return Math.round(n/T.sr*1000)/1000;
+}
 async function plRecStop(){
   const R=PL.rec; if(!R||(R.state!=="count"&&R.state!=="rec")||R.stopping) return;
   R.stopping=true;
@@ -46990,7 +47030,7 @@ async function plRecStop(){
   plRecHalt(R);
   if(early){ PL.rec=null; toast("Stopped during the count-in: nothing was recorded"); plPaint(); return; }
   R.state="enc"; plPaint();
-  const a=plRecAlign(R); R.env=null;
+  const a=plRecAlign(R); recQuietBefore(R,a); R.env=null;
   plRecEncode(R).then(ok=>ok&&PL.rec===R?plRecRefine(R,a):null).then(b=>{ if(!b||PL.rec!==R) return; R.b1=b.b1; R.b1src=b.src;
     R.url=URL.createObjectURL(R.blob); R.state="review"; plPaint(); });
 }
@@ -47284,7 +47324,7 @@ async function jrFinish(R){
   if(early||!M.frames||!J||!J.frames||J.f0<0){ JR=null; jrPaint(); toast(early?"Stopped during the count-in: nothing was recorded":"Nothing was recorded"); return; }
   R.state="enc"; jrPaint();
   try{
-    const a=plRecAlign(M); M.env=null; jrTlEv(R,"estimate",{b1:a.b1,src:a.src,startPerf:M.startPerf,b1Ctx:R.b1Ctx});
+    const a=plRecAlign(M), quiet=recQuietBefore(M,a); M.env=null; jrTlEv(R,"estimate",{b1:a.b1,src:a.src,startPerf:M.startPerf,b1Ctx:R.b1Ctx,quiet});
     const g=M.peak>0?Math.min(Math.pow(10,24/20),Math.pow(10,-1/20)/M.peak):1;   // the Practice log's automatic level
     M.gain=Math.round(20*Math.log10(g)*10)/10;
     { const fs=R.ending&&R.ending.done?4:2; jrFadeTail(M,fs); jrFadeTail(J,fs); jrTlEv(R,"fade",{seconds:fs}); }   // every take ends with a fade (26 Sep 2026)
