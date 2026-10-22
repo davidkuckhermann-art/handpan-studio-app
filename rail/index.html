@@ -667,6 +667,9 @@ html[data-lum="dark"][data-sheet="toned"] body:not(.light)
 #prSheet .prpage:last-child{break-after:auto}
 #prSheet.land{width:1028px}
 #prSheet.land .prpage{width:1028px; height:700px}   /* landscape (patches/print-landscape.py) */
+/* ON A TOUCH SCREEN THE PAGE FITS THE ROOM iOS GIVES (David, 22 Oct 2026; patches/print-touch-pages.py): Safari there ignores
+   @page and prints on its own paper and margins, scaling to the width - the smaller of A4 and Letter as it prints them */
+@media (pointer:coarse){ #prSheet .prpage{height:880px} #prSheet.land .prpage{height:630px} }
 #prSheet .prhd{display:flex; justify-content:space-between; align-items:flex-start; gap:24px;
   padding-bottom:14px; border-bottom:1.5px solid #1B1D1C; margin-bottom:20px}
 #prSheet h1{font-size:26px; line-height:1.15; font-weight:700; letter-spacing:-.01em; margin:0}
@@ -764,7 +767,7 @@ html[data-lum="dark"][data-sheet="toned"] body:not(.light)
 #prSheet.look #score .nrow>.bar:last-child{border-right:calc(1.5 * var(--prl)) solid #6A6E6B}
 #prSheet.look #score .nrow{column-gap:0 !important}
 /* ROW BANDS ARE A SWITCH (same day): off by default and remembered; warm grey, dark enough to print */
-#prSheet.look.bands #score .nrow.prz{background:#F3F4F1}   /* more subtle (David, 28 Sep): #E8E9E5 and #EEEFEB printed alike from the Mac app, so the first tint again */
+#prSheet.look.bands #score .nrow.prz, #prSheet.bands:not(.look) #score .fsys.prz{background:#F3F4F1}   /* Flow's lines too (patches/print-flow-bands.py) */   /* more subtle (David, 28 Sep): #E8E9E5 and #EEEFEB printed alike from the Mac app, so the first tint again */
 #prSheet.look #score .nrow.prfirst{border-top:calc(1.5 * var(--prl)) solid #6A6E6B}
 #prSheet.look #score .nrow.prlast{border-bottom:calc(1.5 * var(--prl)) solid #6A6E6B}
 #prSheet.look #score .beat>.slot.smark::before{display:none}
@@ -24801,7 +24804,7 @@ function buildPrintSheet(){
   prDone();
   /* THE PAGE, TURNED FOR LANDSCAPE: every layout below reads PR_W and PR_H; the browser is asked for the paper by an
      @page rule that goes with the sheet (patches/print-landscape.py) */
-  PR_W=prLand?1028:703; PR_H=prLand?700:1028;   /* landscape A4 holds 702.99 px under its margins: a 703 px page pushed a blank one after it (webkit-print, 7 Oct 2026) */
+  PR_W=prLand?1028:703; PR_H=matchMedia("(pointer:coarse)").matches?(prLand?630:880):(prLand?700:1028);   /* a touch screen: the room iOS gives (patches/print-touch-pages.py) */   /* landscape A4 holds 702.99 px under its margins: a 703 px page pushed a blank one after it (webkit-print, 7 Oct 2026) */
   { const pc=document.createElement("style"); pc.id="prPageCss"; pc.textContent="@page{size:A4 "+(prLand?"landscape":"portrait")+"; margin:12mm}"; document.head.appendChild(pc); }
   const sc=$("score"); if(!sc||!piece) return null;
   const plan=prPlan(), secs=(prEns&&prView==="staff")?prEnsList():plan.print; if(!secs.length) return null;
@@ -24895,6 +24898,8 @@ function buildPrintSheet(){
   /* 2 — THE LOOK'S OWN MARKS: the rows banded from the first, a closing line
      under the last, and a chord carried over from the bar before written grey
      (the design's rule, table by table: a table's first bar names its chord) */
+  /* FLOW'S LINES ARE ITS ROWS (David, 22 Oct 2026; patches/print-flow-bands.py): banded the same way, from the first */
+  if(prView==="flow") blocks.forEach(({inner})=>inner.querySelectorAll(".fsys").forEach((s,i)=>{ if(i%2===0) s.classList.add("prz"); }));
   if(look) blocks.forEach(({inner})=>{
     const rows=[...inner.querySelectorAll(".nrow")];
     rows.forEach((r,i)=>{ if(i%2===0) r.classList.add("prz"); });
@@ -25055,7 +25060,7 @@ function paintPrDlg(){
   onOff("prHead",prHeadOn); onOff("prBars",prBarsOn);   // (patches/print-preview.py)
   $("prBarsRow").style.display=prView==="staff"?"":"none";   // only a staff numbers its bars
   $("prPan").disabled=!prHeadOn; $("prPan").closest(".drow").classList.toggle("off",!prHeadOn);   // no heading, no pan drawing in it
-  $("prBandsRow").style.display=(prView==="flow"||prView==="staff")?"none":"";   // only a table has rows
+  $("prBandsRow").style.display=prView==="staff"?"none":"";   // a table has rows, Flow has lines (patches/print-flow-bands.py); the staff has neither
   /* the notation choice, and what it makes of the other rows */
   for(const [id,v] of [["prVTable","table"],["prVTab","tab"],["prVFlow","flow"],["prVStaff","staff"]]){
     const b=$(id); if(!b) continue;
@@ -25167,8 +25172,11 @@ function prPreview(){
 }
 addEventListener("resize",()=>{ const d=$("prDlg"); if(d&&d.open) prPvLater(120); });
 addEventListener("afterprint",()=>{ if(prOn) setTimeout(prKeep,0); });   // the notation home, a still copy for a print drawn again (patches/print-keep-copy.py)
-for(const t of ["pointerdown","keydown"])
-  addEventListener(t,()=>{ if((prOn||prKept)&&!$("prDlg").open) prDone(); },true);   // a kept copy too (patches/print-keep-copy.py)
+/* AFTER THE TAP, NOT DURING IT (David, 22 Oct 2026: "The first time I click print, nothing happens"; patches/print-teardown-after-tap.py):
+   torn down at pointerdown, the page changed under the finger, and iOS takes such a tap for a hover - its click never came.
+   The teardown waits for the click or the key, and runs once that click's own handlers are through (a kept copy too) */
+const prAfterTap=()=>{ if((prOn||prKept)&&!$("prDlg").open) setTimeout(()=>{ if((prOn||prKept)&&!$("prDlg").open) prDone(); },0); };
+for(const t of ["click","keydown"]) addEventListener(t,prAfterTap,true);
 /* ══ WHERE THE FILE GOES ══════════════════════════════════════════════════
    David asked for a location prompt, saw what it cost, and dropped it the same
    hour: "let's drop that extra dialog box for now. Let's have the app save to
