@@ -2684,8 +2684,8 @@ body.rail:not(.fs){--ppleft:calc(148px + clamp(10px,3vw,28px))}
 .pprow:hover{background:var(--card2)}
 .pprow.sel{background:var(--dixie-soft)}
 .pprow .ppnm{flex:1; min-width:0}
-.pprow .ppnm b{display:block; font-size:13.5px; font-weight:700; color:var(--ink); line-height:1.25}
-.pprow.sel .ppnm b{color:var(--amber-ink)}
+.pprow .ppnm > b{display:block; font-size:13.5px; font-weight:700; color:var(--ink); line-height:1.25}   /* the name only: the ding in the note line is a b too (23 Oct 2026) */
+.pprow.sel .ppnm > b{color:var(--amber-ink)}
 .pprow .ppnm small{display:block; font-size:11.5px; color:var(--ink3);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 /* FOUR PILLS WHERE THERE WERE THREE, so the row gives a little back (David,
@@ -3869,6 +3869,25 @@ body.phone.simple dialog.sphpage:focus{outline:none}   /* the page holds the foc
   #ssPane .sspan svg{max-height:200px}
   #ssPane .sshear i{width:44px; height:44px}
 }
+/* THE PHONE'S MY PAN HEAD IN TWO ROWS (David, 23 Oct 2026, option A of mockups-phone-pan-compact.html; patches/phone-pan-head-compact.py):
+   the name with its badge, the notes under them, the pan; play in the frame's bottom-right corner; no count, no words on
+   the play button; the badge says Select scale while the pan shown is not yours, and choosing is that tap */
+body.phone.simple:not(.tablet) #panPickDlg.ssPick #ssPane{display:grid; grid-template-columns:1fr minmax(0,max-content) max-content 1fr;
+  grid-template-areas:". nm bd ." "ln ln ln ln" "hn hn hn hn" "pn pn pn pn"; column-gap:10px; row-gap:0; justify-items:center;
+  align-items:center; position:relative; padding:12px 16px 14px}
+body.phone.simple:not(.tablet) #ssPane h3{grid-area:nm; margin:0; line-height:34px; min-width:0}
+body.phone.simple:not(.tablet) #ssPane .ssyours,body.phone.simple:not(.tablet) #ssPane .sssel{grid-area:bd}
+body.phone.simple:not(.tablet) #ssPane .ssline{grid-area:ln; margin-top:1px}
+body.phone.simple:not(.tablet) #ssPane .sscount{display:none}
+body.phone.simple:not(.tablet) #ssPane .sshint{grid-area:hn}
+body.phone.simple:not(.tablet) #ssPane .sspan{grid-area:pn; margin:10px 0 0}
+body.phone.simple:not(.tablet) #ssPane .ssacts{position:absolute; right:16px; bottom:14px}
+body.phone.simple:not(.tablet) #ssPane .sshear{font-size:0; gap:0; padding:0}
+body.phone.simple:not(.tablet) #ssPane .sshear i{width:46px; height:46px; box-shadow:0 2px 6px rgba(229,147,21,.35)}
+body.phone.simple:not(.tablet) #ssPane #ssChoose{display:none}
+#ssPane .sssel{display:none; border:none; cursor:pointer; font:inherit; font-size:12.5px; font-weight:700; color:var(--amber-ink);
+  background:var(--dixie-soft); border-radius:999px; padding:3px 11px}   /* the Your pan badge's shape, in amber (David: "more subtle") */
+body.phone.simple:not(.tablet) #ssPane .sssel:not([hidden]){display:inline-block}
 .pills button:disabled{opacity:.4; cursor:default}
 /* THE PRE-PLAY FACE of #countBtn in the editors (David, 23 Sep 2026): a run-up symbol and the lead; the face is an
    inner span, so the button keeps whatever display its placement gives it */
@@ -12614,6 +12633,8 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
        at, the two steps always shown, the pan and Hear the scale - in place of the chord overview -->
   <div id="ssPane">
     <span class="ssyours" id="ssYours" hidden>✓ Your pan</span>
+    <!-- SELECT SCALE: the badge while the pan shown is not yours - choosing is this tap (the simple phone only; (patches/phone-pan-head-compact.py)) -->
+    <button type="button" class="sssel" id="ssSelect" hidden>Select scale</button>
     <h3 id="ssName"></h3>
     <div class="ssline" id="ssLine"></div>
     <div class="sscount" id="ssCount"></div>
@@ -60804,11 +60825,12 @@ function ssPaneShow(){
           bankDecode("o"+m).then(()=>panAudition(bankBuf("o"+m)||synthBuf(m,"open"),ctx.currentTime+0.01,1),()=>panAudition(synthBuf(m,"open"),ctx.currentTime+0.01,1)); }); }); } }
   $("ssYours").hidden=id!==myPanId;
   { const c=$("ssChoose"); if(c) c.hidden=id===myPanId; }   /* patches/simple-pan-choose.py */
+  { const s=$("ssSelect"); if(s) s.hidden=id===myPanId; }   // (patches/phone-pan-head-compact.py)
   const mine=!!$("ppMine")&&$("ppMine").getAttribute("aria-pressed")==="true", h=$("ssHint"), k=mine?"mine":"lib";
   if(h.dataset.k!==k){ h.dataset.k=k; h.innerHTML=mine
     ?'<div><span class="n">1</span><span><b>Tap one of your pans to choose it.</b> It shows here, and the play button plays its whole scale.</span></div>'
     :'<div><span class="n">1</span><span><b>Pick the number of notes.</b> Each number <span class="ex">10</span> is a version of the scale with that many tone fields. Tap one to see it here.</span></div>'
-     +'<div><span class="n">2</span><span><b>Then tap Choose this pan.</b> The version shown here becomes your pan.</span></div>'; }
+     +'<div><span class="n">2</span><span><b>Then tap '+(ssSelOn()?'Select scale':'Choose this pan')+'.</b> The version shown here becomes your pan.</span></div>'; }
 }
 function ssWire(){
   if(!SIMPLE) return;
@@ -60821,7 +60843,10 @@ function ssWire(){
   /* Choose this pan does what a tap on the row does (patches/simple-pan-choose.py) */
   $("ssChoose").addEventListener("click",()=>{ const id=ssPaneId(); if(!panById(id)) return;
     if(ppBrowse){ const go=ppBrowse.go; ppBrowseEnd(); $("panPickDlg").close(); go(id); } else choosePan(id); });
+  { const s=$("ssSelect"); if(s) s.addEventListener("click",()=>$("ssChoose").click()); }   // the badge chooses, as Choose this pan did (patches/phone-pan-head-compact.py)
 }
+/* where the badge is the way to choose: the simple phone, not its tablet (patches/phone-pan-head-compact.py) */
+function ssSelOn(){ const B=document.body.classList; return B.contains("phone")&&B.contains("simple")&&!B.contains("tablet"); }
 try{ ssWire(); }catch(e){}
 /* THE TWO STEPS CLOSE FOR GOOD (David, 14 Oct 2026: "an x top right so I can close it. Once closed, it doesn't come back";
    patches/simple-hint-close.py): hps.sshint = closed hides #ssHint on every later visit */
