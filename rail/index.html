@@ -3639,6 +3639,7 @@ body.phone.simple:not(.tablet) #prow1 #spParts .spbars .spsec{flex-shrink:0}
 /* open: it stops at the tabs, which stay live above the shade */
 body.phone.simple:not(.tablet).drawer-open #transport{bottom:var(--sph-tabsh); max-height:calc(86vh - var(--sph-tabsh))}
 body.phone.simple:not(.tablet).drawer-open #sphTabs{z-index:61}
+body.phone.simple:not(.tablet):not(.editing) #transport{padding-bottom:8px}   /* the home bar is the tabs': the full phone's inset counted it twice (patches/simple-phone-bar-inset.py) */
 /* what the drawer holds in simple mode: Playback, My pan, Voices, Notation */
 body.phone.simple:not(.tablet) #dsNav,body.phone.simple:not(.tablet) #dwNav,body.phone.simple:not(.tablet) #dsMode,body.phone.simple:not(.tablet) #dwMode,
 body.phone.simple:not(.tablet) #dsSize,body.phone.simple:not(.tablet) #dwSize,body.phone.simple:not(.tablet) #dsFeel,body.phone.simple:not(.tablet) #dwFeel,
@@ -60665,6 +60666,12 @@ function spGo(ai){ const es=arrEntries(), e=es[ai]; if(!e) return; const rep=spR
    practice rooms (patches/section-strip-full.py) */
 function spStripRoom(){ if(SIMPLE) return spPlayRoom(); const B=document.body.classList;
   return secNavEff()!=="parts"&&!jamOn&&!B.contains("inpractice")&&!["gedit","cp","tuner","dg","plog"].some(c=>B.contains(c)); }   // the arrangement editor too, as the table row (patches/section-row-editor.py)   // Parts: the row at the top left instead (patches/section-nav-choice.py)
+/* A PICKUP OR AN ENDING IS NOT A TABLE OF ITS OWN IN THE STRIP (David, 23 Oct 2026: "the pickup note seems to still be
+   calculated as separate table on the phone in play"; patches/section-strip-pickup.py): navNum's rule - it travels with
+   its table: no mark of its own, its table's mark lit while it plays, and that mark starts at the pickup */
+function spCurT(cur){ return edgeAi(cur)?edgeHostAi(cur):cur; }
+function spTableStart(r,ai){ const f=r.ais[0]; return edgeAi(f)&&edgeHostAi(f)===ai?f:ai; }
+function spTableNo(ai){ let n=0; for(let a=0;a<=ai;a++) if(!edgeAi(a)) n++; return n; }
 function spPaint(){
   { const on=!PHONE&&spStripRoom()&&!!(piece&&piece.arrangement&&piece.arrangement.length);
     if(document.body.classList.contains("spstrip")!==on) document.body.classList.toggle("spstrip",on); }
@@ -60673,9 +60680,9 @@ function spPaint(){
   /* THE PIECE'S FORM IN THE STRIP (David, 14 Oct 2026; patches/simple-form-strip.py): each pass a named section - the
      chips' own name, letter and variation sign - the one in play lit with its table marked, a tap on a name to its start */
   const runs=arrRuns(), run=runs.find(r=>r.ais.includes(cur))||runs[0], nameOf=r=>{ let m=""; try{ m=passMark(r)||""; }catch(x){} return (r.base||"")+m; };
-  { const P=$("spPartBars"); if(P){ let h=""; runs.forEach(r=>{ const here=r===run, done=!here&&r.ais[r.ais.length-1]<cur, nm=nameOf(r);
-      h+='<span class="spsec'+(here?' here':done?' done':'')+'" style="flex-grow:'+r.ais.length+';--n:'+r.ais.length+'"><button type="button" class="spsl" data-ai="'+r.ais[0]+'" aria-label="'+nm.replace(/"/g,'')+'">'+nm.replace(/[<>&"]/g,'')+'</button><span class="spticks">';
-      r.ais.forEach(ai=>{ h+='<button type="button" data-ai="'+ai+'" class="'+(ai===cur?'here':ai<cur?'done':'')+'" title="Table '+(ai+1)+'" aria-label="Table '+(ai+1)+'"></button>'; });
+  { const P=$("spPartBars"); if(P){ let h=""; runs.forEach(r=>{ const tabs=r.ais.filter(a=>!edgeAi(a)), here=r===run, done=!here&&r.ais[r.ais.length-1]<cur, nm=nameOf(r);
+      h+='<span class="spsec'+(here?' here':done?' done':'')+'" style="flex-grow:'+tabs.length+';--n:'+tabs.length+'"><button type="button" class="spsl" data-ai="'+r.ais[0]+'" aria-label="'+nm.replace(/"/g,'')+'">'+nm.replace(/[<>&"]/g,'')+'</button><span class="spticks">';
+      tabs.forEach(ai=>{ const c=spCurT(cur), n=spTableNo(ai); h+='<button type="button" data-ai="'+spTableStart(r,ai)+'" class="'+(ai===c?'here':ai<c?'done':'')+'" title="Table '+n+'" aria-label="Table '+n+'"></button>'; });   // a pickup or an ending is no table of its own (patches/section-strip-pickup.py)
       h+='</span></span>'; });
     if(P.innerHTML!==h) P.innerHTML=h; spFitStrip(); } }
   { const w=$("spWhere"); if(w){ const k=run?run.ais.indexOf(cur):-1, nm=run?nameOf(run).replace(/[<>&"]/g,''):'';
@@ -60684,8 +60691,9 @@ function spPaint(){
         const all=new Set([here]); es.forEach((e,ai)=>{ let n=""; try{ n=esc(navName(ai)); }catch(x){} if(n) all.add(n); });
         let h=""; all.forEach(n=>{ h+=n===here?'<b class="spsn">'+n+'</b>':'<b class="spsn off" aria-hidden="true">'+n+'</b>'; });
         if(w.innerHTML!==h) w.innerHTML=h; }
-      else w.innerHTML=run&&nm?'<b class="spsn">'+nm+'</b> <small>'+(run.ais.length>1?'table '+(k+1)+' of '+run.ais.length+' · ':'')+(cur+1)+' / '+es.length+'</small>'
-        :'Table '+(cur+1)+' <small>of '+es.length+'</small>'; } }
+      else { const tR=run?run.ais.filter(a=>!edgeAi(a)):[], c=spCurT(cur), kT=tR.indexOf(c);   // tables only (patches/section-strip-pickup.py)
+        w.innerHTML=run&&nm?'<b class="spsn">'+nm+'</b> <small>'+(tR.length>1?'table '+(kT+1)+' of '+tR.length+' · ':'')+spTableNo(c)+' / '+spTableNo(es.length-1)+'</small>'
+        :'Table '+(cur+1)+' <small>of '+es.length+'</small>'; } } }
   if(!spPlayRoom()) return;   // the rest is Simple's Play along card (patches/section-strip-full.py)
   { const rep=spRepeatOn(); document.querySelectorAll("#spRepeat button").forEach(b=>b.setAttribute("aria-pressed",(b.dataset.r==="1")===rep?"true":"false")); }
   { const f=$("spFit"); if(f){ let fit=null; try{ fit=pieceFit(piece); }catch(x){} const ok=!fit||fit.lvl!=="any";
