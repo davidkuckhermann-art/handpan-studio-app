@@ -3697,7 +3697,10 @@ body.simple #trCard > #report[data-foff]:not(.hidden){display:block !important} 
 html.sphrep body.phone.simple:not(.tablet) #report[data-foff]:not(.hidden){display:block !important}   /* the phone's sheet, opened by the blue badge */
 /* while editing: no tabs, Done in the header (patches/simple-phone-edit-done.py) */
 #sphDone{display:none}
-html:not(.sphpaged) body.phone.simple.editing:not(.tablet) header #sphDone{display:inline-flex; align-items:center; order:2; flex:none; white-space:nowrap; font-weight:700}
+html:not(.sphpaged) body.phone.simple.editing:not(.tablet) header #sphDone{display:grid; place-items:center; order:2; flex:none; width:38px; height:38px; padding:0; border-radius:50%; border:1px solid var(--rule); background:var(--card); color:var(--ink2); cursor:pointer}
+/* Done as a checkmark, amber while there are unsaved edits (patches/simple-phone-done-check.py) */
+body.phone.simple #sphDone svg{width:20px; height:20px; display:block; fill:none; stroke:currentColor; stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round}
+html:not(.sphpaged) body.phone.simple.editing:not(.tablet) header #sphDone.unsaved{background:var(--dixie); border-color:var(--dixie); color:#fff}
 body.phone.simple.editing:not(.tablet) #sphTabs{display:none !important}
 /* the My handpan page: no heading row, Library | My pans beside the filters, the filters centred in their row
    (patches/simple-phone-pan-page-filters.py) */
@@ -51032,7 +51035,7 @@ function msRenderTog(){
   const sizes=g=>{ const cur=pick(g); return "<span class='ppbuilds msbuilds'>"+bySize(g).map(q=>"<button type='button' class='"+(q.id===cur.id?"lit":"")+
     "' data-tg='ver' data-k='"+encodeURIComponent(g.key)+"' data-id='"+q.id+"' title='"+panFull(q)+"'>"+chipLabel(g,q)+"</button>").join("")+"</span>"; };
   const row=(g,tag,cls,mid)=>"<div class='mscard'><div class='mstop'><div class='msnm'><b>"+g.name+"</b> <span class='mssz'>"+sizes(g)+"</span></div><div class='msact'>"
-    +(tag?"<span class='mstag "+cls+"'>"+tag+"</span>":"")+"<button class='ctl' data-tg='hear' data-id='"+pick(g).id+"'>Hear</button></div></div><div class='msbd'>"+mid+"</div></div>";
+    +(tag?"<span class='mstag "+cls+"'>"+tag+"</span>":"")+"<button type='button' class='ppv' data-tg='hear' data-id='"+pick(g).id+"' aria-label='Hear "+panFull(pick(g)).replace(/'/g,"&#39;")+"' title='Hear "+panFull(pick(g)).replace(/'/g,"&#39;")+"'>▸</button></div></div><div class='msbd'>"+mid+"</div></div>";   // the scale selector's own play button (David, 23 Oct 2026)
   const skipsAdds=g=>(g.lack.length?"skips "+g.lack.map(spellPc).join(" "):"")+(g.lack.length&&g.add.length?" · ":"")+(g.add.length?"adds "+g.add.map(pc=>spellOn(g,pc)).join(" "):"");
   /* JAM TOGETHER, the central note first: 1 same centre and mode, 2 same notes and another centre, 3 same centre and one note different */
   const J=G.map(g=>({...g,out:outOf(g)})).filter(g=>g.out.length<=1);
@@ -59494,12 +59497,17 @@ function drawerGesture(){
       if(got>=EDPAN_FLOOR) edPanSize=Math.round(got);
       try{ localStorage.setItem("hps.edpan",String(edPanSize)); }catch(err){}
       return; }
-    if(!moved) setDrawer(!drawerOpen()); };   // a tap toggles
+    if(!moved){ tap=true; clearTimeout(tapT); tapT=setTimeout(toggleTap,500); } };   // a tap toggles - on its click (below)
+  /* THE TAP TOGGLES ON ITS CLICK, NOT AS THE FINGER LIFTS (David, 23 Oct 2026: closed by a tap on the handle, the drawer was
+     gone before the click, and the click fell on the page under it - the Jam's Band tab): the drawer stays until the tap's
+     own click has reached the handle; an engine that sends no click toggles half a second later */
+  let tap=false, tapT=0; const toggleTap=()=>{ clearTimeout(tapT); if(!tap) return; tap=false; setDrawer(!drawerOpen()); };
+  g.addEventListener("click",toggleTap);
   g.addEventListener("pointerup",end);
   g.addEventListener("pointercancel",()=>{ id=null; });
   g.addEventListener("keydown",e=>{
     if(e.key==="Enter"||e.key===" "){ e.preventDefault(); setDrawer(!drawerOpen()); } });
-  $("drawerShade").addEventListener("pointerdown",()=>setDrawer(false));
+  $("drawerShade").addEventListener("click",()=>setDrawer(false));   // on the click too: the shade takes it, nothing under it does (23 Oct 2026)
 }
 /* Landscape: the play button rides in the notation frame's corner, as it always
    has. Portrait: it joins follow/sound/loop in the pinned bar, where a thumb can
@@ -61359,7 +61367,7 @@ document.addEventListener("click",e=>{ if(e.target.closest&&e.target.closest("#r
    itself; Done leaves through the Play tab's own way */
 function sphDoneWire(){
   if(!sphDrOn()) return;
-  const b=document.createElement("button"); b.type="button"; b.id="sphDone"; b.className="ctl"; b.textContent="Done"; b.title="Leave the editor and go back to Play";
+  const b=document.createElement("button"); b.type="button"; b.id="sphDone"; b.className="ctl"; b.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.25l4.5 4.5L19 7.25"/></svg>'; b.setAttribute("aria-label","Done"); b.title="Done - back to Play";   // a checkmark (patches/simple-phone-done-check.py)
   b.addEventListener("click",()=>sphDone());   // asks first when there are unsaved edits (patches/simple-phone-done-asks.py)
   document.querySelector("header").insertBefore(b,$("sphGear"));
   { const full=sphPlace; sphPlace=function(){ full.apply(this,arguments); const t=$("sphTabs");
@@ -61367,6 +61375,10 @@ function sphDoneWire(){
   sphPaint();
 }
 try{ sphDoneWire(); }catch(e){}
+/* DONE'S CHECKMARK TURNS AMBER WITH UNSAVED EDITS (David, 23 Oct 2026; patches/simple-phone-done-check.py): it follows
+   edPaintSave, the painter of the full editor's amber Save and "· edited", so the two never disagree */
+{ const full=edPaintSave; edPaintSave=function(){ const r=full.apply(this,arguments);
+    const d=$("sphDone"); if(d) d.classList.toggle("unsaved",!!(editing&&!grooveEdit&&pieceDirty())); return r; }; }
 /* BACK TO THE WRITTEN PAN IN THE PHONE'S SHEET (David, 23 Oct 2026: "let's keep the composition card to the blue badge, but
    let's add the 'back to xxx' option"; patches/simple-phone-sheet-back.py): the card's own Back (trBack) at the sheet's
    foot while the blue badge has it open; renderReport rebuilds the sheet, so it is painted after each */
