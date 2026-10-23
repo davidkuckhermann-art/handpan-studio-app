@@ -5095,6 +5095,11 @@ body.phone:not(.tablet) #chordOvDlg #coView button{flex:1; font-size:13.5px; pad
 /* THE MODES OF YOUR PAN (David, 19 Oct 2026; patches/modes.py, the study mockups-modes.html). The head's Chords | Modes
    switch; in Modes the cards' list and the Incomplete switch give way to the modes, wherever the head and body stand */
 .cohead.modes > .pills:not(#coView),.cohead.modes .colab,.cohead.modes #coCounts{display:none}
+/* COMBINES WITH IN THE OVERVIEW (patches/overview-info-combines.py): the list in place of the chords and the modes */
+.cohead.cotog > .pills:not(#coView),.cohead.cotog .colab,.cohead.cotog #coCounts{display:none}
+#chordOvDlg .cobody.mstog > :not(#msTog),#ppTwin .cobody.mstog > :not(#msTog){display:none !important}   /* the overview's two homes; the room keeps its own rules */
+#chordOvDlg .cobody.mstog #msTog,#ppTwin .cobody.mstog #msTog{display:block; grid-column:1/-1; grid-row:1/-1}
+.ppco svg{width:13px; height:13px; fill:currentColor; display:block}
 .cobody.modes .colist{display:none}
 .cobody:not(.modes) .comodes{display:none}
 .comodes{padding:12px 20px 24px; overflow:auto; min-height:0}
@@ -11424,7 +11429,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
   <div class="cohead">
     <h3 id="coTitle">Chords on your pan</h3>
     <!-- Chords | Modes (patches/modes.py) -->
-    <span class="pills" id="coView" role="group" aria-label="Show"><button id="coViewChords" aria-pressed="true" title="Every chord this pan can play">Chords</button><button id="coViewModes" aria-pressed="false" title="Every mode this pan can play in, with its key chords and progressions">Modes</button></span><span class="cosub" id="coCounts"></span>
+    <span class="pills" id="coView" role="group" aria-label="Show"><button id="coViewChords" aria-pressed="true" title="Every chord this pan can play">Chords</button><button id="coViewModes" aria-pressed="false" title="Every mode this pan can play in, with its key chords and progressions">Modes</button><button id="coViewTog" aria-pressed="false" title="The pans that play together with this one, and the ones that add notes to it">Combines with</button></span><span class="cosub" id="coCounts"></span>
     <span class="spacer"></span>
     <span class="colab">Incomplete chords</span>
     <span class="pills" role="group" aria-label="Incomplete chords">
@@ -13087,6 +13092,7 @@ function seen(f){ return !SIMPLE||SIMPLE_SHOWS.has(f); }
 /* SIMPLE MODE HAS EVERY TRANSPOSITION OPTION (David, 23 Oct 2026: "we change it so that simple mode has access to all
    transposition options"; patches/simple-transposition-full.py): back on the list after step 5 took them off */
 ["transadv","transcustom","foreignkeep"].forEach(f=>SIMPLE_SHOWS.add(f));
+SIMPLE_SHOWS.add("scalepick");   /* the i on the scale selector's rows, in simple mode too (David, 23 Oct 2026; patches/overview-info-combines.py) */
 function swOf(f){ return (EDMODE&&SW_ED_UI[f])||SW_UI[f]||SIMPLE_UI[f]||[]; }   /* + the Drum Grooves editor (patches/editions-dg.py) */   /* + the Practice group (patches/editions-practice.py) */   /* + the Editor group (patches/editions-editor.py) */   // + the Jam group (patches/editions-jam.py)   // + the Play group (patches/editions-play.py)
 function edHas(c,name){ const v=(((ED_T&&ED_T.values)||{})[c]||{})[name]; return v===true||v==="limited"; }
 function edAllowed(name){ if(!ED_READY.has(name)) return true; const f=ED_T.features.find(x=>x.id===name); if(!f) return true;
@@ -50663,6 +50669,7 @@ const MD_FAMS=[
   6:{name:"Altered diminished",alias:"The darkest of them all",feel:"Rare — a sound for tension chords, hardly ever a home.",colour:3,key:[0,1],progs:[[0,1,0]],rare:true}}}];
 let mdOn=false, mdKey=0, mdSel=null, mdCur=null, mdTimers=[], mdChips=[], mdProgs=[], mdList=[];
 try{ mdOn=localStorage.getItem("hps.coView")==="modes"; }catch(e){}
+var coTogOn=false;   // the overview on Combines with (patches/overview-info-combines.py)
 const mdPc=n=>{ const m=/^([A-G])([♭♯b#]?)/.exec(n); if(!m) return null;
   return (MD_MAJ[MD_LET.indexOf(m[1])]+(/[♭b]/.test(m[2])?-1:/[♯#]/.test(m[2])?1:0)+12)%12; };
 const mdQ=n=>n.replace(/^[A-G][♭♯b#]?/,"");
@@ -50861,6 +50868,13 @@ function mdApply(){
   const a=$("coViewChords"), b=$("coViewModes");
   if(a) a.setAttribute("aria-pressed",String(!mdOn)); if(b) b.setAttribute("aria-pressed",String(mdOn));
   if(coPanId) $("coTitle").textContent=(mdOn?"Modes on ":"Chords on ")+panFull(panById(coPanId));
+  /* COMBINES WITH, the third view (patches/overview-info-combines.py): the room keeps its own tabs, so only outside it */
+  { const inRoom=!!body.closest("#msRoom"), tog=coTogOn&&!inRoom, c=$("coViewTog");
+    if(c) c.setAttribute("aria-pressed",String(tog)); head.classList.toggle("cotog",tog);
+    if(!inRoom) body.classList.toggle("mstog",tog);
+    if(tog){ if(a) a.setAttribute("aria-pressed","false"); if(b) b.setAttribute("aria-pressed","false");
+      if(coPanId) $("coTitle").textContent="Combines with "+panFull(panById(coPanId));
+      coHush(); mdCur=null; coTogRender(); return; } }
   if(mdOn){ coHush(); mdRender(); }
   else { mdCur=null; if(coCur) coShow(coCur,false); }
 }
@@ -50996,12 +51010,14 @@ function msRenderTog(){
   const dingPc=p=>{ try{ const d=derive(p), m=d.posMidi(0); return m==null?null:m%12; }catch(e){ return null; } };
   const fam=p=>panFull(p).replace(/\s+\d+\b.*$/,"");
   const spellOn=(g,pc)=>{ try{ return spellPcOn(derive(g.pans[0]),pc); }catch(e){ return spellPc(pc); } };
-  const me=panById(myPanId), mine=pcsOf(me), myD=dingPc(me);
+  /* the pan shown: yours in the room, the overview's own outside it (patches/overview-info-combines.py) */
+  const meId=host.closest("#msRoom")?myPanId:((typeof coPanId!=="undefined"&&coPanId)||myPanId), isMine=meId===myPanId;
+  const me=panById(meId), mine=pcsOf(me), myD=dingPc(me);
   const groups=new Map();
   for(const p of allPans()){ const s=pcsOf(p); if(!s.size) continue;
     const key=fam(p)+"|"+[...s].sort((a,b)=>a-b).join(","); if(!groups.has(key)) groups.set(key,{key,name:fam(p),s,pans:[]}); groups.get(key).pans.push(p); }
   const G=[...groups.values()].map(g=>({...g,add:[...g.s].filter(x=>!mine.has(x)),lack:[...mine].filter(x=>!g.s.has(x)),
-    uni:new Set([...mine,...g.s]).size,self:g.pans.some(p=>p.id===myPanId),dd:dingPc(g.pans[0])}));
+    uni:new Set([...mine,...g.s]).size,self:g.pans.some(p=>p.id===meId),dd:dingPc(g.pans[0])}));
   /* YOUR KEYS: the major and harmonic minor keys holding every note of yours; their notes are measured against them */
   const KEYS=[]; for(const steps of [[0,2,4,5,7,9,11],[0,2,3,5,7,8,11]]) for(let r=0;r<12;r++) KEYS.push(new Set(steps.map(x=>(x+r)%12)));
   const myKeys=KEYS.filter(K=>[...mine].every(x=>K.has(x)));
@@ -51011,7 +51027,7 @@ function msRenderTog(){
      your own pans by its own name; the chosen one lit - by default your pan when it is in the family, else the smallest */
   const mine2=new Set(userPans().map(u=>u.id));
   const bySize=g=>g.pans.slice().sort((a,b)=>panSize(a)-panSize(b)||panFull(a).localeCompare(panFull(b)));
-  const pick=g=>g.pans.find(p=>p.id===msVer[g.key])||g.pans.find(p=>p.id===myPanId)||bySize(g)[0];
+  const pick=g=>g.pans.find(p=>p.id===msVer[g.key])||g.pans.find(p=>p.id===meId)||bySize(g)[0];
   const chipLabel=(g,q)=>mine2.has(q.id)?(panFull(q).slice(g.name.length).trim()||panFull(q)):String(panSize(q))+(q.sub?" "+(q.tag||q.sub):"");
   const sizes=g=>{ const cur=pick(g); return "<span class='ppbuilds msbuilds'>"+bySize(g).map(q=>"<button type='button' class='"+(q.id===cur.id?"lit":"")+
     "' data-tg='ver' data-k='"+encodeURIComponent(g.key)+"' data-id='"+q.id+"' title='"+panFull(q)+"'>"+chipLabel(g,q)+"</button>").join("")+"</span>"; };
@@ -51042,8 +51058,18 @@ function msRenderTog(){
   h+="<p class='msnote'>Your "+fam(me)+" has "+mine.size+" of the 12 notes. With each of these beside it you have more - the first ones bring the most.</p><div class='mslist'>";
   h+=sec.map(g=>row(g,g.uni===12?"fully chromatic":g.uni+" of 12",g.uni===12?"chrom":"",
     "<span class='msnts'>"+panNoteLine(pick(g),true)+"</span><span class='msadd'>adds <em>"+g.add.map(pc=>spellOn(g,pc)).join(" ")+"</em> · together "+g.uni+" notes</span>")).join("");
+  /* a pan not yours: the list speaks of this pan (patches/overview-info-combines.py) */
+  if(!isMine) h=h.replace(/>your pan</g,">this pan<").replace(/your pan's key/g,"this pan's key").replace(/\byour notes\b/g,"its notes")
+    .replace(/\byour key\b/g,"its key").replace(/Extend your scale/g,"Extend this scale").replace(/notes yours does not have/g,"notes it does not have")
+    .replace(/Your ([^<]*?) has /g,"This $1 has ");
   host.innerHTML=h+"</div>";
 }
+/* COMBINES WITH IN THE OVERVIEW (patches/overview-info-combines.py): the list lives in the overview's body, made when first
+   wanted; its chips and Hear answer outside the room as in it (inside, the room's own click handler does) */
+function coTogRender(){ const body=document.querySelector(".cobody"); if(!body) return;
+  if(!document.getElementById("msTog")){ const p=document.createElement("div"); p.id="msTog"; body.appendChild(p); }
+  msRenderTog(); }
+document.addEventListener("click",e=>{ const t=e.target.closest&&e.target.closest("#msTog [data-tg]"); if(!t||t.closest("#msRoom")) return; msClick(e); });
 /* the door, and leaving: another rail door closes the room first */
 document.addEventListener("click",e=>{ const b=e.target.closest&&e.target.closest("#rail .re"); if(!b) return;
   if(b.id==="railScale"){ msOpen(); return; }
@@ -51052,9 +51078,10 @@ addEventListener("resize",()=>{ if(msOnNow()) msPlace(); });
 try{ if(!allowed("chordchart")){ const b=$("railScale"); if(b) b.style.display="none"; } }catch(e){}
 
 document.addEventListener("click",e=>{
-  const t=e.target.closest&&e.target.closest("#coViewChords,#coViewModes,.comodes [data-md]"); if(!t) return;
-  if(t.id==="coViewChords"){ if(mdOn) mdView(false); return; }
-  if(t.id==="coViewModes"){ if(!mdOn) mdView(true); return; }
+  const t=e.target.closest&&e.target.closest("#coViewChords,#coViewModes,#coViewTog,.comodes [data-md]"); if(!t) return;
+  if(t.id==="coViewChords"){ coTogOn=false; if(mdOn) mdView(false); else mdApply(); return; }
+  if(t.id==="coViewModes"){ coTogOn=false; if(!mdOn) mdView(true); else mdApply(); return; }
+  if(t.id==="coViewTog"){ if(!coTogOn){ coTogOn=true; mdApply(); } return; }   // (patches/overview-info-combines.py)
   const i=+t.dataset.i;
   switch(t.dataset.md){
     case "row": mdSel=+t.dataset.k; mdRender(); break;
@@ -55057,8 +55084,8 @@ function ppRow(p,scaleKey){
      left of the favorite symbol"): the overview on the build the row shows,
      and back to the chooser when it closes */
   const co=document.createElement("button");
-  co.type="button"; co.className="ppv ppco"; co.textContent="\u266a";
-  co.setAttribute("aria-label","Chords on "+panFull(p)); co.title="Every chord "+panFull(p)+" can play";
+  co.type="button"; co.className="ppv ppco"; co.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="6.4" r="1.7"/><rect x="10.55" y="9.9" width="2.9" height="9.4" rx="1.3"/></svg>';   // an i, not a note: chords, modes and what combines // (patches/overview-info-combines.py)
+  co.setAttribute("aria-label","About "+panFull(p)); co.title="About "+panFull(p)+": its chords, its modes, the pans it combines with";
   co.addEventListener("click",e=>{ e.stopPropagation(); coOpen(p.id,true); });
   row.appendChild(co);
   /* HEART FIRST, THEN PREVIEW (David, 29 Aug: "exchange the positions of the
