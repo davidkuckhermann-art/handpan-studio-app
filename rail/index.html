@@ -2801,6 +2801,11 @@ body:not(.phone) #trSavePh{display:none !important}
 #trCard .trgo{border-color:var(--dixie); background:var(--dixie-soft); color:var(--amber-ink); font-weight:700}
 #trCard .trok{display:inline-flex; align-items:center; gap:6px; color:var(--green,#3F8C50); font-weight:600; font-size:12.5px}
 #trCard .trfoot svg{width:14px; height:14px; display:block; flex:none}
+/* the phone's sheet carries the card's Back (patches/simple-phone-sheet-back.py) */
+#report > .sphfoot{position:sticky; bottom:-13px; display:flex; align-items:center; gap:8px; margin:12px -15px -13px; padding:10px 15px 12px;
+  border-top:1px solid var(--rule); background:var(--card2,var(--card,#fff))}
+#report > .sphfoot .trback{display:inline-flex; align-items:center; gap:6px}
+#report > .sphfoot svg{width:14px; height:14px; display:block; flex:none}
 /* the Transposed tag beside the name, as mockups-save-transposition.html drew it (patches/transposed-tag-by-name.py) */
 .pprow .ppnm b .trtag{display:inline-flex; align-items:center; gap:4px; height:19px; padding:0 7px; margin:-2px 0 -2px 7px;
   vertical-align:-1px; border-radius:6px;   /* the negative margins: the name's line keeps its own height (rows stay 52); -1px centres it on the name (measured) */ background:var(--steel-soft,#EBF1F5); color:var(--steel,#33607E);
@@ -3523,6 +3528,7 @@ body.simple.lslive #tpBtn .sptpl,body.simple #tpBtn.noword .sptpl{display:none}
 /* the tabs are pinned to the screen's foot and the page keeps their height free: every room fits above them by itself */
 html{--sph-tabsh:calc(var(--sph-tabs-base,54px) + max(4px, calc(env(safe-area-inset-bottom) * .5)))}   /* the tabs' height: their own part measured, the home bar's part from CSS (patches/simple-phone-tabs-measure.py) */
 body.phone.simple{padding-bottom:var(--sph-tabsh) !important}
+body.phone.simple.editing:not(.tablet){padding-bottom:max(4px, calc(env(safe-area-inset-bottom) * .5)) !important}   /* no tabs while editing (patches/simple-phone-edit-deck-css.py) */
 body.phone.simple header > :not(.hside):not(#sphL):not(#sphPan):not(#sphGear):not(#sphLib):not(#sphDone),
 body.phone.simple header .hside > :not(#sjSaveBtn):not(#linkBtn){display:none !important}
 body.phone.simple header{gap:8px; align-items:center; min-height:40px}
@@ -3669,11 +3675,15 @@ body.phone.simple:not(.tablet) #sphTrSum[hidden]{display:none}
 /* the fit's two steps: 1. the summary's first line, 2. no facts */
 body.phone.simple:not(.tablet) #sjSong.sphg1 #sphTrSum .fitsum{display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:1; overflow:hidden}
 body.phone.simple:not(.tablet) #sjSong.sphg2 .spfacts{display:none}
+/* the badge stays right of the pan button, in the card and the drawer: one line, the button gives way (patches/simple-phone-badge-row.py) */
+body.phone.simple:not(.tablet) #sphPieceTr .sphprow,body.phone.simple:not(.tablet) #dwPan{flex-wrap:nowrap; min-width:0}
+body.phone.simple:not(.tablet) #sphPieceTr .sphpanbtn,body.phone.simple:not(.tablet) #dwPan .sphpanbtn{flex:0 1 auto; min-width:0}
+body.phone.simple:not(.tablet) #sjSong #srcBadge,body.phone.simple:not(.tablet) #dwPan #srcBadge{flex:none}
 /* THE EDITOR ON THE SIMPLE PHONE (David, 23 Oct 2026; mockups-simple-phone-drawer.html; patches/simple-phone-edit.py): a
    fifth tab, and Edit at the Piece card's top right. Not the simple tablet. */
 body.phone.simple:not(.tablet) #sphTabs{grid-template-columns:repeat(5,1fr)}
 body.phone.simple:not(.tablet) #sphTabs button span{white-space:nowrap}
-body.phone.simple:not(.tablet).editing:not(.drawer-open) #transport{bottom:var(--sph-tabsh)}   /* the deck pinned above the tabs, not over them */
+body.phone.simple:not(.tablet).editing:not(.drawer-open) #transport{bottom:max(4px, calc(env(safe-area-inset-bottom) * .5))}   /* CSS alone: the editor's fit runs before sphPaint measures the hidden tabs (patches/simple-phone-edit-deck-css.py) */   /* the deck pinned above the tabs, not over them */
 body.phone.simple:not(.tablet) #sjSong{position:relative}
 body.phone.simple:not(.tablet) #sjSong > #dwEditBtn{position:absolute; top:10px; right:12px; margin:0}
 body.phone.simple:not(.tablet) #sjSong > #dwEditBtn.hidden{display:none}
@@ -6959,6 +6969,7 @@ body.phone #drawerExtra #jamColourWrap{width:auto}
   font-size:12.5px; color:var(--ink2); cursor:pointer; user-select:none; -webkit-user-select:none}
 .repadv input{margin:0; width:15px; height:15px; accent-color:var(--dixie)}
 body:not(.phone) #report .fitline{padding-right:170px}
+body.phone #report .fitline{padding-top:26px}   /* the phone keeps the corner's row - Advanced options and the close - free above the summary (patches/report-phone-corner.py) */
 .rsico{display:none}                       /* the word is the desktop's face */
 .pinnote{font-size:12.5px; color:var(--ink3)}
 .howsum{color:var(--ink3); font-weight:400}
@@ -60310,12 +60321,16 @@ if(PHONE){
 } else { mouseLoopNav(); phoneTouchNav(); }   // the mouse draws loops the same way the finger does, and the finger
                                              // keeps its own gesture in every layout (patches/touch-loop-every-layout.py)
 if(PHONE){ // refit on rotation / viewport changes (debounced — zoom relayouts)
-  let pfT; const pf=()=>{ clearTimeout(pfT); pfT=setTimeout(()=>{
+  let pfT, pfW=innerWidth, pfLand=matchMedia("(orientation:landscape)").matches; const pf=()=>{ clearTimeout(pfT); pfT=setTimeout(()=>{
     /* THE SKIN FIRST, then everything that measures it: on a tablet the phone
        class comes off standing up and goes back on sideways, and a fit taken
        before the swap would be measuring the layout we are leaving. */
-    syncTabletSkin();
-    placePhoneControls(); phoneFit();
+    /* A HEIGHT-ONLY CHANGE IS NOT A NEW LAYOUT (David, 23 Oct 2026: "after I change tempo in the drawer, the drawer closes" -
+       a keyboard resizes the window; patches/phone-resize-height-only.py): the controls are re-placed, which closes the
+       drawer, only when the width or the orientation changed; the fits run on every change */
+    { const w=innerWidth, land=matchMedia("(orientation:landscape)").matches;
+      if(w!==pfW||land!==pfLand){ pfW=w; pfLand=land; syncTabletSkin(); placePhoneControls(); } }
+    phoneFit();
     refitScore();           // the notes were sized for the screen we just left
     fitDrawerTopRow();      // "Count-in" ↔ "Count" follows the width, not just the open
     fitPanRow();            // …and so does "My pan" on the jam bar
@@ -61276,6 +61291,21 @@ function sphDoneWire(){
   sphPaint();
 }
 try{ sphDoneWire(); }catch(e){}
+/* BACK TO THE WRITTEN PAN IN THE PHONE'S SHEET (David, 23 Oct 2026: "let's keep the composition card to the blue badge, but
+   let's add the 'back to xxx' option"; patches/simple-phone-sheet-back.py): the card's own Back (trBack) at the sheet's
+   foot while the blue badge has it open; renderReport rebuilds the sheet, so it is painted after each */
+function sphRepFoot(){
+  const R=$("report"); if(!R) return;
+  { const old=R.querySelector(":scope > .sphfoot"); if(old) old.remove(); }
+  if(!sphDrOn()||!document.documentElement.classList.contains("sphrep")||R.classList.contains("hidden")) return;
+  if(!piece||!piece.writtenFor||myPanId===piece.writtenFor||!srcPan) return;
+  const f=document.createElement("div"); f.className="trfoot sphfoot";
+  const bk=document.createElement("button"); bk.type="button"; bk.className="ctl trback"; bk.innerHTML=TR_BACK; bk.append("Back to "+srcPan.pan.name);
+  bk.title="Make "+srcPan.pan.name+" your pan and play the piece as written - the library keeps what it holds";
+  bk.addEventListener("click",()=>{ document.documentElement.classList.remove("sphrep"); reportClosed=true; trBack(); });
+  f.appendChild(bk); R.appendChild(f);
+}
+{ const full=renderReport; renderReport=function(){ const r=full.apply(this,arguments); try{ sphRepFoot(); }catch(e){} return r; }; }
 /* step 5, Songs (patches/simple-phone-songs.py) */
 function sphContSong(){ try{ const p=jamOn&&jamPrev?jamPrev.piece:piece; return p&&p.title?p.title:""; }catch(e){ return ""; } }
 function sphContPaint(){
