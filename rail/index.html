@@ -3645,12 +3645,17 @@ body.phone.simple:not(.tablet) #prow1 #spParts .spbars .spsec{flex-shrink:0}
 /* open: it stops at the tabs, which stay live above the shade */
 body.phone.simple:not(.tablet).drawer-open #transport{bottom:var(--sph-tabsh); max-height:calc(86vh - var(--sph-tabsh))}
 body.phone.simple:not(.tablet).drawer-open #sphTabs{z-index:61}
-body.phone.simple:not(.tablet):not(.editing) #transport{padding-bottom:8px}   /* the home bar is the tabs': the full phone's inset counted it twice (patches/simple-phone-bar-inset.py) */
+body.phone.simple:not(.tablet):not(.editing) #transport{padding-bottom:8px}
+body.phone.simple:not(.tablet):not(.editing).drawer-open #transport{padding-bottom:18px}   /* open, the last row stands off the foot as each row stands off the next (patches/simple-phone-drawer-foot.py) */   /* the home bar is the tabs': the full phone's inset counted it twice (patches/simple-phone-bar-inset.py) */
 /* what the drawer holds in simple mode: Playback, My pan, Voices, Notation */
 body.phone.simple:not(.tablet) #dsNav,body.phone.simple:not(.tablet) #dwNav,body.phone.simple:not(.tablet) #dsMode,body.phone.simple:not(.tablet) #dwMode,
 body.phone.simple:not(.tablet) #dsSize,body.phone.simple:not(.tablet) #dwSize,body.phone.simple:not(.tablet) #dsFeel,body.phone.simple:not(.tablet) #dwFeel,
 body.phone.simple:not(.tablet) #dwPan > #panNow,body.phone.simple:not(.tablet) #drawerPlayHost{display:none !important}
-body.phone.simple.jam:not(.tablet) #dsVoices,body.phone.simple.jam:not(.tablet) #dwVoices{display:none !important}   /* the Jam has its Band card */
+/* the Jam's drawer has its band row too, since 23 Oct 2026 (patches/simple-phone-jam-band.py) - over the full phone's jam rule,
+   which keeps it under the table - and no Written-for badge: a jam is built for the pan in hand */
+body.phone.simple.jam:not(.tablet) #dsVoices{display:block !important}
+body.phone.simple.jam:not(.tablet) #dwVoices{display:flex !important}
+body.phone.simple.jam:not(.tablet) #dwPan #srcBadge{display:none !important}
 body.phone.simple:not(.tablet) #dsTop,body.phone.simple:not(.tablet) #dsView{display:block}
 body.phone.simple:not(.tablet) #dwView{display:flex; align-items:center; gap:10px}
 body.phone.simple:not(.tablet) #dwView #linkBtn{margin-left:auto}
@@ -12828,6 +12833,17 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
 
 <!-- the raw safe-area insets, readable: `env()` cannot be queried directly and
      every other element already has other numbers folded into its padding -->
+<!-- Done asks what happens to unsaved edits, on the simple phone (patches/simple-phone-done-asks.py) -->
+<dialog id="sphDoneDlg">
+  <h3>Save your changes?</h3>
+  <p class="hint" style="margin:8px 0 0; max-width:46ch" id="sphDoneWhat"></p>
+  <div class="row" style="margin:14px 0 0; flex-wrap:wrap; gap:8px">
+    <button class="ctl on" id="sphDoneSave">Save</button>
+    <button class="ctl" id="sphDoneDiscard">Discard</button>
+    <span class="spacer"></span>
+    <button class="ctl" id="sphDoneKeep">Keep editing</button>
+  </div>
+</dialog>
 <div id="safeprobe" aria-hidden="true"></div>
 <div id="drawerShade" class="hidden"></div>
 <div id="dlgShade" class="hidden"></div>
@@ -61284,7 +61300,7 @@ document.addEventListener("click",e=>{ if(e.target.closest&&e.target.closest("#r
 function sphDoneWire(){
   if(!sphDrOn()) return;
   const b=document.createElement("button"); b.type="button"; b.id="sphDone"; b.className="ctl"; b.textContent="Done"; b.title="Leave the editor and go back to Play";
-  b.addEventListener("click",()=>sphGo("songs"));
+  b.addEventListener("click",()=>sphDone());   // asks first when there are unsaved edits (patches/simple-phone-done-asks.py)
   document.querySelector("header").insertBefore(b,$("sphGear"));
   { const full=sphPlace; sphPlace=function(){ full.apply(this,arguments); const t=$("sphTabs");
       if(t&&!t.getClientRects().length){ const S=document.documentElement.style; S.setProperty("--sph-bot","0px"); S.setProperty("--sph-tabs","0px"); S.setProperty("--sph-tabs-base","0px"); } }; }
@@ -61306,6 +61322,40 @@ function sphRepFoot(){
   f.appendChild(bk); R.appendChild(f);
 }
 { const full=renderReport; renderReport=function(){ const r=full.apply(this,arguments); try{ sphRepFoot(); }catch(e){} return r; }; }
+/* THE BAND ROW IN THE JAM'S DRAWER TOO (David, 23 Oct 2026: "we need the band in the drawer also in jam";
+   patches/simple-phone-jam-band.py): on the simple phone the band row's home is the drawer in every room; the full phone
+   keeps it under a jam's table */
+{ const full=placeJamVoices; placeJamVoices=function(){
+    if(sphDrOn()&&!matchMedia("(orientation:landscape)").matches){ const jv=$("jamVoices"), h=$("dwVoices"); if(jv&&h&&jv.parentElement!==h) h.appendChild(jv); return; }
+    return full.apply(this,arguments); }; }
+{ const full=sphDrPaint; sphDrPaint=function(){ full.apply(this,arguments); try{ placeJamVoices(); }catch(e){} }; }
+try{ placeJamVoices(); }catch(e){}
+/* NOTHING UNDER THE OPEN DRAWER IS FITTED AGAIN (David, 23 Oct 2026: "when the pan tab is open, the pan resizes when the
+   drawer opens/closes. This should not be the case"; patches/simple-phone-fit-under-drawer.py): the drawer covers the page,
+   as on the full phone; the cards keep the fit they had closed */
+{ const full=sphFitCard; sphFitCard=function(){ if(sphDrOn()&&drawerOpen()) return; return full.apply(this,arguments); }; }
+/* DONE ASKS WHAT HAPPENS TO THE EDITS (David, 23 Oct 2026: "there should be an option if edits should be saved or thrown out" -
+   "the label should be discard"; patches/simple-phone-done-asks.py): only with unsaved edits - Save (the library, then Play
+   opens the edited piece), Discard (back to what "edited" is measured against; Play keeps its piece), Keep editing */
+function sphDone(){
+  if(editing&&!grooveEdit&&pieceDirty()){
+    $("sphDoneWhat").textContent="You changed “"+((piece&&piece.title)||"Untitled")+"”. Save puts it in your library and opens it in Play. Discard puts it back as it was.";
+    openDlg($("sphDoneDlg")); return; }
+  sphGo("songs");
+}
+function sphDoneAskWire(){
+  const d=$("sphDoneDlg"); if(!d) return;
+  $("sphDoneKeep").addEventListener("click",()=>d.close());
+  $("sphDoneSave").addEventListener("click",()=>{ d.close();
+    if(savePieceToLibrary()===false||pieceDirty()) return;   // not kept: stay in the editor
+    edRoomBack=null; sphGo("songs"); });                      // Play gets the editor's piece (the Send path)
+  $("sphDoneDiscard").addEventListener("click",()=>{ d.close();
+    try{ const [sections,arrangement,meter,sub,title]=JSON.parse(editSig0); Object.assign(piece,{sections,arrangement,meter,sub,title}); }catch(e){ return; }
+    if(!piece.sections[viewSec]) viewSec=piece.arrangement[0]||Object.keys(piece.sections)[0]; cursor=0;
+    try{ refresh(); }catch(e){} try{ edAfterChange(); }catch(e){}
+    sphGo("songs"); });                                        // the editor's door gives Play its own piece back
+}
+try{ sphDoneAskWire(); }catch(e){}
 /* step 5, Songs (patches/simple-phone-songs.py) */
 function sphContSong(){ try{ const p=jamOn&&jamPrev?jamPrev.piece:piece; return p&&p.title?p.title:""; }catch(e){ return ""; } }
 function sphContPaint(){
