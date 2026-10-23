@@ -3699,6 +3699,14 @@ html.sphrep body.phone.simple:not(.tablet) #report[data-foff]:not(.hidden){displ
 #sphDone{display:none}
 html:not(.sphpaged) body.phone.simple.editing:not(.tablet) header #sphDone{display:inline-flex; align-items:center; order:2; flex:none; white-space:nowrap; font-weight:700}
 body.phone.simple.editing:not(.tablet) #sphTabs{display:none !important}
+/* the My handpan page: no heading row, Library | My pans beside the filters, the filters centred in their row
+   (patches/simple-phone-pan-page-filters.py) */
+body.phone.simple:not(.tablet) #panPickDlg.ssPick .pptop{display:none !important}
+body.phone.simple:not(.tablet) #panPickDlg.ssPick .ppfilters{padding:10px 14px; align-items:center}
+body.phone.simple:not(.tablet) #panPickDlg.ssPick .ppfilters > .ppwhich{margin-left:auto; flex:none}
+/* the tabs at the Edit room's drawer foot, only while it is open (patches/simple-phone-edit-drawer-tabs.py) */
+body.phone.simple.editing.drawer-open:not(.tablet) #sphTabs{display:grid !important}
+body.phone.simple:not(.tablet).editing.drawer-open #transport{bottom:var(--sph-tabsh); padding-bottom:18px}
 body.phone.simple #sphTitle.sphlong{font-size:18px; line-height:1.12; white-space:normal; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden}
 /* step 4, Play along (patches/simple-phone-play.py) */
 #sphSong{display:none}
@@ -14867,7 +14875,7 @@ function voiceDone(g,srcs){ let n=srcs.length;
    Both are silent on purpose. A dropped note is a note missing from music
    that was already wrong; a burst is the app shouting at a student. */
 const LATE_DROP=0.25, BURST_WIN=0.025, BURST_MAX=12;
-let burstAt=-1, burstN=0;
+let burstAt=-1, burstN=0, burstCtx=null;   /* burstAt is a time on burstCtx's clock: a rebuilt context starts at 0 and a fresh count (patches/burst-guard-per-context.py) */
 function fire(buf,at,gain,rate){
   if(!buf) return;
   /* a TAP after an interruption never passes through start(), so it would
@@ -14882,8 +14890,8 @@ function fire(buf,at,gain,rate){
   src.connect(g);
   if(buf.__click){ g.connect(dry); g.connect(send); } else g.connect(fxIn("hand"));   /* through its pedalboard to handBus (patches/instrument-fx.py) */   // the handpan's own level, pan, reverb (28 Sep 2026)
   const st=Math.max(at,ctx.currentTime);
-  if(st<=burstAt+BURST_WIN){ if(++burstN>BURST_MAX) return; }
-  else { burstAt=st; burstN=1; }
+  if(burstCtx===ctx&&st<=burstAt+BURST_WIN){ if(++burstN>BURST_MAX) return; }
+  else { burstAt=st; burstN=1; burstCtx=ctx; }
   /* WHEN THIS VOICE STARTS. The scheduler commits up to 0.45 s ahead, so
      `live` always holds some notes that have not sounded yet — and telling
      those apart from the ones already ringing is what lets a stop cancel the
@@ -61268,7 +61276,7 @@ function sphEditWire(){
       if(!sphDrOn()) return full.apply(this,arguments);
       if(t==="edit"){ sphClosePages(); setDrawer(false);
         if(!editing){ if(learnOn) leaveLearn(); else if(quizOn) leaveQuiz(); else if(cpOn) leaveCp(); else if(typeof plOn!=="undefined"&&plOn) leavePlog();
-          $("editBtn").click(); }
+          edOpen("arr"); }   // NAVIGATION, as the rail's entry: what the editor holds comes back, nothing is imported (patches/simple-phone-editor-as-rail.py)
         sphPaint(); return; }
       if(editing&&t!=="pan") $("editBtn").click();   // the editor's own way out gives the room its piece back
       return full.apply(this,arguments); }; }
@@ -61337,25 +61345,45 @@ try{ placeJamVoices(); }catch(e){}
 /* DONE ASKS WHAT HAPPENS TO THE EDITS (David, 23 Oct 2026: "there should be an option if edits should be saved or thrown out" -
    "the label should be discard"; patches/simple-phone-done-asks.py): only with unsaved edits - Save (the library, then Play
    opens the edited piece), Discard (back to what "edited" is measured against; Play keeps its piece), Keep editing */
-function sphDone(){
+var sphDoneTo="songs";   // where the question leads after Save or Discard: Play, or the tab tapped (patches/simple-phone-edit-drawer-tabs.py)
+function sphDone(to){
+  sphDoneTo=to||"songs";
   if(editing&&!grooveEdit&&pieceDirty()){
-    $("sphDoneWhat").textContent="You changed “"+((piece&&piece.title)||"Untitled")+"”. Save puts it in your library and opens it in Play. Discard puts it back as it was.";
+    $("sphDoneWhat").textContent="You changed “"+((piece&&piece.title)||"Untitled")+"”. Save puts it in your library"+(sphDoneTo==="songs"?" and opens it in Play":"")+". Discard puts it back as it was.";
     openDlg($("sphDoneDlg")); return; }
-  sphGo("songs");
+  sphGo(sphDoneTo);
 }
 function sphDoneAskWire(){
   const d=$("sphDoneDlg"); if(!d) return;
   $("sphDoneKeep").addEventListener("click",()=>d.close());
   $("sphDoneSave").addEventListener("click",()=>{ d.close();
     if(savePieceToLibrary()===false||pieceDirty()) return;   // not kept: stay in the editor
-    edRoomBack=null; sphGo("songs"); });                      // Play gets the editor's piece (the Send path)
+    edRoomBack=null; sphGo(sphDoneTo); });                      // Play gets the editor's piece (the Send path)
   $("sphDoneDiscard").addEventListener("click",()=>{ d.close();
     try{ const [sections,arrangement,meter,sub,title]=JSON.parse(editSig0); Object.assign(piece,{sections,arrangement,meter,sub,title}); }catch(e){ return; }
     if(!piece.sections[viewSec]) viewSec=piece.arrangement[0]||Object.keys(piece.sections)[0]; cursor=0;
     try{ refresh(); }catch(e){} try{ edAfterChange(); }catch(e){}
-    sphGo("songs"); });                                        // the editor's door gives Play its own piece back
+    sphGo(sphDoneTo); });                                       // the editor's door gives Play its own piece back
 }
 try{ sphDoneAskWire(); }catch(e){}
+/* THE MY HANDPAN PAGE (David, 23 Oct 2026: "the library/my pans switch should move down, next to the common/rare/all
+   selector"; patches/simple-phone-pan-page-filters.py): Library | My pans moved into the filter row - the same element */
+function sphPanFiltersWire(){
+  if(!sphDrOn()) return;
+  const lib=$("ppLib"), f=$("ppFilters"); if(!lib||!f) return;
+  const w=lib.parentElement; w.classList.add("ppwhich"); f.appendChild(w);
+}
+try{ sphPanFiltersWire(); }catch(e){}
+/* THE TABS AT THE EDIT ROOM'S DRAWER FOOT (David, 23 Oct 2026; mockups-simple-edit-drawer-tabs.html;
+   patches/simple-phone-edit-drawer-tabs.py): the tabs' height is kept while they are hidden, so the open drawer stands on
+   them from its first frame; a tab leaving the editor with unsaved edits asks Done's question first */
+{ const full=sphPlace; sphPlace=function(){ const S=document.documentElement.style, t=$("sphTabs"),
+      keep=[S.getPropertyValue("--sph-tabs"),S.getPropertyValue("--sph-tabs-base")];
+    full.apply(this,arguments);
+    if(sphDrOn()&&t&&!t.getClientRects().length&&keep[1]){ S.setProperty("--sph-tabs",keep[0]); S.setProperty("--sph-tabs-base",keep[1]); } }; }
+{ const full=sphGo; sphGo=function(t){
+    /* no question on the way out by a tab: the editor keeps what it holds, as on the rail (patches/simple-phone-editor-as-rail.py) */
+    return full.apply(this,arguments); }; }
 /* step 5, Songs (patches/simple-phone-songs.py) */
 function sphContSong(){ try{ const p=jamOn&&jamPrev?jamPrev.piece:piece; return p&&p.title?p.title:""; }catch(e){ return ""; } }
 function sphContPaint(){
