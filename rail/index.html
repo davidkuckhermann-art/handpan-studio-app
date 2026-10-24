@@ -61550,26 +61550,54 @@ function sphSwipeOk(t,x){
   if(!sphDrOn()||matchMedia("(orientation:landscape)").matches||drawerOpen()) return false;
   if(x<20||x>innerWidth-20) return false;                                       // the screen's edges are the system's
   if(document.querySelector("dialog[open]:not(.sphpage)")) return false;        // a sheet or a question over the room
-  if(!t||!t.closest||t.closest(SPH_SW_NO)) return false;
+  if(!t||!t.closest||t.closest(editing?SPH_SW_NO_ED:SPH_SW_NO)) return false;
   for(let e=t;e&&e!==document.body;e=e.parentElement){ const ox=getComputedStyle(e).overflowX;
     if((ox==="auto"||ox==="scroll")&&e.scrollWidth>e.clientWidth+2) return false; }   // a row that scrolls sideways
   return true; }
-let sphSw=null, sphSwBusy=false, sphSwFrom=null, sphSwTap=null, sphSwN=0;
+/* while editing the deck takes a swipe but for its pan, its field of cells (#edCells - a cell takes the cursor as the
+   finger lands; the box around it, .lane, is the head's buttons and the arrows), sliders and fields, and its handle, whose
+   up-or-down drag resizes the pan (patches/simple-phone-swipe-reliable.py) */
+const SPH_SW_NO_ED=SPH_SW_NO.replace("#transport,","#drawerGrip,#edCells,").replace(",.lane,",",");
+let sphSw=null, sphSwBusy=false, sphSwFrom=null, sphSwTap=null, sphSwN=0, sphSwNext=0;
 /* a touch that lands where the last short one did, at once, is the notation's double tap - the loop, whose second
    touch drags sideways - never a swipe (patches/simple-phone-swipe-smooth.py) */
-document.addEventListener("touchstart",ev=>{ sphSw=null; sphSwFrom=null; if(ev.touches.length!==1) return; const t=ev.touches[0], p=sphSwTap;
+/* THE TOUCH IS FOLLOWED ON ITS OWN ELEMENT TOO (patches/simple-phone-swipe-reliable.py): iOS sends every move and the lift of a touch to the element
+   the finger landed on, also once that element has left the page - and a room that redraws under the finger (the change a
+   swipe began, the Jam's table refreshing while it plays) takes it off, so the lift never reached the document and the
+   swipe was lost. The same three handlers listen on that element for the length of the touch; whichever hears an event
+   first takes it (ev.__sph), the document while the element is on the page, the element once it is not. */
+let sphSwEl=null;
+function sphSwLet(){ const e=sphSwEl; sphSwEl=null; if(!e) return;
+  e.removeEventListener("touchmove",sphSwMove); e.removeEventListener("touchend",sphSwEnd); e.removeEventListener("touchcancel",sphSwCancel); }
+/* SIDEWAYS LOCKS THE SCROLL (David, same day: "can you lock vertical scrolling during sideways swipes?"): in its first
+   8 px the finger says which way it goes - sideways (within the swipe's 37 degrees) and the page holds still for the rest
+   of the touch; up or down and it is a scroll, never a swipe. Not sooner: a scroll the phone has begun cannot be taken
+   back, and one held from the start never begins. Not passive, so that it can hold the page. */
+function sphSwMove(ev){ if(ev.__sph) return; ev.__sph=1; const s=sphSw; if(!s) return; if(ev.touches.length!==1){ sphSw=null; return; }
+  const t=ev.touches[0], dx=t.clientX-s.x, dy=t.clientY-s.y;
+  if(!s.axis&&Math.abs(dx)+Math.abs(dy)>=8) s.axis=Math.abs(dx)>=1.33*Math.abs(dy)?"x":"y";
+  if(s.axis==="y"){ sphSw=null; return; }
+  if(s.axis==="x"&&ev.cancelable) ev.preventDefault(); }
+function sphSwCancel(ev){ if(ev.__sph) return; ev.__sph=1; sphSw=null; sphSwLet(); }
+function sphSwEnd(ev){ if(ev.__sph) return; ev.__sph=1; if(ev.touches.length===0) sphSwLet();
+  const s=sphSw; sphSw=null; const t=ev.changedTouches&&ev.changedTouches[0]; if(!t) return;
+  const f=sphSwFrom; sphSwFrom=null;
+  sphSwTap=f&&ev.touches.length===0&&Math.abs(t.clientX-f.x)<12&&Math.abs(t.clientY-f.y)<12?{x:t.clientX,y:t.clientY,at:Date.now()}:null;   // the last short touch
+  if(!s) return;
+  const dx=t.clientX-s.x, dy=t.clientY-s.y;
+  if(Date.now()-s.at>1000||Math.abs(dx)<50||Math.abs(dx)<1.33*Math.abs(dy)) return;   // 50 px, within 37 degrees, 1 s
+  const dir=dx<0?1:-1;
+  if(sphSwBusy){ sphSwNext=dir; return; }                                   // during a change: taken when it ends
+  const to=sphSwipeTarget(dir); if(to) sphSwipeGo(to,dir); }
+document.addEventListener("touchstart",ev=>{ sphSwLet(); sphSw=null; sphSwFrom=null; if(ev.touches.length!==1) return; const t=ev.touches[0], p=sphSwTap;
+  const el=ev.target; if(el&&el.addEventListener){ sphSwEl=el;
+    el.addEventListener("touchmove",sphSwMove,{passive:false}); el.addEventListener("touchend",sphSwEnd); el.addEventListener("touchcancel",sphSwCancel); }
   sphSwFrom={x:t.clientX,y:t.clientY};
   if(p&&Date.now()-p.at<340&&Math.abs(t.clientX-p.x)<28&&Math.abs(t.clientY-p.y)<28) return;
   if(sphSwipeOk(ev.target,t.clientX)) sphSw={x:t.clientX,y:t.clientY,at:Date.now()}; },{passive:true,capture:true});
-document.addEventListener("touchmove",ev=>{ if(sphSw&&ev.touches.length!==1) sphSw=null; },{passive:true,capture:true});
-document.addEventListener("touchcancel",()=>{ sphSw=null; },{capture:true});
-document.addEventListener("touchend",ev=>{ const s=sphSw; sphSw=null; const t=ev.changedTouches&&ev.changedTouches[0]; if(!t) return;
-  const f=sphSwFrom; sphSwFrom=null;
-  sphSwTap=f&&ev.touches.length===0&&Math.abs(t.clientX-f.x)<12&&Math.abs(t.clientY-f.y)<12?{x:t.clientX,y:t.clientY,at:Date.now()}:null;   // the last short touch
-  if(!s||sphSwBusy) return;
-  const dx=t.clientX-s.x, dy=t.clientY-s.y;
-  if(Date.now()-s.at>800||Math.abs(dx)<60||Math.abs(dx)<1.8*Math.abs(dy)) return;
-  const dir=dx<0?1:-1, to=sphSwipeTarget(dir); if(to) sphSwipeGo(to,dir); },{capture:true});
+document.addEventListener("touchmove",sphSwMove,{passive:false,capture:true});
+document.addEventListener("touchcancel",sphSwCancel,{capture:true});
+document.addEventListener("touchend",sphSwEnd,{capture:true});
 /* what moves: everything the room shows but the header and the tab bar */
 function sphRoomEls(){ return [...document.body.children].filter(e=>e.tagName!=="HEADER"&&e.id!=="sphTabs"&&!/^(SCRIPT|STYLE|LINK|TEMPLATE)$/.test(e.tagName)
   &&e.getClientRects().length&&getComputedStyle(e).visibility!=="hidden"); }
@@ -61583,7 +61611,8 @@ function sphSwQuiet(fn){ const t0=performance.now(); let last=t0, n=0;
 function sphSwipeGo(to,dir){
   if(matchMedia("(prefers-reduced-motion: reduce)").matches||!Element.prototype.animate){ sphGo(to); return; }
   const n=++sphSwN, D=28;
-  const done=()=>{ if(n===sphSwN) sphSwBusy=false; };
+  const done=()=>{ if(n!==sphSwN||!sphSwBusy) return; sphSwBusy=false;
+    const d=sphSwNext; sphSwNext=0; if(d){ const t2=sphSwipeTarget(d); if(t2) sphSwipeGo(t2,d); } };   // a swipe kept during the change (patches/simple-phone-swipe-reliable.py)
   sphSwBusy=true; setTimeout(done,1800);   // never stuck, whatever happens to the animations
   const out=sphRoomEls().map(e=>e.animate([{transform:"translateX(0)",opacity:1},{transform:"translateX("+(-dir*D)+"px)",opacity:0}],
     {duration:140,easing:"ease-in",fill:"forwards"}));
