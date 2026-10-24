@@ -3710,9 +3710,7 @@ body.phone.simple:not(.tablet) #panPickDlg.ssPick .ppfilters > .ppwhich{margin-l
 /* the tabs at the Edit room's drawer foot, only while it is open (patches/simple-phone-edit-drawer-tabs.py) */
 body.phone.simple.editing.drawer-open:not(.tablet) #sphTabs{display:grid !important}
 body.phone.simple:not(.tablet).editing.drawer-open #transport{bottom:var(--sph-tabsh); padding-bottom:18px}
-/* the first entry's beat: the tabs stay, the closed drawer stands on them, then it opens (sphEditShown below) */
-body.phone.simple.editing.sphedintro:not(.tablet) #sphTabs{display:grid !important}
-body.phone.simple:not(.tablet).editing.sphedintro #transport{bottom:var(--sph-tabsh)}
+body.phone.simple.editing.drawer-open:not(.tablet) #drawerPlayHost{display:block !important}   /* Play at the open drawer's top right while editing, as in Play and the Jam (24 Oct 2026) */
 body.phone.simple #sphTitle.sphlong{font-size:18px; line-height:1.12; white-space:normal; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden}
 /* step 4, Play along (patches/simple-phone-play.py) */
 #sphSong{display:none}
@@ -61284,6 +61282,9 @@ function sphDrWire(){
       if(matchMedia("(orientation:landscape)").matches) return;
       const now=$("dwNow"), play=$("playBtn"); if(now) $("dwTop").insertBefore(now,$("dwTop").firstChild);
       if(play&&!editing&&play.parentNode!==$("ptools")) $("ptools").appendChild(play);
+      /* editing: the open drawer's top row has Play at its right, as in Play and the Jam; closed, it goes back on the lane
+         (David, 24 Oct 2026: "the play button should sit in the drawer top right, just like in play and jam") */
+      if(play&&editing&&!grooveEdit){ const h=up?$("drawerPlayHost"):$("edPlayHost"); if(h&&play.parentNode!==h) h.appendChild(play); }
       fitDrawerTopRow(); }; }
   try{ placeDrawer(); }catch(e){}
   sphPaint(); sphStripShow();
@@ -61454,14 +61455,55 @@ try{ sphPanFiltersWire(); }catch(e){}
 /* THE DRAWER SHOWS WHERE THE TABS WENT (David, 24 Oct 2026: "can you make it so the drawer opens the first time the edit
    room is opened each time the app has been restarted? So the users see where the nav row went?"): the first time this run
    of the app enters the Edit room - by whichever door - the drawer opens, the tabs at its foot; later entries leave it be.
-   "once the edit room is opened, that it opens first with the drawer closed, so people can see the nav row, and then the
-   drawer opens": for that first beat the tabs stay at the foot with the closed drawer on them (.sphedintro), then the
-   drawer slides up from there, the tabs where they were */
+   And the right way round (David, 24 Oct 2026: "first the user should see the drawer open with Nav row at the bottom, then
+   the drawer should close"): it opens at once, and closes by itself after two seconds - unless a finger has touched the
+   screen meanwhile, which leaves it to the user */
+/* SWIPE BETWEEN ROOMS (David, 24 Oct 2026: "can we add swipe left and right as alternative way to switch between rooms?";
+   patches/simple-phone-swipe-rooms.py): the simple phone only; the tab bar's own order, left = the next room on the right,
+   through sphGo as a tap on the tab; one finger, clearly sideways, long enough, never where a sideways finger already means
+   something; the room slides and fades out, the next slides and fades in, the header and the tabs stay put */
+const SPH_SW_NO="#transport,#drawerExtra,#drawerShade,#sphTabs,header,svg.pvsvg,#panwrap,#panbox,#sjPanSlot,#edPanHost,#ssPan,input,textarea,select,.lane,.pop,.noswipe";
+function sphSwipeTarget(dir){ const bs=[...document.querySelectorAll("#sphTabs button[data-t]")];
+  const i=bs.findIndex(b=>b.getAttribute("aria-current")==="page"); if(i<0) return null; const b=bs[i+dir]; return b?b.dataset.t:null; }
+function sphSwipeOk(t,x){
+  if(!sphDrOn()||matchMedia("(orientation:landscape)").matches||drawerOpen()) return false;
+  if(x<20||x>innerWidth-20) return false;                                       // the screen's edges are the system's
+  if(document.querySelector("dialog[open]:not(.sphpage)")) return false;        // a sheet or a question over the room
+  if(!t||!t.closest||t.closest(SPH_SW_NO)) return false;
+  if(editing&&t.closest("#scorewrap")) return false;                            // the editor's notation takes its own touches
+  for(let e=t;e&&e!==document.body;e=e.parentElement){ const ox=getComputedStyle(e).overflowX;
+    if((ox==="auto"||ox==="scroll")&&e.scrollWidth>e.clientWidth+2) return false; }   // a row that scrolls sideways
+  return true; }
+let sphSw=null, sphSwBusy=false;
+document.addEventListener("touchstart",ev=>{ sphSw=null; if(ev.touches.length!==1) return; const t=ev.touches[0];
+  if(sphSwipeOk(ev.target,t.clientX)) sphSw={x:t.clientX,y:t.clientY,at:Date.now()}; },{passive:true,capture:true});
+document.addEventListener("touchmove",ev=>{ if(sphSw&&ev.touches.length!==1) sphSw=null; },{passive:true,capture:true});
+document.addEventListener("touchcancel",()=>{ sphSw=null; },{capture:true});
+document.addEventListener("touchend",ev=>{ const s=sphSw; sphSw=null; if(!s||sphSwBusy) return; const t=ev.changedTouches&&ev.changedTouches[0]; if(!t) return;
+  const dx=t.clientX-s.x, dy=t.clientY-s.y;
+  if(Date.now()-s.at>800||Math.abs(dx)<60||Math.abs(dx)<1.8*Math.abs(dy)) return;
+  const dir=dx<0?1:-1, to=sphSwipeTarget(dir); if(to) sphSwipeGo(to,dir); },{capture:true});
+/* what moves: everything the room shows but the header and the tab bar */
+function sphRoomEls(){ return [...document.body.children].filter(e=>e.tagName!=="HEADER"&&e.id!=="sphTabs"&&!/^(SCRIPT|STYLE|LINK|TEMPLATE)$/.test(e.tagName)
+  &&e.getClientRects().length&&getComputedStyle(e).visibility!=="hidden"); }
+function sphSwipeGo(to,dir){
+  if(matchMedia("(prefers-reduced-motion: reduce)").matches||!Element.prototype.animate){ sphGo(to); return; }
+  sphSwBusy=true; const D=28; setTimeout(()=>{ sphSwBusy=false; },900);   // never stuck, whatever happens to the animations
+  const out=sphRoomEls().map(e=>e.animate([{transform:"translateX(0)",opacity:1},{transform:"translateX("+(-dir*D)+"px)",opacity:0}],
+    {duration:140,easing:"ease-in",fill:"forwards"}));
+  Promise.all(out.map(a=>a.finished.catch(()=>{}))).then(()=>{
+    try{ sphGo(to); }catch(e){}
+    setTimeout(()=>{ out.forEach(a=>{ try{ a.cancel(); }catch(e){} });     // the room that left gives its elements back as the next comes in
+      const ins=sphRoomEls().map(e=>e.animate([{transform:"translateX("+(dir*D)+"px)",opacity:0},{transform:"translateX(0)",opacity:1}],
+        {duration:240,easing:"cubic-bezier(.2,.7,.2,1)"}));
+      Promise.all(ins.map(a=>a.finished.catch(()=>{}))).then(()=>{ sphSwBusy=false; }); },0); });
+}
 var sphEditShown=false;
 try{ new MutationObserver(()=>{ if(sphEditShown||!sphDrOn()||!editing||grooveEdit) return; sphEditShown=true;
-    const B=document.body.classList; B.add("sphedintro");
-    setTimeout(()=>{ if(editing&&!grooveEdit&&!drawerOpen()) setDrawer(true);
-      setTimeout(()=>B.remove("sphedintro"),500); },1000); })   // a second to see the room and its tabs, then the drawer
+    setTimeout(()=>{ if(!editing||grooveEdit||drawerOpen()) return; setDrawer(true);
+      let touched=false; const mark=()=>{ touched=true; }; document.addEventListener("pointerdown",mark,{capture:true,once:true});
+      setTimeout(()=>{ document.removeEventListener("pointerdown",mark,{capture:true});
+        if(!touched&&editing&&!grooveEdit&&drawerOpen()) setDrawer(false); },2000); },120); })
   .observe(document.body,{attributes:true,attributeFilter:["class"]}); }catch(e){}
 /* step 5, Songs (patches/simple-phone-songs.py) */
 function sphContSong(){ try{ const p=jamOn&&jamPrev?jamPrev.piece:piece; return p&&p.title?p.title:""; }catch(e){ return ""; } }
