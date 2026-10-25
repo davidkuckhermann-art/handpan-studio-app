@@ -998,6 +998,8 @@ body.phone.jam.syn2show:not(.tablet) #jvRow #jamVoices .jvset,body.phone.jam.syn
 body.phone.jam:not(.tablet) #jvRow #jamVoices .ib.jvsum{width:auto}   /* the phone's bigger buttons keep their size; the summary its own */
 body.phone.jam:not(.tablet) #jvRow #jamVoices .ib.jvsum svg{width:20px; height:20px}
 #jamVoices.folded .ib.jvsum{max-width:var(--jsw,160px); padding:0 3px 0 6px; border-width:1px; opacity:1}   /* both widths measured (--jvw, --jsw): the strip shrinks exactly as the summary grows, so the group's width only ever moves one way */
+#jamVoices #jvSum.band svg{color:var(--amber-ink)}   /* the folded row's face is the band button (patches/folded-band-face.py) */
+#jamVoices #jvSum.band.rest svg{opacity:.35}
 #jamVoices #jvSum.ib{width:auto}   /* two ids: the rail bar's .ib width (body.rail #scorefoot .ib) must not size the summary */
 .jvfold{display:inline-grid; place-items:center; width:18px; height:26px; padding:0; border:none; background:none; color:var(--ink3); cursor:pointer; border-radius:6px}
 .jvfold svg{width:12px; height:12px; transition:transform .42s cubic-bezier(.4,0,.2,1)}
@@ -12415,15 +12417,8 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
       <button id="mkStyleBox" title="A band behind the notes being played">Band</button>
       <button id="mkStyleLine" title="A line on the beat's lower border">Line</button>
     </span></div>
-  <!-- the bottom-note badge's edge: four treatments under trial (5 Sep) -->
-  <div class="drow"><span>Bottom notes</span>
-    <span class="pills" id="btPills" role="group" aria-label="Bottom-note badge">
-      <button id="btStyleA" title="The original badge, no frame">Light</button>
-      <button id="btStyleM" title="A ground halfway to the deeper one, no frame">Mid</button>
-      <button id="btStyleG" title="The deeper ground, no frame">Deep</button>
-      <button id="btStyleB" title="A grey hairline all round the badge">Box</button>
-      <button id="btStyleH" title="The grey hairline on the top and bottom edges only">Edges</button>
-    </span></div>
+  <!-- the bottom-note badge's edge was a setting here (five treatments on trial from 5 Sep); Box is the one since
+       25 Oct 2026 (David: "'box' can be the one and only option for bottom notes") (patches/bottom-box-only.py) -->
   <!-- "Tab rows" retired 30 Aug at David's word: the split IS the Tab skin —
        with one row it is the Table skin without its grid, so the choice only
        ever offered a worse table. -->
@@ -22480,7 +22475,7 @@ let mkStyle=(()=>{ try{return localStorage.getItem("hps.mkstyle")==="line"?"line
    the framed badge is the one that reads a bottom note at a glance, under a
    video as well as in the app. A treatment already chosen on this browser is
    untouched — only the fallback moves. */
-let btStyle=(()=>{ try{ const v=localStorage.getItem("hps.btstyle"); return ["a","m","g","b","h"].includes(v)?v:"b"; }catch(e){ return "b"; } })();
+let btStyle="b";   /* Box, the one and only (David, 25 Oct 2026); a treatment stored on a device no longer wins (patches/bottom-box-only.py) */
 if(!allowed("advancedsettings")) btStyle="b";   // …the box
 document.documentElement.dataset.bt=btStyle;
 function applyNotaOpts(){
@@ -27954,7 +27949,7 @@ function popScrollsPut(p,L){ if(!p||!L||!L.length) return; const put=()=>L.forEa
    noted as it is scrolled, not read from it at the redraw */
 var BAND_SCROLL=[];
 document.addEventListener("scroll",e=>{ const t=e.target, b=t&&t.closest&&t.closest(".pop.card.bandpop"); if(b) BAND_SCROLL=popScrolls(b); },true);
-function openBand(view){ if(!allowed("bandpresets")) return; const a=$("bandBtn"); if(!a) return;
+function openBand(view){ if(!allowed("bandpresets")) return; const jg=$("jamVoices"), a=(jg&&jg.classList.contains("folded")&&$("jvSum"))||$("bandBtn"); if(!a) return;   /* folded, the band's face (patches/folded-band-face.py) */
   const keep=view?BAND_SCROLL:(BAND_SCROLL=[],null);   // redrawn for a choice: where it stood; a fresh open starts at the top and forgets (patches/band-keep-scroll.py)
   if(!view) OVSTY={}; if(bandMx==="overview") OVD=ovGather();   /* read before the card draws - cardDo closes it (patches/band-overview.py) */
   const pop=document.createElement("div"); pop.className="pop bandpop"; pop.id="bandPop"; pop.dataset.ck="band";
@@ -27984,8 +27979,9 @@ function bandRender(pop){ pop=pop||document.querySelector(".pop.card.bandpop"); 
   { const r=bandResting(); pop.classList.toggle("resting",r);   // the band rests: the card says so (patches/band-rest.py)
     if(r){ const t=pop.querySelector(":scope>.cpchosen .t"); if(t) t.innerHTML='<b>The band is resting</b><span>Only your handpan plays. On brings the same band back.</span>'; } }
   try{ localStorage.setItem("hps.bandview",pop.dataset.bv); }catch(e){} }
-document.addEventListener("click",e=>{ const t=e.target.closest&&e.target.closest("#bandBtn,#bandChip,.pop.bandpop [data-bdv],.pop.bandpop [data-bdk],.pop.bandpop [data-bdx],.pop.bandpop [data-bdplay],.pop.bandpop [data-bdback],.pop.bandpop [data-bdsave],.pop.bandpop [data-bdact],.pop.bandpop [data-bdexp],.pop.bandpop [data-bdimp]"); if(!t) return;
+document.addEventListener("click",e=>{ const t=e.target.closest&&e.target.closest("#bandBtn,#bandChip,#jvSum,.pop.bandpop [data-bdv],.pop.bandpop [data-bdk],.pop.bandpop [data-bdx],.pop.bandpop [data-bdplay],.pop.bandpop [data-bdback],.pop.bandpop [data-bdsave],.pop.bandpop [data-bdact],.pop.bandpop [data-bdexp],.pop.bandpop [data-bdimp]"); if(!t) return;
   if(t.id==="bandBtn"||t.id==="bandChip"){ e.stopPropagation(); openBand(); return; }
+  if(t.id==="jvSum"){ if(jvSumBand()){ e.stopPropagation(); openBand(); } return; }   /* the folded row's band face (patches/folded-band-face.py) */
   const pop=t.closest(".pop");
   if(t.dataset.bdx!=null){ e.stopPropagation(); bandDelete(+t.dataset.bdx); return; }
   if(t.dataset.bdv){ pop.dataset.bv=t.dataset.bdv; bandRender(pop); return; }
@@ -28033,6 +28029,7 @@ function bandRest(off){
 function bandSwHTML(){ const r=bandResting();
   return '<span class="pills"><button type="button" data-bandsw="off" aria-pressed="'+r+'">Off</button><button type="button" data-bandsw="on" aria-pressed="'+!r+'">On</button></span>'; }
 function bandRestPaint(){ const r=bandResting();
+  { const s=$("jvSum"); if(s) s.classList.toggle("rest",r); }   /* the folded row's band face (patches/folded-band-face.py) */
   const b=$("bandBtn"); if(b){ b.classList.toggle("rest",r);
     b.title=r?"The band is resting - long press or right-click to bring it back":"The band - band presets and the mixer (long press or right-click: switch it off)"; }
   document.querySelectorAll('.pophead [data-phk="band"]').forEach(x=>x.classList.toggle("rest",r));
@@ -34697,6 +34694,7 @@ function staffSet(k,on){ if(voiceStaff(k)===on) return;
   voicePaint(); }
 /* THE INSTRUMENT GROUP FOLDS (David, 1 Oct 2026; patches/voices-fold.py): remembered per device class; a newcomer starts
    folded unless an instrument besides the handpan is on */
+function jvSumBand(){ try{ return allowed("bandpresets"); }catch(e){ return false; } }   /* the folded face is the band where the band card may open (patches/folded-band-face.py) */
 function jvFoldKey(){ return "hps.jvfold"+(document.body.classList.contains("phone")?".phone":""); }
 function jvFoldSet(f,save){ const g=$("jamVoices"); if(!g) return;
   const st=$("jvSet"), was=g.classList.contains("folded");
@@ -34711,6 +34709,7 @@ function jvFoldInit(){ if(document.body.classList.contains("phone")){ jvFoldSet(
   let v=null; try{ v=localStorage.getItem(jvFoldKey()); }catch(e){}
   jvFoldSet(v==null?(!document.body.classList.contains("jam")&&!["bass","kit","drm","gtr","pno","syn"].some(k=>voiceOnOf(k))):v==="1",false); }   /* nothing stored: open in a jam (patches/voices-open-in-jam.py) */
 document.addEventListener("click",e=>{ const t=e.target.closest&&e.target.closest("#jvFold,#jvSum"); if(!t) return;
+  if(t.id==="jvSum"&&jvSumBand()) return;   /* the band's face opens the band card; the chevron unfolds */
   const g=$("jamVoices"); jvFoldSet(t.id==="jvSum"?false:!(g&&g.classList.contains("folded")),true); });
 document.addEventListener("transitionend",e=>{ if(e.target&&e.target.id==="jvSet"&&e.propertyName==="max-width"&&typeof fitFooter==="function"&&!PHONE){ try{ fitFooter(); }catch(x){} } });
 /* THE PHONE'S M | S STRIP (David, 1 Oct 2026; patches/band-row-phone.py): the chevron in the instrument group opens it
@@ -34740,8 +34739,8 @@ function voicePaint(){ try{ bandRestPaint(); }catch(e){}   /* the band's rest sh
     b.classList.toggle("solo",SOLO.has(k)); b.classList.toggle("quiet",on&&!soloHeard(k)); b.classList.toggle("stf",on&&!!staffOn&&voiceStaff(k));
     b.title=n+(SOLO.has(k)?" (soloed)":on?"":" (muted)")+" — click for its menu, right-click or hold to "+(on?"mute":"unmute"); }
   { const sm=$("jvSum"); if(sm){ const on=VOICES.filter(([k])=>voiceOnOf(k));   /* the folded group's face: what plays (patches/voices-fold.py) */
-      sm.innerHTML='<svg><use href="#is-hand"/></svg>'; sm.style.setProperty("--jsw","28px");   /* the handpan alone, whatever plays (David, 1 Oct 2026; patches/voices-menus-centred.py): 16, 6 and 3 either side, the border */
-      sm.title="Show the instruments"+(on.length?" — playing: "+on.map(v=>v[1]).join(", "):""); } }
+      const bd=jvSumBand(); sm.classList.toggle("band",bd); sm.innerHTML='<svg><use href="#is-'+(bd?"band":"hand")+'"/></svg>';   /* the band where its card may open (patches/folded-band-face.py) */ sm.style.setProperty("--jsw","28px");   /* the handpan alone, whatever plays (David, 1 Oct 2026; patches/voices-menus-centred.py): 16, 6 and 3 either side, the border */
+      sm.setAttribute("aria-label",bd?"The band":"Show the instruments"); sm.title=(bd?"The band - band presets and the mixer":"Show the instruments")+(on.length?" — playing: "+on.map(v=>v[1]).join(", "):""); } }
   const host=$("jamVx");
   if(host) host.innerHTML=(typeof bandChipHTML==="function"?bandChipHTML():"")+VOICES.map(([k,n,ic])=>{ const on=voiceOnOf(k), st=voiceStaff(k);   // the band's chip (patches/band-card.py)
     return '<span class="jvx'+(on?"":" off")+(on&&!soloHeard(k)?" quiet":"")+'" data-vk="'+k+'" title="'+n+' — click for its menu, right-click to mute or unmute"><svg><use href="#is-'+ic+'"/></svg><span class="jvn">'+(PHONE&&!TABLET&&k==="drm"?"Perc.":n)+'</span><span class="jvtrk">'
@@ -57004,15 +57003,7 @@ function boot(){
     applyNotaOpts(); paintNotaOpts(); };
   $("mkStyleBox").addEventListener("click",()=>setMkStyle("band"));
   $("mkStyleLine").addEventListener("click",()=>setMkStyle("line"));
-  /* the bottom-note badge's edge: the same shape as the marker's pill */
-  const BT_IDS={a:"btStyleA",m:"btStyleM",g:"btStyleG",b:"btStyleB",h:"btStyleH"};
-  const paintBt=()=>{ for(const k in BT_IDS){ const el=$(BT_IDS[k]); if(el) el.setAttribute("aria-pressed",String(btStyle===k)); } };
-  const setBtStyle=v=>{ if(btStyle===v) return; btStyle=v;
-    document.documentElement.dataset.bt=v;
-    try{localStorage.setItem("hps.btstyle",v)}catch(e){}
-    paintBt(); };
-  for(const k in BT_IDS){ const el=$(BT_IDS[k]); if(el) el.addEventListener("click",()=>setBtStyle(k)); }
-  paintBt();
+  /* the bottom-note badge's edge is Box, no longer a choice (patches/bottom-box-only.py) */
   applyNotaOpts(); paintNotaOpts();
   $("metBtn").classList.toggle("on",metOn);
   $("metBtn").addEventListener("click",()=>{ metOn=!metOn;
@@ -60743,7 +60734,7 @@ function advArrange(){
   const rowOf=id=>{ const e=$(id); return e?(e.classList.contains("drow")?e:e.closest(".drow")):null; };
   /* swing and the groove map are rows of Settings on the desktop and a line of the drawer on the phone — there
      they stay where they are and the stylesheet shows that line only while this section is open */
-  for(const id of ["setListenRow","setMicRow","setRecSetupsRow","sheetSel","btPills","countSel","staffNumsRow","staffGrandRow","staffPnoGrandRow","staffChordsRow","staffBassRow","mAudioLog"].concat(PHONE?[]:["swingRow","feelRow"])){   /* the audio log on every device (patches/audio-log-desktop.py) */
+  for(const id of ["setListenRow","setMicRow","setRecSetupsRow","sheetSel","countSel","staffNumsRow","staffGrandRow","staffPnoGrandRow","staffChordsRow","staffBassRow","mAudioLog"].concat(PHONE?[]:["swingRow","feelRow"])){   /* the audio log on every device (patches/audio-log-desktop.py) */
     const r=rowOf(id); if(r&&r.parentNode!==box) box.appendChild(r); }
   if(PHONE){ const sheet=$("menuDlg"), foot=sheet&&[...sheet.querySelectorAll(":scope > .row")].pop();
     if(foot){ sheet.insertBefore(t,foot); sheet.insertBefore(box,foot); } }
@@ -61876,7 +61867,7 @@ try{ sphFeelWire(); }catch(e){}
    the switch is #ssViewRow, simple's own Table | Tab row (the drawer keeps its own); Hand colours from Pan */
 const FR_CATS=[["nota","Notation",["ssViewRow","nstylePills","slotLinesBtn","mkPills","colCtl","flowMenuBtn","secNavPills","sheetSel","countSel","cgReset"]],
   ["app","App",["stylePills","themeSel","ssListenRow","setListenRow","setMicRow","setRecSetupsRow"]],
-  ["pan","Pan",["orientPills","bnHead","botNumPills","botMinePills","btPills"]],
+  ["pan","Pan",["orientPills","bnHead","botNumPills","botMinePills"]],
   ["staff","Staff",["staffNumsBtn","staffGrandBtn","staffPnoGrandBtn","staffChordsBtn","staffBassBtn"]],
   ["play","Playback",["swing","feelBtn"]],
   ["exp","Export",["ssPrBtn","ssExpBtn","setExpBtn","setPrBtn"]],
