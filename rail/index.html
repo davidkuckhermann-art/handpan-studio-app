@@ -820,7 +820,11 @@ html,body{overflow-x:hidden; overscroll-behavior-x:none}  /* Magic-Mouse swipes 
    to go"): every scroller inside a dialog, and the sheets and the drawer (their `none` in place of `contain`), with no
    bounce and no chain to the page. The PAGE is deliberately left alone: html{overscroll-behavior:none} stopped the page
    scrolling at all in WebKit (the rail Mac app, 94e0ab4, reverted in 6056017). */
-dialog,dialog *{overscroll-behavior:none}
+/* ONLY WHAT SCROLLS (David, 25 Oct 2026; patches/dialog-scroll-only-lists.py): `dialog *` gave "none" to every box,
+   and a box that clips (the pattern list's rounded cards, a "..." line of text) is a scroll area to the browser - a
+   finger landing on one stopped there, and the list moved only from the gaps between its cards. The dialogs here;
+   the boxes that scroll get it from dlgStopDead, which reads this stylesheet. */
+dialog{overscroll-behavior:none}
 #scorewrap{position:relative}
 #suggestpane{display:none}
 body.suggesting #suggestpane{display:flex; position:absolute; inset:0; z-index:6;
@@ -2717,6 +2721,8 @@ body.rail:not(.fs){--ppleft:calc(148px + clamp(10px,3vw,28px))}
 #grooveList .pprow .gplay{width:26px; height:26px; border-radius:50%; padding:0 0 0 1px; font-size:10px}
 #grooveList .ppchk{width:20px; height:20px; box-sizing:border-box; border-radius:50%; border:1.5px solid #A39A8B; font-size:11px; line-height:17px; color:transparent; visibility:visible}
 #grooveList .pprow.sel .ppchk{background:var(--dixie); border-color:var(--dixie); color:#fff}
+#grooveList .gbuse{display:none; flex:none; height:28px; padding:0 14px; border:0; border-radius:14px; background:var(--dixie); color:#fff; font:700 13px Figtree,sans-serif; cursor:pointer; align-items:center}   /* (patches/pattern-use-button.py) */
+#grooveList .pprow:has(.gplay.on):not(.sel) .gbuse{display:inline-flex}   /* on the playing row, unless it is already the jam's */
 .ppchk.off{visibility:hidden}
 .ppbuilds{display:flex; gap:5px; margin-top:3px; flex-wrap:wrap}
 .ppbuilds button{font-size:10.5px; font-weight:700; color:var(--ink2); background:var(--dust);
@@ -13515,6 +13521,24 @@ const $=id=>document.getElementById(id);
    layer to break. */
 const FLAT_DLG=window!==window.top;
 const EMBEDDED=window!==window.top;   // running under a Kajabi/Circle lesson video
+/* A LIST IN A DIALOG STOPS DEAD AT ITS ENDS, AND ONLY A LIST (patches/dialog-scroll-only-lists.py): every rule of the
+   app's stylesheet that makes a box scroll (either way) and does not say how it ends gets "none" inside a dialog, under its
+   own @media, at zero specificity; a text field, and a box made to scroll inline, count too */
+(function dlgStopDead(){
+  const scrolls=s=>/auto|scroll/.test((s.overflowY||"")+" "+(s.overflowX||"")+" "+(s.overflow||""))&&!s.overscrollBehaviorY&&!s.overscrollBehaviorX;
+  const ok=sel=>{ try{ document.querySelector(":where(dialog) :where("+sel+")"); return true; }catch(e){ return false; } };
+  const walk=list=>{ let out=[];
+    for(const r of list){
+      if(r.media&&r.cssRules){ const inner=walk(r.cssRules); if(inner.length) out.push("@media "+r.media.mediaText+"{"+inner.join("\n")+"}"); }
+      else if(r.cssRules&&!r.selectorText) out=out.concat(walk(r.cssRules));
+      else if(r.selectorText&&scrolls(r.style)&&ok(r.selectorText)) out.push(":where(dialog) :where("+r.selectorText+"){overscroll-behavior:none}");
+    }
+    return out; };
+  let css=[];
+  for(const sh of document.styleSheets){ try{ css=css.concat(walk(sh.cssRules)); }catch(e){} }
+  css.push(':where(dialog) :where(textarea,[style*="overflow:auto"],[style*="overflow: auto"],[style*="overflow-y:auto"],[style*="overflow-y: auto"]){overscroll-behavior:none}');
+  const st=document.createElement("style"); st.id="dlgStopDead"; st.textContent=css.join("\n"); document.head.appendChild(st);
+})();
 function openDlg(d){
   /* A FULLSCREEN ELEMENT IS THE ONLY THING PAINTED, and in an iframe the
      dialogs are NOT top-layer (they open with .show(), below) — so while the
@@ -14373,8 +14397,8 @@ function derive(pan){
      to the fixed table (spellPc). */
   const spell={};
   for(const lab of [pan.ding].concat(pan.fields||[],pan.bottom||[])){
-    const m=String(lab).match(/^([A-G])([♯♭]?)/); if(!m) continue;
-    const pc=(midiOf(lab)%12+12)%12; if(!(pc in spell)) spell[pc]=m[1]+m[2];
+    const m=String(lab).match(/^([A-Ga-g])([#♯b♭]?)/); if(!m) continue;   // read as midiOf reads it: a typed "Ab" or "G#" kept its letter and lost its sign, and the chord named and played A or G (a tester's F2 Low Pygmy, 25 Oct 2026)
+    const pc=(midiOf(lab)%12+12)%12; if(!(pc in spell)) spell[pc]=m[1].toUpperCase()+({"#":"♯","b":"♭"}[m[2]]||m[2]);
   }
   return {pan,ding,fields,bottom,iv,ring,adj,spell,
     adjacent:(a,b)=>a===b||adj.has(a+"|"+b),
@@ -54853,7 +54877,8 @@ function gbRow(f,mine){
         const running=jpv&&f.items.some(x=>x.id===jpv.patId);
         gbPick[f.key]=q.id;
         if(running) jamPreviewSwap(q.id);
-        renderGrooveDlg(); });
+        renderGrooveDlg();
+        if(!running) jamPreviewToggle(q.id,null); });   // a tap is a preview, a number's too (patches/pattern-use-button.py)
       bl.appendChild(c);
     });
     nm.appendChild(bl);
@@ -54893,7 +54918,15 @@ function gbRow(f,mine){
   pv.setAttribute("aria-label","Hear "+f.name);
   pv.addEventListener("click",e=>{ e.stopPropagation(); jamPreviewToggle(cur.id,pv); });
   row.prepend(pv); row.appendChild(chk);
-  row.addEventListener("click",()=>gbUse(cur));
+  /* THE ROW IS A PREVIEW; USE PUTS IT IN THE JAM (David, 25 Oct 2026: "tap = preview, a Use button on the playing row";
+     patches/pattern-use-button.py). Use shows on the playing row by CSS; the ring still chooses at once. */
+  const use=document.createElement("button");
+  use.type="button"; use.className="gbuse"; use.textContent="Use";
+  use.setAttribute("aria-label","Use "+f.name+" in the jam");
+  use.addEventListener("click",e=>{ e.stopPropagation(); gbUse(cur); });
+  row.insertBefore(use,chk);
+  chk.addEventListener("click",e=>{ e.stopPropagation(); gbUse(cur); });
+  row.addEventListener("click",()=>jamPreviewToggle(cur.id,pv));
   return row;
 }
 function gbEmpty(){
@@ -54919,7 +54952,7 @@ function renderGrooveDlg(){
      so naming them would be a caption for one take of four bars */
   const ch=grooveHomeRef();
   $("gbHint").textContent=(ch?"Previewed from "+ch+" at the current tempo — ":"")
-    +"tap ▸ to loop a pattern, tap the row to use it.";
+    +"tap a pattern to hear it, Use puts it in the jam.";   // (patches/pattern-use-button.py)
   gbPaintPills();
   const L=$("grooveList"); L.innerHTML="";
   const mine=gbView==="mine";
@@ -60797,11 +60830,38 @@ let rptInBand=false;
 { const v0=voiceSet; voiceSet=function(k,v){ const r=v0.apply(this,arguments); if(REPT.on&&!rptInBand) audioNote(k+" "+v); return r; }; }
 { const q0=qzStart; qzStart=function(){ const r=q0.apply(this,arguments); audioNote("quiz: a round starts ("+rptRoom()+")"); return r; }; }
 { const c0=cpStart; cpStart=function(){ const r=c0.apply(this,arguments); let m=""; try{ m=" ("+cpcfg.mode+")"; }catch(e){} audioNote("chord practice: starts"+m); return r; }; }
+/* WHERE A TAP LANDS (David, 25 Oct 2026; patches/viewport-taps-log.py) - a DIAGNOSTIC, not a fix: a tester's Handpan
+   card stopped answering on the phone (M switched the Chorus pedal under it, X and Volume did nothing) until the app was
+   killed - iOS delivering taps 60-130 pt below what it drew, as WebKit bug 254861 (a home-screen app, after the
+   keyboard). The view's place goes into the audio log whenever it changes; the last 40 taps are kept with where they
+   landed, and the report lists them */
+function rptViewText(){ const v=window.visualViewport, a=document.activeElement,
+    f=a&&a.matches&&a.matches("input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=button]),textarea,select,[contenteditable]")?(a.id||a.tagName.toLowerCase()):"";
+  return (v?"view "+Math.round(v.width)+"x"+Math.round(v.height)+" at top "+Math.round(v.offsetTop)+(Math.round(v.pageTop)!==Math.round(v.offsetTop)?" (page "+Math.round(v.pageTop)+")":"")+", scale "+(+v.scale.toFixed(2)):"no view reading")
+    +", window "+innerWidth+"x"+innerHeight+(scrollY?", page scrolled "+Math.round(scrollY):"")+(f?", typing in "+f:""); }
+function rptViewOff(){ const v=window.visualViewport; return Math.round((v?v.offsetTop:0)+scrollY); }
+function rptView(vis){ if(!vis) return; const s=rptViewText(); if(s===REPT.view) return;
+  const first=REPT.view===undefined; REPT.view=s;
+  if(first&&!rptViewOff()&&!/scale (?!1,)|typing/.test(s)) return;   // a normal start says nothing: the report's head has it
+  audioNote("viewport: "+s+" [diagnostic]"); }
+function rptTapName(t){ const e=t&&t.closest?t.closest("button,input,select,textarea,a,label,[data-gfp],[id]"):null;
+  if(!e) return t&&t.tagName?t.tagName.toLowerCase():"?";
+  let s=e.tagName.toLowerCase()+(e.id?"#"+e.id:"")+(typeof e.className==="string"&&e.className.trim()?"."+e.className.trim().split(/\s+/)[0]:"");
+  const d=e.dataset||{}, k=Object.keys(d).pop(); if(k) s+="["+k+"="+String(d[k]).slice(0,16)+"]";   // the last data key: the pedal or the value, not the instrument
+  const tx=e.matches("button,a,label")?(e.getAttribute("aria-label")||e.innerText||"").trim().replace(/\s+/g," ").slice(0,18):""; if(tx) s+=' "'+tx+'"';
+  return s; }
+document.addEventListener("pointerdown",ev=>{ try{
+    let a=[]; try{ a=JSON.parse(localStorage.getItem("hps.taps")||"[]"); }catch(e){} if(!Array.isArray(a)) a=[];
+    const d=new Date(), off=rptViewOff();
+    a.push(String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")+" "+rptHms(d)+"  "+Math.round(ev.clientX)+","+Math.round(ev.clientY)+" "+rptTapName(ev.target)+(off?" (view shifted "+off+")":""));
+    if(a.length>40) a=a.slice(-40); localStorage.setItem("hps.taps",JSON.stringify(a)); }catch(e){} },{capture:true,passive:true});
+function rptTapsText(){ try{ const a=JSON.parse(localStorage.getItem("hps.taps")||"[]"); return Array.isArray(a)&&a.length?a.join("\n"):"none yet"; }catch(e){ return "none yet"; } }
 function rptTick(){
   const now=Date.now(), gap=now-REPT.tick, vis=document.visibilityState==="visible"; REPT.tick=now;
   if(gap>2200&&vis&&REPT.vis) audioNote("page stalled at least "+((gap-1000)/1000).toFixed(1)+" s ("+rptWhere()+")");   // the tick came that late: a lower bound
   REPT.vis=vis; REPT.on=true;
   const room=rptRoom(); if(room!==REPT.room){ REPT.room=room; audioNote("room: "+room); }
+  rptView(vis);   // the view's place, when it changes (patches/viewport-taps-log.py)
   let pl=false; try{ pl=!!playing; }catch(e){}
   if(pl!==REPT.playing){ if(REPT.playing!==null||pl) audioNote(pl?"play":"stop"); REPT.playing=pl; }
   if(now-REPT.seen>=5000){ REPT.seen=now; rptSeen(vis?"on":"bg"); }
@@ -60827,6 +60887,7 @@ function reportText(){
   add("device",()=>navigator.userAgent);
   add("screen",()=>screen.width+"x"+screen.height+" @"+devicePixelRatio+", window "+innerWidth+"x"+innerHeight
     +", "+((navigator.standalone||matchMedia("(display-mode: standalone)").matches)?"home screen":"browser")+(PHONE?", phone build":"")+(SIMPLE?", simple":""));
+  add("viewport",()=>rptViewText());   // (patches/viewport-taps-log.py)
   add("open for",()=>Math.round((Date.now()-REPT.t0)/60000)+" min");
   add("now",()=>rptWhere());
   add("engine",()=>ctx?"#"+ctxMade+" "+ctx.state+", "+ctx.sampleRate+" Hz, clock "+ctx.currentTime.toFixed(1)+" s, latency "+(ctx.baseLatency||0).toFixed(3)+"/"+(ctx.outputLatency||0).toFixed(3):"none yet");
@@ -60835,6 +60896,7 @@ function reportText(){
   add("handpan notes",()=>REPT.tot.asked+" asked, "+REPT.tot.heard+" sounded"+(Object.keys(REPT.tot.why).length?" - not: "+Object.entries(REPT.tot.why).map(([k,n])=>k+" "+n).join(", "):""));
   add("ringing",()=>live.length+" notes");
   add("instruments on",()=>VOICES.map(v=>v[0]).filter(k=>voiceOnOf(k)).join(" "));
+  L.push("","- the last 40 taps, newest last (x,y in the window) -",rptTapsText());   // inside the mail's head (patches/viewport-taps-log.py)
   L.push("","- the audio log, newest last -",audioLogText());
   return L.join("\n");
 }
