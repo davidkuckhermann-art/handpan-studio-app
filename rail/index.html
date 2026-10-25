@@ -2718,11 +2718,10 @@ body.rail:not(.fs){--ppleft:calc(148px + clamp(10px,3vw,28px))}
 #grooveList .gbsec{border:1px solid var(--rule); border-radius:10px; overflow:hidden; margin:0 12px 6px; background:var(--card)}
 #grooveList .gbsec .pprow{border-top:0; border-bottom:1px solid var(--rule2); padding:8px 10px; gap:10px}
 #grooveList .gbsec .pprow:last-child{border-bottom:0}
-#grooveList .pprow .gplay{width:26px; height:26px; border-radius:50%; padding:0 0 0 1px; font-size:10px}
+#grooveList .pprow .gplay{width:26px; height:26px; border-radius:50%; padding:0; font-size:10px}
+.ppv svg.pvi{display:block; width:16px; height:16px; fill:currentColor}   /* the drawn play and stop (patches/preview-button-icons.py) */
 #grooveList .ppchk{width:20px; height:20px; box-sizing:border-box; border-radius:50%; border:1.5px solid #A39A8B; font-size:11px; line-height:17px; color:transparent; visibility:visible}
 #grooveList .pprow.sel .ppchk{background:var(--dixie); border-color:var(--dixie); color:#fff}
-#grooveList .gbuse{display:none; flex:none; height:28px; padding:0 14px; border:0; border-radius:14px; background:var(--dixie); color:#fff; font:700 13px Figtree,sans-serif; cursor:pointer; align-items:center}   /* (patches/pattern-use-button.py) */
-#grooveList .pprow:has(.gplay.on):not(.sel) .gbuse{display:inline-flex}   /* on the playing row, unless it is already the jam's */
 .ppchk.off{visibility:hidden}
 .ppbuilds{display:flex; gap:5px; margin-top:3px; flex-wrap:wrap}
 .ppbuilds button{font-size:10.5px; font-weight:700; color:var(--ink2); background:var(--dust);
@@ -3929,6 +3928,7 @@ body.phone.phframe #frCats #feelRow{display:flex !important}   /* the Groove map
 #frCats .frcat.open .frcats{visibility:hidden}
 #frCats .frcatb{display:none; border-top:1px solid var(--rule2); padding:2px 12px 6px}
 #frCats .frcat.open .frcatb{display:block}
+#frCats .ssex{display:block; font-size:12.5px; font-weight:400; color:var(--ink3); margin-top:2px; line-height:1.3}   /* a row's explanation on its own line, as on the simple phone (Table | Tab, Listening mode) (patches/phone-frame-settings-notation-first.py) */
 #frCats .frcatb .drow{min-width:0}
 #frCats .frcatb .drow select{max-width:62%; min-width:0}   /* Theme's long names stay inside the card */
 html.frcards body.phone.phframe #dsCards{display:block}
@@ -35051,6 +35051,11 @@ function renderStaff(){ try{ voicePaint(); }catch(e){}   // the buttons' staff d
   const show=staffOn&&!!place&&!!sec;
   row.classList.toggle("hidden",!show);
   if(!show){ box.innerHTML=""; staffPlan=null; paintStaffPager(); return; }
+  /* NEVER LAID OUT AT NO WIDTH (David, 25 Oct 2026: "The staff notation for some reason became very small") (patches/staff-never-at-zero-width.py):
+     a box that measures 0 - the phone on its side, a card not shown, iOS before the page settles - made StaffView plan
+     for its fallback 900 px, and the staff stood at 40% when it showed. It waits; the ResizeObserver below draws it. */
+  if(!box.clientWidth){ staffDrawnW=-1; return; }
+  staffDrawnW=box.clientWidth;
   const m=SM(piece,viewSec), phone=place==="phone";
   const input={bars:tblCutBars(staffChorded(sec.bars,staffBars(panStaffBars(viewSec,sec,m)),m),sec,m),pan:myPan,beats:m.beats,den:m.den,sub:m.sub,groups:staffGroups(m),tup:tupsOf(sec)};
   const opts={numbers:!!staffOpts.numbers,grand:!!staffOpts.grand,chords:!!staffOpts.chords,heads:false,band:staffBand,clefFrom:staffFields(piece),barNumbers:false,fontUrl:(/\/phone\//.test(location.pathname)||/\/player\//.test(location.pathname))?"../fonts/Leland.otf":"fonts/Leland.otf"};   // the phone and player builds live one level down; heads:false = every notehead in ink, the numbers keep the hands' colours (David, 22 Sep)
@@ -35106,10 +35111,12 @@ function paintStaff(bar,beat){ staffBand={bar,beat}; if(!(staffOn&&staffPlace())
     const want=Math.max(0,Math.min(P.pages-1,Math.floor(bar/P.per)));
     if(want!==staffPage){ staffPage=want; renderStaff(); return; } }
   StaffView.paint($("staffbox"),bar,beat); }
-/* the plan is made for the width the staff has, so a new width re-plans it (once a frame at most) */
-let staffFitRaf=0;
-addEventListener("resize",()=>{ if(!staffOn||staffPlace()!=="desk"||staffFitRaf) return;
-  staffFitRaf=requestAnimationFrame(()=>{ staffFitRaf=0; renderStaff(); }); });
+/* the staff is laid out for the width its box has, so a new width - the window, the phone turned, a card shown - lays
+   it out again, once a frame at most, in every place; a staff that waited for a width is drawn when it gets one
+   (patches/staff-never-at-zero-width.py); it was a window resize, on the desktop only. staffDrawnW is a var: renderStaff may run before this line */
+let staffFitRaf=0; var staffDrawnW=0;
+try{ new ResizeObserver(()=>{ const b=$("staffbox"); if(!b||!staffOn||staffFitRaf) return; const w=b.clientWidth; if(!w||w===staffDrawnW) return;
+  staffFitRaf=requestAnimationFrame(()=>{ staffFitRaf=0; renderStaff(); }); }).observe($("staffbox")); }catch(e){}
 /* Notation is a panel toggle now (David, 26 Aug): Notation · Chords · Pan.
    It hides the MUSIC and keeps the frame's head and footer — hiding the whole
    card would take the play button and the tempo with it. */
@@ -40136,7 +40143,7 @@ function renderLib(){
     /* HEART FIRST, THEN PREVIEW -- the order David set for the scale rows on
        29 Aug, kept here so the two lists read the same way. */
     const pv=document.createElement("span");
-    pv.className="ppv lplay"; pv.dataset.lk=key; pv.textContent="\u25b8";
+    pv.className="ppv lplay"; pv.dataset.lk=key; pv.innerHTML=pvIco(false);
     pv.title="Hear this piece"; pv.setAttribute("aria-label","Hear "+(p.title||"this piece"));
     pv.addEventListener("click",e=>{ e.stopPropagation(); libPreviewToggle(p,key,pv); });
     b.appendChild(pv);
@@ -40191,7 +40198,7 @@ function libPreviewPaint(){
   document.querySelectorAll("#libList .lplay").forEach(b=>{
     const on=!!(lpv&&b.dataset.lk===lpv.key);
     b.classList.toggle("on",on);
-    b.textContent=on?"■":"▸"; });
+    b.innerHTML=pvIco(on); });
 }
 function libPreviewToggle(p,key,btn){
   if(lpv&&lpv.key===key){ libPreviewStop(); return; }      // the same row again stops it
@@ -51304,7 +51311,7 @@ function msRenderTog(){
   const sizes=g=>{ const cur=pick(g); return "<span class='ppbuilds msbuilds'>"+bySize(g).map(q=>"<button type='button' class='"+(q.id===cur.id?"lit":"")+
     "' data-tg='ver' data-k='"+encodeURIComponent(g.key)+"' data-id='"+q.id+"' title='"+panFull(q)+"'>"+chipLabel(g,q)+"</button>").join("")+"</span>"; };
   const row=(g,tag,cls,mid)=>"<div class='mscard'><div class='mstop'><div class='msnm'><b>"+g.name+"</b> <span class='mssz'>"+sizes(g)+"</span></div><div class='msact'>"
-    +(tag?"<span class='mstag "+cls+"'>"+tag+"</span>":"")+"<button type='button' class='ppv' data-tg='hear' data-id='"+pick(g).id+"' aria-label='Hear "+panFull(pick(g)).replace(/'/g,"&#39;")+"' title='Hear "+panFull(pick(g)).replace(/'/g,"&#39;")+"'>▸</button></div></div><div class='msbd'>"+mid+"</div></div>";   // the scale selector's own play button (David, 23 Oct 2026)
+    +(tag?"<span class='mstag "+cls+"'>"+tag+"</span>":"")+"<button type='button' class='ppv' data-tg='hear' data-id='"+pick(g).id+"' aria-label='Hear "+panFull(pick(g)).replace(/'/g,"&#39;")+"' title='Hear "+panFull(pick(g)).replace(/'/g,"&#39;")+"'>"+pvIco(false)+"</button></div></div><div class='msbd'>"+mid+"</div></div>";   // the scale selector's own play button (David, 23 Oct 2026)
   const skipsAdds=g=>(g.lack.length?"skips "+g.lack.map(spellPc).join(" "):"")+(g.lack.length&&g.add.length?" · ":"")+(g.add.length?"adds "+g.add.map(pc=>spellOn(g,pc)).join(" "):"");
   /* JAM TOGETHER, the central note first: 1 same centre and mode, 2 same notes and another centre, 3 same centre and one note different */
   const J=G.map(g=>({...g,out:outOf(g)})).filter(g=>g.out.length<=1);
@@ -53736,6 +53743,12 @@ function grooveMini(pat){
   }
   return box;
 }
+/* THE PREVIEW BUTTONS' PLAY AND STOP, DRAWN (David, 25 Oct 2026: "the triangles and square are too small and the square
+   doesn't look centered"; patches/preview-button-icons.py): the ink's box centred in a 16-box - the triangle 4..12 x
+   2.75..13.25, the square 4..12 x 4..12 - for every list preview button (.ppv) */
+function pvIco(on){
+  return '<svg class="pvi" viewBox="0 0 16 16" aria-hidden="true">'+(on?'<rect x="4" y="4" width="8" height="8" rx="1.5"/>':'<path d="M4 2.75L12 8L4 13.25Z"/>')+'</svg>';
+}
 function jamPreviewStop(){
   if(!jpv) return;
   clearInterval(jpv.timer); jpv=null;
@@ -53743,7 +53756,7 @@ function jamPreviewStop(){
   jamFadeLive(.2);                              // the preview lets go
   if(ctx&&playing) jamMuteUntil=ctx.currentTime+.55;   // breath — then the jam returns
   document.querySelectorAll("#grooveList .gplay.on").forEach(b=>{
-    b.classList.remove("on"); b.textContent="▸"; });
+    b.classList.remove("on"); b.innerHTML=pvIco(false); });
 }
 /* THE PREVIEW IS LIVE, NOT A SNAPSHOT (David, 1 Sep — two reports, one
    cause). "If I click on another version of the same groove while the
@@ -53816,7 +53829,7 @@ function jamPreviewSwap(patId){
 function jamPreviewPaint(){
   document.querySelectorAll("#grooveList .gplay").forEach(b=>{
     const on=!!(jpv&&b.dataset.pat===jpv.patId);
-    b.classList.toggle("on",on); b.textContent=on?"■":"▸"; });
+    b.classList.toggle("on",on); b.innerHTML=pvIco(on); });
 }
 function jamPreviewToggle(patId,btn){
   if(jpv&&jpv.patId===patId){ jamPreviewStop(); return; }
@@ -53847,7 +53860,7 @@ function jamPreviewToggle(patId,btn){
     } };
   previewSounding=true;                        // hold the iOS route for as long as it runs
   jpv.timer=setInterval(tickP,100); tickP();
-  if(btn){ btn.classList.add("on"); btn.textContent="■"; }
+  if(btn){ btn.classList.add("on"); btn.innerHTML=pvIco(true); }
   else jamPreviewPaint();
 }
 /* ---------------- STUDENT GROOVES (26 Aug, ABC'd, David's three answers) ----
@@ -54877,8 +54890,7 @@ function gbRow(f,mine){
         const running=jpv&&f.items.some(x=>x.id===jpv.patId);
         gbPick[f.key]=q.id;
         if(running) jamPreviewSwap(q.id);
-        renderGrooveDlg();
-        if(!running) jamPreviewToggle(q.id,null); });   // a tap is a preview, a number's too (patches/pattern-use-button.py)
+        renderGrooveDlg(); });
       bl.appendChild(c);
     });
     nm.appendChild(bl);
@@ -54912,21 +54924,13 @@ function gbRow(f,mine){
   }
   const pv=document.createElement("button");
   const pvOn=!!(jpv&&jpv.patId===cur.id);
-  pv.type="button"; pv.className="ppv gplay"+(pvOn?" on":""); pv.textContent=pvOn?"■":"▸";
+  pv.type="button"; pv.className="ppv gplay"+(pvOn?" on":""); pv.innerHTML=pvIco(pvOn);
   pv.dataset.pat=cur.id;                 // so a re-render can find its own button
   pv.title="Loop this pattern — tap again to stop";
   pv.setAttribute("aria-label","Hear "+f.name);
   pv.addEventListener("click",e=>{ e.stopPropagation(); jamPreviewToggle(cur.id,pv); });
   row.prepend(pv); row.appendChild(chk);
-  /* THE ROW IS A PREVIEW; USE PUTS IT IN THE JAM (David, 25 Oct 2026: "tap = preview, a Use button on the playing row";
-     patches/pattern-use-button.py). Use shows on the playing row by CSS; the ring still chooses at once. */
-  const use=document.createElement("button");
-  use.type="button"; use.className="gbuse"; use.textContent="Use";
-  use.setAttribute("aria-label","Use "+f.name+" in the jam");
-  use.addEventListener("click",e=>{ e.stopPropagation(); gbUse(cur); });
-  row.insertBefore(use,chk);
-  chk.addEventListener("click",e=>{ e.stopPropagation(); gbUse(cur); });
-  row.addEventListener("click",()=>jamPreviewToggle(cur.id,pv));
+  row.addEventListener("click",()=>gbUse(cur));
   return row;
 }
 function gbEmpty(){
@@ -54952,7 +54956,7 @@ function renderGrooveDlg(){
      so naming them would be a caption for one take of four bars */
   const ch=grooveHomeRef();
   $("gbHint").textContent=(ch?"Previewed from "+ch+" at the current tempo — ":"")
-    +"tap a pattern to hear it, Use puts it in the jam.";   // (patches/pattern-use-button.py)
+    +"tap ▸ to loop a pattern, tap the row to use it.";
   gbPaintPills();
   const L=$("grooveList"); L.innerHTML="";
   const mine=gbView==="mine";
@@ -55387,7 +55391,7 @@ function ppRow(p,scaleKey){
     row.appendChild(fv);
   }
   const pv=document.createElement("button");
-  pv.type="button"; pv.className="ppv"; pv.textContent="▸";
+  pv.type="button"; pv.className="ppv"; pv.innerHTML=pvIco(false);
   pv.setAttribute("aria-label","Hear "+p.name);
   pv.addEventListener("click",e=>{ e.stopPropagation(); panPreview(p); });
   row.appendChild(pv);
@@ -61867,9 +61871,12 @@ try{ sphFeelWire(); }catch(e){}
 /* SETTINGS IN CATEGORIES, FULL ON THE PHONE (David, 25 Oct 2026: "the settings menu should be sorted into various
    collapsable categories"; SIMPLE-MODE-PLAN.md §11 step 8; patches/phone-frame-settings.py): the rows MOVED into seven
    categories, each closed one saying its values; simple's Settings are flat as before */
-const FR_CATS=[["app","App",["stylePills","themeSel","ssListenRow","setListenRow","setMicRow","setRecSetupsRow"]],
-  ["nota","Notation",["nstylePills","slotLinesBtn","mkPills","flowMenuBtn","secNavPills","sheetSel","countSel","cgReset"]],
-  ["pan","Pan",["orientPills","colCtl","bnHead","botNumPills","botMinePills","btPills"]],
+/* NOTATION FIRST (David, 25 Oct 2026: "Notation should be first field in settings. The first option in notation should be
+   the table/tab switch. The notation field should include the hand colors setting") (patches/phone-frame-settings-notation-first.py):
+   the switch is #ssViewRow, simple's own Table | Tab row (the drawer keeps its own); Hand colours from Pan */
+const FR_CATS=[["nota","Notation",["ssViewRow","nstylePills","slotLinesBtn","mkPills","colCtl","flowMenuBtn","secNavPills","sheetSel","countSel","cgReset"]],
+  ["app","App",["stylePills","themeSel","ssListenRow","setListenRow","setMicRow","setRecSetupsRow"]],
+  ["pan","Pan",["orientPills","bnHead","botNumPills","botMinePills","btPills"]],
   ["staff","Staff",["staffNumsBtn","staffGrandBtn","staffPnoGrandBtn","staffChordsBtn","staffBassBtn"]],
   ["play","Playback",["swing","feelBtn"]],
   ["exp","Export",["ssPrBtn","ssExpBtn","setExpBtn","setPrBtn"]],
@@ -61902,7 +61909,7 @@ function frSettingsPaint(){
 function frSettingsWire(){
   if(!(sphDrOn()&&!SIMPLE)) return;
   const host=$("mSettingsHost"), box=$("advBox"); if(!host) return;
-  let open=["app"]; try{ const s=JSON.parse(localStorage.getItem("hps.frcats")||"null"); if(Array.isArray(s)) open=s; }catch(e){}
+  let open=["nota"]; try{ const s=JSON.parse(localStorage.getItem("hps.frcats")||"null"); if(Array.isArray(s)) open=s; }catch(e){}
   const C=document.createElement("div"); C.id="frCats";
   for(const [k,name,ids] of FR_CATS){
     const cat=document.createElement("div"); cat.className="frcat"+(open.includes(k)?" open":""); cat.dataset.k=k;
@@ -61912,7 +61919,7 @@ function frSettingsWire(){
     for(const id of ids){ const r=frRowOf(id); if(!r) continue; if(box&&box.contains(r)) r.classList.add("fradv"); body.appendChild(r); }
     C.appendChild(cat); }
   host.appendChild(C);
-  for(const id of ["ssViewRow","sphPlayHead","advToggle","advBox"]){ const e=$(id); if(e) e.classList.add("frgone"); }
+  for(const id of ["sphPlayHead","advToggle","advBox"]){ const e=$(id); if(e) e.classList.add("frgone"); }   /* #ssViewRow leads Notation now (patches/phone-frame-settings-notation-first.py) */
   { const l=$("mAudioLog"), r=l&&l.closest(".drow"); if(r) r.classList.add("frgone"); }
   C.addEventListener("click",e=>{ const h=e.target.closest(".frcath");
     if(h){ const cat=h.parentNode, on=!cat.classList.contains("open"); cat.classList.toggle("open",on); h.setAttribute("aria-expanded",String(on));
