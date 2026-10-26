@@ -51583,20 +51583,20 @@ async function mdPlay(p,btn){
   mdStop(); coHush(); auditionStart("overview"); const row=btn.closest(".mdprog"); if(!row) return;   // one audition at a time (patches/one-audition-at-a-time.py)
   btn.dataset.on="1"; btn.innerHTML=MD_STOP;
   const gen=coGen, pan=coPanObj||myPan, els=[...row.querySelectorAll(".jchord")], seq=mdProgs[p];
-  const vs=seq.map(tr=>tr.item?mdBassRoot(coVoicing(tr.item),mdPc(tr.item.name)):[]);   // the root in the bass (patches/progression-root-bass.py)
+  const vs=seq.map(tr=>tr.item?mdBassRoot(tr.item.fields,mdPc(tr.item.name)):[]);   // every note of the chord, the root in the bass, under A3 only the root   // as Combines with (patches/modes-play-like-combines.py)   // the root in the bass (patches/progression-root-bass.py)
   wakeAudio();
   try{ await Promise.all([...new Set(vs.flat().map(f=>pan.posMidi(f)).filter(m=>m!=null))].map(m=>bankDecode("o"+m))); }catch(e){}
   if(gen!==coGen||!btn.dataset.on) return;          // stopped, or something else played, while the samples loaded
-  const beat=60/MD_BPM, bar=4*beat, t0=ctx.currentTime+0.12; let k=0;
+  const beat=60/MD_BPM, bar=2*beat, t0=ctx.currentTime+0.12; let k=0;   // a chord two beats   // as Combines with (patches/modes-play-like-combines.py)
   const at=t=>Math.max(0,(t-ctx.currentTime)*1000);
   for(let r=0;r<2;r++) seq.forEach((tr,j)=>{
-    const t=t0+(k++)*bar, v=vs[j], step=v.length>8?beat/4:beat/2;
+    const t=t0+(k++)*bar+r*beat, v=vs[j], step=0.10;   // its notes 0.10 s apart; a beat's pause before the second pass   // as Combines with (patches/modes-play-like-combines.py)
     v.forEach((f,i)=>{ const m=pan.posMidi(f); coStrike(f,t+i*step,m!=null?bankBuf("o"+m):null); });
     mdTimers.push(setTimeout(()=>{ if(gen!==coGen){ mdUi(); return; }
       document.querySelectorAll(".comodes .jchord.now").forEach(x=>x.classList.remove("now"));
       if(els[j]) els[j].classList.add("now"); if(tr.item) coShow(tr.item,false,true); },at(t)));
   });
-  const end=t0+k*bar; coArpUntil=end;              // a tap on the pan meanwhile stops it, as it stops an arpeggio
+  const end=t0+k*bar+beat; coArpUntil=end;              // a tap on the pan meanwhile stops it, as it stops an arpeggio
   mdTimers.push(setTimeout(()=>{ mdUi(); if(gen===coGen&&mdCur) mdLight(mdCur); },at(end)));   // the last chord rings out
   coHearSync();
 }
@@ -51914,23 +51914,46 @@ function mscChords(have){ const out=[];
     let st="none"; if(!miss.length) st="full"; else if(miss.length===1&&may!=null&&miss[0]===(r+may)%12&&have.has(r)) st="miss";
     out.push({key:fam.g+"|"+sfx+"|"+r,g:fam.g,name:spellPc(r)+sfx,root:r,iv,pcs,st,missTone:st==="miss"?MSC_TONE[may]:null,sfx}); }
   return out; }
-/* a chord on a pan (yours first when both), each tone's lowest field */
-function mscVoice(c,who,me,them,mine){ const N={you:me,them}, pick=[];
-  for(const pc of c.pcs){ for(const w of who==="both"?["you","them"]:[who]){ const cand=N[w].filter(x=>x.pc===pc).sort((a,b)=>a.m-b.m);
-    if(cand.length){ pick.push({...cand[0],w,from:w==="them"&&!mine.has(pc)}); break; } } }
-  return pick.sort((a,b)=>a.m-b.m); }
+/* A CHORD WITH ALL ITS NOTES (David, 26 Oct 2026: "all notes of a chord (with our usual rules for bottom and low notes as
+   parts of chord voicings" - "let's use this setting"; patches/combines-all-notes.py): every field of a chord tone on the
+   pan or pans asked - yours first when both play, the other pan only for a pitch yours has not - and under A3 only the
+   lowest root (the jam voicer's JV_BASS_TOP, bassOk): the third never a bass note under a chord; a tone that lives only
+   under A3 kept once, at its highest place */
+function mscVoice(c,who,me,them,mine){ const N={you:me,them}, seen=new Set(), cand=[];
+  for(const w of who==="both"?["you","them"]:[who]) for(const x of N[w]) if(c.pcs.includes(x.pc)&&!seen.has(x.m)){ seen.add(x.m); cand.push({...x,w,from:w==="them"&&!mine.has(x.pc)}); }
+  cand.sort((a,b)=>a.m-b.m);
+  const low=cand.find(x=>x.m<JV_BASS_TOP&&x.pc===c.root), keep=cand.filter(x=>x.m>=JV_BASS_TOP||x===low);
+  for(const pc of c.pcs) if(!keep.some(x=>x.pc===pc)){ const only=cand.filter(x=>x.pc===pc).pop(); if(only) keep.push(only); }
+  return keep.sort((a,b)=>a.m-b.m); }
+/* A SINGLE CHORD AS THE CHORDS PAGE PLAYS IT (David, 26 Oct 2026: "For single chords, let's play them on every page as
+   the chords page does"; patches/combines-single-chords.py): its voicing switch - Every note: every field of a chord tone
+   (yours first, the other pan only for a pitch yours has not); Basic voicing: each pan's suggested voicing (cpSuggested,
+   that pan held as coSnapshot holds it), the other's only for a tone yours lacks. Played 0.2 s apart, as coPlay. */
+function mscSuggested(id,c){ const sP=myPan, sId=myPanId, swap=id!==myPanId; let out=[];
+  try{ if(swap){ myPanId=id; myPan=derive(panById(id)); } coForceUnder=true;
+    out=cpSuggested(c.name).map(f=>({f,m:myPan.posMidi(f)})).filter(x=>x.m!=null).map(x=>({...x,pc:((x.m%12)+12)%12}));
+  } finally { coForceUnder=false; if(swap){ myPanId=sId; myPan=sP; try{ jamDefs(); }catch(e){} } }
+  return out; }
+function mscSingle(c,who,me,them,mine){
+  if(coVoice==="all"){ const N={you:me,them}, seen=new Set(), out=[];
+    for(const w of who==="both"?["you","them"]:[who]) for(const x of N[w]) if(c.pcs.includes(x.pc)&&!seen.has(x.m)){ seen.add(x.m); out.push({...x,w,from:w==="them"&&!mine.has(x.pc)}); }
+    return out.sort((a,b)=>a.m-b.m); }
+  const sy=who==="them"?[]:mscSuggested(myPanId,c).map(x=>({...x,w:"you",from:false}));
+  const st=who==="you"?[]:mscSuggested(msPairId,c).map(x=>({...x,w:"them",from:!mine.has(x.pc)}));
+  const have=new Set(sy.map(x=>x.pc));
+  return (who==="both"?[...sy,...st.filter(x=>!have.has(x.pc))]:who==="you"?sy:st).sort((a,b)=>a.m-b.m); }
 function mscLight(pick){ const col=document.getElementById("msPair"); if(!col) return; col.classList.add("mkchord");
   col.querySelectorAll(".pvf.mkon").forEach(e=>e.classList.remove("mkon","mkfrom"));
   const hosts={you:col.querySelector(".you .mspp"), them:col.querySelector(".them .mspp")};
   for(const x of pick){ const el=panFieldEl(hosts[x.w],x.f); if(el){ el.classList.add("mkon"); if(x.from) el.classList.add("mkfrom"); } } }
 /* the chord sounding, marked in its progression; cleared when it ends or anything else plays */
 function mscMarkClear(){ document.querySelectorAll("#msTog .mkex .pc.now").forEach(s=>s.classList.remove("now")); }
-async function mscPlay(seq,onStep){ ppLiveStop(); const g=++mscGen; wakeAudio(); auditionStart("pan");
+async function mscPlay(seq,onStep,gap){ ppLiveStop(); const g=++mscGen; wakeAudio(); auditionStart("pan");
   await Promise.all([...new Set(seq.filter(Boolean).flat().map(x=>x.m))].map(m=>bankDecode("o"+m))); if(g!==mscGen||!ctx) return;
-  const beat=60/MD_BPM, t0=ctx.currentTime+0.08, step=2*beat;   /* the Modes page's clock: a chord two beats, its notes sixteenths (David, 26 Oct 2026: "each single note can be heard, but not too slow ... around sixteenth notes") */
+  const beat=60/MD_BPM, t0=ctx.currentTime+0.08, step=2*beat;   /* the Modes page's clock: a chord two beats; its notes 0.10 s apart (David, 26 Oct 2026: "around sixteenth notes", then 0.10 s chosen by ear on mockups-combines-voicing.html; patches/combines-all-notes.py) */
   let at=t0;
   seq.forEach((pick,i)=>{ if(!pick){ at+=beat; return; }   // null: a beat's pause before the progression starts over
-    const t=at; pick.forEach((x,j)=>ppLiveAdd(panAudition(bankBuf("o"+x.m)||synthBuf(x.m,"open"),t+j*beat/4,0.8)));
+    const t=at; pick.forEach((x,j)=>ppLiveAdd(panAudition(bankBuf("o"+x.m)||synthBuf(x.m,"open"),t+j*(gap||0.10),0.8)));
     setTimeout(()=>{ if(g===mscGen){ mscLight(pick); if(onStep) onStep(i); } },Math.max(0,(t-ctx.currentTime)*1000)); at+=step; });
   if(onStep) setTimeout(()=>{ if(g===mscGen) onStep(-1); },Math.max(0,(at-ctx.currentTime)*1000));
   try{ sinkHold(at-ctx.currentTime+SINK_HOLD); }catch(e){} }
@@ -52030,7 +52053,7 @@ function msChordsPaint(){
   box.addEventListener("click",e=>{ e.stopPropagation();
     const mo=e.target.closest("[data-more]"); if(mo){ mo.parentElement.querySelectorAll(".mkmore").forEach(x=>x.hidden=false); mo.remove(); return; }
     const exb=e.target.closest("[data-ex]"); if(exb){ const x=ex[+exb.dataset.ex], v=x.seq.map(c=>mscVoice(c,"both",A,B,a)); const row=exb.closest(".mkex"), n=v.length; mscPlay([...v,null,...v],i=>{ const k=i<0?-1:i<n?i:i-n-1; row.querySelectorAll(".pc").forEach(s=>s.classList.toggle("now",+s.dataset.i===k)); }); return; }   /* twice through, whole, a beat of pause between (David, 26 Oct 2026: "play 2 cycles" - "the complete progression, including the last chord ... a small pause, and then ... start over from the beginning") */
-    const hb=e.target.closest("[data-hear]"); if(hb){ const c=rows.find(r=>r.key===box.dataset.cur); if(c) mscPlay([mscVoice(c,hb.dataset.hear,A,B,a)]); return; }
+    const hb=e.target.closest("[data-hear]"); if(hb){ const c=rows.find(r=>r.key===box.dataset.cur); if(c) mscPlay([mscSingle(c,hb.dataset.hear,A,B,a)],null,0.2); return; }   // a single chord as the Chords page plays it (patches/combines-single-chords.py)
     const ch=e.target.closest(".mkc"); if(!ch) return; const c=rows.find(r=>r.key===ch.dataset.key); if(!c) return; box.dataset.cur=c.key;
     box.querySelectorAll(".mkc.on").forEach(x=>x.classList.remove("on")); ch.classList.add("on");
     const det=box.querySelector(".mkdet"), st=(s,m)=>s==="full"?"complete":s==="miss"?"<span class='cl'>no "+m+"</span>":"<span class='cl'>not on it</span>";
@@ -52041,7 +52064,7 @@ function msChordsPaint(){
       +"<button type='button' class='mkb' data-hear='them'"+(c.them==="none"?" disabled":"")+">"+MSC_PLAY+"This one</button>"
       +"<button type='button' class='mkb' data-hear='both'>"+MSC_PLAY+"Together</button>";
     ch.closest(".mkgrid").after(det);
-    mscPlay([mscVoice(c,"both",A,B,a)]);
+    mscPlay([mscSingle(c,"both",A,B,a)],null,0.2);   // a single chord as the Chords page plays it (patches/combines-single-chords.py)
   });
 }
 /* COMBINES WITH IN THE OVERVIEW (patches/overview-info-combines.py): the list lives in the overview's body, made when first
