@@ -13332,7 +13332,7 @@ if(!document.body.dataset.phone&&!document.documentElement.classList.contains("p
 <div id="toast" role="status"></div>
 <script src="../bank.js?v=2"></script>
 <script src="../sync-map.js?v=4"></script>
-<script src="staff.js?v=47"></script>   <!-- THE STAFF VIEW (22 Sep 2026): classical notation beneath the table, drawn from the score by window.StaffView — STAFF-VIEW.md; bump ?v= when it changes; the phone and player builds rewrite the path -->
+<script src="staff.js?v=48"></script>   <!-- THE STAFF VIEW (22 Sep 2026): classical notation beneath the table, drawn from the score by window.StaffView — STAFF-VIEW.md; bump ?v= when it changes; the phone and player builds rewrite the path -->
 <script src="../clicks.js?v=1"></script>   <!-- THE CLICK EAR (20 Sep 2026): snaps and claps for table practice — four even clicks are a count-in with its tempo, two quick ones a stop. Judged by bench/clicks/run.js; bump ?v= when it changes -->   <!-- THE TEMPO-MAP ENGINE (SUITE.md phase 1, 14 Sep 2026): moved out of this file; the Lab loads the same one. Bump ?v= when it changes — a ?v= on the page does not bust a script. -->
 <script>
 "use strict";
@@ -16043,6 +16043,30 @@ function folVar(inst,rel,m){ const U=phraseAt(m,rel).n*m.bp, u=Math.floor(rel/U+
   return {kind:["octave","thirds","sparse"][Math.floor(passDraw("fol"+inst,blk,11)*3)],onBeat:(((rel%m.bp)+m.bp)%m.bp)%m.sub===0}; }
 function folThird(x){ const m12=v=>((v%12)+12)%12; let sc=null; try{ if(typeof myPan!=="undefined"&&myPan) sc=new Set(panMidis(myPan).map(m12)); }catch(e){}
   if(!sc||sc.size<5) return x+4; let y=x, n=0; while(n<2){ y++; if(sc.has(m12(y))) n++; } return y; }   // two steps of the key up
+/* THE HANDPAN STYLE'S VOICE (David, 27 Oct 2026: "for the handpan style, can you give me a unison/harmony switch? For
+   harmony, the instrument should harmonise according to handpan notes and chord progression"; (patches/handpan-voice.py)): Unison
+   doubles the handpan's notes; a harmony plays one voice beside them, never the note itself. ONE RULE: a chord tone a third
+   from the note (3 or 4 semitones), else a fourth (5), else the third in the handpan's own scale; 3rd above mirrors 3rd
+   below; 6th below is the 3rd above an octave down. The chord is the one in force at the stroke */
+const FOL_VOICES=[["uni","Unison"],["3b","3rd below"],["3a","3rd above"],["6b","6th below"]];
+function folThirdDown(x){ const m12=v=>((v%12)+12)%12; let sc=null; try{ if(typeof myPan!=="undefined"&&myPan) sc=new Set(panMidis(myPan).map(m12)); }catch(e){}
+  if(!sc||sc.size<5) return x-3; let y=x, n=0; while(n<2){ y--; if(sc.has(m12(y))) n++; } return y; }   // two steps of the key down
+/* THE LOW NOTES (David, 27 Oct 2026: "The central note and low bass notes ... should be treated differently for
+   harmonisation"; (patches/handpan-voice-low-notes.py)): at the handpan's own pitch (around), a harmony under the circle's lowest note -
+   for 3rd above, more than two scale steps under it - is lifted an octave */
+function folCircleLow(){ try{ const F=(myPan&&myPan.fields)||[]; return F.length?Math.min(...F.map(f=>f.midi)):null; }catch(e){ return null; } }
+function folStepsDown(x,n){ const m12=v=>((v%12)+12)%12; let sc=null; try{ if(typeof myPan!=="undefined"&&myPan) sc=new Set(panMidis(myPan).map(m12)); }catch(e){}
+  if(!sc||sc.size<5) return x-2*n; let y=x, k=0; while(k<n){ y--; if(sc.has(m12(y))) k++; } return y; }   // n steps of the key down
+function folHarm(x,pcs,v,around){ if(!v||v==="uni") return x; const h0=folHarm0(x,pcs,v); if(!around) return h0;
+  const L=folCircleLow(); if(L==null) return h0;
+  return (v==="3a"?x<folStepsDown(L,2):x<L)?h0+12:h0; }
+function folHarm0(x,pcs,v){ const dir=v==="3b"?-1:1, m12=y=>((y%12)+12)%12; let h=null;
+  if(pcs&&pcs.length) for(const d of [3,4,5]){ if(pcs.includes(m12(x+dir*d))){ h=x+dir*d; break; } }
+  if(h==null) h=dir<0?folThirdDown(x):folThird(x);
+  return v==="6b"?h-12:h; }
+function folPcs(p2){ try{ const sec=secOfPulse(p2), m=SM(piece,sec.name), n=chordInForceAt(p2,sec,m); return n?chordPCs(n):null; }catch(e){ return null; } }
+function folVoiceRow(a,cur){ return '<div class="fvoi"><div class="ttl">Voice</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(4,1fr)">'
+  +FOL_VOICES.map(([v,l])=>'<button class="bwseg'+(v===cur?' on':'')+'" data-'+a+'="'+v+'">'+l+'</button>').join("")+'</div></div>'; }
 function folVary(evs,vr){ if(vr.kind==="octave") return evs.map(e=>Object.assign({},e,{midi:e.midi+12}));
   if(vr.kind==="sparse") return vr.onBeat?evs:[];
   const out=[]; for(const e of evs){ out.push(e); out.push(Object.assign({},e,{midi:folThird(e.midi),g:e.g*0.8})); } return out; }
@@ -16807,8 +16831,8 @@ function gtrFollow(p2,at,vr){
   const evs=panTones(p2); if(!evs.length) return;
   const sh=GTR_FOLLOW_SHIFT[gtrReg]||0;
   for(const s of (GTR.fol||[])) gtrChoke(s,at-0.004,0.03);   // the last doubled notes give way
-  GTR.fol=[]; const used=new Set();
-  for(const {midi,g,stac} of (vr?folVary(evs,vr):evs)){ let m=midi+sh; while(m>GTR_REACH) m-=12; while(m<GTR_OPEN[0]) m+=12; let best=null;
+  GTR.fol=[]; const used=new Set(), pc=gtrVoi==="uni"?null:folPcs(p2);   // the chord, for a harmony (patches/handpan-voice.py)
+  for(const {midi,g,stac} of (vr?folVary(evs,vr):evs)){ let m=folHarm(midi,pc,gtrVoi,gtrReg==="auto"||gtrReg==="mid")+sh; while(m>GTR_REACH) m-=12; while(m<GTR_OPEN[0]) m+=12; let best=null;
     const home=GTR.fpos!=null?GTR.fpos:(({auto:3,open:2,mid:5,high:7})[gtrReg]||3);   // the hand where the register sits (30 Sep 2026)
     for(let s=0;s<6;s++){ if(used.has(s)) continue; const fr=m-GTR_OPEN[s]; if(fr<0||fr>19) continue;
       const c=Math.abs(fr-home); if(!best||c<best.c) best={s,fr,c}; }
@@ -16824,7 +16848,8 @@ function pnoFollow(p2,at,vr){
   const evs=panTones(p2); if(!evs.length) return;
   const sh=PNO_FOLLOW_SHIFT[pnoReg]!=null?PNO_FOLLOW_SHIFT[pnoReg]:12;
   pnoRelease(at);                                             // the last doubled notes give way
-  for(const {midi,g,stac} of (vr?folVary(evs,vr):evs)) pnoNote(midi+sh,at+Math.random()*0.004,Math.min(1,0.55*g),stac?0.12:undefined);
+  const pc=pnoVoi==="uni"?null:folPcs(p2);   // the chord, for a harmony (patches/handpan-voice.py)
+  for(const {midi,g,stac} of (vr?folVary(evs,vr):evs)) pnoNote(folHarm(midi,pc,pnoVoi,pnoReg==="around")+sh,at+Math.random()*0.004,Math.min(1,0.55*g),stac?0.12:undefined);
 }
 /* THE PATTERNS FOLLOW THE TABLE'S FEEL (David, 29-30 Sep 2026: "The patterns have to adapt to the timing"; "Many of the
    instrument patterns should go over 2 bars" in 2/4; patches/feel-guitar.py). ONE RULE, one function: a pattern is
@@ -16922,16 +16947,17 @@ const GTR_PICK_RATE=new Set(["travis","rolling","pinch","classical"]);
 const GTR_PICK_LINES=new Set(["arpth","arppk","arpcv"]);   // lines listed in Picking: Picking's Rate, Even (patches/guitar-pedals-to-picking.py)   // Picking's Rate: these run (Varied turns them)
 /* the card's Rate | Range | Rhythm, in one row, and their state per chosen pattern */
 function gtrCtlHTML(c){ const s2=(L,a,cur)=>'<div class="pal bwsw gsty two">'+L.map(([v,l])=>'<button class="bwseg'+(v===cur?' on':'')+'" data-'+a+'="'+v+'">'+l+'</button>').join("")+'</div>';
-  if(c==="pick") return ctrio([["Rate",s2(SYN_RATES,"gpr",gtrPRate)]],2);
+  if(c==="pick") return ctrio([["Rate",s2(SYN_RATES,"gpr",gtrPRate)]],2)+folVoiceRow("gvo",gtrVoi);   /* Voice, for Handpan (patches/handpan-voice.py) */
   if(c==="arp") return ctrio([["Rate",s2(SYN_RATES,"gra",gtrARate)],["Rhythm",s2(ARP_RHY,"grh",gtrArh)]]);
   return ""; }
 function gtrCtlPaint(pop){ if(!pop) return; const I=gtrItemOf(gtrStyle,gtrStrum,gtrPick), line=!!SYN_ARP[gtrStyle], fig=GTR_FIG8.has(gtrStyle);
   const arpIn=I&&I.c==="arp", pickIn=I&&I.c==="pick", pickRun=(gtrStyle==="pick"&&(GTR_PICK_RATE.has(gtrPick)||gtrPick==="varied"))||GTR_PICK_LINES.has(gtrStyle);
   pop.querySelectorAll("[data-gra]").forEach(b=>{ b.disabled=arpIn&&!(line||fig); });
-  pop.querySelectorAll("[data-grh]").forEach(b=>{ b.disabled=arpIn&&!line; });
-  pop.querySelectorAll("[data-gpr]").forEach(b=>{ b.disabled=pickIn&&!pickRun; }); }
-function gtrCtlSet(a,v){ if(a==="gra") gtrARate=v; else if(a==="gpr") gtrPRate=v; else if(a==="grh") gtrArh=v; else return;
-  try{ localStorage.setItem({gra:"hps.gtrarate",gpr:"hps.gtrprate",grh:"hps.gtrarhy"}[a],v); }catch(e){} }
+  pop.querySelectorAll("[data-grh]").forEach(b=>{ b.disabled=arpIn&&!(line&&!ARP_OWN_RHY.has(gtrStyle)); });
+  pop.querySelectorAll("[data-gpr]").forEach(b=>{ b.disabled=pickIn&&!pickRun; });
+  pop.querySelectorAll("[data-gvo]").forEach(b=>{ b.disabled=pickIn&&gtrStyle!=="pan"; }); }
+function gtrCtlSet(a,v){ if(a==="gra") gtrARate=v; else if(a==="gpr") gtrPRate=v; else if(a==="grh") gtrArh=v; else if(a==="gvo") gtrVoi=v; else return;
+  try{ localStorage.setItem({gra:"hps.gtrarate",gpr:"hps.gtrprate",grh:"hps.gtrarhy",gvo:"hps.gtrvoice"}[a],v); }catch(e){} }
 /* SIXTEENTH-NOTE ARPEGGIOS (David, 2 Oct 2026: "We need some 16th note arpeggio options for guitar"; patches/guitar-arp-sixteenths.py):
    a note every sixteenth of the table's feel; B the shape's bass, T its top three strings low to high */
 const GTR_A16=new Set(["a16ud","a16rise","a16fall","a16brk","a16bass","a16x"]);
@@ -17502,9 +17528,9 @@ const PNO_GROUPS=[["sus","Sustained",[["held","Held"],["pad","Pad"],["rolled","R
   ["funk","Funk",[["fkclav","Clav sixteenths"],["fke2","The e of 2"],["fkdbl","Double stabs"],["fkrock","Rocking"],["fkleft","Left one, right answer"],["fkfree","Free funk"]]],   /* (David, 6 Oct 2026; patches/piano-funk.py) */
   ["latin","Latin & world",[["montuno","Montuno"],["332","Tresillo"],["tresst","Tresillo & straight"],["habanera","Habanera"],["tango","Tango"],["bossa","Bossa nova"],["samba","Samba"],["reggae","Reggae skank & bubble"],["chacha","Cha-cha"],["bolero","Bolero"]]],   /* Jazz and Latin & world their own groups (David, 5 Oct 2026; patches/accomp-styles.py) */
   ["arp","Arpeggio",[["arpu","Up"],["arpd","Down"],["arpud","Up-down"],["arpdu","Down-up"],["arpst","Stairs"],["arpth","Root pedal"],["arppk","Top pedal"],["arpcv","Outside in"],["arpbr","Broken"],["arp332","Up 3-3-2"],["arpsy","Syncopated"],
-    ["arp","Up & down"],["alberti","Broken chord"],["ostinato","Minimalist ostinato"],["interlock","Interlocking"],["cascade","Cascade"]]],   /* the lines and the piano's own (patches/piano-arp-lines.py) */
+    ["ostinato","Minimalist ostinato"],["interlock","Interlocking"],["cascade","Cascade"]]],   /* the lines and the piano's own (patches/piano-arp-lines.py) */
   ["roll","Rolled & flow",[["arp1","Single"],["offarp","Off-beat"],["arp2","On 2nd beat"],["arp2fall","On 2nd & fall"],["arpfl","First & last"],["arpflf","First, last, first"],
-    ["flow","Flow"],["flowsp","Flow sparse"],["flowch","Flow & chords"],["flowsolo","Flow & solo"],["flowcb","Flow, chords & bass"],["flowcbg","Flow, chords & bass, gentle"]]],
+    ["flow","Flow"],["flowsp","Flow sparse"],["flowch","Flow & chords"],["flowsolo","Flow & solo"],["flowcb","Flow, chords & bass"]]],   /* its gentle is the Dynamics switch (patches/piano-flowcb-one.py) */
   ["pan","Handpan",null]];
 const PNO_SECS={arp:{0:["Lines","as the strings and synths play them"],11:["The piano's own",""]},roll:{0:["Rolled",""],6:["Flow",""]}};   /* (patches/piano-arp-lines.py) */
 PNO_STYLES.push(["arpu","Arpeggio up"],["arpd","Arpeggio down"],["arpud","Arpeggio up-down"],["arpdu","Arpeggio down-up"],["arpst","Arpeggio stairs"],["arpth","Arpeggio root pedal"],["arppk","Arpeggio top pedal"],["arpcv","Arpeggio outside in"],["arpbr","Arpeggio broken"],["arp332","Arpeggio up 3-3-2"],["arpsy","Arpeggio syncopated"]);
@@ -17524,9 +17550,17 @@ function pnoArpFrom(p2,rel,m,sec,name){ const c=PNO.af, r=Math.max(0,rel); let b
 /* the card's Rate | Range | Rhythm in one row, greyed on the piano's own figures */
 function pnoCtlHTML(g){ if(g!=="arp") return "";
   const s2=(L,a,cur)=>'<div class="pal bwsw gsty two">'+L.map(([v,l])=>'<button class="bwseg'+(v===cur?' on':'')+'" data-'+a+'="'+v+'">'+l+'</button>').join("")+'</div>';
-  return ctrio([["Rate",s2(SYN_RATES,"pra",pnoARate)],["Range",s2(octShort(STR_OCTS),"pro",pnoOct)],["Rhythm",s2(ARP_RHY,"prh",pnoArh)]]); }
-function pnoCtlPaint(pop){ if(!pop) return; const off=pnoGroupOf(pnoStyle)==="arp"&&!SYN_ARP[pnoStyle];
-  pop.querySelectorAll("[data-pra],[data-pro],[data-prh]").forEach(b=>{ b.disabled=off; }); }
+  return ctrio([["Rate",s2(SYN_RATES,"pra",pnoARate)],["Range",s2(octShort(STR_OCTS),"pro",pnoOct)],["Rhythm",s2(ARP_RHY,"prh",pnoArh)]])
+    +ctrio([["Pedal",s2([["off","Off"],["on","On"]],"prp",pnoAPed)]],3); }   /* Pedal On | Off, one cell wide (patches/piano-line-pedal.py) */
+/* THE PIANO'S OWN PATTERNS TAKE RATE AND RANGE, each starting where it sounded (patches/piano-own-rate-range.py) */
+const PNO_OWN={ostinato:{rate:"8",oct:"1"},interlock:{rate:"16",oct:"1"},cascade:{rate:"16",oct:"1"}};
+function pnoOwnSet(pop){ const o=PNO_OWN[pnoStyle]; if(!o) return; pnoARate=o.rate; pnoOct=o.oct;
+  try{ localStorage.setItem("hps.pnoarate",pnoARate); localStorage.setItem("hps.pnooct",pnoOct); }catch(e){}
+  if(pop){ pop.querySelectorAll("[data-pra]").forEach(x=>x.classList.toggle("on",x.dataset.pra===pnoARate)); pop.querySelectorAll("[data-pro]").forEach(x=>x.classList.toggle("on",x.dataset.pro===pnoOct)); } }
+function pnoCtlPaint(pop){ if(!pop) return; const inA=pnoGroupOf(pnoStyle)==="arp", line=!!SYN_ARP[pnoStyle], own=!!PNO_OWN[pnoStyle];
+  pop.querySelectorAll("[data-pra],[data-pro]").forEach(b=>{ b.disabled=inA&&!(line||own); });
+  pop.querySelectorAll("[data-prh]").forEach(b=>{ b.disabled=inA&&!(line&&!ARP_OWN_RHY.has(pnoStyle)); });
+  pop.querySelectorAll("[data-prp]").forEach(b=>{ b.disabled=inA&&!line; }); }
 
 /* THE NEW STYLES' TABLES (David, 5 Oct 2026; patches/accomp-styles.py): sixteen steps a four-beat bar - B the bass's root, F its
    fifth, b / f the same with the chord, x the chord, o a bubble (the chord's lowest note, soft and short), s the chord held half its space (patches/piano-tresillo.py) */
@@ -17874,12 +17908,14 @@ function pnoPulse(p2,rel,m,sec,at,free){
       if(T==null) return;
       for(let j=0;j<n8;j++){ tAt=at+j*bS/n8; const v=j===0?(ci===0?0.42:0.38):0.32; pnoNote(T,hum(),v,bS/n8*0.9); pnoNote(T-12,hum(),v*0.85,bS/n8*0.9); }
       tAt=at; return; }
-    if(st==="ostinato"){ if(fresh||ci===0) pnoRelease(at); const P=[low].concat(ch).sort((a,b)=>a-b), I=[0,1,2,3,2,1,2,3];   // one figure, voice-led
-      for(let j=0;j<n8;j++){ tAt=at+j*bS/n8; const e8=ci*n8+j; pnoNote(P[Math.min(P.length-1,I[e8%8])],hum(),e8===0?0.46:j===0?0.4:0.36); }
+    if(st==="ostinato"){ if(fresh||ci===0) pnoRelease(at); const w2=pnoOct==="2", P=w2?[...new Set([low].concat(ch,ch.map(x=>x+12)))].sort((a,b)=>a-b):[low].concat(ch).sort((a,b)=>a-b), I=w2?[0,1,2,3,4,5,4,3]:[0,1,2,3,2,1,2,3];   // Range 2 oct: two notes further (patches/piano-own-rate-range.py)   // one figure, voice-led
+      const N8=n8*(pnoARate==="16"?2:1);   // Rate 16ths: the figure twice as fast
+      for(let j=0;j<N8;j++){ tAt=at+j*bS/N8; const e8=ci*N8+j; pnoNote(P[Math.min(P.length-1,I[e8%8])],hum(),e8===0?0.46:j===0?0.4:0.36); }
       tAt=at; return; }
     if(st==="cascade"){ if(!(fresh||PH.first)) return; pnoRelease(at);   // a run down the chord where it changes, then quiet
-      const D=[...new Set(ch.concat([ch[0]+12,(ch[1]!=null?ch[1]:ch[0])+12]))].sort((a,b)=>b-a).slice(0,6), s16=pd*m.sub*((piece.unit||4)/16), t0=hum();
-      D.forEach((x,k)=>pnoNote(x,t0+k*s16,0.44-0.03*k)); pnoNote(low,t0+D.length*s16,0.36); return; }
+      const w2=pnoOct==="2", D=(w2?[...new Set(ch.concat(ch.map(x=>x+12),[ch[0]+24]))].sort((a,b)=>b-a).slice(0,9):[...new Set(ch.concat([ch[0]+12,(ch[1]!=null?ch[1]:ch[0])+12]))].sort((a,b)=>b-a).slice(0,6)),
+        s16=pd*m.sub*((piece.unit||4)/16)*(pnoARate==="8"?2:1), t0=hum();   // Rate 8ths: the run in eighths; Range 2 oct: from two octaves up (patches/piano-own-rate-range.py)
+      D.forEach((x,k)=>pnoNote(x,t0+k*s16,Math.max(0.2,0.44-0.03*k))); pnoNote(low,t0+D.length*s16,0.36); return; }
   }
   if(st==="bchord"){ if(PNO.puTo&&at>=PNO.puFrom-1e-4&&at<PNO.puTo-1e-4) return;   /* BASS & CHORD (patches/piano-bass-chord.py): each rings to the next bar or chord */
     const E=pnoBcPlan(p2,rb,m,sec), e=E.find(x=>x.q===rb); if(!e) return;
@@ -18027,7 +18063,7 @@ function pnoPulse(p2,rel,m,sec,at,free){
       /* THREE WAYS (David, 4 Oct 2026: "it may be the complete phrase ... a harmonization of the melody (fitting to the
          current chord) or only the rhythm of the phrase integrated into an arpeggio"; patches/piano-flow-phrase-ways.py) */
       const fpWay=b=>{ const r=passDraw("pnophr",b*64,1); return r<0.4?"whole":r<0.7?"harm":"arp"; }, md=v=>((v%12)+12)%12;
-      const fpPlay=(src,v0,b,s0,w)=>{ const T=panTones(src); if(!T.length) return; const t0=hum(), way=w||fpWay(b); PNO.gk=st==="flowcbg"?0.7:1;   /* the gentle's melodies nearer the accompaniment (patches/piano-gentle-balance.py) */
+      const fpPlay=(src,v0,b,s0,w)=>{ const T=panTones(src); if(!T.length) return; const t0=hum(), way=w||fpWay(b); PNO.gk=st==="flowcbg"||(st==="flowcb"&&pnoDyn==="gentle")?0.7:1;   /* the gentle's melodies nearer the accompaniment (patches/piano-gentle-balance.py) */
         const vel=e=>Math.min(0.56,v0+0.1*Math.min(1,e.g||0)), len=e=>e.stac?1.2*s16:fcBeat*pd*0.9;
         if(way==="arp"){ let k=0; for(let s=s0;s<src;s++) if(panTones(s).length) k++;   /* the phrase's k-th stroke: the arpeggio's k-th note, up and back down */
           const L=pool.length, per=Math.max(1,2*L-2), i=k%per; pnoNote(pool[i<L?i:per-i],t0,vel(T[0]),len(T[0])); }
@@ -18148,23 +18184,25 @@ function pnoPulse(p2,rel,m,sec,at,free){
      (a short one half as long); Neo-soul in its extended chords, a little late; Interlocking two hands in sixteenths */
   /* THE LINES (David, 27 Oct 2026; (patches/piano-arp-lines.py)): the strings' and synths' arpeggios on the piano - the chord as
      voiced over Range's octaves and the root on top (pnoLinePool), counted from where the chord began, a note each eighth or
-     sixteenth, each ringing to the next */
+     sixteenth - pedalled as the older arpeggios: each note rings, the pedal cleared at the bar line and at each new chord
+     (David, 27 Oct 2026: "Pedal the piano's lines like the older arpeggios") */
   if(SYN_ARP[st]){ const fast=pnoARate==="16", from=pnoArpFrom(p2,rel,m,sec,name), bi=Math.floor(Math.max(0,rel)/m.bp+1e-9), N=pnoOct==="1"?1:2, A=SYN_ARP[st];
     const base=[...new Set(ch.concat(ch[0]+12))].sort((a,b)=>a-b); let P=null;
     for(const tk of ticks16){ if(!fast&&tk.s%2) continue; tAt=at+tk.dt; if(PNO.puTo&&tAt>=PNO.puFrom-1e-4&&tAt<PNO.puTo-1e-4) continue;
       if(tk.first||(fresh&&tk.dt<1e-6)) pnoRelease(tAt);
       if(!P) P=pnoLinePool(ch,st,tk,fast);
       const n=P.length, i=Math.max(0,bi*tk.nb*4+tk.ci*4+tk.s-from)>>(fast?0:1), j=A.f(i,n,N); if(j<0) continue;
-      let d=1; while(d<8&&A.f(i+d,n,N)<0) d++;
       const x=Array.isArray(j)?base[Math.min(base.length-1,j[0])]+12*j[1]:P[Math.max(0,Math.min(n-1,j))];
-      pnoNote(x,hum(),i===0?0.55:tk.s===0?0.47:0.42,(tk.dur/4)*(fast?1:2)*d*0.95); }
+      if(pnoAPed==="off"){ let d=1; while(d<8&&A.f(i+d,n,N)<0) d++; pnoNote(x,hum(),i===0?0.55:tk.s===0?0.47:0.42,(tk.dur/4)*(fast?1:2)*d*0.95); }   // Pedal Off: dry, to the next note (patches/piano-line-pedal.py)
+      else pnoNote(x,hum(),i===0?0.55:tk.s===0?0.47:0.42); }
     return; }
   if(PNO_F16[st]||st==="interlock"){
     const s16=pd*m.sub*((piece.unit||4)/16), bassN=(bassOn?48:36)+pcs[0], bv=bassOn?0.4:0.52, f=PNO_F16[st];
     let notes=ch; if(st==="neosoul"){ const jp=jazzColourPCs(name); if(jp) notes=pnoVoicing(jp,lo,hi,ch); }
     let fkV=null; if(f&&f.fk){ const J=jazzColourPCs(name)||[pcs[0],pcs[1],pcs[2],pcs[1]]; fkV=pnoVoicing([J[1],J[3],J[4]!=null?J[4]:J[2]],lo,hi,PNO.fkv)||ch; PNO.fkv=fkV; }   /* funk: the 3rd, the 7th, the colour (patches/piano-funk.py) */
     for(const tk of ticks16){ tAt=at+tk.dt; if(PNO.puTo&&tAt>=PNO.puFrom-1e-4&&tAt<PNO.puTo-1e-4) continue; const k=(tk.beat*4+tk.s)%16;
-      if(st==="interlock"){ const n=ch.length, a=ch[Math.max(0,n-3)], b=ch[Math.max(0,n-2)], c=ch[n-1]; pnoNote([c,a,b,a][k%4],hum(),k%4===0?0.36:0.3,s16*1.6); continue; }
+      if(st==="interlock"){ const sl=pnoARate==="8"; if(sl&&k%2) continue; const q=sl?k>>1:k, n=ch.length, a=ch[Math.max(0,n-3)], b=ch[Math.max(0,n-2)], c=ch[n-1]+(pnoOct==="2"?12:0);   // Rate 8ths: half as fast; Range 2 oct: the top an octave up (patches/piano-own-rate-range.py)
+        pnoNote([c,a,b,a][q%4],hum(),q%4===0?0.36:0.3,s16*1.6*(sl?2:1)); continue; }
       const bq=Math.floor(rel/m.bp+1e-9), fig=f.a&&bq%2===1?f.a:f.f; let c=fig[k];   /* the second bar of a pair: the answer (patches/piano-funk.py) */
       if(f.fk&&pnoVisit&&(!c||c===".")&&passDraw("pnofk",bq*16+k,5)<actP("pno",bq%4===3?0.1:0.03)) c="g";   /* Live: now and then an extra ghost chord, mostly in the 4th bar - the pass rule (patches/piano-funk-live.py) */
       if(!c||c===".") continue;
@@ -18326,6 +18364,7 @@ const SYN_STEP=Object.assign({off:1,s332:1},Object.fromEntries(Object.keys(SYN_A
 const ARP_RHY=[["even","Even"],["sync","Uneven"]];
 /* COMPACT CONTROLS IN ONE ROW (David, 27 Oct 2026: "I like that the 3 switches are in 1 row, let's do that for the string
    ensemble as well"; (patches/guitar-arp-lines.py)): [title, a two-choice control] each; n columns, so one can take half the row */
+const ARP_OWN_RHY=new Set(["arp332","arpsy"]);   // Up 3-3-2 and Syncopated keep their own rhythm: Even | Uneven means nothing to them (patches/grey-unused-switches-2.py)
 function ctrio(L,n){ const W=L.map(x=>x[2]||1).concat(Array(Math.max(0,(n||L.length)-L.length)).fill(1));   /* a cell: at least its own labels, then its share of what is left (patches/synth-switches-row.py) */
   return '<div class="ctrio" style="grid-template-columns:'+W.map(w=>'minmax(max-content,'+w+'fr)').join(' ')+'">'+L.map(([t,s])=>'<div><div class="ttl">'+t+'</div>'+s+'</div>').join("")+'</div>'; }
 const octShort=L=>L.map(([k,l])=>[k,l.replace(/ octaves?$/," oct")]);   /* labelled Even | Uneven (David, 25 Oct 2026: "let's rename the rhythm labels to even/uneven"); the stored value stays "sync" */
@@ -18476,6 +18515,10 @@ function strRelease(t){ for(const h of STR.held){ if(h.end<=t) continue;
 function strEnvAt(E,t){ if(t<=E[0][0]) return E[0][1];
   for(let i=1;i<E.length;i++) if(t<=E[i][0]){ const [a,x]=E[i-1], [b,y]=E[i]; return b>a?x+(y-x)*(t-a)/(b-a):y; }
   return E[E.length-1][1]; }
+/* AN ARPEGGIO FOLLOWS VOICING (David, 27 Oct 2026: "make the strings' arpeggios follow Close/Wide too, as the piano's do";
+   (patches/strings-arp-voicing.py)): Wide lifts the chord's second note an octave, as the piano's Wide - the line runs through the open
+   voicing; Close leaves it */
+function strArpWide(ch){ if(strVoi!=="wide"||ch.length<3) return ch; const c=ch.slice(); c[1]+=12; return c.sort((a,b)=>a-b); }
 function strChord(pcs,name){ const [lo,hi]=PNO_WIN[strReg]||PNO_WIN.around;
   if(!STR.vc||STR.vc.name!==name||STR.vc.lo!==lo) STR.vc={name,lo,v:pnoVoicing(pcs,lo,hi,STR.vc&&STR.vc.v)};   // the piano's voice leading
   return STR.vc.v.slice(); }
@@ -18525,7 +18568,7 @@ function strLine(p2,rel,m,sec,at,pd,name,pcs,st,lay){
   const cbR=strRoot(pcs[0],W[0]-1), rbar=((rel%m.bp)+m.bp)%m.bp, cbOk=!lay&&strCbOn()&&st!=="oompah"&&st!=="cello";   /* THE DOUBLE BASS UNDER A PATTERN (David, 26 Oct 2026: "rhythm patterns: each bar's first beat. arpeggios: it takes the place of the first note" - then "it should double the 1st note"; patches/strings-swell-cb.py): the root an octave under the cellos at each bar's start and each chord's */
   STR.cbw=cbOk&&(rbar===0||rel===0||chordInForceAt(p2-1,sec,m)!==name)?true:cbOk?!!STR.cbw:false;
   for(const tk of feelTicks(m,rel,pd)){ const t=at+tk.dt, six=tk.dur/4, e8=(tk.k>>1)%8, acc=tk.s===0?0.8:0.6;
-    if(!ch){ ch=strChord(pcs,name); pool=strArpPool(ch.map(x=>x+up),ls,st,tk,fast); if(st==="arppk"&&pool[0]-12>=36) pool=pool.map(x=>x-12);   /* Top pedal an octave lower (David, 25 Oct 2026: "Top pedal seems to sit too high"; patches/strings-top-pedal.py) */ base=[...new Set(ch.map(x=>x+up).concat(ch[0]+up+12))].sort((a,b)=>a-b);
+    if(!ch){ ch=strChord(pcs,name); const ac=strArpWide(ch); pool=strArpPool(ac.map(x=>x+up),ls,st,tk,fast); if(st==="arppk"&&pool[0]-12>=36) pool=pool.map(x=>x-12);   /* Top pedal an octave lower (David, 25 Oct 2026: "Top pedal seems to sit too high"; patches/strings-top-pedal.py) */ base=[...new Set(ac.map(x=>x+up).concat(ac[0]+up+12))].sort((a,b)=>a-b);
       rc=lay?ch.map(x=>x+up):strVoiced(pcs,name).slice(1).map(x=>x[0]); }   // a Rhythm style's chord: the voicing above the root; a layered line: close
     const chord=(v,d,s)=>rc.forEach((x,i)=>strNote(x,t+i*0.004,art,v,ring(d),{sec:s,g:0.7*rg}));   // a pulsing chord 3 dB under a line: eighths of four-note chords came out 5 dB over the pad
     if(SYN_ARP[st]){ if(!fast&&tk.s%2) continue;
@@ -18735,10 +18778,10 @@ function synFollow(p2,at){   // the handpan's basic pattern (panTones), the patt
   if(!synReady()) return;
   if(SYN.ctx!==ctx||at<SYN.last-0.05||at-SYN.last>2.5){ SYN.chord=null; SYN.held=[]; SYN.ctx=ctx; SYN.vc=null; }
   SYN.last=at; SYN.chord=null;
-  const evs=panTones(p2,true); if(!evs.length) return;   // the written pattern, not Live's variation (David, 14 Oct 2026; patches/synth-follow-plus.py)
+  const evs=panTones(p2,true); if(!evs.length) return; const pc=synVoi==="uni"?null:folPcs(p2);   // the written pattern, not Live's variation (David, 14 Oct 2026; patches/synth-follow-plus.py)
   const sh=SYN_FOLLOW_SHIFT[synReg]!=null?SYN_FOLLOW_SHIFT[synReg]:0, P=synSound();
   synRelease(at);                                             // the last doubled notes give way
-  for(const {midi,g,stac} of evs) synNote(midi+sh,at,Math.min(1,.8*g),stac?.15:2.5,Math.min(P.a,.05));
+  for(const {midi,g,stac} of evs) synNote(folHarm(midi,pc,synVoi,synReg==="around")+sh,at,Math.min(1,.8*g),stac?.15:2.5,Math.min(P.a,.05));
 }
 /* HANDPAN PLUS (David, 14 Oct 2026: "a pattern that is based on the handpan pattern but then fills the gaps with extra
    notes of its own that sound nice ... maybe a higher pedal of the octave"; patches/synth-follow-plus.py): the written
@@ -18749,9 +18792,9 @@ function synFollowPlus(p2,rel,m,sec,at){
   if(!synReady()) return;
   if(SYN.ctx!==ctx||at<SYN.last-0.05||at-SYN.last>2.5){ SYN.chord=null; SYN.held=[]; SYN.ctx=ctx; SYN.vc=null; SYN.fp=null; }
   SYN.last=at; SYN.chord=null;
-  const sh=SYN_FOLLOW_SHIFT[synReg]!=null?SYN_FOLLOW_SHIFT[synReg]:0, P=synSound(), evs=panTones(p2,true);
+  const sh=SYN_FOLLOW_SHIFT[synReg]!=null?SYN_FOLLOW_SHIFT[synReg]:0, P=synSound(), evs=panTones(p2,true), pc=synVoi==="uni"?null:folPcs(p2);
   if(evs.length){ synRelease(at);
-    for(const {midi,g,stac} of evs) synNote(midi+sh,at,Math.min(1,.8*g),stac?.15:2.5,Math.min(P.a,.05));
+    for(const {midi,g,stac} of evs) synNote(folHarm(midi,pc,synVoi,synReg==="around")+sh,at,Math.min(1,.8*g),stac?.15:2.5,Math.min(P.a,.05));
     SYN.fp={p:p2,top:Math.max(...evs.map(e=>e.midi))+sh,g:Math.max(...evs.map(e=>e.g)),k:0}; return; }
   const F=SYN.fp; if(!F||p2<=F.p||p2-F.p>m.bp) return;                     // nothing to answer, or a bar of silence
   const step=m.sub%2===0?m.sub/2:m.sub; if((p2-F.p)%step) return;            // the eighths after the last stroke
@@ -21163,7 +21206,7 @@ function bassRedraw(){
   BASSPLAN=null; render(); if(editing) renderEditbar();
   if(window.paintBass) paintBass();   // the tooltip names the style
   const box=document.getElementById("bassStyleBox"); if(box) box.innerHTML=bassStyleMenuInner();
-  const pb=document.getElementById("bassPuBox"); if(pb){ pb.innerHTML=bassPuRowHTML(); pb.hidden=!puShown("bass"); }   /* (patches/freedom-five-levels.py) */
+  const pb=document.getElementById("bassPuBox"); if(pb){ pb.innerHTML=bassPuRowHTML(); pb.hidden=!puShown("bass"); const cp=pb.closest(".pop.card"); if(cp) cardGreyUnused(cp); }   // its fresh buttons greyed as the table says (patches/grey-unused-switches-2.py)   /* (patches/freedom-five-levels.py) */
 }
 document.addEventListener("click",e=>{
   const t=e.target&&e.target.closest; if(!t) return;
@@ -22836,7 +22879,7 @@ let gtrDeg=(()=>{ let v=3; try{ v=+(localStorage.getItem("hps.gtrdeg")||3); }cat
 let gtrReg=(()=>{ try{ const v=localStorage.getItem("hps.gtrreg"); return v==="open"||v==="mid"||v==="high"?v:"auto"; }catch(e){ return "auto"; } })();   // Auto | Open | Mid-neck | High; Auto (the old Normal) the default, a stored Normal takes it (30 Sep 2026)   // the guitar's register (29 Sep 2026)
 let gtrPick=(()=>{ let s=null; try{ s=localStorage.getItem("hps.gtrpick"); }catch(e){} return GTR_PICKS.some(x=>x[0]===s)?s:"travis"; })();   // Picking's pattern (28 Sep 2026)
 const gtrLs0=(k,ok,d)=>{ let v=null; try{ v=localStorage.getItem(k); }catch(e){} return ok.includes(v)?v:d; };   /* Rate, Range, Rhythm (patches/guitar-arp-lines.py) */
-let gtrARate=gtrLs0("hps.gtrarate",["8","16"],"16"), gtrPRate=gtrLs0("hps.gtrprate",["8","16"],"8"), gtrArh=gtrLs0("hps.gtrarhy",["even","sync"],"even");
+let gtrARate=gtrLs0("hps.gtrarate",["8","16"],"16"), gtrPRate=gtrLs0("hps.gtrprate",["8","16"],"8"), gtrArh=gtrLs0("hps.gtrarhy",["even","sync"],"even"), gtrVoi=gtrLs0("hps.gtrvoice",FOL_VOICES.map(x=>x[0]),"uni");
 const GTR_GP_OLD={arp:"arpud",a16ud:"arpud",a16rise:"arpu",a16fall:"arpd"};   // the four the lines replaced: a preset token presses its line
 { const M={arp:"8",a16ud:"16",a16rise:"16",a16fall:"16"}[gtrStyle];   // the menu's own setting moves once, as it sounded
   if(M){ gtrStyle=GTR_GP_OLD[gtrStyle]; gtrARate=M;
@@ -22847,14 +22890,18 @@ let gtrPan=mixGet("hps.gtrpan",0,-100,100), gtrRev=mixGet("hps.gtrrev",18,0,60);
 let bassPan=mixGet("hps.basspan",0,-100,100), bassRev=mixGet("hps.bassrev",0,0,60);
 /* THE PIANO'S SETTINGS (28 Sep 2026): its style, register, volume, pan and reverb one setting per device, as the guitar's */
 let pnoOn=false;
-let pnoARate=gtrLs0("hps.pnoarate",["8","16"],"8"), pnoOct=gtrLs0("hps.pnooct",["1","2"],"2"), pnoArh=gtrLs0("hps.pnoarhy",["even","sync"],"even");   /* Rate, Range, Rhythm (patches/piano-arp-lines.py) */
+let pnoARate=gtrLs0("hps.pnoarate",["8","16"],"8"), pnoOct=gtrLs0("hps.pnooct",["1","2"],"2"), pnoArh=gtrLs0("hps.pnoarhy",["even","sync"],"even"), pnoAPed=gtrLs0("hps.pnoaped",["on","off"],"on"), pnoVoi=gtrLs0("hps.pnovoice",FOL_VOICES.map(x=>x[0]),"uni");   /* Rate, Range, Rhythm (patches/piano-arp-lines.py) */
 let pnoStyle=(()=>{ let s=null; try{ s=localStorage.getItem("hps.pnostyle"); }catch(e){} return PNO_STYLES.some(x=>x[0]===s)?s:"ballad"; })();
+const PNO_PS_OLD={arp:"arpud",alberti:"arpbr"};   /* Up & down and Broken chord left the list: each its nearest line (patches/piano-drop-two-arps.py) */
+try{ if(PNO_OWN[pnoStyle]&&!localStorage.getItem("hps.pnoown1")){ pnoOwnSet(null); localStorage.setItem("hps.pnoown1","1"); } }catch(e){}   /* (patches/piano-own-rate-range.py) */
+if(PNO_PS_OLD[pnoStyle]){ pnoStyle=PNO_PS_OLD[pnoStyle]; pnoARate="8"; try{ localStorage.setItem("hps.pnostyle",pnoStyle); localStorage.setItem("hps.pnoarate",pnoARate); }catch(e){} }
 let pnoWide=(()=>{ try{ return localStorage.getItem("hps.pnowide")==="1"; }catch(e){ return false; } })();   // the piano's voicing: Close | Wide (29 Sep 2026)
 /* THE PIANO'S DYNAMICS: Normal | Gentle (David, 7 Oct 2026; patches/piano-dynamics.py, piano-dynamics-quieter.py,
    piano-gentle-natural.py) - a Gentle note 0.2 softer, the recording a softer touch chooses, at that recording's own
    level; the gentle Flow pattern keeps its own tenth and x1.24 (4 Oct) - Gentle, when set, governs; on a piano with one
    recording per note, the same recording at 0.8 (patches/piano-gentle-rhodes.py) */
 let pnoDyn=(()=>{ try{ return localStorage.getItem("hps.pnodyn")==="gentle"?"gentle":"normal"; }catch(e){ return "normal"; } })();
+if(pnoStyle==="flowcbg"){ pnoStyle="flowcb"; pnoDyn="gentle"; try{ localStorage.setItem("hps.pnostyle",pnoStyle); localStorage.setItem("hps.pnodyn",pnoDyn); }catch(e){} }   /* the gentle row is Flow, chords & bass with Dynamics Gentle (patches/piano-flowcb-one.py) */
 const PNO_GENTLE=0.2, PNO_ONE_LAYER=new Set(["rhodes","dx7"]);   // no soft layer the piano reaches: the DX7's notes already sit on its softest (David, 7 Oct 2026: "DX7 also 0.8")
 function pnoStep(){ return pnoDyn==="gentle"?PNO_GENTLE:pnoStyle==="flowcbg"?0.1:0; }   // how much softer the touch
 let pnoLive=(()=>{ try{ return localStorage.getItem("hps.pnolive")==="1"; }catch(e){ return false; } })();   /* Live (patches/piano-live.py) */
@@ -22893,7 +22940,7 @@ let synOn=false;
 const synPick=(k,list,d)=>{ let s=null; try{ s=localStorage.getItem(k); }catch(e){} return list.some(x=>(x.id||x[0])===s)?s:d; };
 let synFree=synFreeRead("hps.synfree");   /* Freedom, 0 Off to 4 Jam (patches/synth-freedom.py) */
 let synSnd=synPick("hps.synsound",SYN_PRE,"warm"), synStyle=synPick("hps.synstyle",SYN_STYLES,"held"),
-    synReg=synPick("hps.synreg",PNO_REGS,"around"), synVc=synPick("hps.synvoicing",SYN_VOICINGS,"close"), synRate=synPick("hps.synrate",SYN_RATES,"8"), synOct=synPick("hps.synoct",SYN_OCTS,"2"), synArh=synPick("hps.synarhy",ARP_RHY,"even");   /* the arpeggios' rate (patches/synth-steps.py) */
+    synReg=synPick("hps.synreg",PNO_REGS,"around"), synVc=synPick("hps.synvoicing",SYN_VOICINGS,"close"), synRate=synPick("hps.synrate",SYN_RATES,"8"), synOct=synPick("hps.synoct",SYN_OCTS,"2"), synArh=synPick("hps.synarhy",ARP_RHY,"even"), synVoi=synPick("hps.synvoice",FOL_VOICES,"uni");   /* the arpeggios' rate (patches/synth-steps.py) */
 let synVol=mixGet("hps.synvol",100,0,225), synBright=mixGet("hps.synbright",100,40,250), synPan=mixGet("hps.synpan",0,-100,100), synRev=mixGet("hps.synrev",30,0,60);
 /* SYNTH 2 (David, 11 Oct 2026: "make synth 2 a toggle in the band menu"; patches/synth-2.py). ONE SYNTH, PLAYED TWICE: Synth 2
    is the synth's own code - its player, its card, its staff run, its export - run with Synth 2's settings in place of the
@@ -22921,13 +22968,13 @@ const SYN2={snd:synPick("hps.syn2sound",SYN2_SOUNDS.map(id=>[id]),"pluck"), styl
   reg:synPick("hps.syn2reg",PNO_REGS,"above"), vc:synPick("hps.syn2voicing",SYN_VOICINGS,"close"),
   vol:mixGet("hps.syn2vol",100,0,225), bright:mixGet("hps.syn2bright",100,40,250), P:{chord:null,held:[],last:-9,ctx:null,vc:null}};
 let syn2Pan=mixGet("hps.syn2pan",0,-100,100), syn2Rev=mixGet("hps.syn2rev",30,0,60);
-SYN2.free=synFreeRead("hps.syn2free");   /* Synth 2's own Freedom (patches/synth-freedom.py) */
+SYN2.free=synFreeRead("hps.syn2free"); SYN2.voi=synPick("hps.syn2voice",FOL_VOICES,"uni");   /* its Voice (patches/handpan-voice.py) */   /* Synth 2's own Freedom (patches/synth-freedom.py) */
 function synAs2(fn){ if(SYN_K==="syn2") return fn();
-  const S=[synSnd,synStyle,synRate,synOct,synReg,synVc,synVol,synBright,SYN,synFree,synArh];
-  [synSnd,synStyle,synRate,synOct,synReg,synVc,synVol,synBright,SYN,synFree,synArh]=[SYN2.snd,SYN2.style,SYN2.rate,SYN2.oct,SYN2.reg,SYN2.vc,SYN2.vol,SYN2.bright,SYN2.P,SYN2.free||0,SYN2.arh||"even"]; SYN_K="syn2";
+  const S=[synSnd,synStyle,synRate,synOct,synReg,synVc,synVol,synBright,SYN,synFree,synArh,synVoi];
+  [synSnd,synStyle,synRate,synOct,synReg,synVc,synVol,synBright,SYN,synFree,synArh,synVoi]=[SYN2.snd,SYN2.style,SYN2.rate,SYN2.oct,SYN2.reg,SYN2.vc,SYN2.vol,SYN2.bright,SYN2.P,SYN2.free||0,SYN2.arh||"even",SYN2.voi||"uni"]; SYN_K="syn2";
   try{ return fn(); }
-  finally{ [SYN2.snd,SYN2.style,SYN2.rate,SYN2.oct,SYN2.reg,SYN2.vc,SYN2.vol,SYN2.bright,SYN2.P,SYN2.free,SYN2.arh]=[synSnd,synStyle,synRate,synOct,synReg,synVc,synVol,synBright,SYN,synFree,synArh];
-    [synSnd,synStyle,synRate,synOct,synReg,synVc,synVol,synBright,SYN,synFree,synArh]=S; SYN_K="syn"; } }
+  finally{ [SYN2.snd,SYN2.style,SYN2.rate,SYN2.oct,SYN2.reg,SYN2.vc,SYN2.vol,SYN2.bright,SYN2.P,SYN2.free,SYN2.arh,SYN2.voi]=[synSnd,synStyle,synRate,synOct,synReg,synVc,synVol,synBright,SYN,synFree,synArh,synVoi];
+    [synSnd,synStyle,synRate,synOct,synReg,synVc,synVol,synBright,SYN,synFree,synArh,synVoi]=S; SYN_K="syn"; } }
 /* in the lists, or out of them: after the synth, wherever the synth is */
 function syn2Sync(){   /* the lists hold who is in the band: Synth 2 after the synth, the rest where the edition put them (patches/band-out.py) */
   if(!OUT_ALL){ const key=x=>Array.isArray(x)?x[0]:x, add=(L,item)=>{ const C=L.slice(); if(C.some(x=>key(x)==="syn2")) return C; const j=C.findIndex(x=>key(x)==="syn"); if(j>=0) C.splice(j+1,0,item); return C; };
@@ -27207,7 +27254,23 @@ document.addEventListener("click",ev=>{ const b=ev.target.closest&&ev.target.clo
 function gtrCabRowHTML(){ const cl=gtrSound==="clean"||gtrSound==="black", T=cl?GTR_CAMPS:GTR_AMPS, ks=(cl?["off"]:[]).concat(Object.keys(T)), cur=gtrCabNow();   // Amp (patches/guitar-hollow-funk-amp.py)
   return '<div class="ttl">Amp</div><div class="pal bwsw gsty" style="grid-template-columns:repeat('+ks.length+',1fr)">'
     +ks.map(q=>'<button class="bwseg'+(q===cur?' on':'')+'" data-gcab="'+q+'">'+(q==="off"?"Off":T[q].l)+'</button>').join("")+'</div>'; }
-function cardPlaySync(pop){ cardPreviewPaint(); cpLater(pop);
+/* A SWITCH THAT CHANGES NOTHING FOR THE PATTERN IN PLAY IS GREYED (David, 27 Oct 2026: "switches that don't affect a pattern
+   should be grayed out ... Please check this for all the instruments"; (patches/grey-unused-switches.py)): one table - a card, its switches,
+   and when they mean nothing; the cards' own greying (Rate, Range, Rhythm, Pedal, Voice, the bass's Pickup) stays theirs */
+/* the rows measured by the audit of 27 Oct 2026 (every pattern, every switch; (patches/grey-unused-switches-2.py)) */
+const CARD_UNUSED=[["pno","[data-pw],[data-pj]",()=>pnoStyle==="pan"||/^fk/.test(pnoStyle)],   // Handpan voices no chord; Funk its own colour and voicing
+  ["pno","[data-pr]",()=>["flowch","flowcb","flowsolo"].includes(pnoStyle)],   // the Flows with chords place themselves
+  ["pno","[data-pl]",()=>pnoStyle==="flowsolo"],   // Flow & solo leads in by itself
+  ["gtr","[data-gl]",()=>["flow","flowch","flowsolo","pan"].includes(gtrStyle)],   // the Flows and Handpan: their own pickups
+  ["syn","[data-sv]",()=>synGroupOf(synStyle)==="pan"],["syn2","[data-sv]",()=>synAs2(()=>synGroupOf(synStyle)==="pan")],   // the synths' Handpan and Handpan plus
+  ["syn","[data-sah]",()=>ARP_OWN_RHY.has(synStyle)],["syn2","[data-sah]",()=>synAs2(()=>ARP_OWN_RHY.has(synStyle))],
+  ["str","[data-tsh]",()=>ARP_OWN_RHY.has(strStyle)||strStyle==="padost"||strStyle==="padstab"],   // a pulse and stabs are not arpeggios
+  ["str","[data-tsa]",()=>strStyle==="padost"||strStyle==="padstab"],
+  ["bass","[data-bpu]",()=>["edoff","edroll"].includes(bassPieceStyle())]];   // EDM Off-beat and Rolling: no pickup
+/* greys what a row says, and un-greys only what it greyed itself (data-cu) - never a card's own greying */
+function cardGreyUnused(pop){ const k=pop.dataset.ck; for(const [c,sel,f] of CARD_UNUSED){ if(c!==k) continue; let off=false; try{ off=!!f(); }catch(e){}
+    pop.querySelectorAll(".cpage "+sel).forEach(b=>{ if(off){ b.disabled=true; b.dataset.cu="1"; } else if(b.dataset.cu){ b.disabled=false; delete b.dataset.cu; } }); } }
+function cardPlaySync(pop){ cardPreviewPaint(); cpLater(pop); cardGreyUnused(pop);
   pop.querySelectorAll(".frdm:not([data-frs])").forEach(f=>{ const a=f.dataset.fra, on=pop.querySelector('.cpage [data-'+a+'].on'), v=on?+on.getAttribute("data-"+a):0;
     f.querySelector("input").value=v; f.querySelector(".frval").textContent=(a==="hlv"?FREEDOM_SAYS_PAN:FREEDOM_SAYS)[v]||"";
     f.querySelector("input").disabled=!!pop.querySelector('.cpage [data-'+a+']:disabled'); });
@@ -27315,7 +27378,7 @@ function cardPageOf(el){
   if(el.classList&&el.classList.contains("pcmix")) return "play";   // the percussion's grid and instruments, on top of Play (patches/perc-presets-mixer.py)
   const t=el.classList&&el.classList.contains("ttl")?el:(el.querySelector?el.querySelector(".ttl"):null); if(!t) return null;
   const s=t.textContent.trim().toLowerCase();
-  if(/^(style|pattern|variation|live|pickup|groove|single note|percussion$|kit$|freedom|swing)/.test(s)) return "play";   // the Drums card's two parts (patches/kit-card.py)
+  if(/^(style|pattern|variation|live|pickup|groove|single note|percussion$|kit$|freedom|swing|voice$)/.test(s)) return "play";   // Voice, not Voicing (patches/handpan-voice.py)   // the Drums card's two parts (patches/kit-card.py)
   if(/^(volume|rhythm volume|percussion volume|kit volume|pan|reverb|staff|plays|bass line)/.test(s)) return "mix";
   return "sound"; }   // sound, register, voicing, colour, brightness, lowest note, tuning, effects
 /* THE PRESETS (David, 2 Oct 2026: "a simple preset page that the instrument opens with by default ... Then, they can select
@@ -27406,7 +27469,7 @@ const CARD_PRESETS={
   pno:[["Gentle",[
       ["Ballad","Sustained · above the pan","~pg=sus ps=ballad pr=above pw=0 pj=0 pv=2 pl=both psnd=grand pdyn=gentle",{}],
       ["Flowing arpeggio","Above the pan","~pg=arp ps=flow pr=above pw=0 pj=0 pv=2 pl=both psnd=grand pdyn=gentle",{}],
-      ["Broken chord","Around the pan","~pg=arp ps=alberti pr=around pw=0 pj=0 pv=2 pl=both psnd=grand pdyn=gentle",{}]]],
+      ["Broken chord","Broken, 8ths · around the pan","~pg=arp ps=arpbr pra=8 pr=around pw=0 pj=0 pv=2 pl=both psnd=grand pdyn=gentle",{}]]],
     ["Groove",[
       ["Pop pulse","Eighths · around the pan","~pg=rhy ps=pop8 pr=around pw=0 pj=0 pv=2 pl=both psnd=wurli pdyn=normal",{}],
       ["Reggae off-beat","Above the pan","~pg=rhy ps=off pr=above pw=0 pj=0 pv=2 pl=both psnd=wurli pdyn=normal",{}],
@@ -27563,7 +27626,7 @@ CARD_PRESETS.str=[["Pads",[
     ["Pad & stabs","a pad, short chords above","tsy=padstab tsv=wide tsa=8 tsb=spic tsr=around tsd=strong",{}]]]];
 const CP_BACK='<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M6.5 1.5L3 5l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const CP_NEXT='<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 1.5L7 5l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-function presetBtn(pop,t){ const q=t.replace(/^~/,"").split("="); if(q[0]==="gp"&&GTR_GP_OLD[q[1]]) q[1]=GTR_GP_OLD[q[1]];   /* (patches/guitar-arp-lines.py) */ return pop.querySelector('.cpage [data-'+q[0]+'="'+q[1]+'"]'); }
+function presetBtn(pop,t){ const q=t.replace(/^~/,"").split("="); if(q[0]==="gp"&&GTR_GP_OLD[q[1]]) q[1]=GTR_GP_OLD[q[1]]; if(q[0]==="ps"&&PNO_PS_OLD[q[1]]) q[1]=PNO_PS_OLD[q[1]]; if(q[0]==="ps"&&q[1]==="flowcbg") q[1]="flowcb";   /* (patches/guitar-arp-lines.py) */ return pop.querySelector('.cpage [data-'+q[0]+'="'+q[1]+'"]'); }
 function presetIs(pop,k,p){
   for(const t of p[2].split(" ")){ if(t[0]==="~"||t.startsWith("gdd=")||t.startsWith("gro=")) continue; const b=presetBtn(pop,t); if(!b) return false;   /* gdd: the retired tuning (patches/guitar-tuning-auto.py) */ if(b.disabled) continue; if(!b.classList.contains("on")) return false; }
   const F=fxOf(k).set; return GFX_PEDALS.every(([q])=>(F[q]||"off")===(p[3][q]||"off")); }
@@ -27586,7 +27649,7 @@ function cpSetLast(k,key){ try{ if(key) localStorage.setItem("hps.cardpre."+k,ke
 function cpGet(k,key){ if(!key||!CARD_PRESETS[k]) return null;
   if(key.startsWith("m:")){ const p=cpMine(k)[+key.slice(2)]; return p?[p.n,p.s||"",p.t,p.f||{}]:null; }
   const q=key.split(":"), g=CARD_PRESETS[k][+q[0]]; return (g&&g[1][+q[1]])||null; }
-const CP_SNAP_MORE={str:["tscb="],bass:["bbw="],gtr:["gra=","gpr=","grh="],pno:["pra=","pro=","prh="]};   // a card's settings no preset of it names, kept all the same: the strings' Double bass (patches/band-strings-presets.py)
+const CP_SNAP_MORE={str:["tscb="],bass:["bbw="],gtr:["gra=","gpr=","grh=","gvo="],pno:["pra=","pro=","prh=","prp=","pvo="],syn:["svo="],syn2:["svo="]};   // a card's settings no preset of it names, kept all the same: the strings' Double bass (patches/band-strings-presets.py)
 function cpSnap(pop,k){ const seen=new Set(), tok=[];
   for(const t of CARD_PRESETS[k].flatMap(([,L])=>L.flatMap(p=>p[2].split(" "))).concat(CP_SNAP_MORE[k]||[])){ const a=t.replace(/^~/,"").split("=")[0]; if(!a||seen.has(a)) continue; seen.add(a);
     const b=pop.querySelector('.cpage [data-'+a+'].on'); if(b) tok.push((t[0]==="~"?"~":"")+a+"="+b.getAttribute("data-"+a)); }
@@ -28265,7 +28328,7 @@ var BAND_PRESETS=[["Alone",[["Handpan alone","the pan, nothing else",{on:["pan"]
     ["Acoustic trio","double bass, nylon guitar, the pan",{on:["pan","bass","gtr"],bass:"Ballad arpeggio",gtr:"Travis picking"}],
     ["Ambient","a pad and long delays",{on:["pan","syn","pno"],syn:"Air pad",pno:"Ambient"}]]],
   ["Strings",[["Handpan and strings","pizzicato eighths and a double bass under the pan",{on:["pan","str"],str:["","Eighths · pizzicato · double bass","tsy=p8 tsa=8 tso=1 tsh=even tsb=pizz tsr=around tsv=close tsd=soft tscb=on",{}]}],   /* his settings (David, 26 Oct 2026; patches/band-strings-presets.py) */   /* (David, 25 Oct 2026; patches/strings-b.py) */
-    ["Ballad with strings","a piano arpeggio, string swells, a root bass",{"on":["pan","bass","pno","str"],"mix":{"pan":{"v":100,"p":0,"r":16},"kit":{"v":100,"p":0,"r":12},"drm":{"v":100},"bass":{"v":100,"p":0,"r":0},"gtr":{"v":100,"p":0,"r":18},"pno":{"v":100,"p":0,"r":18},"str":{"v":100,"p":0,"r":24}},"out":["syn","syn2"],"outOn":[],"kit":["","Pop sixteenths · Acoustic","kgp=pop16 ksrc=acoustic kmix=50 klv=2 ksw=app kdyn=normal",{}],"drm":["","","rgp=backbeat-3-for-hps",{}],"bass":["","Root · Synth · Live","~bgg=basic bms=root bsnd=synth bbl=2 bpu=both",{}],"gtr":["","Highlife · Nylon · Mid-neck","~gc=world gp=pick:highlife gsnd=mf gr=mid gv=2 gl=both gcab=v30",{}],"pno":["","Up & down · Around it · Close","~pg=arp ps=arp pr=around pw=0 pj=0 pv=2 pl=both psnd=grand pdyn=normal",{}],"str":["","Swell · Wide · Around it","tsy=swell tsv=wide tsr=around tsd=strong tsb=spic tsa=8 tso=2 tsh=even tscb=off",{}],"pump":0,"percmix":{},"xtra":{"kit":{"kek":"e808","sw":54},"bass":{"low":31}}}],   /* his settings (David, 26 Oct 2026; patches/band-strings-presets.py) */
+    ["Ballad with strings","a piano arpeggio, string swells, a root bass",{"on":["pan","bass","pno","str"],"mix":{"pan":{"v":100,"p":0,"r":16},"kit":{"v":100,"p":0,"r":12},"drm":{"v":100},"bass":{"v":100,"p":0,"r":0},"gtr":{"v":100,"p":0,"r":18},"pno":{"v":100,"p":0,"r":18},"str":{"v":100,"p":0,"r":24}},"out":["syn","syn2"],"outOn":[],"kit":["","Pop sixteenths · Acoustic","kgp=pop16 ksrc=acoustic kmix=50 klv=2 ksw=app kdyn=normal",{}],"drm":["","","rgp=backbeat-3-for-hps",{}],"bass":["","Root · Synth · Live","~bgg=basic bms=root bsnd=synth bbl=2 bpu=both",{}],"gtr":["","Highlife · Nylon · Mid-neck","~gc=world gp=pick:highlife gsnd=mf gr=mid gv=2 gl=both gcab=v30",{}],"pno":["","Up-down · Around it · Close","~pg=arp ps=arpud pra=8 pr=around pw=0 pj=0 pv=2 pl=both psnd=grand pdyn=normal",{}],"str":["","Swell · Wide · Around it","tsy=swell tsv=wide tsr=around tsd=strong tsb=spic tsa=8 tso=2 tsh=even tscb=off",{}],"pump":0,"percmix":{},"xtra":{"kit":{"kek":"e808","sw":54},"bass":{"low":31}}}],   /* his settings (David, 26 Oct 2026; patches/band-strings-presets.py) */
     ["Chamber","double bass and pizzicato strings",{on:["pan","bass","str"],bass:"Ballad arpeggio",str:"Pizz arpeggio"}],
     ["Cinematic","a string pad and a moving line, hand drums",{on:["pan","drm","str"],str:"Pad & arpeggio"}],
     ["Pop with strings","the pop band, pizzicato strings on the off-beat",{"on":["pan","kit","bass","gtr","str"],"mix":{"pan":{"v":100,"p":0,"r":16},"kit":{"v":100,"p":0,"r":12},"drm":{"v":100},"bass":{"v":100,"p":0,"r":0},"gtr":{"v":100,"p":0,"r":18},"pno":{"v":100,"p":0,"r":18},"str":{"v":100,"p":0,"r":24},"syn":{"v":100,"p":0,"r":30}},"kit":["","Pop sixteenths · Acoustic","kgp=pop16 ksrc=acoustic kmix=0 klv=2 ksw=app kdyn=normal",{"comp":"light"}],"drm":["","","rgp=backbeat-3-for-hps",{}],"bass":["","Root · Synth · Live","~bgg=basic bms=root bsnd=synth bbl=2 bpu=both",{}],"gtr":["","Pop chuck · Nylon · Auto","~gc=strum gp=strum:pop2 gsnd=mf gr=auto gv=2 gl=both gcab=v30",{}],"pno":["","Ballad · Around it · Close","~pg=sus ps=ballad pr=around pw=0 pj=0 pv=2 pl=both psnd=grand pdyn=normal",{}],"str":["","Off-beat · Close · Around it","tsy=off tsv=close tsr=around tsd=soft tsb=pizz tsa=16 tso=1 tsh=even tscb=off",{}],"syn":["","Gate 16ths · Warm analog · Around it","sy=gate ss=warm sr=around sv=close sa=8 so=2",{"chorus":"light"}],"pump":0,"percmix":{},"xtra":{"kit":{"kek":"e808","sw":54},"bass":{"low":31},"syn":{"bri":-40,"free":0}}}]]],   /* his export, Folk strings gone (David, 26 Oct 2026: "pls use this preset as pop strings and get rid of the folk strings preset"; patches/band-pop-strings.py) */
@@ -28310,7 +28373,7 @@ var BAND_PRESETS=[["Alone",[["Handpan alone","the pan, nothing else",{on:["pan"]
    Synth 2 further left; only the pan, his levels and reverb kept */
 (function(){ const D=[["Handpan, Percussion, Bass and Guitar","a percussion backbeat and a root bass",{"on":["pan","drm","bass"],"str":["","Outside in · 16ths · 2 octaves · pizzicato","tsy=arpcv tsa=16 tso=2 tsh=sync tsb=pizz tsr=below tsv=wide tsd=soft tscb=off",{}],"mix":{"pan":{"v":100,"p":0,"r":16},"kit":{"v":64,"p":0,"r":12},"drm":{"v":100},"bass":{"v":100,"p":0,"r":0},"gtr":{"v":100,"p":25,"r":18},"pno":{"v":64,"p":0,"r":18},"str":{"v":100,"p":0,"r":24},"syn":{"v":81,"p":0,"r":30},"syn2":{"v":81,"p":0,"r":30}},"kit":["","Pop sixteenths · Acoustic","kgp=pop16 ksrc=acoustic kmix=50 klv=2 ksw=app kdyn=normal",{}],"drm":["","","rgp=backbeat-3-for-hps",{}],"bass":["","Root · Synth · Off","~bgg=basic bms=root bsnd=synth bbl=0 bpu=both",{}],"gtr":["","Highlife · Nylon · Mid-neck","~gc=world gp=pick:highlife gsnd=mf gr=mid gv=2 gl=both gcab=v30",{}],"pno":["","Interlocking · Around it · Wide","~pg=arp ps=interlock pr=around pw=1 pj=1 pv=2 pl=both psnd=grand pdyn=gentle",{}],"syn":["","Gate 16ths · Warm analog · Around it","sy=gate ss=warm sr=around sv=close sa=8 so=2",{"chorus":"light"}],"syn2":["","Broken · Pluck · Around it","sy=arpbr ss=pluck sr=around sv=open sa=16 so=2",{}],"pump":0,"percmix":{},"xtra":{"kit":{"kek":"e808","sw":54},"bass":{"low":31},"syn":{"bri":-40,"free":0},"syn2":{"bri":-70,"free":0}}}],["Acoustic trio","percussion, a root bass, a nylon guitar picking the chords",{"on":["pan","drm","bass","gtr"],"mix":{"pan":{"v":100,"p":0,"r":16},"kit":{"v":100,"p":0,"r":12},"drm":{"v":100},"bass":{"v":100,"p":0,"r":0},"gtr":{"v":100,"p":0,"r":18},"pno":{"v":100,"p":0,"r":18},"syn":{"v":100,"p":0,"r":30},"syn2":{"v":81,"p":0,"r":30}},"kit":["","Rock eighths · Acoustic","kgp=rock8 ksrc=acoustic kmix=50 klv=2 ksw=app kdyn=normal",{}],"drm":["","","rgp=backbeat-3-for-hps",{}],"bass":["","Root · Synth · Off","~bgg=basic bms=root bsnd=synth bbl=0 bpu=both",{}],"gtr":["","First, last, first · Nylon · Mid-neck","~gc=arp gp=arpflf gsnd=mf gr=mid gv=2 gl=both gcab=v30",{}],"pno":["","Flow, chords & bass · Around it · Wide","~pg=arp ps=flowcb pr=around pw=1 pj=1 pv=2 pl=both psnd=grand pdyn=gentle",{}],"syn":["","Held · Warm analog · Around it","sy=held ss=warm sr=around sv=close sa=8 so=2",{}],"syn2":["","Broken · Pluck · Around it","sy=arpbr ss=pluck sr=around sv=open sa=16 so=2",{}],"pump":0,"percmix":{},"xtra":{"kit":{"kek":"e808","sw":54},"bass":{"low":31},"syn":{"bri":-40,"free":0},"syn2":{"bri":-70,"free":0}}}],["Handpan & Jazz Piano","a flowing piano over root and fifth",{"on":["pan","bass","pno"],"mix":{"pan":{"v":100,"p":0,"r":16},"kit":{"v":100,"p":0,"r":12},"drm":{"v":100},"bass":{"v":100,"p":0,"r":0},"gtr":{"v":64,"p":30,"r":18},"pno":{"v":100,"p":-30,"r":18},"syn":{"v":100,"p":50,"r":30},"syn2":{"v":81,"p":-50,"r":30}},"kit":["","New Orleans on the ride · Acoustic","kgp=nolafunkride ksrc=acoustic kmix=50 klv=2 ksw=own kdyn=normal",{}],"drm":["","","rgp=malfuf-karatchi",{}],"bass":["","Root–5th · Synth · Off","~bgg=basic bms=r5 bsnd=synth bbl=0 bpu=both",{}],"gtr":["","Up-down · Nylon · Mid-neck","~gc=arp gp=arpud gra=8 gsnd=mf gr=mid gv=2 gl=both gcab=v30",{}],"pno":["","Flow, chords & bass · Around it · Wide","~pg=arp ps=flowcb pr=around pw=1 pj=1 pv=2 pl=both psnd=grand pdyn=normal",{}],"syn":["","Delay /2 · Air · Around it","sy=delay2 ss=air sr=around sv=open sa=8 so=2",{}],"syn2":["","Broken · Pluck · Around it","sy=arpbr ss=pluck sr=around sv=open sa=8 so=2",{}],"pump":0,"percmix":{},"xtra":{"kit":{"kek":"e808","sw":54},"bass":{"low":31},"syn":{"bri":-75,"free":0},"syn2":{"bri":-70,"free":0}}}],["Acoustic Pop","rock eighths, a root bass, a nylon pop chuck",{"on":["pan","kit","bass","gtr"],"mix":{"pan":{"v":100,"p":0,"r":16},"kit":{"v":100,"p":0,"r":12},"drm":{"v":100},"bass":{"v":100,"p":0,"r":0},"gtr":{"v":85,"p":30,"r":18},"pno":{"v":100,"p":0,"r":18},"syn":{"v":100,"p":0,"r":30},"syn2":{"v":81,"p":0,"r":30}},"kit":["","Rock eighths · Acoustic","kgp=rock8 ksrc=acoustic kmix=50 klv=2 ksw=app kdyn=normal",{}],"drm":["","","rgp=malfuf-karatchi",{}],"bass":["","Root · Synth · Off","~bgg=basic bms=root bsnd=synth bbl=0 bpu=both",{}],"gtr":["","Pop chuck · Nylon · Mid-neck","~gc=strum gp=strum:pop2 gsnd=mf gr=mid gv=2 gl=both gcab=v30",{}],"pno":["","Tresillo · Around it · Wide","~pg=latin ps=332 pr=around pw=1 pj=1 pv=2 pl=both psnd=grand pdyn=gentle",{}],"syn":["","Delay · Choir “aah” · Around it","sy=delay ss=choir sr=around sv=close sa=8 so=2",{}],"syn2":["","Broken · Pluck · Around it","sy=arpbr ss=pluck sr=around sv=open sa=16 so=2",{}],"pump":0,"percmix":{},"xtra":{"kit":{"kek":"e808","sw":54},"bass":{"low":31},"syn":{"bri":0,"free":0},"syn2":{"bri":-70,"free":0}}}],["Funk","free funk drums, a live bass on the one, a chanking guitar with wah",{"on":["pan","kit","bass","gtr"],"mix":{"pan":{"v":100,"p":0,"r":16},"kit":{"v":100,"p":0,"r":12},"drm":{"v":100},"bass":{"v":100,"p":0,"r":0},"gtr":{"v":100,"p":30,"r":18},"pno":{"v":100,"p":-30,"r":18},"str":{"v":100,"p":0,"r":24},"syn":{"v":49,"p":50,"r":30},"syn2":{"v":100,"p":-50,"r":30}},"kit":["","Free funk · Acoustic","kgp=funkfree ksrc=acoustic kmix=50 klv=2 ksw=own kdyn=normal",{}],"drm":["","","rgp=malfuf-karatchi",{}],"bass":["","On the one · Electric · Live","~bgg=funk bms=fkone bsnd=ebass bbl=2 bpu=both",{}],"gtr":["","Chank · Clean · High","~gc=funk gp=strum:funkhi1 gsnd=clean gr=high gv=2 gl=both gcab=funk",{"wah":"slow"}],"pno":["","Double stabs · Around it · Wide","~pg=funk ps=fkdbl pr=around pw=1 pj=0 pv=2 pl=both psnd=wurli pdyn=normal",{}],"str":["","Bass & chords · Wide · Around it","tsy=oompah tsv=wide tsr=around tsd=strong tsb=pizz tsa=16 tso=1 tsh=sync tscb=off",{}],"syn":["","Pulse · String ensemble · Around it","sy=pulse ss=strings sr=around sv=open sa=8 so=2",{}],"syn2":["","Down · Pluck · Around it","sy=arpd ss=pluck sr=around sv=open sa=8 so=2",{}],"pump":0,"percmix":{},"xtra":{"kit":{"kek":"e808","sw":54},"bass":{"low":31},"syn":{"bri":0,"free":0},"syn2":{"bri":-70,"free":0}}}],["Lo-fi chill","lo-fi drums, a root bass, a soft syncopated Rhodes",{"on":["pan","kit","bass","pno"],"mix":{"pan":{"v":100,"p":0,"r":16},"kit":{"v":100,"p":0,"r":12},"drm":{"v":100},"bass":{"v":100,"p":0,"r":0},"gtr":{"v":49,"p":30,"r":18},"pno":{"v":64,"p":-30,"r":18},"str":{"v":100,"p":0,"r":24},"syn":{"v":49,"p":50,"r":30},"syn2":{"v":56,"p":-50,"r":30}},"kit":["","Lo-fi · Auto","kgp=lofi ksrc=auto kmix=0 klv=1 ksw=app kdyn=normal",{"eq":"lofi"}],"drm":["","","rgp=backbeat-3-for-hps",{}],"bass":["","Root · Synth · Phrases","~bgg=basic bms=root bsnd=synth bbl=1 bpu=both",{}],"gtr":["","Desert blues · Clean · Mid-neck","~gc=world gp=pick:desert gsnd=clean gr=mid gv=2 gl=both gcab=funk",{"wah":"slow","eq":"lofi"}],"pno":["","Syncopated · Around it · Wide","~pg=rhy ps=synco pr=around pw=1 pj=1 pv=2 pl=both psnd=rhodes pdyn=gentle",{"eq":"lofi","chorus":"light"}],"str":["","Swell · Wide · Around it","tsy=swell tsv=wide tsr=around tsd=soft tsb=pizz tsa=16 tso=1 tsh=sync tscb=off",{}],"syn":["","Stairs · Air · Above the pan","sy=arpst ss=air sr=above sv=open sa=8 so=2",{"eq":"lofi"}],"syn2":["","Broken · Pluck · Around it","sy=arpbr ss=pluck sr=around sv=open sa=8 so=2",{"eq":"lofi"}],"pump":0,"percmix":{},"xtra":{"kit":{"kek":"e808","sw":54},"bass":{"low":31},"syn":{"bri":0,"free":0},"syn2":{"bri":-75,"free":0}}}],["Ambient","a mellow four on the floor, a root bass, a Wurli pad and a warm synth",{"on":["pan","kit","bass","pno","syn"],"mix":{"pan":{"v":100,"p":0,"r":16},"kit":{"v":121,"p":0,"r":12},"drm":{"v":100},"bass":{"v":121,"p":0,"r":0},"gtr":{"v":100,"p":30,"r":18},"pno":{"v":64,"p":-30,"r":18},"str":{"v":100,"p":0,"r":24},"syn":{"v":81,"p":50,"r":30},"syn2":{"v":81,"p":-50,"r":30}},"kit":["","Ambient · Auto","kgp=ambient ksrc=auto kmix=50 klv=0 ksw=app kdyn=normal",{}],"drm":["","","rgp=malfuf-karatchi",{}],"bass":["","Root · Synth · Listen","~bgg=basic bms=root bsnd=synth bbl=3 bpu=both",{}],"gtr":["","Travis · Hollow · Mid-neck","~gc=pick gp=pick:travis gsnd=black gr=mid gv=2 gl=both gcab=off",{}],"pno":["","Pad · Around it · Wide","~pg=sus ps=pad pr=around pw=1 pj=0 pv=0 pl=both psnd=wurli pdyn=gentle",{"chorus":"deep","delay":"amb"}],"str":["","Swell · Wide · Around it","tsy=swell tsv=wide tsr=around tsd=soft tsb=pizz tsa=16 tso=1 tsh=sync tscb=off",{}],"syn":["","Held · Warm analog · Around it","sy=held ss=warm sr=around sv=open sa=8 so=2",{}],"syn2":["","Broken · Pluck · Around it","sy=arpbr ss=pluck sr=around sv=open sa=16 so=2",{}],"pump":0,"percmix":{},"xtra":{"kit":{"kek":"e808","sw":54},"bass":{"low":31},"syn":{"bri":-75,"free":0},"syn2":{"bri":-70,"free":0}}}],["Drum & Bass","double-time drums, driving electro eighths, a gated supersaw, 3-3-2 plucks",{"on":["pan","kit","bass","syn","syn2"],"mix":{"pan":{"v":100,"p":0,"r":16},"kit":{"v":100,"p":0,"r":12},"drm":{"v":100},"bass":{"v":100,"p":0,"r":0},"gtr":{"v":100,"p":30,"r":18},"pno":{"v":100,"p":-30,"r":18},"str":{"v":100,"p":0,"r":24},"syn":{"v":100,"p":50,"r":30},"syn2":{"v":100,"p":-50,"r":30}},"kit":["","Drum & bass · Auto","kgp=dnb ksrc=auto kmix=50 klv=2 ksw=app kdyn=normal",{}],"drm":["","","rgp=2-step-2",{}],"bass":["","Driving 8ths · Electro · Live","~bgg=edm bms=ed8 bsnd=electro bbl=2 bpu=both",{"eq":"warm"}],"gtr":["","Modern comp · Clean · Mid-neck","~gc=jazz gp=strum:jzmod gsnd=clean gr=mid gv=2 gl=both gcab=funk",{}],"pno":["","Minimalist ostinato · Above the pan · Wide","~pg=arp ps=ostinato pr=above pw=1 pj=1 pv=2 pl=both psnd=grand pdyn=gentle",{}],"str":["","Outside in · Close · Above the pan","tsy=arpcv tsv=close tsr=above tsd=strong tsb=pizz tsa=16 tso=1 tsh=sync tscb=off",{}],"syn":["","Gate 16ths · Supersaw · Around it","sy=gate ss=supersaw sr=around sv=open sa=8 so=2",{"delay":"amb"}],"syn2":["","3-3-2 · Pluck · Around it","sy=s332 ss=pluck sr=around sv=close sa=16 so=2",{}],"pump":0,"percmix":{},"xtra":{"kit":{"kek":"e808","sw":54},"bass":{"low":31},"syn":{"bri":-75,"free":0},"syn2":{"bri":-70,"free":0}}}]];
   /* Piano Trio's record is his export of 16 Oct (patches/band-piano-trio-mine.py) */
-  const STAGE={pan:0,kit:0,bass:0,gtr:30,pno:-30,syn:50,syn2:-50};
+  const STAGE={pan:0,kit:0,bass:0,gtr:30,pno:-30,syn:35,syn2:-35};   // the synths +-35, not +-50: a supersaw or a pad is stereo already (patches/band-pans-stereo.py)
   for(const [n,s,b] of D){ for(const k in STAGE) if(b.mix&&b.mix[k]) b.mix[k].p=STAGE[k];
     for(const [,L] of BAND_PRESETS){ const i=L.findIndex(x=>x[0]===n); if(i>=0){ L[i]=[n,s,b]; break; } } } })();
 
@@ -28337,6 +28400,13 @@ for(const [,L] of BAND_PRESETS) for(const b of L){ if(!b[2].str) b[2].str=BAND_S
 const BAND_RENAME={"Handpan, Percussion, Bass and Guitar":"Perc & Bass","Acoustic trio":"Guitar Trio","Handpan & Jazz Piano":"Piano Trio",
   "Lo-fi chill":"Lo-Fi Chill","Drum & Bass":"Drum&Bass"};
 for(const [,L] of BAND_PRESETS) for(const b of L) if(BAND_RENAME[b[0]]) b[0]=BAND_RENAME[b[0]];
+/* THE PANS, MINDFUL OF WHAT IS ALREADY STEREO (David, 27 Oct 2026: "Take into account that some of the instruments already have
+   stereo and their own internal pan built into the samples"; (patches/band-pans-stereo.py)): the guitar and the electric pianos are
+   mono and take their seat from the pan; the grand piano and the strings are stereo and wide, and the strings seat their
+   sections themselves - so the strings stay centred, the grand sits nearer the centre, and a mono chord instrument is
+   never left in the middle beside them. The mixer's pan folds a stereo source's far channel in, the more the further out */
+const BAND_PANS_STEREO={"Pop with strings":{gtr:30},"Ballad with strings":{pno:-20},"Piano Trio":{pno:-20},"Latin":{pno:-20}};
+for(const [,L] of BAND_PRESETS) for(const b of L){ const p=BAND_PANS_STEREO[b[0]]; if(p&&b[2].mix) for(const k in p) if(b[2].mix[k]) b[2].mix[k].p=p[k]; }
 /* WHO IS OUT OF EACH BAND PRESET (David, 26 Oct 2026, his marks: band-presets-in-out.json; patches/band-out.py) */
 const BAND_OUT={"Handpan alone":[],"Handpan and drums":["gtr","pno","str","syn","syn2"],"Handpan and percussion":["syn","syn2"],"Acoustic duo":["syn","syn2"],"Guitar Trio":["syn","syn2"],"Piano Trio":["syn","syn2"],"Perc & Bass":["syn","syn2"],"Handpan and strings":["syn","syn2"],"Ballad with strings":["syn","syn2"],"Chamber":["syn","syn2"],"Cinematic":["syn","syn2"],"Pop with strings":["syn","syn2"],"Jazz trio":["syn","syn2"],"Pop band":[],"Acoustic Pop":[],"Latin":["syn","syn2"],"Rock":[],"Funk":["syn"],"House":[],"Electro house":["str"],"Trance":["gtr"],"Trap":[],"Drum&Bass":[],"Lo-Fi Chill":[],"Ambient":[]};
 for(const [,L] of BAND_PRESETS) for(const b of L) if(BAND_OUT[b[0]]&&!b[2].out) b[2].out=BAND_OUT[b[0]];
@@ -35797,8 +35867,9 @@ function renderStaff(){ try{ voicePaint(); }catch(e){}   // the buttons' staff d
       if(!staffPlan||staffPlan.sec!==viewSec||staffPlan.piece!==piece) staffPage=0;   // another table starts on its first page
       staffPlan={...P,n:sec.bars.length,sec:viewSec,piece};
       staffPage=Math.max(0,Math.min(staffPage,P.pages-1));
-      const a=staffPage*P.per;
-      StaffView.render(box,StaffView.slice(input,a,a+P.per),{...opts,sp:P.sp,firstBar:a});
+      const a=staffPage*P.per, o={...opts,sp:P.sp};
+      o.frame=P.pages>1&&StaffView.frame?StaffView.frame(box,input,P.per,o):null;   // every page in one frame: one height, every staff in one place (David, 27 Oct 2026) (patches/staff-frame.py)
+      StaffView.render(box,StaffView.slice(input,a,a+P.per),{...o,firstBar:a});
     } }
   catch(e){ box.innerHTML=""; staffPlan=null; console.warn("staff view:",e); }
   paintStaffPager(); }
@@ -58229,7 +58300,7 @@ function boot(){
         /* THE LANE IN THE EDITOR, shown or hidden here (David, 28 Sep 2026: "the show/hide function for the bass should be
            selectable in the right click popup"); hiding does not silence the bass */
         +(allowed("bassline")?'<div class="ttl">Bass line in the editor</div><div class="pal bwsw" style="margin:2px 10px 8px">'
-          +'<button class="bwseg'+(bassUI().show?' on':'')+'" data-bl="1">Show</button><button class="bwseg'+(bassUI().show?'':' on')+'" data-bl="0">Hide</button></div>':'');
+          +'<button class="bwseg'+(bassUI().show?'':' on')+'" data-bl="0">Hide</button><button class="bwseg'+(bassUI().show?' on':'')+'" data-bl="1">Show</button></div>':'');
       const apply=()=>{
         bassVol=volLvl($("bassVolR").value);
         bassLow=Math.max(24,Math.min(48,+$("bassLowR").value||36));
@@ -58406,7 +58477,7 @@ function boot(){
           +kitMineKits().map(k=>'<button class="bwseg'+(k.id===kitUkCur()?" on":"")+'" type="button" data-kuk="'+rgEsc(k.id)+'">'+rgEsc(k.name)+'</button>').join("")+'</div>':'')
         +'<div class="note" id="kitSndN">'+kitSndNote()+'</div>'
         +'<div id="kitDynBox"'+(kitElectronicNow()?' hidden':'')+'><div class="ttl">Dynamics</div><div class="pal bwsw gsty two">'   // Normal | Gentle (patches/kit-dynamics.py)
-          +[["normal","Normal","As the groove is written"],["gentle","Gentle","A softer touch: every hit at 60 %, on the softer recordings"]].map(([v,l,t])=>'<button class="bwseg'+(v===kitDyn?' on':'')+'" type="button" data-kdyn="'+v+'" title="'+t+'"'+(kitElectronicNow()?' disabled':'')+'>'+l+'</button>').join("")+'</div></div>'
+          +[["gentle","Gentle","A softer touch: every hit at 60 %, on the softer recordings"],["normal","Normal","As the groove is written"]].map(   /* soft to loud, left to right (patches/switches-left-to-right.py) */([v,l,t])=>'<button class="bwseg'+(v===kitDyn?' on':'')+'" type="button" data-kdyn="'+v+'" title="'+t+'"'+(kitElectronicNow()?' disabled':'')+'>'+l+'</button>').join("")+'</div></div>'
         +fxBoxHTML("kit")
         +volRow("kit",kitVol,"Drums volume")+mixRows("kit");
       KITGRP=null; pop.addEventListener("click",ev=>{ const g=ev.target.closest("[data-kgg]"); if(!g) return; KITGRP=g.dataset.kgg; tileGroupOpen(pop,"kgg","kgb",KITGRP); });   /* a family opens its list and chooses nothing */
@@ -58521,8 +58592,8 @@ function boot(){
         const gl=ev.target.closest("[data-gl]");
         if(gl){ gtrLead=gl.dataset.gl; try{ localStorage.setItem("hps.gtrlead",gtrLead); }catch(e){}
           pop.querySelectorAll("[data-gl]").forEach(x=>x.classList.toggle("on",x.dataset.gl===gtrLead)); return; }
-        const gx=ev.target.closest("[data-gra],[data-gpr],[data-grh]");   /* Rate, Range, Rhythm (patches/guitar-arp-lines.py) */
-        if(gx){ if(gx.disabled) return; const a=["gra","gpr","grh"].find(x=>gx.dataset[x]!=null); gtrCtlSet(a,gx.dataset[a]); GTR.af=null;
+        const gx=ev.target.closest("[data-gra],[data-gpr],[data-grh],[data-gvo]");   /* Rate, Range, Rhythm (patches/guitar-arp-lines.py) */
+        if(gx){ if(gx.disabled) return; const a=["gra","gpr","grh","gvo"].find(x=>gx.dataset[x]!=null); gtrCtlSet(a,gx.dataset[a]); GTR.af=null;
           pop.querySelectorAll("[data-"+a+"]").forEach(x=>x.classList.toggle("on",x===gx)); return; }
         const gc=ev.target.closest("[data-gc]"); if(gc){ openCat(gc.dataset.gc); return; }
         const gi=ev.target.closest("[data-gi]"); if(!gi) return;
@@ -58568,11 +58639,11 @@ function boot(){
         +'<div class="ttl">Sound</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(5,1fr)">'   // the piano's Sound (patches/piano-sounds.py)
         +[["auto","Auto"]].concat(PNO_SOUNDS).map(([k,l])=>'<button class="bwseg'+(k===pnoSound?' on':'')+'" data-psnd="'+k+'">'+l+'</button>').join("")+'</div>'
         +'<div class="ttl">Dynamics</div><div class="pal bwsw gsty two">'   // Normal | Gentle (patches/piano-dynamics.py)
-        +[["normal","Normal","As it has always played"],["gentle","Gentle","A softer touch: the softer recordings of each note"]].map(([k,l,t])=>'<button class="bwseg'+(k===pnoDyn?' on':'')+'" data-pdyn="'+k+'" title="'+t+'">'+l+'</button>').join("")+'</div>'
+        +[["gentle","Gentle","A softer touch: the softer recordings of each note"],["normal","Normal","As it has always played"]].map(   /* soft to loud, left to right (patches/switches-left-to-right.py) */([k,l,t])=>'<button class="bwseg'+(k===pnoDyn?' on':'')+'" data-pdyn="'+k+'" title="'+t+'">'+l+'</button>').join("")+'</div>'
         +'<div class="ttl">Style</div><div class="pal bwsw gsty" id="pnoGroupRow" style="grid-template-columns:repeat(4,1fr)">'
         +PNO_GROUPS.map(([g,l,ps])=>'<button class="bwseg'+(g===og?' on':'')+'" data-pg="'+g+'"'+(ps?'':' data-ps="'+g+'"')+'>'+l+'</button>').join("")+'</div>'
         +PNO_GROUPS.filter(g=>g[2]).map(([g,l,ps])=>'<div data-pgb="'+g+'"'+(g===og?'':' hidden')+'><div class="ttl">Variation</div><div class="pal bwsw gsty">'
-          +ps.map(([k,l2],i)=>(PNO_SECS[g]&&PNO_SECS[g][i]?'<div class="gsec">'+PNO_SECS[g][i][0]+(PNO_SECS[g][i][1]?'<i>'+PNO_SECS[g][i][1]+'</i>':'')+'</div>':'')+'<button class="bwseg'+(k===pnoStyle?' on':'')+'" data-ps="'+k+'">'+l2+'</button>').join("")+'</div>'+pnoCtlHTML(g)+'</div>').join("")
+          +ps.map(([k,l2],i)=>(PNO_SECS[g]&&PNO_SECS[g][i]?'<div class="gsec">'+PNO_SECS[g][i][0]+(PNO_SECS[g][i][1]?'<i>'+PNO_SECS[g][i][1]+'</i>':'')+'</div>':'')+'<button class="bwseg'+(k===pnoStyle?' on':'')+'" data-ps="'+k+'">'+l2+'</button>').join("")+'</div>'+pnoCtlHTML(g)+'</div>').join("")+'<div data-pgb="pan"'+(og==="pan"?'':' hidden')+'>'+folVoiceRow("pvo",pnoVoi)+'</div>'   /* Voice (patches/handpan-voice.py) */
         +'<div class="ttl">Register</div><div class="pal bwsw gsty">'
         +PNO_REGS.map(([k,l])=>'<button class="bwseg'+(k===pnoReg?' on':'')+'" data-pr="'+k+'">'+l+'</button>').join("")+'</div>'
         +'<div class="ttl">Voicing</div><div class="pal bwsw gsty two">'   // Close | Wide (29 Sep 2026)
@@ -58613,16 +58684,18 @@ function boot(){
           pop.querySelectorAll("[data-pl]").forEach(x=>x.classList.toggle("on",x.dataset.pl===pnoLead)); return; }
         const openG=g=>{ pop.querySelectorAll("[data-pg]").forEach(x=>x.classList.toggle("on",x.dataset.pg===g));
           pop.querySelectorAll("[data-pgb]").forEach(x=>{ x.hidden=x.dataset.pgb!==g; }); };
-        const px=ev.target.closest("[data-pra],[data-pro],[data-prh]");   /* Rate, Range, Rhythm (patches/piano-arp-lines.py) */
-        if(px){ if(px.disabled) return; const a=["pra","pro","prh"].find(x=>px.dataset[x]!=null), v=px.dataset[a];
-          if(a==="pra") pnoARate=v; else if(a==="pro") pnoOct=v; else pnoArh=v; PNO.af=null;
-          try{ localStorage.setItem({pra:"hps.pnoarate",pro:"hps.pnooct",prh:"hps.pnoarhy"}[a],v); }catch(e){}
+        const pvo=ev.target.closest("[data-pvo]");   /* Voice (patches/handpan-voice.py) */
+        if(pvo){ pnoVoi=pvo.dataset.pvo; try{ localStorage.setItem("hps.pnovoice",pnoVoi); }catch(e){} pop.querySelectorAll("[data-pvo]").forEach(x=>x.classList.toggle("on",x===pvo)); return; }
+        const px=ev.target.closest("[data-pra],[data-pro],[data-prh],[data-prp]");   /* Rate, Range, Rhythm (patches/piano-arp-lines.py) */
+        if(px){ if(px.disabled) return; const a=["pra","pro","prh","prp"].find(x=>px.dataset[x]!=null), v=px.dataset[a];
+          if(a==="pra") pnoARate=v; else if(a==="pro") pnoOct=v; else if(a==="prh") pnoArh=v; else pnoAPed=v; PNO.af=null;
+          try{ localStorage.setItem({pra:"hps.pnoarate",pro:"hps.pnooct",prh:"hps.pnoarhy",prp:"hps.pnoaped"}[a],v); }catch(e){}
           pop.querySelectorAll("[data-"+a+"]").forEach(x=>x.classList.toggle("on",x===px)); return; }
         const gb=ev.target.closest("[data-pg]");
         if(gb&&!gb.dataset.ps){ openG(gb.dataset.pg); return; }   // a group opens its patterns and chooses nothing (30 Sep 2026)
         const s=ev.target.closest("[data-ps]"), r=ev.target.closest("[data-pr]");
         if(s){ pnoStyle=s.dataset.ps; try{ localStorage.setItem("hps.pnostyle",pnoStyle); }catch(e){}
-          pop.querySelectorAll("[data-pgb] [data-ps]").forEach(x=>x.classList.toggle("on",x.dataset.ps===pnoStyle)); openG(pnoGroupOf(pnoStyle)); PNO.chord=null; paintPno(); pnoCtlPaint(pop);
+          pop.querySelectorAll("[data-pgb] [data-ps]").forEach(x=>x.classList.toggle("on",x.dataset.ps===pnoStyle)); openG(pnoGroupOf(pnoStyle)); PNO.chord=null; paintPno(); pnoOwnSet(pop); pnoCtlPaint(pop);
           if(pnoStyle==="bchord"&&pnoReg!=="around"){ pnoReg="around"; try{ localStorage.setItem("hps.pnoreg",pnoReg); }catch(e){} pop.querySelectorAll("[data-pr]").forEach(x=>x.classList.toggle("on",x.dataset.pr===pnoReg)); }   /* Bass & chord: Around the pan (patches/piano-bass-chord.py) */
           { const vb=pop.querySelector("#pnoLiveBox"); if(vb) vb.hidden=false; }   // Live with every pattern, Handpan too (patches/live-handpan.py)
           { const lb=pop.querySelector("#pnoLeadBox"), pk=pnoPuKind(); if(lb){ lb.hidden=!puShown("pno"); const Lb=PNO_PU_LABELS[pk]||PNO_PU_LABELS.sus;   // the Pickup's options named for the style (patches/piano-pickup.py)
@@ -58674,7 +58747,7 @@ function boot(){
         +'<div class="ttl">Style</div><div class="pal bwsw gsty" id="synGroupRow" style="grid-template-columns:repeat('+synGroups(K).length+',1fr)">'   /* the piano's Style tiles and Variation list (patches/synth-steps.py) */
         +synGroups(K).map(([g,l,s])=>'<button class="bwseg'+(g===synGroupOf(synStyle)?' on':'')+'" data-syg="'+g+'" data-sub="'+s.replace(/"/g,"&quot;")+'">'+l+'</button>').join("")+'</div>'
         +synGroups(K).map(([g,l,s,ch])=>'<div data-sygb="'+g+'"'+(g===synGroupOf(synStyle)?'':' hidden')+'><div class="ttl">Variation</div>'+seg(ch,"sy",synStyle)
-          +(g==="arp"?ctrio([["Rate",seg(SYN_RATES,"sa",synRate," two"),2],["Range",seg(octShort(SYN_OCTS),"so",synOct),3],["Rhythm",seg(ARP_RHY,"sah",synArh," two"),2]]):'')   /* in one row (patches/synth-switches-row.py) */+'</div>').join("")
+          +(g==="arp"?ctrio([["Rate",seg(SYN_RATES,"sa",synRate," two"),2],["Range",seg(octShort(SYN_OCTS),"so",synOct),3],["Rhythm",seg(ARP_RHY,"sah",synArh," two"),2]]):'')+(g==="pan"?folVoiceRow("svo",synVoi):'')   /* in one row (patches/synth-switches-row.py) */+'</div>').join("")
         +'<div class="ttl">Register</div>'+seg(PNO_REGS,"sr",synReg)
         +'<div class="frdm" data-frs="1"><div class="ttl"><span>Freedom</span><em>how far a variation goes</em></div><input type="range" min="0" max="4" step="1" value="'+synFree+'" aria-label="Freedom" data-sfr><div class="frlr"><span>Steady</span><b class="frval">'+FREEDOM_SAYS[synFree]+'</b><span>Free</span></div></div>'   /* the other instruments' slider (patches/synth-freedom-slider.py) */
         +'<div class="ttl">Voicing</div>'+seg(SYN_VOICINGS,"sv",synVc," two")
@@ -58690,9 +58763,9 @@ function boot(){
         { const gb=ev.target.closest("[data-syg]");   /* a Style tile opens its variations and chooses nothing; one variation is chosen at once (patches/synth-steps.py) */
           if(gb){ const g=synGroups(K).find(x=>x[0]===gb.dataset.syg); if(!g) return; tileGroupOpen(pop,"syg","sygb",g[0]);
             if(g[3].length===1){ const one=pop.querySelector('[data-sy="'+g[3][0][0]+'"]'); if(one&&!one.classList.contains("on")) one.click(); } return; } }
-        const b=ev.target.closest("[data-ss],[data-sy],[data-sr],[data-sv],[data-sa],[data-so],[data-sah]"); if(!b) return;
+        const b=ev.target.closest("[data-ss],[data-sy],[data-sr],[data-sv],[data-sa],[data-so],[data-sah],[data-svo]"); if(!b) return;
         const [key,store,set]=b.dataset.ss!=null?["ss","hps."+K+"sound",v=>{ synSnd=v; }]:b.dataset.sy!=null?["sy","hps."+K+"style",v=>{ synStyle=v; }]
-          :b.dataset.sr!=null?["sr","hps."+K+"reg",v=>{ synReg=v; }]:b.dataset.sa!=null?["sa","hps."+K+"rate",v=>{ synRate=v; }]:b.dataset.so!=null?["so","hps."+K+"oct",v=>{ synOct=v; }]:b.dataset.sah!=null?["sah","hps."+K+"arhy",v=>{ synArh=v; }]:["sv","hps."+K+"voicing",v=>{ synVc=v; }];
+          :b.dataset.sr!=null?["sr","hps."+K+"reg",v=>{ synReg=v; }]:b.dataset.sa!=null?["sa","hps."+K+"rate",v=>{ synRate=v; }]:b.dataset.so!=null?["so","hps."+K+"oct",v=>{ synOct=v; }]:b.dataset.sah!=null?["sah","hps."+K+"arhy",v=>{ synArh=v; }]:b.dataset.svo!=null?["svo","hps."+K+"voice",v=>{ synVoi=v; }]:["sv","hps."+K+"voicing",v=>{ synVc=v; }];
         const v=b.dataset[key]; as(()=>{ set(v); try{ localStorage.setItem(store,v); }catch(e){}
         pop.querySelectorAll("[data-"+key+"]").forEach(x=>x.classList.toggle("on",x.dataset[key]===v));
         if(key==="ss"){ $("synDesc").textContent=synSound().d; if(!synSound().edm) pop._edmOpen=false; synSndPaint(pop); }
