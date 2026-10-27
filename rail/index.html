@@ -20610,7 +20610,7 @@ function sndAutoApply(k){ if(!SND_AUTO[k]) return;
   try{
     if(k==="gtr"){ const w=edSound("gtr",gtrAutoSound()); if(w!==gtrSound){ gtrSound=w; gtrFetch(gtrSetOf(w)); gtrReady(); } }
     else if(k==="pno"){ const w=edSound("pno",pnoAutoSound()); if(w!==pnoSound){ pnoSound=w; pnoLoad(); pnoReady(); } }
-    else if(k==="bass"){ const w=edSound("bass",bassAutoSound()); if(w!==bassSound){ bassSound=w; if(BASS_SETS[w]) bassSmpReady(w); } }
+    else if(k==="bass"){ const w=edSound("bass",bassAutoSound()); if(w!==bassSound){ bassSound=w; if(BASS_SETS[w]) bassSmpReady(w); bassSndKeep(); } }   /* (patches/bass-group-chooses.py) */
   }catch(e){} }
 function sndAutoPaint(pop,k){ if(!pop) return; const A={gtr:["gsnd",gtrSound],pno:["psnd",pnoSound],bass:["bsnd",bassSound]}[k]; if(!A) return; const auto=SND_AUTO[k];
   pop.querySelectorAll("[data-"+A[0]+"]").forEach(b=>{ const v=b.dataset[A[0]]; b.classList.toggle("on",auto?v==="auto":v===A[1]); b.classList.toggle("via",auto&&v===A[1]); });
@@ -20620,12 +20620,20 @@ function sndAutoPaint(pop,k){ if(!pop) return; const A={gtr:["gsnd",gtrSound],pn
    plays, or opened by its button (which closes the other); its button lit while its row shows, "via" while Auto plays it;
    the orchestral bass's Bowing shows under its row while it is chosen (patches/bass-edm-sounds.py) */
 const BASS_DB_SND=new Set(["dbass","obass"]), BASS_SND_GRPS={db:[BASS_DB_SND,"bassDbBox"],edm:[BASS_EDM_SND,"bassEdmBox"]};
-function bassSndPaint(pop){ if(!pop) return;
+/* each group's last sound - the last that became the bass's sound by any route; a group button chooses it (patches/bass-group-chooses.py) */
+const BASS_GRP_FIRST={db:"dbass",edm:"electro"}, BASS_GRP_LAST=(function(){ try{ const v=JSON.parse(localStorage.getItem("hps.basslast")||"{}"); return v&&typeof v==="object"?v:{}; }catch(e){ return {}; } })();
+function bassGrpOf(s){ for(const g in BASS_SND_GRPS) if(BASS_SND_GRPS[g][0].has(s)) return g; return null; }
+function bassSndKeep(){ const g=bassGrpOf(bassSound); if(g&&BASS_GRP_LAST[g]!==bassSound){ BASS_GRP_LAST[g]=bassSound; try{ localStorage.setItem("hps.basslast",JSON.stringify(BASS_GRP_LAST)); }catch(e){} } }
+try{ bassSndKeep(); }catch(e){}   // the sound stored from before counts
+function bassSndPaint(pop){ bassSndKeep(); if(!pop) return;   /* every choice is painted: it is remembered here (patches/bass-group-chooses.py) */
   for(const g in BASS_SND_GRPS){ const [set,id]=BASS_SND_GRPS[g], inG=set.has(bassSound), shown=pop._sgOpen?pop._sgOpen===g:inG, box=pop.querySelector("#"+id), b=pop.querySelector('[data-bsg="'+g+'"]');
     if(box) box.hidden=!shown; if(b){ b.classList.toggle("on",shown&&!(inG&&SND_AUTO.bass)); b.classList.toggle("via",inG&&!!SND_AUTO.bass); } }
   const bw=pop.querySelector("#bassBowBox"); if(bw) bw.hidden=bassSound!=="obass"; }
 document.addEventListener("click",e=>{ const b=e.target&&e.target.closest&&e.target.closest("#bassPop [data-bsg]"); if(!b) return; const pop=b.closest(".pop"), g=b.dataset.bsg;
-  pop._sgOpen=pop._sgOpen===g||(!pop._sgOpen&&BASS_SND_GRPS[g]&&BASS_SND_GRPS[g][0].has(bassSound))?null:g; bassSndPaint(pop); });
+  const set=BASS_SND_GRPS[g]&&BASS_SND_GRPS[g][0]; if(!set) return; pop._sgOpen=null;   /* it chooses: the sound playing in it, or its last (patches/bass-group-chooses.py) */
+  if(set.has(bassSound)&&!SND_AUTO.bass){ bassSndPaint(pop); return; }
+  const s=set.has(bassSound)?bassSound:set.has(BASS_GRP_LAST[g])?BASS_GRP_LAST[g]:BASS_GRP_FIRST[g], t=pop.querySelector('[data-bsnd="'+s+'"]');
+  if(t) t.click(); else bassSndPaint(pop); });
 document.addEventListener("click",e=>{ const pop=e.target.closest&&e.target.closest(".pop[data-ck]"); if(!pop) return; const k=pop.dataset.ck;
   if(!SND_AUTO.hasOwnProperty(k)) return; sndAutoApply(k); sndAutoPaint(pop,k); });   // after the card's own handlers: a style chosen brings its sound
 function bassStyleName(k){ const s=BASS_STYLES.find(x=>x[0]===k); return s?s[1]:"Root"; }
