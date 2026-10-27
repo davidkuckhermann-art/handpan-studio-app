@@ -2244,7 +2244,6 @@ body.phone:not(.tablet) .pop.card:has(>.dbar){top:calc(env(safe-area-inset-top,0
 .pop.bandpop .bdpseg button.on{background:#fff; color:#1c1612; box-shadow:0 1px 2px rgba(0,0,0,.22)}
 .pop .cpage [data-bgg="basic"]::after{content:"root, fifth, walks"}
 .pop .cpage [data-bgg="latin"]::after{content:"tumbao, 3-3-2"}
-.pop .cpage [data-bgg="dbl"]::after{content:"twice as busy"}
 .pop .cpage :is(#kitGroupRow,#rgGroupRow,#synGroupRow,#strGroupRow)>.bwseg::after,.pop .cpage :is([data-kgb],[data-rgb])>.pal>.bwseg::after{content:attr(data-sub)}   /* the drums' and the percussion's (patches/drum-play-tiles.py) */
 .pop .cpage [data-bgg="funk"]::after{content:"sixteenths, dead notes"}
 .pop .cpage [data-bgg="edm"]::after{content:"off-beat, rolling, 808"}   /* (David, 9 Oct 2026: "give the EDM style a subtitle. All styles should have one") */
@@ -2264,9 +2263,9 @@ body.phone:not(.tablet) .pop.card:has(>.dbar){top:calc(env(safe-area-inset-top,0
 .pop .cpage [data-bms="tumbao"]::after{content:"the Cuban bass"}
 .pop .cpage [data-bms="332"]::after{content:"three, three, two"}
 .pop .cpage [data-bms="332t"]::after{content:"3-3-2 and tumbao"}
-.pop .cpage [data-bms="tumbaox2"]::after{content:"double time"}
-.pop .cpage [data-bms="332x2"]::after{content:"double time"}
-.pop .cpage [data-bms="332tx2"]::after{content:"double time"}
+.pop .cpage [data-bms="tumbaox2"]::after{content:"twice as busy"}   /* in Latin since 27 Oct 2026 (patches/bass-latin-double.py) */
+.pop .cpage [data-bms="332x2"]::after{content:"twice as busy"}
+.pop .cpage [data-bms="332tx2"]::after{content:"twice as busy"}
 .pop .cpage [data-bms="fkoct"]::after{content:"octaves on the off-beats"}
 .pop .cpage [data-bms="fkone"]::after{content:"sparse, the one"}
 .pop .cpage [data-bms="fkhook"]::after{content:"the seventh to the root"}
@@ -15426,12 +15425,13 @@ let bassLast=null;
    C1-C4 at its own pitch - bass/sneaky/p<midi>.mp3 the pluck, m<midi>.mp3 the muted pluck (see its SOURCE.txt) -
    beside bank.js as the guitar's are. Nothing is fetched until the double bass is chosen; until it is decoded the
    synth plays, so the bass is never silent. ═══ */
-let bassSound=(function(){ try{ const v=localStorage.getItem("hps.basssound"); return ["dbass","ebass","electro","s808","reese"].includes(v)?v:"synth"; }catch(e){ return "synth"; } })();   // the 808 and the Reese (patches/bass-edm-sounds.py)
+let bassSound=(function(){ try{ const v=localStorage.getItem("hps.basssound"); return ["dbass","obass","ebass","electro","s808","reese"].includes(v)?v:"synth"; }catch(e){ return "synth"; } })();   // the 808 and the Reese (patches/bass-edm-sounds.py)
 /* THE SAMPLED BASSES ARE ROWS OF ONE TABLE (David, 30 Sep 2026: "add yr finger as a third sound in the bass menu";
    patches/bass-electric.py): each its folder beside bank.js, the notes recorded (lo-hi; beyond them the nearest at another
    speed), whether it recorded a muted pluck, and the gain that brings it to the synth's loudness - measured in the app,
    eight notes G1-B-flat2, their first half second. Electric: FreePats Electric Bass YR, fingered (CC0), one octave. */
-const BASS_SETS={dbass:{dir:"sneaky",lo:24,hi:60,mute:true,gain:1.57},
+const BASS_SETS={dbass:{dir:"sneaky",lo:24,hi:60,mute:true,gain:1.727},   /* x1.1, x0.9, x0.55 of the measured levels (David, 27 Oct 2026: "pls bring the jazz double bass volume up so that 100% equals what is now 110%" - the plucked orchestral "100% equals what it now 90%" - the bowed "100% equals today's 55%") */
+                 obass:{orch:true,gain:{pizz:1.598,arco:0.797}},   // the orchestral double bass: the strings' recordings, plucked or bowed (patches/bass-orchestral.py)
                  ebass:{dir:"yr",lo:28,hi:39,mute:false,gain:1.57,hiAt:[40,55],swap:{30:31,42:43}}};   // swap: a take that stands out, played from its neighbour - the G-flats' takes are bright and noisy (patches/bass-gflat-take.py)
 const BASS_SMP={}, BASS_SMP_DEC={};
 function bassSmpURL(dir,n){ const b=document.querySelector('script[src*="bank.js"]'); const src=b?b.getAttribute("src"):"bank.js";
@@ -15439,6 +15439,7 @@ function bassSmpURL(dir,n){ const b=document.querySelector('script[src*="bank.js
 function bassSmpReady(k){
   const S=BASS_SETS[k]; if(!S) return false;
   if(BASS_SMP[k]) return true;   // a decoded buffer belongs to no context - an export's offline one plays it too (patches/band-export.py)
+  if(S.orch){ if(ctx&&!BASS_SMP_DEC[k]) bassOrchLoad(k); return false; }   // the orchestral bass: from the strings' map (patches/bass-orchestral.py)
   if(ctx&&!BASS_SMP_DEC[k]){ const ac=ctx, names=[];
     for(let m=S.lo;m<=S.hi;m++){ names.push("p"+m); if(S.mute) names.push("m"+m); } if(S.hiAt) for(let m=S.hiAt[0];m<=S.hiAt[1];m++) names.push("h"+m);
     BASS_SMP_DEC[k]=Promise.all(names.map(n=>fetch(bassSmpURL(S.dir,n+".mp3")).then(r=>{ if(!r.ok) throw new Error(n+": "+r.status); return r.arrayBuffer(); })
@@ -15450,7 +15451,48 @@ function bassSmpReady(k){
 /* one note of a sampled bass: the recording at its own pitch (beyond the notes recorded the nearest, at another speed),
    its strike ducked for 90 ms, ringing `ring` seconds and faded at its end; the next bass note damps it (bassLast). A
    muted note is the recorded muted pluck, or - where none was recorded - the pluck stopped after 0.1 s */
+/* THE ORCHESTRAL DOUBLE BASS (David, 27 Oct 2026: "can you add the orchestral's doublebass as alternative doublebass for
+   the band's bass instrument?" - under Double bass, the soft layer, plucked or bowed) (patches/bass-orchestral.py): the strings' own VSCO 2
+   recordings, the double bass's alone - soft pizzicato, or the bowed sustain held by the strings' loop - played through the
+   bass's one path (its duck, its choke, its fader). The nearest recording, its two takes in turn, at the note's pitch; started
+   its measured lead early, so it is heard on the beat; a muted note is the pluck stopped short */
+let bassBow=(function(){ try{ return localStorage.getItem("hps.bassbow")==="arco"?"arco":"pizz"; }catch(e){ return "pizz"; } })();
+let BASS_ORCH_RR=0;
+function bassOrchLoad(k){ const ac=ctx;
+  BASS_SMP_DEC[k]=strMap().then(m=>Promise.all(m.notes.filter(n=>n.sec==="cb"&&((n.art==="pizz"&&n.v==="s")||(n.art==="sus"&&n.v==="f")))
+      .map(n=>fetch(strURL(n.f)).then(r=>{ if(!r.ok) throw new Error(n.f+": "+r.status); return r.arrayBuffer(); })
+        .then(ab=>new Promise((res,rej)=>ac.decodeAudioData(ab,b=>res(strPrep(n,b,m)),rej))))))
+    .then(L=>{ BASS_SMP[k]={ctx:ac,pizz:L.filter(x=>x.n.art==="pizz"),arco:L.filter(x=>x.n.art==="sus")}; BASS_SMP_DEC[k]=null; })
+    .catch(e=>{ BASS_SMP_DEC[k]=null; console.warn("orchestral bass:",e); }); }
+function fireBassOrch(k,midi,st,ring,duck,art,dur,vel){
+  const S=BASS_SETS[k], bow=bassBow==="arco"?"arco":"pizz", L=BASS_SMP[k][bow]; if(!L||!L.length||!STR_MAP) return;
+  const mute=art==="mute", rr=1+(BASS_ORCH_RR++%2); let e=null, bd=1e9;
+  for(const x of L){ const d=Math.abs(x.n.midi-midi)+(x.n.rr===rr?0:0.2); if(d<bd){ bd=d; e=x; } }
+  const rate=Math.pow(2,(midi-e.n.midi-(e.n.c||0)/100)/12), lead=(STR_MAP.lead[e.n.art]||0)+e.off, long=bow==="arco";
+  const lvl=S.gain[bow]*(bassVol/100)*(vel!=null?Math.pow(vel,1.5)*(1+(Math.random()-0.5)*0.12):1);
+  if(mute) ring=Math.min(ring,0.12);
+  if(!long) ring=Math.min(ring,(e.b.duration-lead)/rate-0.02);
+  const at=st-lead/rate, s0=Math.max(at,ctx.currentTime), skip=(s0-at)*rate, end=st+ring, rel=long?0.12:0.08, stopBy=end+0.05;
+  const env=ctx.createGain(), ch=ctx.createGain(), g=ctx.createGain(); g.gain.value=1;   // env: the note; g: what the silencers ramp
+  const back=Math.min(0.09,ring*0.2);
+  env.gain.setValueAtTime(lvl*duck,s0); if(duck<1) env.gain.linearRampToValueAtTime(lvl,st+back);   // the strike gives way to the crowd
+  env.gain.setValueAtTime(lvl,Math.max(st+back,end-rel)); env.gain.linearRampToValueAtTime(0,end);
+  const srcs=[];
+  if(long&&e.n.loop){ const sr=STR_MAP.sr, a=e.n.loop[0]/sr+e.off, b=e.n.loop[1]/sr+e.off, xf=STR_MAP.xf||0.6;   // held as long as it rings
+    let t0=s0, from=Math.min(skip,b-xf-0.05), fi=0;
+    while(t0<stopBy&&srcs.length<60){ srcs.push(strSeg(e,from,b,t0,rate,env,fi,xf,stopBy)); t0+=(b-from-xf)/rate; from=a-xf; fi=xf; } }
+  else { const s=ctx.createBufferSource(); s.buffer=e.b; s.playbackRate.value=rate; s.connect(env); s.start(s0,skip);
+    s.stop(Math.min(s0+(e.b.duration-skip)/rate,stopBy)); srcs.push(s); }
+  env.connect(ch); ch.connect(g); voicePlug(g,bassOutAt(st));
+  if(bassLast&&bassLast.ctx===ctx&&bassLast.st<st&&bassLast.end>st){
+    bassLast.ch.gain.setValueAtTime(1,st);
+    bassLast.ch.gain.linearRampToValueAtTime(0,st+BASS_DAMP); }
+  bassLast={ctx,ch,st,end};
+  g.__at=st; live.push(g); if(live.length>120) live.splice(0,40);
+  voiceDone(g,srcs);
+}
 function fireBassSmp(k,midi,st,ring,duck,art,dur,vel){
+  if(BASS_SETS[k].orch){ fireBassOrch(k,midi,st,ring,duck,art,dur,vel); return; }   /* (patches/bass-orchestral.py) */
   const S=BASS_SETS[k], hm=Math.round(midi), mute=art==="mute";
   /* THE UPPER OCTAVE AT PITCH (David, 6 Oct 2026: "extend the current bass" - "High notes: at pitch"; patches/bass-funk.py):
      from E2 to G3 the electric bass plays notes made at their own pitch from its recordings an octave below, their length
@@ -15488,7 +15530,7 @@ function fireBassSmp(k,midi,st,ring,duck,art,dur,vel){
 const BASS_EDM_SND=new Set(["electro","s808","reese"]);
 /* THE 808 SUB: a sine with a touch of its octave, rounded by a soft clipper, a quick drop in pitch at the strike, a long decay;
    ITS GLIDE: a note that starts while the last 808 note still sounds slides from that note's pitch to its own */
-const BASS_808={gain:0.603,glide:0.09,drive:1.8,decay:0.4};   // decay: 0.4 s (David, 9 Oct 2026: "the fade could be a bit stronger"; patches/808-decay-fix.py)   // gain: the synth bass's loudness, measured (8 notes G1-Bb2, the first half second, rendered offline: +4.4 dB at 1)
+const BASS_808={gain:0.663,glide:0.09,drive:1.8,decay:0.4};   /* gain x1.1 (David, 27 Oct 2026: "pls bring also up the 808 sub bass sound in the app so that 100% equals what is now 110%") */   // decay: 0.4 s (David, 9 Oct 2026: "the fade could be a bit stronger"; patches/808-decay-fix.py)   // gain: the synth bass's loudness, measured (8 notes G1-Bb2, the first half second, rendered offline: +4.4 dB at 1)
 let BASS_808_CURVE=null;
 function fireBass808(midi,st,ring,duck,art,dur,pk){
   const E=BASS_808, f=440*Math.pow(2,(midi-69)/12), mute=art==="mute";
@@ -18174,19 +18216,19 @@ function synSteps(p2,rel,m,sec,at,pd){
    Nothing is drawn by chance: the staff's silent run writes what sounds (DEVELOPER-GUIDE §8 rule 14). A style loads only
    what it plays: its articulations at the chosen layer (strNeeds) - a pad about 37 files, a spiccato arpeggio 70. */
 const STR_GROUPS=[["sus","Sustained","held chords",[["pad","Pad"],["swell","Swell"],["trem","Tremolo"],["half","Half notes"]]],
-  ["rhy","Rhythm","pulses, stabs",[["p8","Eighths"],["p16","Sixteenths"],["gallop","Gallop"],["off","Off-beat"],["stab","Stabs"],["s332","3-3-2"],["oompah","Bass & chords"],["beat","On the beat"],["doff","Double off-beats"],["lilt","Lilt"],["son","Son clave"],["partido","Partido alto"],["bossa","Bossa clave"],["rumba","Rumba clave"]]],
+  ["rhy","Rhythm","pulses, stabs",[["beat","On the beat"],["back","Backbeat"],["p8","Eighths"],["p16","Sixteenths"],["gallop","Gallop"],["off","Off-beat"],["stab","Stabs"],["s332","3-3-2"],["oompah","Bass & chords"],["doff","Double off-beats"],["lilt","Lilt"],["son","Son clave"],["partido","Partido alto"],["bossa","Bossa clave"],["rumba","Rumba clave"]]],
   ["arp","Arpeggio","broken chords",[["arpu","Up"],["arpd","Down"],["arpud","Up-down"],["arpdu","Down-up"],["arpst","Stairs"],["arpth","Root pedal"],["arppk","Top pedal"],
     ["arpcv","Outside in"],["arpbr","Broken"],["arp332","Up 3-3-2"],["arpsy","Syncopated"]]],
   ["lay","Layered","a pad and a line",[["padarp","Pad & arpeggio"],["tremarp","Tremolo & arpeggio"],["padost","Pad & cello pulse"],["padstab","Pad & stabs"]]]];
 const STR_STYLES=STR_GROUPS.flatMap(([g,l,s,ch])=>ch.map(([y,cl])=>[y,g==="arp"?"Arpeggio "+cl.toLowerCase():cl]));
 /* RHYTHMS WRITTEN AS STEPS (David, 26 Oct 2026; patches/strings-step-rhythms.py): sixteenths, x a hit, from the bar's start */
-const STR_STEPS={beat:"x---",doff:"--xx",lilt:"--xx--x-",son:"x--x--x---x-x---",partido:"x-x--x-x-x--x-x-",bossa:"x--x--x---x--x--",rumba:"x--x---x--x-x---"};
+const STR_STEPS={beat:"x---",back:"----x---",doff:"--xx",lilt:"--xx--x-",son:"x--x--x---x-x---",partido:"x-x--x-x-x--x-x-",bossa:"x--x--x---x--x--",rumba:"x--x---x--x-x---"};
 const STR_LAY={padarp:["pad","arpu"],tremarp:["trem","arpud"],padost:["pad","cello"],padstab:["pad","stab"]};   // a layered style: its bed and its line
 const STR_BOWS=[["spic","Spiccato"],["pizz","Pizzicato"]], STR_DYNS=[["soft","Soft"],["strong","Strong"]], STR_OCTS=[["1","1 octave"],["2","2 octaves"]], STR_VOICS=[["close","Close"],["wide","Wide"]];
 function strGroupOf(y){ const g=STR_GROUPS.find(g=>g[3].some(x=>x[0]===y)); return g?g[0]:"sus"; }
 function strStyleName(k){ const s=STR_STYLES.find(x=>x[0]===k); return s?s[1]:"Pad"; }
 const STR_PK=0.26;              // a note at volume 100 (every file is levelled to one loudness)
-const STR_CBG={pizz:Math.pow(10,7.5/20),short:Math.pow(10,7/20),sus:Math.pow(10,6/20),trem:Math.pow(10,6/20)};   /* the double bass as heard: +7.5, +7, +6 dB (David, 26 Oct 2026: "the souble bass is too soft" - "add 1 extra db for each articulation"; patches/strings-cb-louder.py - then "can get 1.5 db louder still") */
+const STR_CBG={pizz:Math.pow(10,9/20),short:Math.pow(10,8.5/20),sus:Math.pow(10,7.5/20),trem:Math.pow(10,7.5/20)};   /* the double bass as heard: +9, +8.5, +7.5 dB (David, 26 Oct 2026: "the souble bass is too soft" - "add 1 extra db for each articulation"; patches/strings-cb-louder.py - then "can get 1.5 db louder still"; 27 Oct: "pls bring the doublebass up in the strings ensemble" - 1.5 dB more, his choice) */
 const STR_ARTG={sus:0.49,trem:0.76,short:0.871,pizz:1.186};   /* spiccato and pizzicato x 1.21 (David, 26 Oct 2026: "the new 100% is what is now 110%") */   /* sustained and arpeggios (David, 25 Oct 2026: arpeggio spiccato what 60 % was before the
    last cut, pizzicato and the sustained sounds what 70 % is - a slider's 60 % being a level of 0.36, 70 % of 0.49; patches/strings-quieter.py) */
 const STR_RHYG={short:0.751,pizz:1.306};   // a Rhythm style's notes against that: spiccato what 65 % was (1.28 x 0.4225 / 0.72), pizzicato what 80 % was (2 x 0.64 / 0.98)   // spiccato x 0.64 (David, 25 Oct 2026: "so that 100% is what now is 80%"; patches/strings-voicing.py)   // each articulation against the piano, rendered through the band (25 Oct 2026): a Soft pad as loud as the piano's held chords, a Soft arpeggio as its arpeggio
@@ -20530,10 +20572,16 @@ function sndAutoPaint(pop,k){ if(!pop) return; const A={gtr:["gsnd",gtrSound],pn
   pop.querySelectorAll("[data-"+A[0]+"]").forEach(b=>{ const v=b.dataset[A[0]]; b.classList.toggle("on",auto?v==="auto":v===A[1]); b.classList.toggle("via",auto&&v===A[1]); });
   if(k==="pno"){ const cr=pop.querySelector("#pnoCredit"); if(cr) cr.textContent=PNO_CREDIT[pnoSound]; }
   if(k==="bass") bassSndPaint(pop); }
-/* the bass's EDM row: open while one of its sounds plays, or opened by its button; the button lit with it (patches/bass-edm-sounds.py) */
-function bassSndPaint(pop){ if(!pop) return; const edm=BASS_EDM_SND.has(bassSound), box=pop.querySelector("#bassEdmBox"), b=pop.querySelector("[data-bsg]");
-  if(box) box.hidden=!(edm||pop._edmOpen); if(b){ b.classList.toggle("on",edm&&!SND_AUTO.bass||!!pop._edmOpen&&!edm); b.classList.toggle("via",edm&&!!SND_AUTO.bass); } }
-document.addEventListener("click",e=>{ const b=e.target&&e.target.closest&&e.target.closest("#bassPop [data-bsg]"); if(!b) return; const pop=b.closest(".pop"); pop._edmOpen=!pop._edmOpen; bassSndPaint(pop); });
+/* the bass's second rows, Double bass and EDM, ONE mechanism (patches/bass-orchestral.py): a group's row is open while one of its sounds
+   plays, or opened by its button (which closes the other); its button lit while its row shows, "via" while Auto plays it;
+   the orchestral bass's Bowing shows under its row while it is chosen (patches/bass-edm-sounds.py) */
+const BASS_DB_SND=new Set(["dbass","obass"]), BASS_SND_GRPS={db:[BASS_DB_SND,"bassDbBox"],edm:[BASS_EDM_SND,"bassEdmBox"]};
+function bassSndPaint(pop){ if(!pop) return;
+  for(const g in BASS_SND_GRPS){ const [set,id]=BASS_SND_GRPS[g], inG=set.has(bassSound), shown=pop._sgOpen?pop._sgOpen===g:inG, box=pop.querySelector("#"+id), b=pop.querySelector('[data-bsg="'+g+'"]');
+    if(box) box.hidden=!shown; if(b){ b.classList.toggle("on",shown&&!(inG&&SND_AUTO.bass)); b.classList.toggle("via",inG&&!!SND_AUTO.bass); } }
+  const bw=pop.querySelector("#bassBowBox"); if(bw) bw.hidden=bassSound!=="obass"; }
+document.addEventListener("click",e=>{ const b=e.target&&e.target.closest&&e.target.closest("#bassPop [data-bsg]"); if(!b) return; const pop=b.closest(".pop"), g=b.dataset.bsg;
+  pop._sgOpen=pop._sgOpen===g||(!pop._sgOpen&&BASS_SND_GRPS[g]&&BASS_SND_GRPS[g][0].has(bassSound))?null:g; bassSndPaint(pop); });
 document.addEventListener("click",e=>{ const pop=e.target.closest&&e.target.closest(".pop[data-ck]"); if(!pop) return; const k=pop.dataset.ck;
   if(!SND_AUTO.hasOwnProperty(k)) return; sndAutoApply(k); sndAutoPaint(pop,k); });   // after the card's own handlers: a style chosen brings its sound
 function bassStyleName(k){ const s=BASS_STYLES.find(x=>x[0]===k); return s?s[1]:"Root"; }
@@ -20901,8 +20949,8 @@ function bassIsPlayer(){ return document.documentElement.classList.contains("pla
 /* THE BASS'S STYLES IN THREE GROUPS, each with its Pattern selector, as the piano's (David, 30 Sep 2026; patches/menus-unified.py):
    choosing a group opens its patterns and chooses nothing; BASSGRP keeps the open group across the box's redraws */
 const BASS_GROUPS=[["basic","Basic",[["root","Root"],["beats","Root on the beats"],["r8","Root 8ths"],["r16","Root 16ths"],["push3","Push to 3"],["r5","Root–5th"],["oct","Octaves"],["arp","Arpeggio"],["walk","Walking"]]],
-  ["latin","Latin",[["tumbao","Tumbao"],["332","3-3-2"],["332t","3-3-2 tumbao"]]],
-  ["dbl","Double",[["tumbaox2","Tumbao"],["332x2","3-3-2"],["332tx2","3-3-2 tumbao"]]],
+  ["latin","Latin",[["tumbao","Tumbao"],["332","3-3-2"],["332t","3-3-2 tumbao"],
+    ["tumbaox2","Tumbao double"],["332x2","3-3-2 double"],["332tx2","3-3-2 tumbao double"]]],   // the double-time ones, Double's until 27 Oct 2026 (patches/bass-latin-double.py)
   ["funk","Funk",[["fkoct","Octave pops"],["fkone","On the one"],["fkhook","Seventh hook"],["fk16","Sixteenths"],["fknola","New Orleans"]]],   // (David, 6 Oct 2026; patches/bass-funk.py)
   ["edm","EDM",[["edoff","Off-beat"],["edroll","Rolling"],["edpump","Octave pump"],["ed8","Driving 8ths"],["edarp","Arp"],["edsub","Sub hold"]]],   // (David, 9 Oct 2026; patches/bass-edm.py)
   ["follow","Follow",[["panlow","Handpan"],["kitkick","Drums"],["kick","Percussion"]]]];   // (David, 6 Oct 2026; patches/bass-follow.py)
@@ -21675,8 +21723,13 @@ document.addEventListener("click",e=>{
   const b=e.target&&e.target.closest&&e.target.closest("#bassPop [data-bsnd]"); if(!b) return;
   if(b.dataset.bsnd==="auto"){ sndAutoSet("bass",true); sndAutoPaint(b.closest(".pop"),"bass"); return; } sndAutoSet("bass",false);   /* (patches/auto-sounds.py) */
   bassSound=(BASS_SETS[b.dataset.bsnd]||BASS_EDM_SND.has(b.dataset.bsnd))?b.dataset.bsnd:"synth"; try{ localStorage.setItem("hps.basssound",bassSound); }catch(x){}
-  b.closest(".pop").querySelectorAll("[data-bsnd]").forEach(x=>x.classList.toggle("on",x===b)); if(!BASS_EDM_SND.has(bassSound)) b.closest(".pop")._edmOpen=false; bassSndPaint(b.closest(".pop"));   // across both rows; a sound outside EDM closes its row (patches/bass-edm-sounds.py)
+  b.closest(".pop").querySelectorAll("[data-bsnd]").forEach(x=>x.classList.toggle("on",x===b)); b.closest(".pop")._sgOpen=null; bassSndPaint(b.closest(".pop"));   // across both rows; a sound outside EDM closes its row (patches/bass-edm-sounds.py)
   if(BASS_SETS[bassSound]) bassSmpReady(bassSound);
+});
+document.addEventListener("click",e=>{   /* the orchestral bass's Bowing (patches/bass-orchestral.py) */
+  const b=e.target&&e.target.closest&&e.target.closest("#bassPop [data-bbw]"); if(!b) return;
+  bassBow=b.dataset.bbw==="arco"?"arco":"pizz"; try{ localStorage.setItem("hps.bassbow",bassBow); }catch(x){}
+  b.closest(".pop").querySelectorAll("[data-bbw]").forEach(x=>x.classList.toggle("on",x===b));
 });
 document.addEventListener("click",e=>{
   const b=e.target&&e.target.closest&&e.target.closest("#bassPop [data-bl]"); if(!b) return;
@@ -24935,7 +24988,7 @@ const MIDI_WGG={cajon:{D:36,T:38,P:37},cajonkit:{D:36,T:38,P:37,S:39,J:42},frame
 /* each track's nearest General MIDI sound (programs counted from 0) */
 function midiProg(k){
   if(k==="pan") return 114;                                                             // Steel Drums
-  if(k==="bass") return ({dbass:32,ebass:33,synth:38,electro:39})[bassSound]??32;       // Acoustic, Fingered, Synth 1, Synth 2
+  if(k==="bass") return bassSound==="obass"?(bassBow==="arco"?43:32):({dbass:32,ebass:33,synth:38,electro:39})[bassSound]??32;       // Acoustic, Fingered, Synth 1, Synth 2
   if(k==="gtr") return ({mf:24,clean:27,metal:30,hollow:26})[gtrSound]??25;           // Nylon, Clean, Distortion, Jazz; else Steel
   if(k==="pno") return pnoSound==="grand"?0:4;                                         // Grand, else Electric Piano 1
   if(k==="str") return strGroupOf(strStyle)!=="sus"&&strBow==="pizz"?45:/trem/.test(strStyle)?44:48;   // Pizzicato, Tremolo or String Ensemble 1 (patches/strings-b.py)
@@ -27221,9 +27274,9 @@ const CARD_PRESETS={
       ["Deep root","Synth · root, steady","~bgg=basic bms=root bsnd=synth bbl=0 bpu=both",{}],
       ["Electro pulse","Electro · octaves","~bgg=basic bms=oct bsnd=electro bbl=2 bpu=both",{}]]],
     ["Double time",[
-      ["Driving tumbao","Electric · tumbao, double time","~bgg=dbl bms=tumbaox2 bsnd=ebass bbl=2 bpu=both",{}],
-      ["Driving 3-3-2","Synth · 3-3-2, double time","~bgg=dbl bms=332x2 bsnd=synth bbl=2 bpu=both",{}],
-      ["Afro-Cuban drive","Electric · 3-3-2 tumbao, double","~bgg=dbl bms=332tx2 bsnd=ebass bbl=2 bpu=both",{}]]],
+      ["Driving tumbao","Electric · tumbao, double time","~bgg=latin bms=tumbaox2 bsnd=ebass bbl=2 bpu=both",{}],
+      ["Driving 3-3-2","Synth · 3-3-2, double time","~bgg=latin bms=332x2 bsnd=synth bbl=2 bpu=both",{}],
+      ["Afro-Cuban drive","Electric · 3-3-2 tumbao, double","~bgg=latin bms=332tx2 bsnd=ebass bbl=2 bpu=both",{}]]],
     ["EDM",[   /* (David, 9 Oct 2026; patches/bass-edm.py) */
       ["House off-beat","Electro · the root on every and","~bgg=edm bms=edoff bsnd=electro bbl=2 bpu=both",{}],
       ["Rolling bass","Synth · three sixteenths after the kick","~bgg=edm bms=edroll bsnd=synth bbl=1 bpu=both",{}],
@@ -27353,7 +27406,7 @@ function cpSetLast(k,key){ try{ if(key) localStorage.setItem("hps.cardpre."+k,ke
 function cpGet(k,key){ if(!key||!CARD_PRESETS[k]) return null;
   if(key.startsWith("m:")){ const p=cpMine(k)[+key.slice(2)]; return p?[p.n,p.s||"",p.t,p.f||{}]:null; }
   const q=key.split(":"), g=CARD_PRESETS[k][+q[0]]; return (g&&g[1][+q[1]])||null; }
-const CP_SNAP_MORE={str:["tscb="]};   // a card's settings no preset of it names, kept all the same: the strings' Double bass (patches/band-strings-presets.py)
+const CP_SNAP_MORE={str:["tscb="],bass:["bbw="]};   // a card's settings no preset of it names, kept all the same: the strings' Double bass (patches/band-strings-presets.py)
 function cpSnap(pop,k){ const seen=new Set(), tok=[];
   for(const t of CARD_PRESETS[k].flatMap(([,L])=>L.flatMap(p=>p[2].split(" "))).concat(CP_SNAP_MORE[k]||[])){ const a=t.replace(/^~/,"").split("=")[0]; if(!a||seen.has(a)) continue; seen.add(a);
     const b=pop.querySelector('.cpage [data-'+a+'].on'); if(b) tok.push((t[0]==="~"?"~":"")+a+"="+b.getAttribute("data-"+a)); }
@@ -51403,7 +51456,7 @@ function coRenderList(host){
       grid=document.createElement("div"); grid.className="cogrid"; L.appendChild(grid); }
     const b=document.createElement("button");
     b.className="jchord"+(c.miss?" almost":"")+(coCur&&c.name===coCur.name?" sel":""); b.dataset.n=c.name;
-    const flds=c.sug.map(f=>"<span"+(isBotPos(f)?" class='jb'":"")+">"+coLabel(f)+"</span>").join("");
+    const flds=coVoicing(c).map(f=>"<span"+(isBotPos(f)?" class='jb'":"")+">"+coLabel(f)+"</span>").join("");
     b.innerHTML="<b>"+fmtChord(c.name)+"</b><span class='jcf'>"+flds+"</span>"+(c.miss?"<small class='miss'>no "+c.miss+"</small>":"");
     b.addEventListener("click",()=>coShow(c,true));
     grid.appendChild(b);
@@ -51501,7 +51554,7 @@ const MD_STOP='<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColo
 function mdChip(t){
   const i=mdChips.push(t)-1;
   if(!t.item) return "<button class='jchord absent' disabled title='Your pan cannot play this chord'><small class='rn'>"+t.rn+"</small><b>"+fmtChord(t.name)+"</b><small class='miss'>not on this pan</small></button>";
-  const c=t.item, flds=c.sug.map(f=>"<span"+(isBotPos(f)?" class='jb'":"")+">"+coLabel(f)+"</span>").join("");
+  const c=t.item, flds=coVoicing(c).map(f=>"<span"+(isBotPos(f)?" class='jb'":"")+">"+coLabel(f)+"</span>").join("");
   return "<button class='jchord"+(c.miss?" almost":"")+"' data-md='chord' data-i='"+i+"'><small class='rn'>"+t.rn+"</small><b>"+fmtChord(c.name)+"</b><span class='jcf'>"+flds+"</span>"+(c.miss?"<small class='miss'>no "+c.miss+"</small>":"")+"</button>";
 }
 function mdRender(){
@@ -52209,8 +52262,8 @@ function coWire(){
         coAlmostPaint();
         if(coCur&&coCur.miss){ const v=coVisible(); if(v[0]) coShow(v[0],false); } break;
       case "coAlmost": coAlmost=true; pill("coAlmost","coComplete"); $("chordOvDlg").classList.remove("hidealmost"); coAlmostPaint(); break;
-      case "coVoiceSug": coVoice="sug"; pill("coVoiceSug","coVoiceAll"); if(coCur) coShow(coCur,true); break;
-      case "coVoiceAll": coVoice="all"; pill("coVoiceAll","coVoiceSug"); if(coCur) coShow(coCur,true); break;
+      case "coVoiceSug": coVoice="sug"; pill("coVoiceSug","coVoiceAll"); coRenderList(); if(mdOn) mdRender(); if(coCur) coShow(coCur,true); break;   // the chips list what plays (patches/chips-show-every-note.py)
+      case "coVoiceAll": coVoice="all"; pill("coVoiceAll","coVoiceSug"); coRenderList(); if(mdOn) mdRender(); if(coCur) coShow(coCur,true); break;   // the chips list what plays (patches/chips-show-every-note.py)
     }
   });
   /* the keys, taken before the app's own keydown (capture) while the sheet
@@ -57725,7 +57778,8 @@ function boot(){
     if(panOrient===v) return;
     panOrient=v;
     try{localStorage.setItem("hps.panorient",v)}catch(e){}
-    paintOrient(); renderPanPanel(); if(editing){ refresh(); }
+    paintOrient(); edPanFor=null; if(editing){ refresh(); }
+    pzEditBehind(); try{ msPairPaint(); }catch(e){}   /* every pan on show turns - the pan card, the piece, the Chords page's pan, Combines with's two (patches/orient-redraws-every-pan.py) */
     handsAfterLayout();   /* how the pan is held moves the fields too (patches/hands-follow-layout.py) */
   };
   $("sgRoll").addEventListener("click",()=>{
@@ -57797,9 +57851,13 @@ function boot(){
       pop.innerHTML=playRow("bass")+staffRow("bass")+'<div class="ttl">Sound</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(3,1fr)">'   // the double bass and the electric (30 Sep 2026): three across
         +'<button class="bwseg" data-bsnd="auto">Auto</button>'   /* (patches/auto-sounds.py) */
         +'<button class="bwseg'+(bassSound==="synth"?' on':'')+'" data-bsnd="synth">Synth</button>'
-        +'<button class="bwseg'+(bassSound==="dbass"?' on':'')+'" data-bsnd="dbass">Double bass</button>'
+        +'<button class="bwseg'+(BASS_DB_SND.has(bassSound)?' on':'')+'" data-bsg="db">Double bass</button>'   /* opens Jazz | Orchestral (patches/bass-orchestral.py) */
         +'<button class="bwseg'+(bassSound==="ebass"?' on':'')+'" data-bsnd="ebass">Electric</button>'
         +'<button class="bwseg'+(BASS_EDM_SND.has(bassSound)?' on':'')+'" data-bsg="edm">EDM</button></div>'   /* the EDM sounds in their own row (patches/bass-edm-sounds.py) */
+        +'<div id="bassDbBox"'+(BASS_DB_SND.has(bassSound)?'':' hidden')+'><div class="ttl">Double bass</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(2,1fr)">'   /* (patches/bass-orchestral.py) */
+        +[["dbass","Jazz"],["obass","Orchestral"]].map(([k,l])=>'<button class="bwseg'+(bassSound===k?' on':'')+'" data-bsnd="'+k+'">'+l+'</button>').join("")+'</div>'
+        +'<div id="bassBowBox"'+(bassSound==="obass"?'':' hidden')+'><div class="ttl">Bowing</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(2,1fr)">'
+        +[["pizz","Pizzicato"],["arco","Bowed"]].map(([k,l])=>'<button class="bwseg'+(bassBow===k?' on':'')+'" data-bbw="'+k+'">'+l+'</button>').join("")+'</div></div></div>'
         +'<div id="bassEdmBox"'+(BASS_EDM_SND.has(bassSound)?'':' hidden')+'><div class="ttl">EDM sound</div><div class="pal bwsw gsty" style="grid-template-columns:repeat(3,1fr)">'
         +[["electro","Electro"],["s808","808 sub"],["reese","Reese"]].map(([k,l])=>'<button class="bwseg'+(bassSound===k?' on':'')+'" data-bsnd="'+k+'">'+l+'</button>').join("")+'</div></div>'
         +bassStyleMenuHTML()   // the bass style (David, 28 Sep 2026) - the menus' one order (30 Sep 2026): style, register, volume, mix
