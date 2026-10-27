@@ -597,11 +597,15 @@ function build(input,opts){
     return {...a,inner:a.inner+b.inner,extentTop:Math.min(a.extentTop,b.extentTop),extentBot:Math.max(a.extentBot,b.extentBot),clefTop:Math.min(a.clefTop,b.clefTop),clefBot:Math.max(a.clefBot,b.clefBot)}; };   // voice, not label: label is the table's boxed name
   /* A STAFF CLEARS THE ONE ABOVE (David, 30 Sep 2026: "the notations are curently overcrossing"): 3.5 spaces under it, and
      lower where its highest ink - a note, a stem, its name - would come within 1.2 spaces of it */
+  /* THE PAGES SHARE ONE FRAME (David, 27 Oct 2026) (patches/staff-frame.py): tops are the staves' top lines in order; with a frame
+     (frame() below) each stands no closer to the one before - the first to 200 - than any page of the table needs */
+  const fr=opts.frame||null,tops=opts.panHidden&&ex.length&&!opts.bassOnly?[]:[200];
+  const fAt=t=>{const g=fr&&fr.gaps[tops.length];return g!=null&&isFinite(g)?Math.max(t,(tops.length?tops[tops.length-1]:200)+g):t};
   let sysT=null,sysB=null;   // the system's first staff line and its last, for the line that joins them (patches/staff-print-score.py)
   let hiTop=null;const braceOf=(x,y1,y2)=>{const s=(y2-y1)/(3.98*sp),w=.25*s*sp;   /* THE ENGRAVED BRACE (David, 17 Oct 2026: "more in style with traditional staff notation"; patches/staff-brace-glyph.py): Leland's own brace, U+E000 - its ink 3.98 spaces tall and 0.25 wide at the staff's font size - scaled evenly to the two staves, its right edge 0.3 spaces before the line that joins them. One function for the handpan's two staves and a split voice. */
     return `<rect x="${x}" y="${y1.toFixed(1)}" width="${(E.thin*sp).toFixed(2)}" height="${(y2-y1).toFixed(1)}" fill="${COL.ink}"/>`+`<text transform="translate(${(x-.3*sp-w).toFixed(2)} ${y2.toFixed(2)}) scale(${s.toFixed(4)})" font-family="Leland" font-size="${(4*sp).toFixed(2)}" fill="${COL.ink}">\uE000</text>`};
   const stackExtras=prev=>ex.forEach((v,i)=>{let top=prev+3.5*sp,bs=extraStaff(top,i,v);
-    const over=Math.min(bs.extentTop,bs.clefTop,bs.topY-2*sp)-(prev+1.2*sp);if(over<0){top-=over;bs=extraStaff(top,i,v)}
+    const over=Math.min(bs.extentTop,bs.clefTop,bs.topY-2*sp)-(prev+1.2*sp);if(over<0){top-=over;bs=extraStaff(top,i,v)}{const f=fAt(top);if(f>top){top=f;bs=extraStaff(top,i,v)}}tops.push(top);
     if(v.split==="hi")hiTop=bs.topY;parts.push({inner:bs.bands+bs.inner+(v.split==="lo"&&hiTop!=null?braceOf(base.left,hiTop,bs.botY):""),extentTop:bs.extentTop,nameTop:bs.voiceTop,extentBot:Math.max(bs.extentBot,bs.clefBot)});if(sysT==null)sysT=bs.topY;sysB=bs.botY;prev=Math.max(bs.extentBot,bs.clefBot);if(W==null)W=bs.W});
   const cols=mode==="grid"?spacing(bars,ctx,keeps,bars.length*ctx.ppb*base.pw,sp):null;
   if(opts.panHidden&&ex.length&&!opts.bassOnly){ stackExtras(200-3.5*sp); }   /* the handpan's own staff hidden: the instruments' alone (patches/staff-pan-hide.py) */
@@ -611,7 +615,7 @@ function build(input,opts){
   }else if(opts.grand){
     const gap=3.5*sp;
     const t=staff(bars,ctx,{...base,top:200,clef:"g",keep:keeps[0],cols,numbersRow:false,collect:!!opts.numbersRow,voice:ex.length?"Handpan":""}); /* named among the instruments (30 Sep 2026) */
-    const b=staff(bars,ctx,{...base,top:t.extentBot+gap,clef:"f",keep:keeps[1],cols,barNumbers:false,numbersRow:false,collect:!!opts.numbersRow});
+    const bTop=fAt(t.extentBot+gap);tops.push(bTop);const b=staff(bars,ctx,{...base,top:bTop,clef:"f",keep:keeps[1],cols,barNumbers:false,numbersRow:false,collect:!!opts.numbersRow});
     W=t.W;sysT=t.topY;sysB=b.botY;
     const x=base.left,y1=t.topY,y2=b.botY,ym=(y1+y2)/2;
     let brace=braceOf(x,y1,y2);   // the engraved brace and the joining line (patches/staff-brace-glyph.py)
@@ -632,10 +636,11 @@ function build(input,opts){
      to the last's bottom line, the grand staff's own line; one staff alone has none */
   if(opts.systemLine&&ex.length&&sysT!=null&&sysB>sysT+4.5*sp)
     parts.push({inner:`<rect x="${base.left}" y="${sysT.toFixed(1)}" width="${(E.thin*sp).toFixed(2)}" height="${(sysB-sysT).toFixed(1)}" fill="${COL.ink}"/>`,extentTop:sysT,extentBot:sysB});
-  const top=Math.min(...parts.map(p=>Math.min(p.extentTop,p.nameTop==null?Infinity:p.nameTop))),bot=   /* the top staff's name is inside the drawing - it was cut where nothing else rose so high (patches/staff-bar-number-beside-name.py) */Math.max(...parts.map(p=>p.extentBot));
+  let top=Math.min(...parts.map(p=>Math.min(p.extentTop,p.nameTop==null?Infinity:p.nameTop))),bot=   /* the top staff's name is inside the drawing - it was cut where nothing else rose so high (patches/staff-bar-number-beside-name.py) */Math.max(...parts.map(p=>p.extentBot));
+  if(fr&&tops.length){top=Math.min(top,tops[0]-fr.above);bot=Math.max(bot,tops[tops.length-1]+fr.below)}   // as tall as the tallest page (patches/staff-frame.py)
   const H=bot-top;
   const svg=`<svg class="sv" viewBox="0 ${top.toFixed(1)} ${W.toFixed(1)} ${H.toFixed(1)}" ${opts.fixed?`width="${W.toFixed(0)}" height="${H.toFixed(0)}"`:""} xmlns="http://www.w3.org/2000/svg">${parts.map(p=>p.inner).join("")}</svg>`;
-  return{svg,W,H,key:ctx.key,clef:opts.grand?"grand":(opts.clef||clefFor(input.pan,opts.clefFrom).clef),fits:cols?cols.fits:true,need:cols?cols.floor:0,room:cols?bars.length*ctx.ppb*base.pw:0};
+  return{svg,W,H,frame:{tops,top,bot},key:ctx.key,clef:opts.grand?"grand":(opts.clef||clefFor(input.pan,opts.clefFrom).clef),fits:cols?cols.fits:true,need:cols?cols.floor:0,room:cols?bars.length*ctx.ppb*base.pw:0};
 }
 
 /* ---------- font and style ---------- */
@@ -698,5 +703,19 @@ function chooseClefs(input,staves){
       if(w<bw){bw=w;best=c}}
     return{...v,clef:best}});
 }
-window.StaffView={version:3,chooseClefs,render,paint,plan,slice,keyFor,clefFor,panNames,stepOf,LEDGER_GUARD,G,E};
+/* THE PAGES SHARE ONE FRAME (David, 27 Oct 2026: "Can you measure the size of the staffs for the complete sequence so the
+   staff notation doesn't change size between pages?") (patches/staff-frame.py): every page of `per` bars laid out as render() would
+   lay it out in `el`, drawn nowhere; for each staff the most room any page needed under the one before, and the most
+   reach above the first and below the last. Passed back as opts.frame, it draws every page at one height with every staff
+   in one place. null for a table on one page. */
+function frame(el,input,per,opts){
+  const n=(input.bars||[]).length;if(!(per>0)||n<=per)return null;
+  const width=(el&&el.getBoundingClientRect().width)||opts.width||900,gaps=[];let above=0,below=0;
+  for(let a=0;a<n;a+=per){const f=render(null,slice(input,a,a+per),{...opts,width,frame:null,band:null,firstBar:(opts.firstBar||0)+a}).frame;
+    if(!f||!f.tops.length)continue;
+    f.tops.forEach((t,i)=>{gaps[i]=Math.max(gaps[i]==null?-Infinity:gaps[i],t-(i?f.tops[i-1]:200))});
+    above=Math.max(above,f.tops[0]-f.top);below=Math.max(below,f.bot-f.tops[f.tops.length-1])}
+  return{gaps,above,below};
+}
+window.StaffView={version:3,chooseClefs,render,paint,plan,slice,frame,keyFor,clefFor,panNames,stepOf,LEDGER_GUARD,G,E};
 })();
