@@ -161,6 +161,8 @@ body.preview .stagewrap{display:flex}
 .schead input, .sccheck input{margin:0; width:15px; height:15px; accent-color:var(--dixie)}
 .scrow{display:flex; align-items:center; justify-content:space-between; gap:8px; color:var(--ink2); font-weight:600}
 .scrow>span:first-child{white-space:nowrap}
+.scrow.scoff{opacity:.45; pointer-events:none}   /* a setting the shown piece does not read (patches/lab-letter-style.py) */
+#fcpLetterSize{width:96px; accent-color:var(--dixie)}
 label.sccheck{justify-content:flex-start; cursor:pointer}
 .scgrp:has(>.schead input:not(:checked)) .scrow{opacity:.4; pointer-events:none}   /* a group's lines wait for its switch */
 .stagecard:has(#fcpDesign option[value="panel"]:checked) label.scrow:has(>#fcpChordHands){display:none}   /* Panel look: the chord card has no hand colours, so no switch for them (patches/lab-card-no-hand-colours.py) */
@@ -192,6 +194,9 @@ body.preview #vidobj .grip, body.preview #cropbox, #cropBtn{display:none !import
 body.preview #fcpHit{display:block}
 #fcpChordHit{position:absolute; display:none; z-index:5; cursor:pointer; border-radius:4px}   /* the chord row on the stage: a click on a chip opens its notes (18 Sep) */
 body.preview #fcpChordHit{display:block}
+#fcpLetterHit{position:absolute; display:none; z-index:6; cursor:move; border:1px dashed rgba(255,255,255,0); border-radius:4px; touch-action:none}   /* the section letter, dragged (patches/lab-letter-style.py) */
+#fcpLetterHit:hover,#fcpLetterHit.on{border-color:rgba(255,255,255,.7)}
+body.preview #fcpLetterHit{display:block}
 #fcpHit .grip{right:-12px; bottom:-12px; width:24px; height:24px; border-radius:5px; background:#fff; box-shadow:0 0 0 1.5px rgba(0,0,0,.5); cursor:nwse-resize}   /* a hand-sized corner (David, 16 Sep: "I can't comfortably resize the notation") */
 .obj{position:absolute; touch-action:none}
 /* PREVIEW IS THE FINAL CUT FRAME (David, 16 Sep: "see the actual table that's going to be
@@ -404,6 +409,7 @@ body.tlane .scrub{border-radius:0}
 .recent small{color:var(--ink3); font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1 1 auto; min-width:0}
 .recent .when{color:var(--ink3); font-size:11px; flex:none}
 #recentList .none{padding:14px 12px; color:var(--ink3); font-size:12.5px}
+#importText{width:100%; height:120px; font:12px/1.4 ui-monospace,Menlo,monospace; color:var(--ink); background:var(--dust); border:1px solid var(--rule); border-radius:8px; padding:8px; resize:vertical; box-sizing:border-box; word-break:break-all}   /* (patches/lab-import-code.py) */
 #embedCode{width:100%; height:180px; font:11px/1.4 ui-monospace,Menlo,monospace; color:var(--ink2); background:var(--dust); border:1px solid var(--rule); border-radius:8px; padding:8px; resize:vertical; box-sizing:border-box}
 #labtoast{position:fixed; left:50%; bottom:112px; transform:translateX(-50%); background:var(--ink);
   color:var(--paper); font-size:13px; padding:8px 16px; border-radius:9px; opacity:0;
@@ -441,6 +447,7 @@ body.tlane .scrub{border-radius:0}
            over from File with them: it replaces the open piece, so it is this menu's New -->
       <button class="it" id="newBtn" title="A blank piece in the place of the open one (⌘Z brings the open one back). To keep it and write another piece for the same video: ＋ Add a piece to this video, below">New piece<span class="k">replaces this one · blank</span></button>
       <button class="it" id="openPieceBtn">Open piece…<span class="k">.hps · HPS1 code · JSON</span></button>
+      <button class="it" id="importCodeBtn" title="Paste an HPS1 code or a piece link. A piece replaces the open one (⌘Z brings it back); a book of pieces is added to this video. ⌘V with a code on the clipboard opens this too">Import code…<span class="k">HPS1 code · piece link</span></button>
       <button class="it" id="savePieceBtn" title="The open piece — its tables, arrangement and tempo map — as a .hps file the Studio and the phone app open (the same as Export › Save piece as .hps…)">Save piece…<span class="k">.hps</span></button>
       <hr>
       <div class="h lbl">The pieces of this video</div>
@@ -480,12 +487,14 @@ body.tlane .scrub{border-radius:0}
       <hr>
       <div class="h" id="fcpScopeRow" style="display:none" title="What the three Final Cut files below hold: the open piece alone, or every piece of this video on one timeline — each at its own time, with its own place, size and chords. Saved with the project"><span class="lbl">Final Cut writes</span><span class="seg tiny" id="fcpScopeSeg"><button type="button" data-v="one" class="on">This piece</button><button type="button" data-v="all">All pieces</button></span></div>
       <div class="h" id="fcpBareRow" title="What the three Final Cut files below hold besides the notation. With the video: the take as a clip, the notation on it. Notation only: no video at all - an empty stretch as long as the take with the same titles and markers at the same times, so nothing is imported or asked for. Saved with the project"><span class="lbl">Final Cut file</span><span class="seg tiny" id="fcpBareSeg"><button type="button" data-v="take" class="on">With the video</button><button type="button" data-v="bare">Notation only</button></span></div>
+      <div class="h" id="fcpSendRow" hidden title="Where the Final Cut files below go. Save: a .fcpxml file, as before. Send: straight to Final Cut Pro, which comes forward and imports it (the file is kept in the app's caches). On this Mac; the Mac app only"><span class="lbl">Final Cut files</span><span class="seg tiny" id="fcpSendSeg"><button type="button" data-v="save" class="on">Save</button><button type="button" data-v="send">Send</button></span></div>
       <div class="h" id="fcpMarksRow" title="Final Cut's own markers on the take, in the Final Cut files below. None: no markers - they sit on the video and stay behind when the notation is copied into another timeline. Tables: a chapter marker where each table begins. Every bar: those and a marker at every bar. Saved with the project"><span class="lbl">Markers</span><span class="seg tiny" id="fcpMarksSeg"><button type="button" data-v="none" class="on">None</button><button type="button" data-v="tables">Tables</button><button type="button" data-v="all">Every bar</button></span></div>
       <div class="h lbl">Final Cut Pro — the take, a title per table, the beat marker as clips in a row above it</div>
       <button class="it" id="fcpBtn" data-set="v31" title="One HPD Notation title per marked table, its own marker off, and one Highlight Marker clip per beat in a row of its own, laid on the table's cells">Final Cut table + marker clips (.fcpxml) — Highlight Marker<span class="k">a title per table, a clip per beat</span></button>
       <button class="it" id="fcpBtn2" data-set="v200" title="One HPD Notation title per marked table, its own marker off, and one Percussive Marker Centered clip per beat in a row of its own, laid on the table's cells">Final Cut table + marker clips (.fcpxml) — Percussive Marker Centered<span class="k">a title per table, a clip per beat</span></button>
       <hr>
       <button class="it" id="fcpTablesBtn" title="One HPD Notation title per marked table: every cell filled from the notation, the beat marker keyframed from the map; plus the chapter and bar markers">Final Cut tables (.fcpxml) — HPD Notation cells<span class="k">a title per table, marker keyframed · ⌥ static marker</span></button>
+      <button class="it" id="fcpOneTableBtn" title="Only the table open in the notation - its title at every place the arrangement plays it, with START and no markers. Fix a note in the Lab, export this, delete the old title(s) in Final Cut and paste START with these at the take's first frame. The open piece only">Final Cut: the open table only (.fcpxml)<span class="k">to replace it there</span></button>
       <div class="note">Every Final Cut file begins with an empty 2-second title, START, on the take's first frame. Copy it together with the notation and paste at the take's first frame in the lesson's project: everything lands at its own time.</div>
     </div>
   </span>
@@ -581,6 +590,10 @@ body.tlane .scrub{border-radius:0}
       <hr>
       <div class="scgrp">
         <label class="schead" title="The table's name (A1, B2, Chorus …), on the stage and in the Final Cut tables file. Classic look: left of the first row. Panel look: a tab on the table's left edge, beside the first row. Saved with the piece"><input type="checkbox" id="fcpLetterOn">Section letter</label><select hidden id="fcpLetter"><option value="">Shown</option><option value="off">Hidden</option></select>
+        <div class="scrow fcpLetterRow" title="The letter's face, this look's own - Caveat (the hand-drawn one), Figtree Bold, Inter Bold. On the stage and in the Final Cut file; saved with the piece"><span>Font</span><select hidden id="fcpLetterFont" style="font-size:12px"><option value="caveat">Caveat</option><option value="figtree">Figtree</option><option value="inter">Inter</option></select><span class="seg tiny" data-for="fcpLetterFont"></span></div>
+        <div class="scrow fcpLetterRow" title="The letter's size, half to twice its own - in the Panel look the tile grows with it. Classic: in the Final Cut file too; Panel: on the stage (in Final Cut: Letter size in the inspector). Saved with the piece"><span>Size</span><input type="range" id="fcpLetterSize" min="50" max="200" step="5" value="100"><span id="fcpLetterSizeN" style="min-width:3.2em;text-align:right">100 %</span></div>
+        <div class="scrow fcpLetterRow" title="Drag the letter on the stage to move it; Reset puts it back beside the first row. Classic: up and down reach the Final Cut file, sideways the stage only; Panel: the stage only (in Final Cut: X Position and Y Position in the inspector). Saved with the piece"><span>Position</span><span id="fcpLetterPos" style="font-weight:500;color:var(--ink3)">drag it</span><button class="btn" id="fcpLetterReset" type="button" style="padding:3px 10px;font-size:12px">Reset</button></div>
+        <div class="scrow fcpLetterRow" title="How the tables are labelled, on the stage and in the Final Cut file alike. Custom: the label you give a table (double-click its letter on the stage), else its own name. Letter: the section's letter or label alone (A). Numbered: that letter numbered from 1 through each run of the section, every table its own number (A1, A2 ... B1 ... A1, A2). The pickup and the ending keep their names. Saved with the piece"><span>Labels</span><select hidden id="fcpLabels" style="font-size:12px"><option value="">Custom</option><option value="letter">Letter</option><option value="numbered">Numbered</option></select><span class="seg tiny" data-for="fcpLabels"></span></div>
       </div>
       <hr>
       <div class="scgrp">
@@ -601,6 +614,7 @@ body.tlane .scrub{border-radius:0}
       <div id="stageGrip" title="Drag: the preview window's size — remembered for Preview"></div>
       <div id="fcpHit" title="Drag: where the table sits in the Final Cut frame — the corner scales it; saved with the piece"><div class="grip" data-fcp="scale"></div></div>
       <div id="fcpChordHit" title="Click a chord: choose which of its notes the box shows"></div>
+      <div id="fcpLetterHit" title="Drag: the section letter's place (Preview › Section letter › Reset puts it back); saved with the piece"></div>
       <div class="obj empty" id="tblobj"><div class="grip" data-grip="tbl"></div><div class="grip hgrip" data-grip="tblh" title="Drag: taller or shorter rows — the table grows downward, the glyphs keep their size"></div></div>
     </div>
     </div>
@@ -777,6 +791,17 @@ body.tlane .scrub{border-radius:0}
     <span class="spacer"></span><button class="btn" id="newCancel">Cancel</button>
   </div>
 </dialog>
+<dialog id="importDlg" style="width:min(560px,92vw)">
+  <h3>Import a code</h3>
+  <p class="hint">Paste an HPS1 code or a piece link. A piece takes the open piece's place (⌘Z brings it back); a book of several pieces is added to this video, a piece each.</p>
+  <textarea id="importText" spellcheck="false" autocomplete="off" placeholder="HPS1:…   or   https://…#p=…"></textarea>
+  <p class="hint" id="importSays" style="min-height:1.4em; margin:6px 0 0"></p>
+  <div class="row" style="gap:8px; margin-top:10px">
+    <button class="btn primary" id="importGo" disabled>Import</button>
+    <span class="spacer"></span><button class="btn" id="importCancel">Cancel</button>
+  </div>
+</dialog>
+<textarea id="pasteCatch" aria-hidden="true" tabindex="-1" spellcheck="false" style="position:fixed; left:-9999px; top:0; width:1px; height:1px; opacity:0"></textarea>
 <dialog id="openDlg">
   <h3>Open a project</h3>
   <p class="hint">Recent projects — click one to open it. Browse… for any other file.</p>
@@ -870,6 +895,13 @@ const state={
    writing, the editor's pan card with its palettes) and makes the page
    transparent, so whatever is behind the frame shows through.            */
 const FR=$("frame"); let cw=null, cd=null, ready=false, obs=null;
+/* THE CELL IS AWAY FROM A PRESS IN THE LAB'S OWN DOCUMENT UNTIL A PRESS IN THE NOTATION'S FRAME (David, 28 Oct 2026:
+   "when I ... click outside the table, please deselect the active cell so I don't accidentally write into it"). The
+   editor always has a cell, and the Lab hands its keys on (labKeys, 14 Sep): while the cell is away its ring is not
+   drawn (body.labaway in the frame) and no key from the Lab reaches the editor. (patches/lab-cell-away.py) */
+let cellAway=false;
+function setCellAway(on){ on=!!on; if(on===cellAway) return; cellAway=on; try{ if(cd&&cd.body) cd.body.classList.toggle("labaway",on); }catch(e){} }
+document.addEventListener("pointerdown",()=>setCellAway(true),true);
 /* the card, the editor's pan card — and the app's dialogs and its long-press
    copy/paste menu, which hang off <body> and would otherwise be invisible
    (David, 5 Sep: "insert copy-and-paste" — it was there, and hidden) */
@@ -901,6 +933,8 @@ function injectCSS(){
        editor as long as we are in the Notation Lab"): it left the editor and nothing brought it back before the next
        mode switch; the Studio keeps its button (patches/lab-table-nav.py) */
     "#edDoneBtn{display:none !important}"+
+    "body.labaway .slot.cursor{outline-color:transparent !important;background:none !important}"+   /* the cell away: no ring (patches/lab-cell-away.py) */
+    "body.labaway .slot.cursor .pick{background:none !important;box-shadow:none !important}"+
     /* CLEAR STANDS OUTSIDE THE TABLE (David, 12 Oct 2026: "move the clear button to the outside of the table and then gain some
        vertical space inside the table"): with Done hidden the Studio's tools row at the table's head held Clear alone and cost
        35 px and its margin. The row is out of the layout; the Lab's own Clear, in the Notation row, presses the Studio's button
@@ -935,6 +969,21 @@ const appEval=code=>(PIECE_AS&&code==="piece")?PIECE_AS:cw.eval(code);          
    app's own rule (navName), asked for the arrangement entry; the real name where the app has no such rule */
 const navNameOf=(ai,real)=>{ try{ const n=cw.navName(ai); return n||real; }catch(e){ return real; } };
 const tbName=tb=>navNameOf(tb.sec.ai,tb.sec.name);
+/* A TABLE'S LABEL IS ONE FUNCTION, READ BY THE STAGE AND BY THE FILE (David, 28 Oct 2026: "The preview window should
+   display this exactly in the same way as the exported table in Final Cut. Right now, the two differ"). Custom: the
+   label typed for that place in the arrangement, else the table's own name; Letter: the name without its number;
+   Numbered: that letter numbered from 1 through each run of it - "no matter if they play exactly the same". The pickup
+   and the ending keep their names. (patches/lab-table-labels.py) */
+function fcpLabelMode(){ const m=state.fcp&&state.fcp.labels; return m==="letter"||m==="numbered"?m:""; }
+function fcpLabelBase(n){ const m=String(n).match(/^(.*?)(\d*)$/); return m[1]||String(n); }
+function fcpLabelOf(tb){ const nm=tb.sec.name, ai=tb.sec.ai, mode=fcpLabelMode();
+  if(!mode){ const own=((state.fcp||{}).labelOwn||{})[ai]; return typeof own==="string"&&own.trim()?own.trim():nm; }
+  let P=null; try{ P=appEval("piece"); }catch(e){}
+  const S=(P&&P.sections)||{}, A=(P&&P.arrangement)||[], edge=n=>{ const r=(S[n]||{}).role; return r==="pickup"||r==="ending"; };
+  if(edge(nm)) return nm;
+  const b=fcpLabelBase(nm); if(mode==="letter") return b.trim()||nm;
+  let i=A[ai]===nm?ai:A.indexOf(nm), k=1; for(let j=i-1;j>=0&&!edge(A[j])&&fcpLabelBase(A[j])===b;j--) k++;
+  return b+k; }
 function appPiece(){ try{ return clone(appEval("piece")); }catch(e){ return null; } }
 function appEditing(){ try{ return !!appEval("editing"); }catch(e){ return false; } }
 
@@ -969,6 +1018,8 @@ function frameReady(){
     .observe(tEl,{attributes:true,attributeFilter:["class"]});
   cd.addEventListener("keydown",histFlush,true);      // the editor's own keys and clicks close the step before them, as the Lab's do
   cd.addEventListener("pointerdown",histFlush,true);
+  for(const t of ["pointerup","keyup","change"]) cd.addEventListener(t,histGesture,true);   // the Studio's own gestures are compared too (patches/lab-undo-everything.py)
+  cd.addEventListener("pointerdown",()=>setCellAway(false),true);   // a press in the notation's frame: the cell is back (patches/lab-cell-away.py)
   cd.addEventListener("keydown",labKeys,true);
   cd.addEventListener("dragover",labDragOver,true);   // a file over the notation table: the table lights up and the drop is the Lab's (patches/lab-embed-project.py)
   cd.addEventListener("dragleave",labDragLeave,true);
@@ -1405,6 +1456,10 @@ function fcpColX(m,col,bpr,pos,slotW){
   const b0=(bb*m.beats+cell.c0)*pos, nb=cell.counts*pos, M=FCPV.MARGIN*slotW, inner=(nb*slotW-2*M)/nb;
   return {cx:FCPV.FL+b0*slotW+M+(col-b0+0.5)*inner, w:inner};
 }
+/* A COUNT LABEL STANDS OVER THE EIGHTH NOTES (David, 29 Oct 2026: "adapt the header so that it lines up with the new placement of
+   the notes"): in a table stored finer than it is drawn, at the middle of the slot's first pulse's share, as the notes stand
+   (patches/lab-sixteenth-places.py) - this far left of the slot's middle; 0 elsewhere. (patches/lab-count-places.py) */
+function fcpCountShift(m,col,bpr,pos,slotW){ const per=Math.max(1,Math.round(m.sub/pos)); if(per<=1) return 0; const w=fcpColX(m,col,bpr,pos,slotW).w; return w/2-w/(2*per); }
 /* the titles' lead-in and tail, in seconds — the project's, defaults here (see fcpSpans) */
 const FCP_TIMING={lead:5,tail:5,fade:0.32};   // fade: the table's own fade in and out, where it meets nothing (16 Sep) — 0.32 s is 16 frames at 50p (David: "16 frames when it's 50p, and the equivalent for other frame rates"); the writer rounds it to the take's frames
 /* THE HEADER'S AND THE LABEL'S COLOUR (David, 16 Sep: "if the video doesn't have a
@@ -1449,6 +1504,7 @@ function drawFcpStage(){
   const k0=vr.width*dpr/3840, k=k0*sc, ox=(vr.left-st.left)*dpr, oy=(vr.top-st.top)*dpr+(vr.height*dpr-2160*k0)/2;
   const X=(x)=>ox+(1920+T.dx)*k0+x*k, Y=(y)=>oy+(1080-T.dy)*k0-y*k;
   drawFcpPreview.map={k0,k,ox,oy};
+  { const lh=$("fcpLetterHit"); if(lh) lh.style.width="0px"; }   // the letter's painter puts it back (patches/lab-letter-style.py)
   const p=appEval("piece"), c=cw.compile(p), sm=(state.piece.syncMap||[]).slice().sort((a,b)=>a.t-b.t);
   const tables=sm.length>=2?fcpTables(sm):markedTables(state.marks.slice().sort((a,b)=>a-b));
   if(!tables.length){ fcpStageSays(g,X((FCPV.FL+FCPV.FR)/2),Y(FCPV.FT),dpr,["No table marks — the table here and in Final Cut is drawn from them.","In Sync: Auto-map places them, or press Mark at each table's first stroke."]); return; }   // (patches/lab-preview-marks.py)
@@ -1522,26 +1578,28 @@ function drawFcpStage(){
        1.20 em for Loopiejuice Mono, read from the font) plus the run's line spacing — 1.37 em was a
        guess and drew stacks taller and lower than David's render (17 Sep) */
     const lineBox=s=>fcpLineBox()*s;   // the font's own box (FCP_LINE): a canvas answers differently from one engine to the next (patches/lab-fcp-font-metrics-fixed.py)
-    if(stacked){ const pitch=lineBox(size)+(st0.lineSpacing||0); runs.forEach((r,i)=>{ const glyphText=r.text.replace(/^\n/,""); g.font=SF.font(r.style.size*k); g.fillStyle=fill(r.style); g.fillText(SF.tx(glyphText),X(cx),base(r.style,i,pitch)+SF.dy*r.style.size*k); }); return; }
+    if(stacked){ const pitch=lineBox(size)+(st0.lineSpacing||0), lines=[]; runs.forEach(r=>{ if(r.text.startsWith("\n")||!lines.length) lines.push([]); lines[lines.length-1].push(r); });   // a line each, its runs side by side where it has several: fast notes beside a stack (patches/lab-fast-stacks.py)
+      lines.forEach((ln,i)=>drawRuns(ln.map(r=>({text:r.text.replace(/^\n/,""),style:Object.assign({},r.style,{baseline:(r.style.baseline||0)-i*pitch})})),cx,cy,tglyph,slotWidth)); return; }
     if(runs.length>1){ // fast notes side by side: each at the centre of its share of the slot (the font's advance at half size IS half a slot, so Final Cut lands the same — the canvas measure packed them, David, 16 Sep)
-      g.font=(size*k)+"px 'Loopiejuice Mono'"; const pitch=g.measureText("8").width; let x=X(cx)-pitch*(runs.length-1)/2; const y=base(st0);   // one text block of N runs: Motion sets them by the font's advance (monospace), centred on the slot — the Preview measures the same advance (17 Sep)
+      const steps=runs.slice(1).map((b,i)=>fcpRunStep(runs[i],FCPC.ADV)*k), y=base(st0); let x=X(cx)-steps.reduce((s,v)=>s+v,0)/2;   // middle to middle: the advance and the run's kerning less the template's tracking (patches/lab-sixteenth-places.py)   // one text block of N runs: Motion sets them by the font's advance (monospace), centred on the slot — the Preview measures the same advance (17 Sep)
       g.font=SF.font(size*k); x+=(g.measureText(SF.tx(runs[0].text)).width-g.measureText(SF.tx(runs[runs.length-1].text)).width)/4;   // the line is centred as a whole in Final Cut: unlike widths at its two ends shift it by a quarter of their difference (patches/lab-studio-symbols-fcp.py)
-      for(const r of runs){ g.fillStyle=fill(r.style); g.fillText(SF.tx(r.text),x,y+SF.dy*size*k); x+=pitch; } return; }
+      runs.forEach((r,i)=>{ g.fillStyle=fill(r.style); g.fillText(SF.tx(r.text),x,y+SF.dy*size*k); x+=steps[i]||0; }); return; }
     g.font=SF.font(size*k); g.fillStyle=fill(st0); g.fillText(SF.tx(runs[0].text),X(cx),base(st0)+SF.dy*size*k); };
   // count row
   const labels=fcpCountLabels(m);
   const STY=fcpStyle();
-  if(PANEL) fcpPanelHead(PX,labels); else for(let col=0;col<cols;col++){ const L=labels[col%barCols]; if(!L||L.text===" ") continue; const size=L.big?cglyph:cglyph*0.62; drawRuns([{text:L.text,style:{size,color:fcpRGB(STY.header)}}],fcpColX(m,col,bpr,pos,slotW).cx,top+70,cglyph); }   // the count's text sits where the template puts it: centre top+70, baseline 0.45·cglyph below, small labels on the big ones' baseline (17 Sep); the labels repeat per bar of the row, over their glyphs (0.30 em up), so the row did not move when the ink rule came in
+  if(PANEL) fcpPanelHead(PX,labels); else for(let col=0;col<cols;col++){ const L=labels[col%barCols]; if(!L||L.text===" ") continue; const size=L.big?cglyph:cglyph*0.62; drawRuns([{text:L.text,style:{size,color:fcpRGB(STY.header)}}],fcpColX(m,col,bpr,pos,slotW).cx-fcpCountShift(m,col,bpr,pos,slotW),top+70,cglyph); }   // the count's text sits where the template puts it: centre top+70, baseline 0.45·cglyph below, small labels on the big ones' baseline (17 Sep); the labels repeat per bar of the row, over their glyphs (0.30 em up), so the row did not move when the ink rule came in
   // cells
   const TAB=state.face==="tab", lglyph=fcpTabSize(glyph);   // THE STAGE'S TAB FORM (patches/lab-stage-tab.py): a lane for each hand
   for(let r=0;r<rows;r++) for(let col=0;col<cols;col++){ const bar=r*bpr+Math.floor(col/barCols), cw2=col%barCols; if(bar>=tb.bars) continue;   // the bar this column belongs to, in a row of bpr bars
     const q0=tb.sec.pulse+bar*m.bp+cw2*per; const perPulse=[]; for(let i=0;i<per;i++) perPulse.push(c.byPulse.get(q0+i));
     const P=fcpColX(m,col,bpr,pos,slotW);
-    const fast=fcpFastBeat(c,tb.sec.pulse+bar*m.bp+Math.floor(cw2/pos)*m.sub,m.sub,per), cyc=top-(r+0.5)*FCPV.RH;
-    if(TAB){ for(const [hand,dy] of FCP_TAB.LANES) drawRuns(fcpSlotText(perPulse.map(evs=>evs&&evs.filter(e=>(e.hand==="L"?"L":"R")===hand)),lglyph,fast,true),P.cx,cyc+fcpTabDy(dy,lglyph)+FCP_TAB.LIFT*lglyph,lglyph,P.w); }
-    else drawRuns(fcpSlotText(perPulse,glyph,fast),P.cx,cyc,glyph,P.w); }
+    const cyc=top-(r+0.5)*FCPV.RH;
+    if(TAB){ for(const [hand,dy] of FCP_TAB.LANES) drawRuns(fcpSlotText(perPulse.map(evs=>evs&&evs.filter(e=>(e.hand==="L"?"L":"R")===hand)),lglyph,P.w,true),P.cx,cyc+fcpTabDy(dy,lglyph)+FCP_TAB.LIFT*lglyph,lglyph,P.w); }
+    else drawRuns(fcpSlotText(perPulse,glyph,P.w),P.cx,cyc,glyph,P.w); }
   // the section letter, right-aligned to the left of the table (the template's "A": Caveat 185 at x 12)
-  if(!PANEL){ g.font=(185*k)+"px 'Caveat'"; g.textAlign="right"; g.fillStyle=fcpCSS(STY.label); if(!fcpNoLetter()) g.fillText(tbName(tb),X(12),Y(712.13)); }   // the template's own baseline (Position Y of its "A" layer): a Caveat capital's middle then sits on row 1's centre, as in David's renders (17 Sep)
+  if(!PANEL&&!fcpNoLetter()){ const L=fcpLetterSet("classic"), F=FCP_LETTER_FACES[L.f], sz=185*L.s, base=712.13+FCP_LETTER_FACES.caveat.cap*185-F.cap*sz+L.dy, xr=12+L.dx, nm=fcpLabelOf(tb);   // its font, size and place (patches/lab-letter-style.py)
+    g.font=F.wgt+" "+(sz*k)+"px "+F.css; g.textAlign="right"; g.fillStyle=fcpCSS(STY.label); g.fillText(nm,X(xr),Y(base)); fcpLetterHitAt(X(xr)-g.measureText(nm).width,Y(base+2*F.cap*sz),X(xr),Y(base)); }   // the template's own baseline (Position Y of its "A" layer): a Caveat capital's middle then sits on row 1's centre, as in David's renders (17 Sep)
   /* THE CHORD ROW under the table (Preview › Chords): the chips as the export writes them — fcpChordRow's
      geometry and runs — the current chord's marker while a beat is lit (chipAt's rule: the last chord whose
      position the beat has reached in its bar), the name's runs laid out by the font's own advance */
@@ -1579,7 +1637,7 @@ function drawFcpStage(){
   g.globalAlpha=1;
   // the hit box over the frame, for the drag and the corner grip
   const hb=$("fcpHit"); if(hb){ hb.style.left=(X(FCPV.FL)/dpr)+"px"; hb.style.top=(Y(top)/dpr)+"px"; hb.style.width=((X(FCPV.FR)-X(FCPV.FL))/dpr)+"px"; hb.style.height=((Y(bottom)-Y(top))/dpr)+"px"; }
-  drawFcpPreview.table={top,bottom};
+  drawFcpPreview.table={top,bottom}; drawFcpPreview.tb=tb;   // the table drawn, for its label (patches/lab-table-labels.py)
 }
 /* THE PANEL LOOK (David, 12 Oct 2026, of the mockup's direction C with the chord card as its own card: "Let's build the new
    notation layout. I like the one from the screenshot. Can you build it as an alternative option into the Notation Lab" -
@@ -1676,15 +1734,51 @@ function fcpPanelDress(){ Object.assign(FCPP,FCPP0,FCP_SKINS[fcpSkin()]); FCPP.M
    size for A1 ... would be the same as for A2 or A3"): every capital counts as the widest of A to H, every digit as the widest
    digit, anything else as itself - and the name's own width where that is more still (a W, a word). Of a size of 1, in the
    tile's face; {own, steady}. The stage and the file ask here. (patches/lab-letter-tile-steady.py) */
-function fcpTileW(name){ const g=fcpTileW.g||(fcpTileW.g=document.createElement("canvas").getContext("2d")); g.font=FCPP.TILE_WGT+" 100px "+FCPP.TILE_F;
-  const w=t=>g.measureText(t).width/100, R=fcpTileW.r||{}; let there=false; try{ there=document.fonts.check(FCPP.TILE_WGT+" 60px Inter"); }catch(e){}
-  if(R.cap==null||!there){ R.cap=Math.max(...[..."ABCDEFGH"].map(w)); R.dig=Math.max(...[..."0123456789"].map(w)); if(there) fcpTileW.r=R; }   // kept once the face is there
+/* EACH LOOK'S LETTER HAS ITS FONT, ITS SIZE AND ITS PLACE (David, 28 Oct 2026: "the option to adjust the font, the size,
+   and the position of the section letter ... in the preview window, in the left-hand settings menu"). state.fcp.letter
+   .classic / .panel, saved with the piece, only what differs from the look's own: f (font), s (size, 1 = its own), dx
+   and dy (a move in the table's units). The size scales about the capital's middle (Classic) or the tile's right edge
+   on its middle line (Panel, as v4f's Letter size); a font keeps the capital's middle in place - cap: half a capital,
+   of the size. (patches/lab-letter-style.py) */
+const FCP_LETTER_FACES={caveat:{css:"'Caveat'",fam:"Caveat",wgt:"400",cap:0.35,font:"Caveat",face:"Regular"},
+  figtree:{css:"Figtree, sans-serif",fam:"Figtree",wgt:"700",cap:0.35,font:"Figtree",face:"Bold"},
+  inter:{css:"Inter, Figtree, sans-serif",fam:"Inter",wgt:"700",cap:0.364,font:"Inter",face:"Bold"}};
+function fcpLook(){ return fcpDesign()==="panel"?"panel":"classic"; }
+/* EACH LOOK'S LETTER HAS ITS OWN PLACE TO START FROM, AND FINAL CUT IS TOLD WHERE IT IS (David, 28 Oct 2026, of Inter,
+   140 %, +25, -25 in Panel: "Can you make this the new default for the section letter in panel mode?" - "in both: the
+   Lab's stage and the Final Cut export"). A piece with no settings for a look starts from the look's own; a record keeps
+   what it was given, a key it never wrote meaning what it meant when it was saved (100 %, 0, 0) - so a record is written
+   in full and goes when it equals the look's own. (patches/lab-panel-letter-default.py) */
+const FCP_LETTER_OWN={classic:{f:"caveat",s:1,dx:0,dy:0},panel:{f:"inter",s:1.4,dx:25,dy:-25}};
+function fcpLetterSet(look){ const R=(((state.fcp||{}).letter)||{})[look], L=R||{}, O=FCP_LETTER_OWN[look]||FCP_LETTER_OWN.classic;
+  return R?{f:FCP_LETTER_FACES[L.f]?L.f:O.f,s:+L.s>0?+L.s:1,dx:+L.dx||0,dy:+L.dy||0,own:O.f}:{f:O.f,s:O.s,dx:O.dx,dy:O.dy,own:O.f}; }
+function fcpLetterPut(patch){ const sp=state.fcp=Object.assign({dx:0,dy:0,s:1},state.fcp||{}), look=fcpLook(), all=Object.assign({},sp.letter||{}), O=FCP_LETTER_OWN[look];
+  const C=fcpLetterSet(look), o={s:C.s,dx:C.dx,dy:C.dy}; if(C.f!==O.f) o.f=C.f; Object.assign(o,patch); if(o.f===O.f) delete o.f;
+  if(o.f==null&&+o.s===O.s&&+o.dx===O.dx&&+o.dy===O.dy) delete all[look]; else all[look]=o;
+  if(Object.keys(all).length) sp.letter=all; else delete sp.letter; }
+function fcpLetterHitAt(x0,y0,x1,y1){ if(PIECE_AS) return; const h=$("fcpLetterHit"), d=window.devicePixelRatio||1; if(!h) return;   // canvas px; the open piece's letter only
+  const p=6*d; h.style.left=((x0-p)/d)+"px"; h.style.top=((y0-p)/d)+"px"; h.style.width=((x1-x0+2*p)/d)+"px"; h.style.height=((y1-y0+2*p)/d)+"px"; }
+function fcpLetterPaint(){ const L=fcpLetterSet(fcpLook()), off=fcpNoLetter(); $("fcpLabels").value=fcpLabelMode(); paintSegs();   // (patches/lab-table-labels.py) $("fcpLetterFont").value=L.f; $("fcpLetterSize").value=String(Math.round(L.s*100)); $("fcpLetterSizeN").textContent=Math.round(L.s*100)+" %";
+  $("fcpLetterPos").textContent=L.dx||L.dy?(L.dx>=0?"+":"")+Math.round(L.dx)+", "+(L.dy>=0?"+":"")+Math.round(L.dy):"drag it"; $("fcpLetterReset").disabled=L.dx===FCP_LETTER_OWN[fcpLook()].dx&&L.dy===FCP_LETTER_OWN[fcpLook()].dy;
+  document.querySelectorAll(".fcpLetterRow").forEach(r=>r.classList.toggle("scoff",off)); }
+function fcpLetterSaid(){   // the export says what the titles cannot be told
+  if(fcpNoLetter()) return; const look=fcpLook(), L=fcpLetterSet(look);
+  if(look==="classic"&&L.dx) FCP_PANEL_SAID.left.add("the section letter's sideways move is on the stage only - Final Cut keeps it at the table's left (the size, the font and the move up or down are written)");
+  /* the Panel look's size and place: written into each table's file, or said there where its sidecar has no letter box (patches/lab-panel-letter-default.py) */ }
+function fcpTileW(name,F){ F=F||FCP_LETTER_FACES.inter; const g=fcpTileW.g||(fcpTileW.g=document.createElement("canvas").getContext("2d")); g.font=F.wgt+" 100px "+F.css;   // in the letter's face (patches/lab-letter-style.py)
+  const w=t=>g.measureText(t).width/100, RS=fcpTileW.r||(fcpTileW.r={}), R=RS[F.css]||{}; let there=false; try{ there=document.fonts.check(F.wgt+" 60px "+F.fam); }catch(e){}
+  if(R.cap==null||!there){ R.cap=Math.max(...[..."ABCDEFGH"].map(w)); R.dig=Math.max(...[..."0123456789"].map(w)); if(there) RS[F.css]=R; }   // kept once the face is there
   const own=w(String(name)); let steady=0; for(const ch of String(name)) steady+=/[A-Z]/.test(ch)?R.cap:/[0-9]/.test(ch)?R.dig:w(ch);
   return {own,steady:Math.max(own,steady)}; }
-function fcpPanelTabBox(P){ if(fcpNoLetter()) return null; const {g,k,tb,top}=P, name=tbName(tb); let size=FCPP.TAB_SIZE; g.font=FCPP.TILE_WGT+" "+(size*k)+"px "+FCPP.TILE_F;   // THE LETTER IS INTER BOLD, the face of the table's symbols in the Studio's face (David, 14 Oct 2026: "adjust the boldness of the section letter so it is similar to the boldness of the symbols in the table" - Figtree Bold tried, a stem of 0.135 of its size against Inter Bold's 0.15 - then, shown both: "use Inter"). TILE_F, TILE_WGT; TILE_CAP: half an Inter capital's height, where CAP is Figtree's. Whatever Symbols is set to.
-  const NW=fcpTileW(name); let w=NW.steady*size; if(NW.own*size>FCPP.TILE_MAX){ size*=FCPP.TILE_MAX/(NW.own*size); w=FCPP.TILE_MAX; } else w=Math.min(w,FCPP.TILE_MAX);   // the name by its shape (fcpTileW); a name too broad is made smaller, as it was
+function fcpPanelTabBox(P){ if(fcpNoLetter()) return null; const {g,k,tb,top}=P, name=fcpLabelOf(tb), LS=fcpLetterSet("panel"), LF=FCP_LETTER_FACES[LS.f]; let size=FCPP.TAB_SIZE; g.font=LF.wgt+" "+(size*k)+"px "+LF.css;   // THE LETTER IS INTER BOLD, the face of the table's symbols in the Studio's face (David, 14 Oct 2026: "adjust the boldness of the section letter so it is similar to the boldness of the symbols in the table" - Figtree Bold tried, a stem of 0.135 of its size against Inter Bold's 0.15 - then, shown both: "use Inter"). TILE_F, TILE_WGT; TILE_CAP: half an Inter capital's height, where CAP is Figtree's. Whatever Symbols is set to.
+  /* THE TILE IS THE LABEL'S OWN WIDTH WITH ITS AIR (David, 28 Oct 2026, of the v4g titles, whose box follows its label in
+     Final Cut: "Now we gotta check if the box has the same size as in notation lab's preview"): the label's own width, not
+     its shape's - a name broader than TILE_MAX made smaller, as it was; the label right-aligned one air inside the tile's
+     right edge, as the title stands it. (patches/lab-letter-box-follows.py) */
+  let w=fcpTileW(name,LF).own*size; if(w>FCPP.TILE_MAX){ size*=FCPP.TILE_MAX/w; w=FCPP.TILE_MAX; }
   const W=Math.max(FCPP.TILE_H,w+2*FCPP.TILE_PAD), x1=FCPV.FL-FCPP.TILE_GAP, mid=top-FCPV.RH/2+FCPP.TILE_UP;
-  return {name,size,x0:x1-W,x1,ya:mid+FCPP.TILE_H/2,yb:mid-FCPP.TILE_H/2}; }
+  const s=LS.s, X1=x1+LS.dx, M=mid+LS.dy;   // scaled about the right edge on the middle line, then moved (patches/lab-letter-style.py)
+  return {name,size:size*s,x0:X1-W*s,x1:X1,xt:X1-FCPP.TILE_PAD*s,ya:M+FCPP.TILE_H/2*s,yb:M-FCPP.TILE_H/2*s,s,F:LF}; }
 /* a cell's ink in the skin: the export's own black and green (and the underside's purple) are read, the skin's are written */
 function fcpPanelInk(c){ if(c===FCP_HAND.L) return FCPP.HAND_L; if(c===FCP_HAND.R||(c[0]===0&&c[1]===0&&c[2]===0)) return FCPP.HAND_R;
   if(Math.abs(c[0]-0.635)<0.01&&Math.abs(c[2]-0.945)<0.01) return FCPP.PURPLE; return "rgb("+c.slice(0,3).map(v=>Math.round(v*255)).join(",")+")"; }
@@ -1783,6 +1877,8 @@ function fcpFaceM(){ if(fcpFaceM.v) return fcpFaceM.v; const g=document.createEl
   const v={adv,line:(FCP_LINE.loopie.asc+FCP_LINE.loopie.desc)-(FCP_LINE.inter.asc+FCP_LINE.inter.desc)*SF.scale,w:t=>{ g.font=SF.font(100); return g.measureText(t).width/100; }};   // adv: Loopiejuice's advance; line: its line box less Inter's at SCALE - both of the size; w: a word's width in the Studio's face
   let there=false; try{ there=document.fonts.check("700 60px Inter")&&document.fonts.check("60px 'Loopiejuice Mono'"); }catch(e){}
   if(there) fcpFaceM.v=v; return v; }
+/* a run's step to the next note's middle in Final Cut: the advance, and its kerning less the tracking the template adds (patches/lab-sixteenth-places.py) */
+function fcpRunStep(r,adv){ const sz=r.style.size; return adv*sz+(r.style.kerning!=null?r.style.kerning-FCP_TRACK*sz:0); }
 function fcpFaceRuns(runs,chord){ if(fcpSym()===FCP_SYM.loopie||!runs||!runs.length) return runs;
   const SF=FCP_SYM.studio, M=fcpFaceM(), back=chord?0:FCP_TRACK*SF.scale;
   const piece=(r,kn,extra)=>{ const nl=r.text.startsWith("\n")?"\n":"", cs=[...SF.tx(r.text.slice(nl.length))], sz=r.style.size;
@@ -1790,9 +1886,11 @@ function fcpFaceRuns(runs,chord){ if(fcpSym()===FCP_SYM.loopie||!runs||!runs.len
     return cs.length>1?[{text:nl+cs.slice(0,-1).join(""),style:st(back*sz)},{text:cs[cs.length-1],style:st(kn)}]:[{text:nl+cs.join(""),style:st(kn)}]; };
   const lines=r=>({lineSpacing:(r.style.lineSpacing||0)+M.line*r.style.size});
   if(chord) return runs.flatMap(r=>r.style.font?[r]:piece(r,null,lines(r)));   // a sign and its twin keep their own font
-  if(runs.some(r=>r.text.startsWith("\n"))) return runs.flatMap(r=>piece(r,null,lines(r)));
+  if(runs.some(r=>r.text.startsWith("\n"))){ const ls=[]; runs.forEach(r=>{ if(r.text.startsWith("\n")||!ls.length) ls.push([]); ls[ls.length-1].push(r); });
+    return ls.flatMap(ln=>{ if(ln.length<2) return piece(ln[0],null,lines(ln[0])); const sz=ln[0].style.size, w=ln.map(r=>M.w(SF.tx(r.text.replace(/^\n/,"")))*sz);   // a line of several runs: fast notes beside a stack, kerned as fast notes (patches/lab-fast-stacks.py)
+      return ln.flatMap((r,i)=>piece(r,i<ln.length-1?fcpRunStep(r,M.adv)-(w[i]+w[i+1])/2+back*sz:null,lines(r))); }); }
   if(runs.length>1){ const sz=runs[0].style.size, w=runs.map(r=>M.w(SF.tx(r.text))*sz);
-    return runs.flatMap((r,i)=>piece(r,i<runs.length-1?M.adv*sz-(w[i]+w[i+1])/2+back*sz:null)); }
+    return runs.flatMap((r,i)=>piece(r,i<runs.length-1?fcpRunStep(r,M.adv)-(w[i]+w[i+1])/2+back*sz:null)); }
   return runs[0].text.trim()?piece(runs[0],null):runs; }
 /* THE STAGE'S TAB FORM (David, 12 Oct 2026: "please create a tab version of the notation table"). The Studio's Tab view writes a
    row in two lanes - the left hand's notes above, the right hand's below - where its Table view stacks a slot's notes by
@@ -1866,12 +1964,13 @@ function fcpPanelChrome(P){
    name in the margin beside the first row - made smaller where it is broader than the margin (Groove, Ending) */
 function fcpPanelHead(P,labels){ const {g,X,Y,k,m,pos,bpr,barCols,cols,slotW,top,tb}=P, shrink=Math.min(1,slotW/((FCPV.FR-FCPV.FL)/16)); g.textAlign="center"; g.textBaseline="alphabetic";
   for(let col=0;col<cols;col++){ const L=labels[col%barCols]; if(!L||!L.text||L.text===" ") continue; const size=(L.big?FCPP.CNTB:FCPP.CNT)*shrink, word=/^[0-9a-z+]+$/i.test(L.text)?L.text:"·";   // the font's ghost dot is a plain dot here
-    g.font=(L.big?"800 ":"700 ")+(size*k)+"px "+FCPP.F; g.fillStyle=L.big?FCPP.TEXT:FCPP.MUTED; g.fillText(word,X(fcpColX(m,col,bpr,pos,slotW).cx),Y(top+FCPP.HEAD/2-FCPP.CAP*size)); }
+    g.font=(L.big?"800 ":"700 ")+(size*k)+"px "+FCPP.F; g.fillStyle=L.big?FCPP.TEXT:FCPP.MUTED; g.fillText(word,X(fcpColX(m,col,bpr,pos,slotW).cx-fcpCountShift(m,col,bpr,pos,slotW)),Y(top+FCPP.HEAD/2-FCPP.CAP*size)); }
   const TB=fcpPanelTabBox(P); if(!TB) return;   // the name, on its tile beside the first row
-  { const e=FCPP.EDGE_W*k, x=X(TB.x0), y=Y(TB.ya), w=(TB.x1-TB.x0)*k, h=(TB.ya-TB.yb)*k, r=FCPP.TILE_R*k;   // the edge as the cards have it: the shape in the edge's colour, the fill EDGE_W inside it
+  { const e=FCPP.EDGE_W*k, x=X(TB.x0), y=Y(TB.ya), w=(TB.x1-TB.x0)*k, h=(TB.ya-TB.yb)*k, r=FCPP.TILE_R*TB.s*k;   // the edge as the cards have it: the shape in the edge's colour, the fill EDGE_W inside it
     g.beginPath(); g.roundRect(x,y,w,h,r); g.fillStyle=FCPP.EDGE||FCPP.OUT||FCPP.LINE; g.fill();
     g.beginPath(); g.roundRect(x+e,y+e,w-2*e,h-2*e,Math.max(0,r-e)); g.fillStyle=FCPP.PANEL; g.fill(); }
-  g.font=FCPP.TILE_WGT+" "+(TB.size*k)+"px "+FCPP.TILE_F; g.textAlign="center"; g.fillStyle=FCPP.TEXT; g.fillText(TB.name,X((TB.x0+TB.x1)/2),Y((TB.ya+TB.yb)/2-FCPP.TILE_CAP*TB.size)); }
+  g.font=TB.F.wgt+" "+(TB.size*k)+"px "+TB.F.css; g.textAlign="right"; g.fillStyle=FCPP.TEXT; g.fillText(TB.name,X(TB.xt),Y((TB.ya+TB.yb)/2-TB.F.cap*TB.size));
+  fcpLetterHitAt(X(TB.x0),Y(TB.ya),X(TB.x1),Y(TB.yb)); }   // (patches/lab-letter-style.py)
 /* THE PIECE'S PAN, WHERE THE STUDIO DRAWS IT: every field's centre and size read from the Studio's own drawing of the
    pan (panViewSVG), so a pan with a turned layout, an inner field or an underside is the one the player knows. Read
    again every second and a half - a layout can change in the Studio while the Lab is open. */
@@ -1951,7 +2050,7 @@ document.querySelectorAll(".stagecard .seg[data-for]").forEach(s=>s.addEventList
   sel.selectedIndex=+b.dataset.i; sel.dispatchEvent(new Event("change",{bubbles:true})); paintSegs(); }));
 document.addEventListener("change",e=>{ if(e.target&&e.target.closest&&e.target.closest(".stagecard")) paintSegs(); });
 paintSegs();
-function paintFcpTiming(){ const S=fcpStyle(); $("fcpHeaderC").value=S.header; $("fcpLabelC").value=S.label; const b=state.fcp&&state.fcp.bpr; $("fcpBpr").value=(b===1||b===2)?String(b):""; $("fcpChords").checked=fcpChordsOn(); $("fcpStruct").checked=!!(state.fcp&&state.fcp.structure); const F=state.fcp||{}; $("fcpChordHands").checked=!!F.chordHands; $("fcpChordsAs").value=F.chordsAs==="boxes"?"boxes":""; $("fcpStructAs").value=F.structAs==="boxes"?"boxes":""; $("fcpChordCount").value=F.chordCount?String(F.chordCount):""; $("fcpChordKind").value=F.chordKind==="names"?"names":""; $("fcpLetter").value=F.noLetter?"off":""; $("fcpLetterOn").checked=!F.noLetter; $("fcpDesign").value=F.design==="panel"?"panel":""; $("fcpSymbols").value=F.symbols==="studio"?"studio":""; $("fcpSkin").value=fcpSkin()==="paper"?"":fcpSkin(); $("fcpNext").value={off:"off",compact:"compact",zone:""}[fcpNextMode()]; $("fcpRowBands").value=F.rowBands?"on":""; $("fcpPanNums").checked=!F.noPanNums; paintSegs(); }
+function paintFcpTiming(){ const S=fcpStyle(); $("fcpHeaderC").value=S.header; $("fcpLabelC").value=S.label; const b=state.fcp&&state.fcp.bpr; $("fcpBpr").value=(b===1||b===2)?String(b):""; $("fcpChords").checked=fcpChordsOn(); $("fcpStruct").checked=!!(state.fcp&&state.fcp.structure); const F=state.fcp||{}; $("fcpChordHands").checked=!!F.chordHands; $("fcpChordsAs").value=F.chordsAs==="boxes"?"boxes":""; $("fcpStructAs").value=F.structAs==="boxes"?"boxes":""; $("fcpChordCount").value=F.chordCount?String(F.chordCount):""; $("fcpChordKind").value=F.chordKind==="names"?"names":""; $("fcpLetter").value=F.noLetter?"off":""; $("fcpLetterOn").checked=!F.noLetter; $("fcpDesign").value=F.design==="panel"?"panel":""; $("fcpSymbols").value=F.symbols==="studio"?"studio":""; $("fcpSkin").value=fcpSkin()==="paper"?"":fcpSkin(); $("fcpNext").value={off:"off",compact:"compact",zone:""}[fcpNextMode()]; $("fcpRowBands").value=F.rowBands?"on":""; $("fcpPanNums").checked=!F.noPanNums; fcpLetterPaint(); paintSegs(); }
 /* PREVIEW › CHORDS (David, 16 Sep: "give me a way to activate the chord tab under the notation table and
    also to export it for the Final Cut export"; 17 Sep: one switch, saved with the piece): on = the
    Studio's chord card under the Lab's table, the row on the stage, a chord title per table in the export */
@@ -1962,6 +2061,38 @@ $("fcpBpr").addEventListener("change",e=>{ const sp=state.fcp=Object.assign({dx:
 $("fcpLetter").addEventListener("change",e=>{ const sp=state.fcp=Object.assign({dx:0,dy:0,s:1},state.fcp||{}); if(e.target.value==="off") sp.noLetter=true; else delete sp.noLetter; markDirty(); drawFcpPreview();
   labToast(sp.noLetter?"The section letter is hidden for this piece — on the stage and in the Final Cut tables file":"The section letter is shown for this piece"); });
 $("fcpLetterOn").addEventListener("change",e=>{ const sel=$("fcpLetter"); sel.value=e.target.checked?"":"off"; sel.dispatchEvent(new Event("change",{bubbles:true})); });   // the checkbox sets the select, which stays the truth (patches/lab-letter-tab.py)
+$("fcpLetter").addEventListener("change",()=>fcpLetterPaint());   // the rows grey with the letter (patches/lab-letter-style.py)
+$("fcpDesign").addEventListener("change",()=>fcpLetterPaint());   // and show the look's own settings
+$("fcpLetterFont").addEventListener("change",e=>{ fcpLetterPut({f:e.target.value}); markDirty(); drawFcpPreview(); fcpLetterPaint();
+  labToast("Section letter in "+e.target.selectedOptions[0].textContent+" - this look, this piece"); });
+$("fcpLetterSize").addEventListener("input",e=>{ fcpLetterPut({s:+(+e.target.value/100).toFixed(2)}); drawFcpPreview(); $("fcpLetterSizeN").textContent=e.target.value+" %"; });
+$("fcpLetterSize").addEventListener("change",()=>{ markDirty(); fcpLetterPaint(); });   // one undo step a drag of the slider
+$("fcpLetterReset").onclick=()=>{ const O=FCP_LETTER_OWN[fcpLook()]; fcpLetterPut({dx:O.dx,dy:O.dy}); markDirty(); drawFcpPreview(); fcpLetterPaint(); labToast("The section letter is back in its place"); };   // the look's own place (patches/lab-panel-letter-default.py)
+$("fcpLabels").addEventListener("change",e=>{ const sp=state.fcp=Object.assign({dx:0,dy:0,s:1},state.fcp||{}); if(e.target.value) sp.labels=e.target.value; else delete sp.labels;
+  markDirty(); drawFcpPreview(); fcpLetterPaint(); labToast({"":"Labels: Custom - the label you give a table (double-click its letter), else its own name",letter:"Labels: the section's letter alone",numbered:"Labels: numbered from 1 through each run of a section"}[e.target.value||""]); });   // (patches/lab-table-labels.py)
+/* the label typed in place: a double-click on the letter opens a field over it - Enter keeps, Escape leaves, empty gives
+   the table its own name back (patches/lab-table-labels.py) */
+$("fcpLetterHit").addEventListener("dblclick",e=>{ const tb=drawFcpPreview.tb; if(state.mode!=="preview"||PIECE_AS||!tb||fcpNoLetter()) return; e.preventDefault(); e.stopPropagation();
+  const h=$("fcpLetterHit"), inp=document.createElement("input"); inp.id="fcpLabelInput"; inp.value=fcpLabelOf(tb); inp.title="This table's label - Enter keeps it, Escape leaves it, empty gives it its own name ("+tb.sec.name+")";
+  inp.style.cssText="position:absolute;z-index:8;left:"+h.style.left+";top:"+h.style.top+";min-width:"+Math.max(90,parseFloat(h.style.width)||0)+"px;height:"+h.style.height+";font:600 18px Figtree,sans-serif;text-align:center;border:1.5px solid var(--amber,#d8a032);border-radius:6px;background:#fff;color:#222;padding:0 6px";
+  let done=false; const end=keep=>{ if(done) return; done=true; const v=inp.value.trim(); inp.remove(); if(!keep) return;
+    const sp=state.fcp=Object.assign({dx:0,dy:0,s:1},state.fcp||{}), own=Object.assign({},sp.labelOwn||{}), was=fcpLabelMode();
+    if(!v||v===tb.sec.name) delete own[tb.sec.ai]; else own[tb.sec.ai]=v;
+    if(Object.keys(own).length) sp.labelOwn=own; else delete sp.labelOwn; delete sp.labels;
+    markDirty(); drawFcpPreview(); fcpLetterPaint(); labToast((v&&v!==tb.sec.name?"This table is labelled "+v:"This table has its own name again: "+tb.sec.name)+(was?" - Labels set to Custom":"")); };
+  inp.addEventListener("keydown",x=>{ x.stopPropagation(); if(x.key==="Enter"){ x.preventDefault(); end(true); } else if(x.key==="Escape"){ x.preventDefault(); end(false); } });
+  inp.addEventListener("blur",()=>end(true));
+  for(const ev of ["click","pointerdown","mousedown","dblclick"]) inp.addEventListener(ev,x=>x.stopPropagation());
+  h.parentElement.appendChild(inp); setTimeout(()=>{ try{ inp.focus(); inp.select(); }catch(err){} },0); });
+$("fcpLetterHit").addEventListener("pointerdown",e=>{
+  if(state.mode!=="preview"||!drawFcpPreview.map||e.button!==0) return;
+  e.stopPropagation(); e.preventDefault(); const hb=$("fcpLetterHit"); try{ hb.setPointerCapture(e.pointerId); }catch(err){} hb.classList.add("on");
+  const M=drawFcpPreview.map, d=window.devicePixelRatio||1, L0=fcpLetterSet(fcpLook()), x0=e.clientX, y0=e.clientY;
+  const move=ev=>{ fcpLetterPut({dx:+(L0.dx+(ev.clientX-x0)*d/M.k).toFixed(1),dy:+(L0.dy-(ev.clientY-y0)*d/M.k).toFixed(1)}); drawFcpPreview(); };
+  const up=()=>{ hb.removeEventListener("pointermove",move); hb.removeEventListener("pointerup",up); hb.removeEventListener("pointercancel",up); hb.classList.remove("on"); markDirty(); fcpLetterPaint();
+    const L=fcpLetterSet(fcpLook()); labToast("Section letter moved "+(L.dx>=0?"+":"")+Math.round(L.dx)+", "+(L.dy>=0?"+":"")+Math.round(L.dy)+" - Reset in the card puts it back"); };
+  hb.addEventListener("pointermove",move); hb.addEventListener("pointerup",up); hb.addEventListener("pointercancel",up);
+});
 for(const [id,key] of [["fcpHeaderC","header"],["fcpLabelC","label"]]) $(id).addEventListener("input",e=>{ state.fcpStyle=Object.assign(fcpStyle(),{[key]:e.target.value}); markDirty(); drawFcpPreview(); });
 $("fcpColorsReset").onclick=()=>{ state.fcpStyle=null; paintFcpTiming(); markDirty(); drawFcpPreview(); labToast("Header and label back to the template's grey"); };
 paintFcpTiming();
@@ -2014,7 +2145,8 @@ function laneSpans(){ if(!ready||!state.piece) return null; const sm=(state.piec
   const p=appEval("piece"), c=cw.compile(p), tables=fcpTables(sm); if(!tables.length) return null; return fcpSpans(tables,sm,c); }
 function paintLane(force){
   const el=$("tlane"); if(!el||!state.tlane) return;       // every mode (patches/lab-lane-everywhere.py)
-  const v=view(); if(!v.dur) return; const W=el.clientWidth;
+  const v=view(); if(!v.dur){ if(el.firstChild) el.innerHTML=""; laneSig=""; return; }   // no video: an empty lane (patches/lab-new-project-clean.py)
+  const W=el.clientWidth;
   /* EVERY PIECE OF THE VIDEO: the other pieces first, the open one over them */
   const ALL=[]; for(let i=0;i<state.chapters.length;i++) if(i!==state.chapter) ALL.push({i,S:laneSpansOf(i)||[]});
   ALL.push({i:state.chapter,S:laneSpans()||[]});
@@ -2409,7 +2541,15 @@ function labFollow(){
        early. The app's own follow (26 Aug, "a marker that no longer lights
        early") and the Preview's marker both floor; this line was written after
        that fix and never took it. */
-    cw.eval("(function(t,fresh){ if(fresh||!C) C=compile(piece); const p=mapPulse(t); if(p==null) return; viewPin=null; if(!mapBegun(t)){ clearMarks(); return; } paintPulse(Math.max(0,Math.min(C.total-1,Math.floor(p)))); })("+vid.currentTime+","+(followRev!==pieceRev)+")");
+    /* THE MARKER RUNS ON THE MAP, AND PAST ITS LAST MARKER AT THAT LAST STRETCH'S TEMPO; WHEN IT REACHES THE END OF THE
+       ARRANGEMENT IT LEAVES THE PAGE, the lit arrangement chip with it (David, 28 Oct 2026: "the playhead marker in the
+       notation should disappear once the end of the arrangement is reached"). It was clamped to the last pulse, and
+       mapPulse holds the last marker's pulse for ever. The Studio's player clears past the end too (followPaint).
+       (patches/lab-marker-leaves-at-end.py) */
+    cw.eval("(function(t,fresh){ if(fresh||!C) C=compile(piece); let p=mapPulse(t); if(p==null) return; viewPin=null; if(!mapBegun(t)){ clearMarks(); return; }"
+      +" const a=piece.syncMap, n=a.length; if(n>=2&&t>a[n-1].t){ const r=(a[n-1].p-a[n-2].p)/Math.max(1e-6,a[n-1].t-a[n-2].t); if(r>0) p=a[n-1].p+(t-a[n-1].t)*r; }"
+      +" if(Math.floor(p)>=C.total){ clearMarks(); document.querySelectorAll('.chip.playing,.cchip.playing').forEach(el=>el.classList.remove('playing')); return; }"
+      +" paintPulse(Math.max(0,Math.floor(p))); })("+vid.currentTime+","+(followRev!==pieceRev)+")");
     followRev=pieceRev;
     const vs=cw.eval("viewSec"); if(vs&&vs!==state.cur&&state.piece.sections[vs]){ state.cur=vs; fillSecPick(); }
   }catch(e){}
@@ -2434,7 +2574,7 @@ function followHint(){
   followHintFor=key; labToast("No playhead markers yet — the table follows the video once they are placed (Playhead markers)");
 }
 function paintPh(){                     // the playhead painted where the window puts it — no following
-  if(!vid) return;
+  if(!vid){ const T=$("time"); if(T.textContent!=="–:–.–– / –:–.––") T.textContent="–:–.–– / –:–.––"; $("ph").style.left=""; $("ph").hidden=false; return; }   // no video: the clock and the line as the Lab opens (patches/lab-new-project-clean.py)
   $("time").textContent=fmt(vid.currentTime)+" / "+fmt(vid.duration);
   const f=tx(vid.currentTime);
   $("ph").style.left=(f*100)+"%"; $("ph").hidden=f<0||f>1;
@@ -2566,6 +2706,8 @@ async function buildWave(file){
     try{ const r=await readPcmMov(file); if(r){ ch=r.samples; sr=r.sr; } }
     catch(e){ console.warn("PCM read failed, trying the decoder",e); }
   }
+  if(!ch){ try{ const r=await decodeAacMov(file,8000); if(r){ ch=r.ch[0]; sr=r.sr; } }   // a compressed track, lifted out (patches/lab-aac-mov.py)
+    catch(e){ console.warn("AAC read failed, trying the decoder",e); } }
   if(!ch){
     if(file.size>900e6){
       note.textContent="This take's audio is compressed and the file is too large to decode in the browser. A take with PCM audio, as the camera writes it, reads at any size.";
@@ -2576,8 +2718,7 @@ async function buildWave(file){
       const audio=await ctx.decodeAudioData(buf);
       ch=audio.getChannelData(0); sr=audio.sampleRate;
     }catch(e){
-      note.textContent="This file's audio could not be decoded in the browser"+
-        (/mov$/i.test(file.name)?" — WebKit refuses 24-bit PCM .movs; Chrome reads them.":".");
+      note.textContent="This file's audio could not be decoded here.";   // not 24-bit PCM: readPcmMov reads that everywhere (patches/lab-aac-mov.py)
       return;
     }
   }
@@ -2738,6 +2879,90 @@ async function readPcmMov(file,opt){
     return {samples:sum, sr:outSr, fmt, ch, bits, seconds:frames/sr, from:fa/sr};
   }
   return null;
+}
+
+/* A COMPRESSED (AAC) TRACK IS LIFTED OUT OF THE CONTAINER BY ITS OWN INDEX, AS THE PCM ONE IS (David, 28 Oct 2026: "the
+   audio cannot be extracted from the MOV file that I just opened" - a Final Cut "Social Platforms" export). WebKit, the
+   Lab app's engine, refuses AAC inside a .mov though it decodes it in an .mp4; Chrome decodes both. So the decoder is
+   handed the audio alone - each frame from the track's index behind a 7-byte ADTS header, the header's three numbers
+   from the track's esds - and the result is put on the video's clock by the track's edit list: the encoder's priming
+   skipped (Apple's 2112 samples, ffmpeg's 1024), an empty edit at the front kept as silence. Every engine, one reading;
+   a few MB to the decoder instead of the whole video. null where an ADTS header cannot say the track (HE-AAC at its
+   own rate, a layout in a program config): the whole file goes to the decoder as before. (patches/lab-aac-mov.py) */
+async function readAacMov(file){
+  const fourcc=(d,o)=>String.fromCharCode(d.getUint8(o),d.getUint8(o+1),d.getUint8(o+2),d.getUint8(o+3));
+  const slice=async(o,n)=>new DataView(await file.slice(o,o+n).arrayBuffer());
+  const kids=(d,o,end)=>{ const out=[];
+    while(o+8<=end){ let sz=d.getUint32(o); const t=fourcc(d,o+4); let hdr=8;
+      if(sz===1){ sz=Number(d.getBigUint64(o+8)); hdr=16; } else if(sz===0) sz=end-o;
+      if(sz<8) break; out.push({t,o:o+hdr,end:o+sz}); o+=sz; }
+    return out; };
+  const find=(list,t)=>list.find(a=>a.t===t);
+  let off=0, moov=null;
+  while(off+8<=file.size){
+    const h=await slice(off,Math.min(16,file.size-off));
+    let sz=h.getUint32(0); const typ=fourcc(h,4); let hdr=8;
+    if(sz===1){ sz=Number(h.getBigUint64(8)); hdr=16; } else if(sz===0) sz=file.size-off;
+    if(typ==="moov"){ moov={o:off+hdr,end:off+sz}; break; }
+    if(sz<8) return null;
+    off+=sz;
+  }
+  if(!moov||moov.end-moov.o>64e6) return null;
+  const buf=await slice(moov.o,moov.end-moov.o), top=kids(buf,0,buf.byteLength);
+  const mvhd=find(top,"mvhd"), movieScale=mvhd?buf.getUint32(mvhd.o+(buf.getUint8(mvhd.o)===1?20:12)):0;
+  for(const trak of top.filter(a=>a.t==="trak")){
+    const tk=kids(buf,trak.o,trak.end), mdia=find(tk,"mdia"); if(!mdia) continue;
+    const mk=kids(buf,mdia.o,mdia.end), hdlr=find(mk,"hdlr"), mdhd=find(mk,"mdhd");
+    if(!hdlr||fourcc(buf,hdlr.o+8)!=="soun"||!mdhd) continue;
+    const mediaScale=buf.getUint32(mdhd.o+(buf.getUint8(mdhd.o)===1?20:12));
+    const minf=find(mk,"minf"); if(!minf) continue;
+    const stbl=find(kids(buf,minf.o,minf.end),"stbl"); if(!stbl) continue;
+    const sk=kids(buf,stbl.o,stbl.end);
+    const stsd=find(sk,"stsd"), stsc=find(sk,"stsc"), stsz=find(sk,"stsz"), stco=find(sk,"stco")||find(sk,"co64");
+    if(!stsd||!stsc||!stsz||!stco) continue;
+    const e=stsd.o+8, esz=buf.getUint32(e); if(fourcc(buf,e+4)!=="mp4a") return null;
+    // the decoder's config: the esds box, wherever this writer put it (in the description, or in its wave box)
+    let q=-1; for(let i=e+8;i+4<=e+esz;i++) if(fourcc(buf,i)==="esds"){ q=i+8; break; } if(q<0) return null;   // past the name and the full box's version and flags
+    const len=()=>{ let n=0; for(let k=0;k<4;k++){ const b=buf.getUint8(q++); n=(n<<7)|(b&127); if(!(b&128)) break; } return n; };
+    if(buf.getUint8(q++)!==3) return null; len(); q+=2; const fl=buf.getUint8(q++);
+    if(fl&128) q+=2; if(fl&64) q+=1+buf.getUint8(q); if(fl&32) q+=2;
+    if(buf.getUint8(q++)!==4) return null; len(); q+=13;
+    if(buf.getUint8(q++)!==5) return null; len();
+    const a0=buf.getUint8(q), a1=buf.getUint8(q+1), aot=a0>>3, fi=((a0&7)<<1)|(a1>>7), cc=(a1>>3)&15;
+    if(aot<1||aot>4||fi>12||cc<1||cc>7) return null;            // what an ADTS header can say: AAC Main/LC/SSR/LTP, a listed rate, a channel layout
+    // where the track starts on the video's clock: empty edits first, then the skip into the media (the encoder's priming)
+    let delay=0, skip=0; const edts=find(tk,"edts"), elst=edts&&find(kids(buf,edts.o,edts.end),"elst");
+    if(elst){ const v1=buf.getUint8(elst.o)===1, n=buf.getUint32(elst.o+4);
+      for(let i=0,p=elst.o+8;i<n;i++,p+=v1?20:12){
+        const dur=v1?Number(buf.getBigUint64(p)):buf.getUint32(p), mt=v1?Number(buf.getBigInt64(p+8)):buf.getInt32(p+4);
+        if(mt===-1){ delay+=movieScale?dur/movieScale:0; continue; }
+        skip=mediaScale?mt/mediaScale:0; break; } }
+    // the frames, chunk by chunk, each behind its ADTS header
+    const nCh=buf.getUint32(stco.o+4), is64=stco.t==="co64";
+    const nE=buf.getUint32(stsc.o+4), ent=[]; for(let i=0;i<nE;i++) ent.push([buf.getUint32(stsc.o+8+i*12),buf.getUint32(stsc.o+12+i*12)]);
+    const fixed=buf.getUint32(stsz.o+4), nS=buf.getUint32(stsz.o+8), size=i=>fixed||buf.getUint32(stsz.o+12+i*4);
+    let total=0; for(let i=0;i<nS;i++) total+=size(i)+7;
+    const out=new Uint8Array(total); let w=0, si=0;
+    for(let c=0;c<nCh&&si<nS;c++){
+      let spc=ent[0][1]; for(const [first,n] of ent) if(first<=c+1) spc=n;
+      const at=is64?Number(buf.getBigUint64(stco.o+8+c*8)):buf.getUint32(stco.o+8+c*4);
+      let bytes=0; for(let k=0;k<spc&&si+k<nS;k++) bytes+=size(si+k);
+      const d=new Uint8Array(await file.slice(at,at+bytes).arrayBuffer()); let r=0;
+      for(let k=0;k<spc&&si<nS;k++,si++){ const s=size(si), L=s+7;
+        out.set([0xFF,0xF1,((aot-1)<<6)|(fi<<2)|(cc>>2),((cc&3)<<6)|(L>>11),(L>>3)&255,((L&7)<<5)|31,0xFC],w); w+=7;
+        out.set(d.subarray(r,r+s),w); w+=s; r+=s; } }
+    return {adts:out.buffer, skip, delay};
+  }
+  return null;
+}
+/* the AAC track decoded at rate sr, every channel, on the video's clock; null when readAacMov stepped aside */
+async function decodeAacMov(file,sr){
+  if(!/\.(mov|qt|mp4|m4v)$/i.test(file.name)) return null;
+  const r=await readAacMov(file); if(!r) return null;
+  const audio=await new OfflineAudioContext(1,1,sr).decodeAudioData(r.adts);
+  const a=Math.round(r.skip*audio.sampleRate), pad=Math.round(r.delay*audio.sampleRate), ch=[];
+  for(let c=0;c<audio.numberOfChannels;c++){ const s=audio.getChannelData(c).subarray(a), x=new Float32Array(pad+s.length); x.set(s,pad); ch.push(x); }
+  return {ch, sr:audio.sampleRate};
 }
 
 /* ---------------------------------------------------------------- the ear
@@ -3040,7 +3265,8 @@ const HIST={past:[],future:[],quiet:false,last:null,timer:null};
    snapshot now, and neither is restored; a chapter's own cur is the room as well, so it is kept
    live across an undo rather than carried in the step. */
 function histChapters(){ return stashChapter().map(c=>{ const o=Object.assign({},c); delete o.cur; return o; }); }
-function histSnap(){ return JSON.stringify({marks:state.marks,markAi:state.markAi||{},fcp:state.fcp||{dx:0,dy:0,s:1},loop:state.loop,crop:state.crop,layout:state.layout,panw:state.panw,piece:state.piece,chapters:histChapters(),chapter:state.chapter}); }
+function histSnap(){ return JSON.stringify({marks:state.marks,markAi:state.markAi||{},fcp:state.fcp||{dx:0,dy:0,s:1},loop:state.loop,crop:state.crop,layout:state.layout,piece:state.piece,chapters:histChapters(),chapter:state.chapter,
+  fcpAll:!!state.fcpAll,fcpBare:!!state.fcpBare,fcpMarks:state.fcpMarks||"",fcpStyle:state.fcpStyle||null}); }   // the Final Cut options and colours in; the pan window's width out - it is the mode's (patches/lab-undo-everything.py)
 /* A STEP CLOSES AT THE NEXT INPUT, NOT ON A CLOCK (David, 21 Sep: "undo and redo
    are very unreliable … especially when placing markers, when placing table
    marks"). The 300 ms wait was RESTARTED by every change, so while the hand
@@ -3062,9 +3288,18 @@ function histMark(){
   clearTimeout(HIST.timer);
   HIST.timer=setTimeout(histCommit,300);
 }
-function histFlush(e){ if(e&&e.type==="keydown"&&e.repeat) return; if(HIST.timer!=null) histCommit(); }
+function histFlush(e){ if(e&&e.type==="keydown"&&e.repeat) return; if(histGesture.t!=null) histCompare(); if(HIST.timer!=null) histCommit(); }   // the comparison still waiting is finished first (patches/lab-undo-everything.py)
 document.addEventListener("keydown",histFlush,true);
 document.addEventListener("pointerdown",histFlush,true);
+/* AFTER EVERY GESTURE THE DOCUMENT IS COMPARED WITH THE LAST STEP (David, 28 Oct 2026: "basically everything that I do in
+   the app, no matter where ... should be undoable"): a press, a key or a changed control, in the Lab or in the Studio
+   inside it, is followed by a read of the piece and a comparison of the whole document with the last step - a
+   difference is a step, whether or not its handler marked it. (patches/lab-undo-everything.py) */
+function histGesture(e){ if(!ready||(e&&e.type==="keyup"&&/^(Meta|Control|Shift|Alt)$/.test(e.key))) return; clearTimeout(histGesture.t); histGesture.t=setTimeout(histCompare,80); }
+function histCompare(){ clearTimeout(histGesture.t); histGesture.t=null; if(HIST.quiet||!ready) return;
+  try{ const p=appPiece(); if(p&&JSON.stringify(p)!==JSON.stringify(state.piece||{})) pullPiece(); }catch(err){}
+  if(HIST.timer==null&&HIST.last!=null&&histSnap()!==HIST.last) histMark(); }
+for(const t of ["pointerup","keyup","change"]) document.addEventListener(t,histGesture,true);
 function histApply(snap){
   const j=JSON.parse(snap); HIST.quiet=true;
   try{
@@ -3072,7 +3307,8 @@ function histApply(snap){
     state.chapters=(j.chapters||[]).map((c,i)=>{ const o=Object.assign({},c), l=liveChaps[i]; if(l&&l.cur!=null) o.cur=l.cur; return o; });
     state.chapter=j.chapter||0;
     state.marks=j.marks||[]; state.markAi=Object.assign({},j.markAi||{}); state.fcp=Object.assign({dx:0,dy:0,s:1},j.fcp||{}); state.loop=j.loop||{a:null,b:null,on:false}; state.crop=j.crop||state.crop;   // a mark's table is an undo step too (David, 14 Sep)
-    state.layout=j.layout||state.layout; state.panw=j.panw||state.panw;
+    state.layout=j.layout||state.layout;
+    state.fcpAll=!!j.fcpAll; state.fcpBare=!!j.fcpBare; state.fcpMarks=j.fcpMarks||""; state.fcpStyle=j.fcpStyle||null; paintFcpScope();   // (patches/lab-undo-everything.py)
     $("vidobj").classList.toggle("hascrop",!!j.crop);
     if(JSON.stringify(state.piece)!==JSON.stringify(j.piece)) pushPiece(j.piece);   // cur stays where the hand left it — pushPiece moves it only when its table is gone
     layoutEdit(); place(); paintLoop(); paintMarks(); if(vid) paintCrop();
@@ -3080,7 +3316,7 @@ function histApply(snap){
     drawFcpPreview();   // the table's place and size are in the snapshot (David, 16 Sep: "undo and redo also extend to … resizing the notation in preview") — restored above, and drawn here, since nothing else repaints the stage until the next tick
     state.dirty=true; paintTitle(); fillChapPick();
   } finally { HIST.quiet=false; }
-  HIST.last=snap; paintHist();
+  HIST.last=histSnap(); paintHist();   // the document as it now reads: a value written back in another form is not a new step (patches/lab-undo-everything.py)
 }
 function undo(){ if(!HIST.past.length) return; clearTimeout(HIST.timer); const now=histSnap(); if(now!==HIST.last){ HIST.past.push(HIST.last); HIST.last=now; } HIST.future.push(HIST.last); histApply(HIST.past.pop()); labToast("Undo"); }
 function redo(){ if(!HIST.future.length) return; clearTimeout(HIST.timer); HIST.past.push(HIST.last); histApply(HIST.future.pop()); labToast("Redo"); }
@@ -3561,13 +3797,45 @@ function loadProject(file){
       const fb=String(file.name||"").replace(/\.hpdlab$/i,""); state.name=(fb&&fb!==projDocBase())?fb:null; paintTitle(); }   // named after its file; if the Lab still holds another document's path, Save asks for a new file instead of writing over that one
     catch(e){ alert("That file could not be read as a Lab project.\n"+e.message); } });
 }
-function openPieceText(txt){
-  txt=String(txt).trim(); let p=null;
-  try{ if(txt.startsWith("{")) p=JSON.parse(txt); else if(ready) p=cw.pieceFromText(txt); }catch(e){}
-  if(!p||!/^hpd-[12]$/.test(p.format)||!p.sections){ alert("That is not a piece the Lab can open (an .hps file, an HPS1 code, or a piece link)."); return; }
-  if(ready&&cw.migratePiece) p=cw.migratePiece(p);   // a piece from before 5 Sep 2026 carries the old hand tokens
-  state.cur=null; pushPiece(p); markDirty();
+/* EVERY PIECE THAT ARRIVES AS TEXT COMES THROUGH ONE DOOR (David, 28 Oct 2026: "implement a code import function for
+   handpan arrangements into the handpan notation lab. Right now, I can only open files" - and his answers: Piece ›
+   Import code… and a paste; a piece replaces the open one as an undo step; a book becomes its pieces, added to the
+   video). A code pasted in the window, a code pasted with ⌘V, an .hps file opened: the Studio's own pieceFromText reads
+   it (an HPS1 code, a piece link, a piece's or a book's JSON; the old hand tokens migrated). A piece REPLACES the open
+   one; a book ADDS its pieces to the video - the video's only piece used for the first when it is blank and unmarked,
+   so a new project holds the book alone; one undo step either way, closed before and after. (patches/lab-import-code.py) */
+function readPieceText(txt){   // what the text holds, nothing changed: {piece} | {book} | null
+  if(!ready||!String(txt||"").trim()) return null; let p=null;
+  try{ p=cw.pieceFromText(String(txt)); }catch(e){ p=null; }
+  if(!p) return null;
+  try{ if(cw.bookOk(p)) return {book:p}; }catch(e){}
+  return /^hpd-[12]$/.test(p.format)&&p.sections?{piece:p}:null;
 }
+function pieceBlank(p){ return !p||(!(p.syncMap||[]).length&&!Object.values(p.sections||{}).some(s=>(s.bars||[]).some(b=>b&&b.length))); }   // New piece's own test of "holds something"
+function importPieceText(txt){
+  const r=readPieceText(txt); if(!r) return false;
+  histCommit();                                             // whatever was still open closes first: the step before is the Lab as it stood
+  if(r.piece){ state.cur=null; pushPiece(r.piece); paintMarks(); markDirty(); histCommit();   // paintMarks inside the step: the table marks give the piece their markers now (patches/lab-new-piece-undo.py)
+    labToast("\u201C"+(r.piece.title||"Untitled")+"\u201D imported in the open piece\u2019s place \u2014 \u2318Z brings that one back"); return true; }
+  const chs=stashChapter(), reuse=chs.length===1&&pieceBlank(chs[0].piece)&&!(chs[0].marks||[]).length, at=reuse?0:chs.length;
+  if(reuse) chs.length=0;
+  for(const p of r.book.chapters) chs.push({piece:p,marks:[],markAi:{},fcp:{dx:0,dy:0,s:1},cur:null});
+  state.chapter=at; state.marks=[]; state.markAi={}; state.fcp={dx:0,dy:0,s:1}; state.cur=null;   // the first new piece opened - not by openChapter, whose stash would write the open piece over it
+  pushPiece(chs[at].piece); paintMarks(); fillChapPick(); markDirty(); histCommit();
+  const n=r.book.chapters.length; labToast(n+" piece"+(n===1?"":"s")+(r.book.title?" of \u201C"+r.book.title+"\u201D":"")+" added to this video \u2014 the Piece menu lists them; \u2318Z takes them back");
+  return true;
+}
+function openPieceText(txt){   // an .hps file opened: the same door
+  if(!importPieceText(txt)) alert("That is not a piece the Lab can open (an .hps file, an HPS1 code, or a piece link).");
+}
+function importSay(){
+  const t=$("importText").value, r=readPieceText(t), cur=(state.piece&&state.piece.title)||"Untitled";
+  $("importGo").disabled=!r;
+  $("importSays").textContent=!t.trim()?"":!r?"Not a piece code \u2014 an HPS1 code or a piece link is wanted"
+    :r.piece?"\u201C"+(r.piece.title||"Untitled")+"\u201D \u2014 it takes the place of \u201C"+cur+"\u201D"
+    :"A book of "+r.book.chapters.length+" piece"+(r.book.chapters.length===1?"":"s")+(r.book.title?", \u201C"+r.book.title+"\u201D":"")+" \u2014 added to this video";
+}
+function openImport(txt){ if(!ready) return; $("importText").value=txt||""; importSay(); $("importDlg").showModal(); $("importText").focus(); }
 
 /* ------------------------------------------------------- the window
    ONE RULE for everything drawn on the timeline and the nav bar: a time
@@ -3998,6 +4266,9 @@ async function trAudio(from,to){
     try{ const r=await readPcmMov(file,{full:true,from,to}); if(r) return {x:HPT.mono([r.samples]),sr:r.sr,t0:r.from}; }
     catch(e){ console.warn("PCM read failed, trying the decoder",e); }
   }
+  try{ const r=await decodeAacMov(file,48000); if(r){ const a=Math.max(0,Math.floor(from*r.sr)), b=Math.min(r.ch[0].length,Math.ceil(to*r.sr));   // a compressed track, lifted out (patches/lab-aac-mov.py)
+    return {x:HPT.mono(r.ch.map(c=>c.subarray(a,b))),sr:r.sr,t0:a/r.sr}; } }
+  catch(e){ console.warn("AAC read failed, trying the decoder",e); }
   if(file.size>900e6) throw new Error("this take's audio is compressed and the file is too large to decode here");
   const ctx=new OfflineAudioContext(1,1,48000);
   const audio=await ctx.decodeAudioData(await file.arrayBuffer());
@@ -4488,7 +4759,10 @@ function labKeys(e){
      Lab's own document like the letters below; a key born in the frame takes
      the app's own path, so it is never done twice */
   if(meta&&!e.shiftKey&&!e.altKey&&(k==="c"||k==="C"||k==="v"||k==="V")){
-    if(e.currentTarget===document&&ready){ let did=false; try{ did=cw.edClipKeys(k.toLowerCase()); }catch(err){} if(did) take(); }
+    if(e.currentTarget===document&&ready){ let did=false;
+      if(cellAway&&(k==="c"||k==="C")) return;   // the cell away: no field to copy (patches/lab-cell-away.py)
+      if((k==="v"||k==="V")&&(cellAway||!appEval("edClip"))){ const pc=$("pasteCatch"); pc.value=""; pc.focus(); setTimeout(pasteCatchOff,250); return; }   // nothing copied in the editor: the browser's own paste, caught in the hidden box, where a piece code opens Import code (patches/lab-import-code.py)
+      try{ did=cw.edClipKeys(k.toLowerCase()); }catch(err){} if(did) take(); }
     return;
   }
   if(meta&&(k==="y"||k==="Y")){ take(); redo(); return; }
@@ -4543,7 +4817,7 @@ function labKeys(e){
      frame, so the editor's letters and digits worked only after a click into
      the notation. The Lab hands them on itself. Only from its own document —
      a key born in the frame reaches the editor by the app's own path. */
-  if(e.currentTarget===document&&ready&&!meta&&appEditing()&&e.key.length===1){ try{ cw.editorKeys(e); }catch(err){} }
+  if(e.currentTarget===document&&ready&&!meta&&!cellAway&&appEditing()&&e.key.length===1){ try{ cw.editorKeys(e); }catch(err){} }   // !cellAway (patches/lab-cell-away.py)
 }
 document.addEventListener("keydown",labKeys,true);
 
@@ -4564,6 +4838,27 @@ $("openBrowse").onclick=()=>{ $("openDlg").close(); $("projFile").click(); };
 $("openClose").onclick=()=>$("openDlg").close();
 $("projFile").onchange=e=>{ if(e.target.files[0]) loadProject(e.target.files[0]); e.target.value=""; };
 $("openPieceBtn").onclick=()=>$("pieceFile").click();
+$("importCodeBtn").onclick=()=>openImport("");   // (patches/lab-import-code.py)
+$("importText").addEventListener("input",importSay);
+$("importText").addEventListener("keydown",e=>{ if(e.key==="Enter"&&(e.metaKey||e.ctrlKey)){ e.preventDefault(); $("importGo").click(); } });
+$("importGo").onclick=()=>{ if(importPieceText($("importText").value)) $("importDlg").close(); else importSay(); };
+$("importCancel").onclick=()=>$("importDlg").close();
+/* ⌘V WITH A CODE ON THE CLIPBOARD: when the editor holds no notes of its own to paste, labKeys puts the focus in a
+   hidden box for that one key, so the browser's own paste happens there - a page with nothing editable focused is
+   not sent a paste in every engine - and it is read here: a piece code opens the window with it, anything else goes
+   to the editor as the key did before. The box gives the focus back at once, pasted or not. */
+function pasteCatchOff(){ const pc=$("pasteCatch"); pc.value=""; if(document.activeElement===pc) pc.blur(); }
+$("pasteCatch").addEventListener("keyup",pasteCatchOff);
+$("pasteCatch").addEventListener("blur",()=>{ $("pasteCatch").value=""; });
+document.addEventListener("paste",e=>{
+  const tg=e.target, caught=!!tg&&tg.id==="pasteCatch";
+  if(!caught&&tg&&(/^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName)||tg.isContentEditable)) return;
+  if(caught) setTimeout(pasteCatchOff,0);
+  if(document.querySelector("dialog[open]")||!ready) return;
+  const t=e.clipboardData&&e.clipboardData.getData("text/plain"); e.preventDefault();
+  if(t&&readPieceText(t)){ openImport(t); return; }
+  if(!cellAway) try{ cw.edClipKeys("v"); }catch(err){}   // the cell away: nothing is pasted into it (patches/lab-cell-away.py)
+});
 $("savePieceBtn").onclick=()=>$("hpsBtn").click();   // Piece › Save piece… beside Open piece… (David, 18 Sep; moved from File to the Piece menu 12 Oct) — one writer, Export's
 $("pieceFile").onchange=e=>{ const f=e.target.files[0]; if(f) f.text().then(openPieceText); e.target.value=""; };
 /* A NEW PROJECT (David, 16 Sep: "a way to clear to start a completely new project … asking me
@@ -4579,6 +4874,11 @@ function unloadVideo(){
   const pw=$("panwin"); pw.classList.add("empty"); pw.classList.remove("cropping"); pw.textContent="Open a video — the pan shows here, cropped, beside the table"; pw.style.height="";
   $("wavenote").textContent="The take's waveform appears here once a video is open."; $("vidName").textContent="";
   NAV.hidden=true; drawWave(); paintNav(); paintMarks();
+  /* WITH NO VIDEO, THE TIME LINE PAINTS WHAT A LAB JUST OPENED SHOWS (David, 28 Oct 2026: "A new project should generally
+     mean that everything is wiped"): the lane, the clock and the playhead painted only while a video was loaded, so the
+     old project's tables, time and red line stayed. The painters now say it themselves; drawWave stops before the lane
+     when there are no peaks, so they are called here. (patches/lab-new-project-clean.py) */
+  paintPh(); paintLane(true);
 }
 function newProject(){
   if(!ready) return;
@@ -4875,8 +5175,23 @@ let sessionWanted=true;   // the address may ask for something else instead
 /* ---- menus: one open at a time; a click elsewhere closes; an item closes ---- */
 /* the menu's panel goes where there is room: below the button, or above it when
    the window's edge is nearer; hugging the right edge when it would cross it */
+/* A MENU INSIDE A BOX THAT CLIPS IS LAID OUT AT ITS BUTTON IN THE WINDOW (David, 28 Oct 2026, of the arrangement card's
+   table list cut off at the waveform: "The arrangement card should open over the waveform."): #work scrolls, and a box that
+   scrolls cuts off what hangs out of it. Where an ancestor clips, the menu is fixed under its button - above it where there
+   is more room - as tall as the window leaves; elsewhere it is placed as before. (patches/lab-menus-over-everything.py) */
+function menuClipper(m){ for(let a=m.parentElement;a&&a!==document.body;a=a.parentElement){ const cs=getComputedStyle(a); if(cs.overflowY!=="visible"||cs.overflowX!=="visible") return a; } return null; }
 function placeMenu(m){
   const dd=m.querySelector(".dd"); if(!dd) return;
+  dd.style.position=dd.style.top=dd.style.bottom=dd.style.left=dd.style.right=dd.style.maxHeight=""; dd.classList.remove("fixed");
+  const clip=menuClipper(m);
+  if(clip){ const keepR=dd.dataset.right==="1"||(dd.dataset.right==null&&dd.classList.contains("right")); dd.dataset.right=keepR?"1":"0";
+    const br=(m.querySelector("[data-menu]")||m).getBoundingClientRect(), below=innerHeight-br.bottom-14, above=br.top-14, h=dd.scrollHeight, up=h>below&&above>below;
+    dd.classList.add("fixed"); dd.classList.remove("up"); dd.style.position="fixed";
+    if(up){ dd.style.top="auto"; dd.style.bottom=(innerHeight-br.top+6)+"px"; dd.style.maxHeight=Math.max(120,above)+"px"; }
+    else { dd.style.top=(br.bottom+6)+"px"; dd.style.bottom="auto"; dd.style.maxHeight=Math.max(120,below)+"px"; }
+    if(keepR){ dd.style.left="auto"; dd.style.right=Math.max(8,innerWidth-br.right)+"px"; } else { dd.style.right="auto"; dd.style.left=Math.max(8,br.left)+"px"; }
+    const r=dd.getBoundingClientRect(); if(r.right>innerWidth-8){ dd.style.left="auto"; dd.style.right="8px"; } if(r.left<8){ dd.style.right="auto"; dd.style.left="8px"; }
+    return; }
   dd.classList.remove("up"); const keepRight=dd.dataset.right==="1"||(dd.dataset.right==null&&dd.classList.contains("right"));
   dd.dataset.right=keepRight?"1":"0"; dd.classList.toggle("right",keepRight);
   const r=dd.getBoundingClientRect(), br=m.getBoundingClientRect();
@@ -4888,6 +5203,7 @@ document.querySelectorAll("[data-menu]").forEach(b=>b.addEventListener("click",e
   const m=$(b.dataset.menu), was=m.classList.contains("open");
   document.querySelectorAll(".menu.open").forEach(x=>x.classList.remove("open")); if(!was){ m.classList.add("open"); placeMenu(m); } }));
 document.addEventListener("click",()=>document.querySelectorAll(".menu.open").forEach(x=>x.classList.remove("open")));
+document.addEventListener("scroll",e=>{ const t=e.target; if(!(t instanceof Element)) return; document.querySelectorAll(".menu.open").forEach(x=>{ const dd=x.querySelector(".dd.fixed"); if(dd&&!dd.contains(t)&&t.contains(x)) x.classList.remove("open"); }); },true);   // a fixed menu goes when the box it sits in scrolls (patches/lab-menus-over-everything.py)
 document.querySelectorAll(".dd").forEach(d=>d.addEventListener("click",e=>{ if(e.target.closest(".it")) document.querySelectorAll(".menu.open").forEach(x=>x.classList.remove("open")); else e.stopPropagation(); }));
 
 /* ---- ONE LAYOUT PER MODE (David, 14 Sep: "customize views and sizes of the
@@ -5147,8 +5463,8 @@ function paintFcpScope(){
 }
 $("fcpScopeSeg").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; const all=b.dataset.v==="all"; if(all===!!state.fcpAll) return;
   state.fcpAll=all; state.dirty=true; scheduleSessionSave(); paintTitle(); });
-async function fcpGather(of){
-  const all=fcpAllOn(), parts=[], left=[], titleOf=()=>(state.piece&&state.piece.title)||"Untitled";
+async function fcpGather(of,one){   // one: the open piece only, whatever This piece | All pieces says (patches/lab-fcp-one-table.py)
+  const all=!one&&fcpAllOn(), parts=[], left=[], titleOf=()=>(state.piece&&state.piece.title)||"Untitled";
   if(!all){ const g=await of(); if(g.why){ labToast(g.why); return null; } parts.push(g); }
   else {
     const home=state.chapter, dirty=state.dirty;
@@ -5180,12 +5496,26 @@ async function exportFcpxml(set){
   const {titles,chapters,bars,beats,missing,tooTall,chordTitles}=G;
   const name=fcpName(G.all);   // the project's name - its video's (patches/lab-project-name.py)
   const xml=FCPXML.write({noVideo:!!state.fcpBare, project:name+" — markers", set, take:{name:state.video.name||"take",path:state.video.path||null,dur:vid.duration,frameDur,width:vid.videoWidth,height:vid.videoHeight,tcStart:state.video.tcStart||0}, ...fcpMarksOf(chapters,bars), beats, titles});
-  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([xml],{type:"application/xml"})); a.download=name+".fcpxml"; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  fcpDeliver(xml,name+".fcpxml");
   const r=FCPXML.rate(frameDur), nt=titles.length-chordTitles;
   labToast(name+".fcpxml: "+nt+" table title"+(nt===1?"":"s")+" + "+beats.length+" "+FCPXML.SETS[set].name+" clip"+(beats.length===1?"":"s")+(chordTitles?" + "+chordTitles+" chord and structure title"+(chordTitles===1?"":"s"):"")+", "+bars.length+" bar"+(bars.length===1?"":"s")+" · "+r.fps+" fps "+vid.videoWidth+"×"+vid.videoHeight
     +(missing.size?" · no template for "+[...missing].join(", ")+" (those tables left out)":"")+(tooTall.length?" · more bars than the template's 8 rows hold in "+tooTall.join(", ")+" — the rest not written":"")
     +(state.video.tcStart?" · timecode from "+fmt(state.video.tcStart):"")+fcpMarksSaid()+(state.fcpBare?" · notation only — no video in the file":state.video.path?" · the take is linked to its file":" · Final Cut will ask where the take is")+G.said);
 }
+/* EVERY FINAL CUT FILE LEAVES THE LAB THROUGH ONE DOOR (David, 28 Oct 2026: "a \"Send to Final Cut\" function that ...
+   sends that directly to Final Cut, where it opens" - "It should sit besides it"): saved, or - in the Mac app, Send
+   chosen - handed to the app, which opens it with Final Cut Pro. (patches/lab-send-to-final-cut.py) */
+const fcpCanSend=()=>!!(window.webkit&&webkit.messageHandlers&&webkit.messageHandlers.hpsFcp);
+function fcpSendOn(){ if(!fcpCanSend()) return false; try{ return localStorage.getItem("hpdlab.fcpSend")==="1"; }catch(e){ return false; } }
+function fcpDeliver(xml,file){
+  if(fcpSendOn()){ webkit.messageHandlers.hpsFcp.postMessage({name:file,text:xml}); return; }   // the app answers with hpsFcpSent
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([xml],{type:"application/xml"})); a.download=file; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); }
+window.hpsFcpSent=(ok,detail)=>labToast(ok?"Sent to Final Cut \u2014 it imports "+detail:"Not sent to Final Cut: "+detail);
+function paintFcpSend(){ const row=$("fcpSendRow"); if(!row) return; row.hidden=!fcpCanSend(); const v=fcpSendOn()?"send":"save"; $("fcpSendSeg").querySelectorAll("button").forEach(b=>b.classList.toggle("on",b.dataset.v===v)); }
+$("fcpSendSeg").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; e.stopPropagation();
+  try{ localStorage.setItem("hpdlab.fcpSend",b.dataset.v==="send"?"1":"0"); }catch(err){} paintFcpSend();
+  labToast(b.dataset.v==="send"?"Final Cut files go straight to Final Cut Pro":"Final Cut files are saved as .fcpxml"); });
+paintFcpSend();
 $("fcpBtn").onclick=()=>exportFcpxml("v31"); $("fcpBtn2").onclick=()=>exportFcpxml("v200");
 
 /* ---- FINAL CUT, STAGE 3 (David, 16 Sep 2026): ONE TITLE PER TABLE from the cell
@@ -5268,28 +5598,35 @@ const FCP_PANEL_SAID={used:0,missing:new Set(),left:new Set()};
 async function fcpPanelTemplate(beats,sub,groups,bpr,need){   // need: the rows the table has (v4: four or fewer take the four-row title)   // the look's title for this grid, or null: the look is not chosen, its colours have no titles, or this grid's is not built
   if(fcpDesign()!=="panel") return null;
   const fam=FCP_PANEL_FAMILY[fcpSkin()]; if(!fam){ FCP_PANEL_SAID.left.add("the Panel look in these colours has no titles yet — the classic ones are written"); return null; }
-  const side=await fcpPanelTableSide(fam,fcpKey(beats,sub,groups,bpr),need);
+  const side=await fcpPanelTableSide(fam,fcpKey(beats,sub,groups,bpr),need,beats*sub*(bpr||1));
   if(!side) FCP_PANEL_SAID.missing.add(fcpKey(beats,sub,groups,bpr));
-  if(side&&!fcpNoLetter()&&!(side.sliders&&side.sliders["Letter tile"])) FCP_PANEL_SAID.left.add("the section letter's tile is on the stage only so far — Final Cut still shows the tab at the table's side");
+  if(side&&!fcpNoLetter()&&!(side.panel&&side.panel.tile)) FCP_PANEL_SAID.left.add("the section letter's tile is on the stage only so far — Final Cut still shows the tab at the table's side");
   if(side&&fcpRowBands()&&!Array.isArray(side.row_bands)) FCP_PANEL_SAID.left.add("banded rows need the v4c table titles — none installed for "+fcpKey(beats,sub,groups,bpr)+", so Final Cut draws it without bands");
   return side; }
 /* 'TABLE V2' FIRST (David, 13 Oct 2026: "the banded rows don't seem to export to FCP, can you fix that?"): a Panel table's
    title has its row bands and a Row bands checkbox since Table v2 (tools-cell-moti.py); the morning's plain title is
    asked for where that one is not installed. FCP_PANEL_SWITCH sets the checkbox. (patches/lab-fcp-row-bands.py) */
-async function fcpPanelTableSide(fam,key,need){
+async function fcpPanelTableSide(fam,key,need,cols){   // cols: the row's slots - the v5 title's name (patches/lab-flex-titles.py)
   /* v4b FIRST (David, 13 Oct 2026: "the row bands are activated, but don't show any difference"): a v4 table's bands were switched by
      their fill's opacity, which a checkbox of our titles does not move in Final Cut; a v4b table's by their scale, which it
      does. The v4 table where a colour's v4b is not installed. (patches/lab-fcp-bands-v4b.py) */
   /* v4c FIRST (David, 14 Oct 2026, of the v4b tables from an import: "Still nothing"): a checkbox drew the bands when ticked by hand and
      not when the file set it; a v4c table has each band's opacity published and the file sets that (FCP_PANEL_SWITCH). */
-  const famB=fam.replace(" v4 "," v4b "), famC=fam.replace(" v4 "," v4c "), famD=fam.replace(" v4 "," v4d "), famE=fam.replace(" v4 "," v4e "), famF=fam.replace(" v4 "," v4f "), fams=famB!==fam?[famF,famE,famD,famC,famB,fam]:[fam], /* v4e: the tile goes with the Section Letter checkbox when it is unticked by hand in Final Cut (David, 14 Oct: "deactivating the section Letter and Final Cut should also take away the whole section letter box"); v4f: the letter and its tile one box, moved and sized by hand in the inspector - X Position, Y Position, Letter size ("can you give me control over the size and the exact position of the section letter with its box in Final Cut?") */ tiers=need>=1&&need<=4?[key+" 4r",key]:[key];   // v4: the four-row title where the table fits it, else the eight-row one
-  for(const ck of fams.flatMap(f=>tiers.map(k=>f+" "+k))){
+  const famB=fam.replace(" v4 "," v4b "), famC=fam.replace(" v4 "," v4c "), famD=fam.replace(" v4 "," v4d "), famE=fam.replace(" v4 "," v4e "), famF=fam.replace(" v4 "," v4f "), famG=fam.replace(" v4 "," v4g "), fams=famB!==fam?[famG,famF,famE,famD,famC,famB,fam]:[fam],   /* v4g: the tile follows its label in Final Cut (patches/lab-letter-box-follows.py) */ /* v4e: the tile goes with the Section Letter checkbox when it is unticked by hand in Final Cut (David, 14 Oct: "deactivating the section Letter and Final Cut should also take away the whole section letter box"); v4f: the letter and its tile one box, moved and sized by hand in the inspector - X Position, Y Position, Letter size ("can you give me control over the size and the exact position of the section letter with its box in Final Cut?") */ tiers=need>=1&&need<=4?[key+" 4r",key]:[key];   // v4: the four-row title where the table fits it, else the eight-row one
+  const v5=fam.replace(" v4 "," v5 ")+" "+cols+" cols", v5s=cols&&famB!==fam?(need>=1&&need<=4?[v5+" 4r",v5]:[v5]):[];   /* v5 FIRST: one title a column count, its grid set by the file (patches/lab-flex-titles.py) */
+  for(const ck of v5s.concat(fams.flatMap(f=>tiers.map(k=>f+" "+k)))){
     if(FCP_TEMPLATES[ck]===undefined){ try{ const r=await fetch("fcp-templates/"+ck+".json?t="+Date.now()); FCP_TEMPLATES[ck]=r.ok?await r.json():null; }catch(e){ FCP_TEMPLATES[ck]=null; } }
     if(FCP_TEMPLATES[ck]) return FCP_TEMPLATES[ck]; }
   return null; }
 function fcpCssRGB(css){ const s=String(css), h=/^#([0-9a-f]{6})$/i.exec(s), m=/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/.exec(s);   // a colour of the look as the export's 0..1 triple
   return h?[1,3,5].map(i=>parseInt(s.slice(i,i+2),16)/255):m?[+m[1]/255,+m[2]/255,+m[3]/255]:[0,0,0]; }
 function fcpPanelRuns(runs){ return runs.map(r=>Object.assign({},r,{style:Object.assign({},r.style,{color:fcpCssRGB(fcpPanelInk(r.style.color))})})); }   // a cell's runs in the skin's ink
+/* a count label d left of its text's middle in Final Cut: a blank after it, the kerning on its last letter (a run's kerning stands
+   after each of its letters) - the line is centred, the count texts carry no tracking, so 2d less the blank's width (patches/lab-count-places.py) */
+function fcpCountAt(runs,d){ const r=runs&&runs[0]; if(!d||!r||!r.text.trim()) return runs;
+  const s=r.style.size, cs=[...r.text], g=document.createElement("canvas").getContext("2d");
+  let wb=FCPC.ADV*s; if(r.style.font==="Figtree"){ g.font=(r.style.face==="ExtraBold"?"800 ":"700 ")+"100px Figtree"; wb=g.measureText(" ").width/100*s; }   // the blank: Loopiejuice's advance, or Figtree's space
+  return (cs.length>1?[{text:cs.slice(0,-1).join(""),style:r.style}]:[]).concat([{text:cs[cs.length-1],style:Object.assign({},r.style,{kerning:+(2*d-wb).toFixed(3)})},{text:" ",style:r.style}]); }
 function fcpPanelCount(L,side){ const P=side.panel, shrink=side.count_glyph/P.count, size=(L.big?P.count_big:P.count)*shrink, word=!L.text||L.text===" "?" ":/^[0-9a-z+]+$/i.test(L.text)?L.text:"·";
   return [{text:word,style:{font:"Figtree",face:L.big?"ExtraBold":"Bold",size,color:fcpCssRGB(L.big?FCPP.TEXT:FCPP.MUTED),baseline:-FCPP.CAP*(size-side.count_glyph)}}]; }
 /* THE LETTER'S TILE IN THE FILE (David, 14 Oct 2026: "Let's build 12"; v4d tables): the tile as the stage rules it (fcpPanelTabBox), from
@@ -5297,11 +5634,11 @@ function fcpPanelCount(L,side){ const P=side.panel, shrink=side.count_glyph/P.co
    tile as wide as the name with its side air, never narrower than it is high; v, the Letter tile slider's value for that
    width. (patches/lab-fcp-letter-tile.py) */
 function fcpPanelTile(name,side){ const P=side.panel, T=P.tile; let size=P.label_size, w=0;
-  try{ const g=fcpPanelLabel.g||(fcpPanelLabel.g=document.createElement("canvas").getContext("2d")); const NW=fcpTileW(name); w=NW.steady*size; if(NW.own*size>T.text){ size*=T.text/(NW.own*size); w=T.text; } else w=Math.min(w,T.text); }catch(e){}   // the name by its shape, as the stage (fcpTileW)
+  try{ const g=fcpPanelLabel.g||(fcpPanelLabel.g=document.createElement("canvas").getContext("2d")); const NW=fcpTileW(name,FCP_LETTER_FACES[fcpLetterSet("panel").f]); w=NW.own*size; if(w>T.text){ size*=T.text/w; w=T.text; } /* the label's own width, as the stage (patches/lab-letter-box-follows.py) */ }catch(e){}   // the name by its shape, as the stage (fcpTileW)
   const W=Math.max(T.h,w+2*T.pad); return {size,W,v:+(T.full*Math.max(0,Math.min(1,(W-T.w0)/(T.w1-T.w0)))).toFixed(5)}; }
-function fcpPanelLabel(name,side){ const P=side.panel, room=P.tile?P.tile.text:P.tab_w?P.tab_w-2*P.tab_pad:P.gut-30; let size=P.label_size;   // made smaller where it is broader than the margin, as on the stage - and kept on the template's middle line
-  try{ const g=fcpPanelLabel.g||(fcpPanelLabel.g=document.createElement("canvas").getContext("2d")); g.font=P.tile?FCPP.TILE_WGT+" 100px "+FCPP.TILE_F:"800 100px "+FCPP.F; const w=g.measureText(name).width/100*size; if(w>room) size*=room/w; }catch(e){}
-  return [{text:name,style:{font:P.tile?"Inter":"Figtree",face:P.tile?"Bold":"ExtraBold",size,color:fcpCssRGB(FCPP.TEXT),alignment:"center",baseline:FCPP.CAP*P.label_size-(P.tile?FCPP.TILE_CAP:FCPP.CAP)*size}}]; }   // on its tile the letter is Inter Bold, a capital's middle on the tile's (the title sets its baseline CAP of label_size under it); an older title's tab keeps Figtree ExtraBold
+function fcpPanelLabel(name,side){ const LF=FCP_LETTER_FACES[fcpLetterSet("panel").f], P=side.panel, room=P.tile?P.tile.text:P.tab_w?P.tab_w-2*P.tab_pad:P.gut-30; let size=P.label_size;   // made smaller where it is broader than the margin, as on the stage - and kept on the template's middle line
+  try{ const g=fcpPanelLabel.g||(fcpPanelLabel.g=document.createElement("canvas").getContext("2d")); g.font=P.tile?LF.wgt+" 100px "+LF.css:"800 100px "+FCPP.F; const w=g.measureText(name).width/100*size; if(w>room) size*=room/w; }catch(e){}
+  return [{text:name,style:{font:P.tile?LF.font:"Figtree",face:P.tile?LF.face:"ExtraBold",size,color:fcpCssRGB(FCPP.TEXT),alignment:P.tile&&P.tile.auto?"right":"center",baseline:FCPP.CAP*P.label_size-(P.tile?LF.cap:FCPP.CAP)*size}}]; }   // on its tile the letter is Inter Bold, a capital's middle on the tile's (the title sets its baseline CAP of label_size under it); an older title's tab keeps Figtree ExtraBold
 function fcpPanelSaid(){ const S=FCP_PANEL_SAID, a=[]; if(S.used) a.push(S.used+" in the Panel look"+(S.cards?", "+S.cards+" chord card"+(S.cards===1?"":"s"):"")); if(S.missing.size) a.push("no Panel title for "+[...S.missing].join(", ")+" (classic written there)"); a.push(...S.left);
   return a.length?" · "+a.join(" · "):""; }
 /* THE PANEL LOOK'S ARRANGEMENT BAR TITLE (David, 12 Oct 2026: "build the arrangement bar and the chord card"). The template
@@ -5731,12 +6068,32 @@ function fcpCell(evs,glyph,tab){
    BASE IS WHAT IS DRAWN". The template is chosen by the DRAWN grid, beats × base,
    and a slot that spans several stored pulses shows their glyphs side by side,
    smaller — as the Studio draws them. */
-function fcpSlotText(perPulse,glyph,fastBeat,tab){ // perPulse: the events of each stored pulse inside one drawn slot; fastBeat: the beat holds fast notes somewhere, so every slot of it is small (the app's way)
-  if(perPulse.length===1) return fcpCell(perPulse[0],glyph,tab);
-  const later=perPulse.slice(1).some(e=>e&&e.length);
-  if(!later&&!fastBeat) return fcpCell(perPulse[0],glyph,tab);
-  const size=glyph/perPulse.length, baseline=0.45*(glyph-size);   // two fast notes in a slot at half size (1.15× overran the slot — David, 16 Sep), four at a quarter; raised so their centre is the cell's
-  return perPulse.map(evs=>{ const e=evs&&evs.slice().sort((a,b)=>fcpRank(b)-fcpRank(a))[0]; return e?{text:fcpGlyph(e),style:{size,color:FCP_HAND[e.hand]||FCP_HAND.R,baseline}}:{text:" ",style:{size,color:FCP_HAND.R,baseline}}; });
+/* EVERY NOTE OF A FAST SLOT IS WRITTEN, AS LARGE AS THE SLOT ALLOWS (David, 29 Oct 2026, of Let It Be - Level 2's A1: "the notes
+   become very small, and some notes are missing" - "Yes to all three: stacks kept, as large as the slot allows, and the same in
+   Tab and the Final Cut files"). The rule above kept one note of each pulse and drew the whole beat at 1/N. Now a slot whose
+   notes are all on the drawn grid is a cell like any other (full size, a stack a stack), whatever else its beat holds; a slot
+   with a note off the grid writes its pulses side by side, each pulse's notes a stack read top-down - line i holds every
+   pulse's i-th note, a blank where a pulse has fewer - all at one size: the font's advance N times across the slot's inner
+   width, never above a lone symbol's (or a stack's of as many lines). slotW: the slot's inner width (fcpColX), the stage's
+   and the file's alike. (patches/lab-fast-stacks.py) */
+/* …AND EVERY NOTE ON ITS OWN SIXTEENTH'S PLACE (David, 29 Oct 2026: "eighth notes should be placed where the left of the two
+   sixteenth notes would be placed" - "the whole table", an eighth at its full size). Where a slot holds several stored
+   pulses, each pulse's notes stand at the middle of that pulse's share of the slot: a slot on the drawn grid keeps its
+   cell's sizes and has a blank after it for every later pulse; the places are kerning - share less the advance, plus the
+   template's tracking, which Final Cut adds to a run's kerning (FCP_TRACK) - on every run but a line's last. drawRuns and
+   fcpFaceRuns step by the same numbers (fcpRunStep). (patches/lab-sixteenth-places.py) */
+function fcpSlotText(perPulse,glyph,slotW,tab){ // perPulse: the events of each stored pulse inside one drawn slot
+  if(perPulse.length===1||!perPulse.some(e=>e&&e.length)) return fcpCell(perPulse[0],glyph,tab);
+  const N=perPulse.length, lines=[];
+  if(!perPulse.slice(1).some(e=>e&&e.length)) fcpCell(perPulse[0],glyph,tab).forEach(r=>lines.push([r].concat(Array.from({length:N-1},()=>({text:" ",style:r.style})))));   // on the drawn grid: the cell's own note or stack, on the first pulse's place
+  else { const cols=perPulse.map(evs=>(evs||[]).slice().sort((a,b)=>fcpRank(b)-fcpRank(a)).slice(0,4)), L=Math.max(...cols.map(c=>c.length));
+    const S=FCP_STACK[L], size=Math.min(L>1?glyph*S.size:tab?glyph:glyph*FCP_FULL.ALL,slotW/(N*FCPC.ADV));
+    const pitch=L>1?1.37*size+S.lineSpacing*size:0, baseline=((L-1)*pitch)/2-0.45*size+0.45*glyph;   // fcpCell's centring of a stack; one line: raised so its centre is the cell's
+    const st=e=>Object.assign({size,color:FCP_HAND[e&&e.hand]||FCP_HAND.R,baseline},L>1?{lineSpacing:S.lineSpacing*size}:{});
+    for(let i=0;i<L;i++) lines.push(cols.map(c=>({text:c[i]?fcpGlyph(c[i]):" ",style:st(c[i])}))); }
+  const share=slotW/N;   // a pulse's place: the middle of its share of the slot
+  return lines.flatMap((ln,i)=>ln.map((r,j)=>({text:(i&&!j?"\n":"")+r.text.replace(/^\n/,""),
+    style:Object.assign({},r.style,j<ln.length-1?{kerning:share-FCPC.ADV*r.style.size+FCP_TRACK*r.style.size}:{})})));
 }
 /* THE TAB FORM IN THE FILE (David, 13 Oct 2026: "tab notation still imports to FCP as table"). The stage's rule (FCP_TAB): a
    slot is read once and written once a lane - its events parted by hand, each part through fcpSlotText at the lane's size.
@@ -5760,10 +6117,10 @@ function fcpLineBox(){ return FCP_LINE.loopie.asc+FCP_LINE.loopie.desc; }
    46.4 on the stage, as that rule predicts of what was written). fcpLineAD: a face's ascent and descent, of a size of 1,
    read from the font. (patches/lab-fcp-tab-line-steps.py) */
 function fcpLineAD(studio){ return studio?FCP_LINE.inter:FCP_LINE.loopie; }   // from the font files (FCP_LINE), not a canvas
-function fcpTabRuns(perPulse,glyph,fast){
+function fcpTabRuns(perPulse,glyph,slotW){
   const lg=fcpTabSize(glyph), box=fcpLineBox(), studio=fcpSym()!==FCP_SYM.loopie, lines=[];
   for(const [hand,dy] of FCP_TAB.LANES){
-    const runs=fcpSlotText(perPulse.map(evs=>evs&&evs.filter(e=>(e.hand==="L"?"L":"R")===hand)),lg,fast,true);
+    const runs=fcpSlotText(perPulse.map(evs=>evs&&evs.filter(e=>(e.hand==="L"?"L":"R")===hand)),lg,slotW,true);
     if(!runs.some(r=>r.text.trim())) continue;   // an empty lane is no line
     const off=fcpTabDy(dy,lg)+(FCP_TAB.LIFT-FCPV.BASE)*lg+FCPV.BASE*glyph, parts=[]; runs.forEach(r=>{ if(r.text.startsWith("\n")||!parts.length) parts.push([]); parts[parts.length-1].push(r); });
     const s0=runs[0].style, pitch=box*s0.size+(s0.lineSpacing||0);   // a stack's own step, where the lane holds one
@@ -5776,7 +6133,6 @@ function fcpTabRuns(perPulse,glyph,fast){
     for(const r of L.runs){ r.style.baseline=A0; if(sp!=null) r.style.lineSpacing=sp; else delete r.style.lineSpacing; }
     const rr=fcpFaceRuns(L.runs); if(k&&rr.length) rr[0]=Object.assign({},rr[0],{text:"\n"+rr[0].text}); out.push(...rr); });
   return out; }
-function fcpFastBeat(c,q0,sub,per){ if(per<=1) return false; for(let q=q0;q<q0+sub;q++){ if((q-q0)%per!==0){ const e=c.byPulse.get(q); if(e&&e.length) return true; } } return false; }   // a beat with a note off the drawn grid
 /* THE MARKER'S SPAN IN A GROUPED BAR follows the app's Marker follows setting (David,
    16 Sep: "the way the marker behaves can be controlled by the marker follow setting,
    and half means it will follow 3/4 instead of 3/2"): Subdivision — the group; Half —
@@ -5793,6 +6149,22 @@ function fcpLitSpan(m,ci,mode){
     const cs=cells[cut].c0; return cl.c0<cs?{c0:0,counts:cs,kind:"half"}:{c0:cs,counts:m.beats-cs,kind:"half"}; }
   return {c0:cl.c0,counts:cl.counts,kind:"group"};
 }
+/* ONE TITLE A COLUMN COUNT, ITS GRID SET BY THE FILE (David, 29 Oct 2026: "I prefer to have a few more title templates
+   that are lighter in Final Cut"; the test seen in Final Cut: "I think it looks good"). A v5 table title (its sidecar's
+   flex) has a line at every slot border, a bar line at the middle, each column in a layer of its own and the marker on
+   two sliders; the file sets them to what the stage draws (fcpPanelChrome, fcpColX). A slider's value is its slots / C x
+   its top (a slider's very top wraps, so the travel ends at top). (patches/lab-flex-titles.py) */
+function fcpFlexSpan(side,m,x,mode){ const F=side.flex, pos=m.base||m.sub, sp=fcpLitSpan(m,x.k,mode), S=side.sliders;   // the lit span in slots: where it starts in the row, how wide
+  return {s:+(((x.bb||0)*m.beats+sp.c0)*pos/F.cols*S["Marker start"].top).toFixed(6),w:+(sp.counts*pos/F.cols*S["Marker width"].top).toFixed(6)}; }
+function fcpFlexMarker(side,still,rowKF,beatKF){ const S=side.sliders, w0=beatKF.length?beatKF[0].value.w:+(1/side.flex.cols*S["Marker width"].top).toFixed(6);
+  if(still) return [{name:"Row",key:S.Row.key,value:"0"},{name:"Marker start",key:S["Marker start"].key,value:"0"},{name:"Marker width",key:S["Marker width"].key,value:String(w0)}];
+  return [{name:"Row",key:S.Row.key,keyframes:rowKF},{name:"Marker start",key:S["Marker start"].key,keyframes:beatKF.map(f=>({k:f.k,value:f.value.s}))},
+    {name:"Marker width",key:S["Marker width"].key,keyframes:beatKF.map(f=>({k:f.k,value:f.value.w}))}]; }
+function fcpFlexGrid(side,m,bpr,pos){ const F=side.flex, barCols=m.beats*pos, slotW=(FCPV.FR-FCPV.FL)/F.cols, n=v=>String(+(+v).toFixed(3));
+  const grouped=!!cw.groupsOf(m), halves=grouped&&fcpBoxes()==="halves", cut=grouped?fcpHalfCut(m):-1, at=new Set();   // the stage's cell lines (fcpPanelChrome)
+  for(let bb=0;bb<bpr;bb++) for(const cl of cw.cellsOf(m)) if(cl.i>0&&!(halves&&cl.c0!==cut)) at.add((bb*m.beats+cl.c0)*pos);
+  return F.columns.map((c,i)=>({name:c.name,key:c.key,value:n(i<bpr*barCols?fcpColX(m,i,bpr,pos,slotW).cx-(FCPV.FL+(i+0.5)*slotW):0)+" 0"}))
+    .concat(F.lines.map(l=>({name:l.name,key:l.key,value:String(l.bar?(bpr>1&&l.at===barCols?F.bar_w:0):at.has(l.at)?F.line_w:0)}))); }
 function fcpBeatIndex(side,m,ci,mode){   // the Beat slider's step (0-based) for the lit cell
   if(!side.spans) return ci;
   const sp=fcpLitSpan(m,ci,mode), i=side.spans.findIndex(s=>s.kind===sp.kind&&s.start===sp.c0&&s.counts===sp.counts);
@@ -5998,7 +6370,7 @@ async function fcpTablesOf(staticMarker,clipSet){   // the open piece's titles f
   buildGrid();
   const p=appEval("piece"), c2=cw.compile(p), titles=[], chapters=[], bars=[], missing=new Set(), tooTall=[], missingChords=new Set(), tooManyChords=[]; let chordTitles=0, structTitles=0, boxTitles=0;
   const spans=fcpSpans(tables,sm,c2), STY=fcpStyle(), MM=appMarkMode();
-  FCP_PANEL_SAID.used=0; FCP_PANEL_SAID.cards=0; FCP_PANEL_SAID.missing.clear(); FCP_PANEL_SAID.left.clear(); if(fcpDesign()==="panel") fcpPanelDress();   // the Panel look's titles (patches/lab-fcp-panel-table.py)
+  FCP_PANEL_SAID.used=0; FCP_PANEL_SAID.cards=0; FCP_PANEL_SAID.missing.clear(); FCP_PANEL_SAID.left.clear(); fcpLetterSaid(); if(fcpDesign()==="panel") fcpPanelDress();   // the Panel look's titles (patches/lab-fcp-panel-table.py)
   let panelUsed=false;
   for(const tb of tables){ const SP=spans[tables.indexOf(tb)];
     const m=tb.m, pos=m.base||m.sub, per=Math.max(1,Math.round(m.sub/pos)), GR=cw.groupsOf(m), bpr=fcpBpr(m), side=await fcpPanelTemplate(m.beats,pos,GR,bpr,Math.ceil(tb.bars/bpr))||await fcpTemplate(m.beats,pos,GR,bpr);   // the DRAWN grid, the grouping and the bars per row name the template; per = stored pulses in one drawn slot
@@ -6011,10 +6383,11 @@ async function fcpTablesOf(staticMarker,clipSet){   // the open piece's titles f
     for(const nm of side.text_order){
       let mm;
       if(nm==="2x"||nm==="3x") texts.push([{text:nm,style:{font:"Caveat",size:120,color:fcpRGB(STY.label),alignment:"right"}}]);
-      else if(nm==="A") texts.push(side.skin?fcpPanelLabel(fcpNoLetter()?" ":tb.sec.name,side):[{text:fcpNoLetter()?" ":tb.sec.name,style:{font:"Caveat",size:185,color:fcpRGB(STY.label),alignment:"right"}}]);   // the label's colour (David, 16 Sep)
-      else if((mm=/^Count (\d+)$/.exec(nm))){ const L=labels[(+mm[1]-1)%barCols]||{text:" ",big:false}; texts.push(side.skin?fcpPanelCount(L,side):[{text:L.text,style:{size:L.big?cglyph:cglyph*0.62,color:fcpRGB(STY.header)}}]); }   // the header's; the labels repeat per bar of the row
-      else if((mm=/^Cell (\d+)\.(\d+)$/.exec(nm))){ const r=+mm[1]-1, col=+mm[2]-1; const cols=(side.bars||1)*barCols, bar=r*bpr+Math.floor(col/barCols), cw2=col%barCols;   // the bar this column belongs to, in a row of bpr bars
-        if(r<rows&&col<cols&&bar<tb.bars){ const q0=tb.sec.pulse+bar*m.bp+cw2*per; const perPulse=[]; for(let i=0;i<per;i++) perPulse.push(c2.byPulse.get(q0+i)); { const fb=fcpFastBeat(c2,tb.sec.pulse+bar*m.bp+Math.floor(cw2/pos)*m.sub,m.sub,per), rr0=state.face==="tab"?fcpTabRuns(perPulse,glyph,fb):fcpFaceRuns(fcpSlotText(perPulse,glyph,fb)), rr=rr0.some(r=>String(r.text).trim())?rr0:fcpBlankCell(glyph); texts.push(side.skin?fcpPanelRuns(rr):rr); }   /* Tab: a lane a line (patches/lab-fcp-tab-form.py) */ }
+      else if(nm==="A") texts.push(side.skin?fcpPanelLabel(fcpNoLetter()?" ":fcpLabelOf(tb),side):[{text:fcpNoLetter()?" ":fcpLabelOf(tb),style:(()=>{ const st={font:"Caveat",size:185,color:fcpRGB(STY.label),alignment:"right"}, L=fcpLetterSet("classic"), F=FCP_LETTER_FACES[L.f];   // its font, size and move up or down (patches/lab-letter-style.py)
+        if(L.f!=="caveat"||L.s!==1||L.dy){ st.font=F.font; st.face=F.face; st.size=+(185*L.s).toFixed(2); st.baseline=+(FCP_LETTER_FACES.caveat.cap*185-F.cap*185*L.s+L.dy).toFixed(2); } return st; })()}]);   // the label's colour (David, 16 Sep)
+      else if((mm=/^Count (\d+)$/.exec(nm))){ const L=labels[(+mm[1]-1)%barCols]||{text:" ",big:false}; texts.push(fcpCountAt(side.skin?fcpPanelCount(L,side):[{text:L.text,style:{size:L.big?cglyph:cglyph*0.62,color:fcpRGB(STY.header)}}],fcpCountShift(m,+mm[1]-1,bpr,pos,(FCPV.FR-FCPV.FL)/(bpr*barCols)))); }   // the header's; the labels repeat per bar of the row
+      else if((mm=/^Cell (\d+)\.(\d+)$/.exec(nm))){ const r=+mm[1]-1, col=+mm[2]-1; const cols=(side.flex?bpr:(side.bars||1))*barCols, bar=r*bpr+Math.floor(col/barCols), cw2=col%barCols;   // the bar this column belongs to, in a row of bpr bars
+        if(r<rows&&col<cols&&bar<tb.bars){ const q0=tb.sec.pulse+bar*m.bp+cw2*per; const perPulse=[]; for(let i=0;i<per;i++) perPulse.push(c2.byPulse.get(q0+i)); { const sw=fcpColX(m,col,bpr,pos,(FCPV.FR-FCPV.FL)/(bpr*barCols)).w, rr0=state.face==="tab"?fcpTabRuns(perPulse,glyph,sw):fcpFaceRuns(fcpSlotText(perPulse,glyph,sw)), rr=rr0.some(r=>String(r.text).trim())?rr0:fcpBlankCell(glyph); texts.push(side.skin?fcpPanelRuns(rr):rr); }   /* Tab: a lane a line (patches/lab-fcp-tab-form.py) */ }
         else texts.push([{text:" ",style:{size:glyph,color:FCP_HAND.R}}]); }
       else texts.push([{text:" ",style:{size:glyph,color:FCP_HAND.R}}]);
     }
@@ -6025,7 +6398,7 @@ async function fcpTablesOf(staticMarker,clipSet){   // the open piece's titles f
     const SL=side.sliders, rowKF=[], beatKF=[];
     const beatsHere=SP.beats, t0=SP.entry, t1=SP.exit;
     const fr=(t)=>Math.round((t-t0)/frameDur), fEnd=fr(t1);
-    beatsHere.forEach(x=>{ const k0=Math.max(0,fr(x.t)), k1=fr(x.end); const rv=x.row/SL.Row.n, bv=((x.bb||0)*(side.spans_per_bar||side.beats)+fcpBeatIndex(side,m,x.k,MM))/SL.Beat.n;   // the Row is the bar's row; the Beat step: the cell, or its span by the marker setting, in the bar's own stretch of the row
+    beatsHere.forEach(x=>{ const k0=Math.max(0,fr(x.t)), k1=fr(x.end); const rv=x.row/SL.Row.n, bv=side.flex?fcpFlexSpan(side,m,x,MM):((x.bb||0)*(side.spans_per_bar||side.beats)+fcpBeatIndex(side,m,x.k,MM))/SL.Beat.n;   // the Row is the bar's row; the Beat step: the cell, or its span by the marker setting, in the bar's own stretch of the row
       rowKF.push({k:k0,value:rv}); beatKF.push({k:k0,value:bv}); if(k1-1>k0){ rowKF.push({k:k1-1,value:rv}); beatKF.push({k:k1-1,value:bv}); } });
     /* the marker's opacity: steps (two keyframes a frame apart) — up where a lit
        stretch begins, down where it ends; a break inside the table is a hole */
@@ -6046,12 +6419,17 @@ async function fcpTablesOf(staticMarker,clipSet){   // the open piece's titles f
       params:[{name:"Rows",key:SL.Rows.key,value:String(+((rows-1)/SL.Rows.n).toFixed(6))}]
         .concat(side.switches&&side.switches.section_letter?[{name:"Section Letter On/Off",key:side.switches.section_letter,value:"1"}]:[])   // the letter is OFF by default in David's template
         .concat(side.switches&&side.switches.letter_tab?[{name:"Letter tab",key:side.switches.letter_tab,value:fcpNoLetter()?"0":"1"}]:[])
-        .concat(side.panel&&side.panel.tile&&side.sliders["Letter tile"]?[{name:"Letter tile",key:side.sliders["Letter tile"].key,value:String(fcpPanelTile(tb.sec.name,side).v)},{name:"Letter tile show",key:side.sliders["Letter tile show"].key,value:fcpNoLetter()?"0":String(side.panel.tile.full)}]:[])   /* v4d: the tile's width and its showing, two sliders (patches/lab-fcp-letter-tile.py) */
+        .concat(side.panel&&side.panel.tile&&side.sliders["Letter tile"]?[{name:"Letter tile",key:side.sliders["Letter tile"].key,value:String(fcpPanelTile(fcpLabelOf(tb),side).v)}]:[])
+        .concat(side.panel&&side.panel.tile&&side.sliders["Letter tile show"]?[{name:"Letter tile show",key:side.sliders["Letter tile show"].key,value:fcpNoLetter()?"0":String(side.panel.tile.full)}]:[])   // v4g: no width slider - the title measures its label (patches/lab-letter-box-follows.py)   /* v4d: the tile's width and its showing, two sliders (patches/lab-fcp-letter-tile.py) */
+        .concat(side.panel&&!fcpNoLetter()?(()=>{ const L=fcpLetterSet("panel"), B=side.panel.letter_box, n=v=>String(+(+v).toFixed(3));   // the letter box's place and size, as Final Cut writes them (patches/lab-panel-letter-default.py)
+          if(!B){ if(L.s!==1||L.dx||L.dy) FCP_PANEL_SAID.left.add("the section letter's size and place are on the stage only for "+side.name+" - its sidecar has no letter box (in Final Cut: X Position, Y Position and Letter size in the inspector)"); return []; }
+          return [{name:"Position",key:B.pos_key,value:n(B.pos[0]+L.dx)+" "+n(B.pos[1]+L.dy)},{name:"Scale",key:B.scale_key,value:n(L.s)+" "+n(L.s)}]; })():[])
         .concat(side.skin?FCP_PANEL_SWITCH(side):[])   // the Panel look's tab goes with the letter (patches/lab-fcp-panel-v2.py)
         .concat(side.switches&&side.switches.group_lines?[{name:side.switches.group_lines_label||"Divide",key:side.switches.group_lines,value:fcpBoxes()==="halves"?"0":"1"}]:[])   // the boxes: the groups (on, "Divide 4 to 2/2") or the halves (off)
-        .concat(staticMarker||MK
+        .concat(side.flex?fcpFlexMarker(side,staticMarker||MK,rowKF,beatKF):staticMarker||MK
         ?[{name:"Row",key:SL.Row.key,value:"0"},{name:"Beat",key:SL.Beat.key,value:"0"}]
         :[{name:"Row",key:SL.Row.key,keyframes:rowKF},{name:"Beat",key:SL.Beat.key,keyframes:beatKF}])
+        .concat(side.flex?fcpFlexGrid(side,m,bpr,pos):[])   // a v5 title's lines and column places (patches/lab-flex-titles.py)
         .concat(MK&&opKey?[{name:"Beat Opacity",key:opKey,value:"0"}]:opKF.length>1?[{name:"Beat Opacity",key:opKey,keyframes:opKF}]:[])
         .concat(side.marker&&side.marker.bar_opacity_key?(MK?[{name:"Bar Opacity",key:side.marker.bar_opacity_key,value:"0"}]:opKF.length>1?[{name:"Bar Opacity",key:side.marker.bar_opacity_key,keyframes:opKF}]:[]):[]),texts});   // the Panel look's bar goes dark with the marker
     let formOn=false;
@@ -6145,15 +6523,25 @@ async function fcpTablesOf(staticMarker,clipSet){   // the open piece's titles f
   for(const T of titles) T.texts=T.texts.map(t=>t.some(r=>String(r.text).trim())?t:[{text:" ",style:{size:1,color:[0,0,0]}}]);   // what is only space is written at size 1: nothing to click, nothing to take a click (an empty CELL holds fcpBlankCell's glyph instead)
   return {titles,chapters,bars,beats:clips,missing,tooTall,missingChords,tooManyChords,chordTitles,structTitles,_lastEnd:Math.max(...spans.map(s=>s.lastEnd))};
 }
-async function exportFcpTables(staticMarker){
+async function exportFcpTables(staticMarker,one){
   if(!ready||!state.piece){ labToast("Open a piece first"); return; }
   { const so=fcpStageOnly(); if(so) labToast(so); }
   if(!vid||!isFinite(vid.duration)){ labToast("Open the take first — the file is built on it"); return; }
-  const G=await fcpGather(()=>fcpTablesOf(staticMarker)); if(!G) return;
+  const G=await fcpGather(()=>fcpTablesOf(staticMarker),!!one); if(!G) return;
+  /* THE FIX IS MADE IN THE LAB AND ONLY ITS TABLE GOES OUT (David, 28 Oct 2026: "fix it in the Lab, export just that
+     table as one title to drop over the old one"): the titles fcpTablesOf wrote for the table open in the notation -
+     every place it is played - with START and no markers. (patches/lab-fcp-one-table.py) */
+  if(one){ const cur=state.cur, mine=(G.titles||[]).filter(T=>T.lane==null&&String(T.name).startsWith(cur+" \u2014 "));   // a table's own title has no lane; its chords, form and cards have
+    if(!mine.length){ labToast("No Final Cut title for table "+cur+" \u2014 is it marked on the take, and is its template built?"); return; }
+    const nm=fcpName(G.all), file=nm+" \u2014 "+cur+(staticMarker?" static":"")+".fcpxml";
+    const xml=FCPXML.write({noVideo:!!state.fcpBare,project:nm+" \u2014 "+cur,set:"v31",take:{name:state.video.name||"take",path:state.video.path||null,dur:vid.duration,frameDur,width:vid.videoWidth,height:vid.videoHeight,tcStart:state.video.tcStart||0},chapters:[],bars:[],beats:[],titles:mine});
+    fcpDeliver(xml,file);
+    labToast(file+": "+mine.length+" title"+(mine.length===1?"":"s")+" of "+cur+" (every place it is played) \u2014 in Final Cut delete the old one"+(mine.length===1?"":"s")+", then copy START with these and paste at the take\u2019s first frame"+G.said+fcpPanelSaid());
+    return; }
   const {titles,chapters,bars,missing,tooTall,missingChords,tooManyChords,chordTitles,structTitles}=G;
   const name=fcpName(G.all);   // the project's name - its video's (patches/lab-project-name.py)
   const xml=FCPXML.write({noVideo:!!state.fcpBare,project:name+" — tables",set:"v31",take:{name:state.video.name||"take",path:state.video.path||null,dur:vid.duration,frameDur,width:vid.videoWidth,height:vid.videoHeight,tcStart:state.video.tcStart||0},...fcpMarksOf(chapters,bars),beats:[],titles});
-  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([xml],{type:"application/xml"})); a.download=name+(staticMarker?" tables static":" tables")+".fcpxml"; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  fcpDeliver(xml,name+(staticMarker?" tables static":" tables")+".fcpxml");
   const r=FCPXML.rate(frameDur);
   labToast(name+(staticMarker?" tables static":" tables")+".fcpxml: "+(titles.length-chordTitles)+" table title"+(titles.length-chordTitles===1?"":"s")+((n,w)=>n?" + "+n+" "+w+(n===1?"":(w.endsWith("x")?"es":"s")):"")(chordTitles-structTitles,state.fcp&&state.fcp.chordsAs==="boxes"?"chord box":"chord row")+((n,w)=>n?" + "+n+" "+w+(n===1?"":(w.endsWith("x")?"es":"s")):"")(structTitles,state.fcp&&state.fcp.structAs==="boxes"?"structure box":"structure row")+", "+bars.length+" bar"+(bars.length===1?"":"s")+" · "+r.fps+" fps"+fcpMarksSaid()+(state.fcpBare?" · notation only — no video in the file":"")
     +(missing.size?" · no template for "+[...missing].join(", ")+" (those tables left out)":"")+(tooTall.length?" · more bars than the template's 8 rows hold in "+tooTall.join(", ")+" — the rest not written":"")
@@ -6161,6 +6549,7 @@ async function exportFcpTables(staticMarker){
     +(state.video.tcStart?" · timecode from "+fmt(state.video.tcStart):"")+(state.video.path?"":" · Final Cut will ask where the take is")+G.said+fcpPanelSaid());
 }
 $("fcpTablesBtn").onclick=(e)=>exportFcpTables(!!e.altKey);
+$("fcpOneTableBtn").onclick=(e)=>exportFcpTables(!!e.altKey,true);   // (patches/lab-fcp-one-table.py)
 
 /* UNEVEN SPACING IS MARKED FOR REVIEW (David, 14 Sep: "when markers snap to the
    waveform and then are kind of unevenly spaced from the markers next to them,
