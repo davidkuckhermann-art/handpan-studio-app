@@ -1451,11 +1451,22 @@ const FCPC={CHIP_W:160,GAP:78,GLYPH:177,NAME:99,OUT:6.6,ROUND:25.9,MARGIN:40,HA:
   OUTLINE:"rgb(67,4,0)",FILL:"rgb(255,213,169)",PURPLE:[0.635,0.102,0.945]};   // PURPLE #A21AF1: an underside note (David, 17 Sep: "Let's use purple") — tools-cell-moti.py's BASELINE, so the Preview places text as Final Cut does (17 Sep)   // MARGIN: the ink's margin at a box's edges, in slots (David, 17 Sep, after seeing a quarter, a fifth and a sixth: "Let's go with a fifth") — every template is built with the same number (tools-build-all-templates.sh: --margin 0.2)
 /* THE INK CENTRE of a column: its box (a group in a grouped table, a count otherwise) minus the margin at
    each edge, shared evenly — neighbours across a cell line sit further apart than neighbours inside a cell */
+/* A PULSE'S PLACE IN ITS CELL (David, 17 Sep 2026, a fifth of a slot free at each edge of a box - "Let's go with a fifth", chosen on a
+   row of sixteenths; 29 Oct: measured in the pulse, not the drawn slot, where a table is stored finer than it is drawn): a box of
+   nb drawn slots holds nb x per pulses; a fifth of a pulse free at each edge, the pulses spread evenly over the rest. at: each
+   pulse of the drawn slot `col` from that slot's middle (fcpColX's cx). With per 1 it is fcpColX: at [0], share its w. (patches/lab-places-measured.py) */
+function fcpPulses(m,col,bpr,pos,slotW){ const per=Math.max(1,Math.round(m.sub/pos)), barCols=m.beats*pos, bb=Math.floor(col/barCols), cw2=col%barCols, cell=cw.cellAt(m,Math.floor(cw2/pos)*m.sub);
+  const b0=(bb*m.beats+cell.c0)*pos, nb=cell.counts*pos, M=FCPV.MARGIN*slotW/per, share=(nb*slotW-2*M)/(nb*per), cx=fcpColX(m,col,bpr,pos,slotW).cx;
+  return {share,at:Array.from({length:per},(_,i)=>FCPV.FL+b0*slotW+M+((col-b0)*per+i+0.5)*share-cx)}; }
 function fcpColX(m,col,bpr,pos,slotW){
   const barCols=m.beats*pos, bb=Math.floor(col/barCols), cw2=col%barCols, cell=cw.cellAt(m,Math.floor(cw2/pos)*m.sub);
   const b0=(bb*m.beats+cell.c0)*pos, nb=cell.counts*pos, M=FCPV.MARGIN*slotW, inner=(nb*slotW-2*M)/nb;
   return {cx:FCPV.FL+b0*slotW+M+(col-b0+0.5)*inner, w:inner};
 }
+/* A COUNT LABEL STANDS OVER THE EIGHTH NOTES (David, 29 Oct 2026: "adapt the header so that it lines up with the new placement of
+   the notes"): in a table stored finer than it is drawn, at the middle of the slot's first pulse's share, as the notes stand -
+   this far left of the slot's middle; 0 elsewhere. (patches/lab-places-measured.py) */
+function fcpCountShift(m,col,bpr,pos,slotW){ return Math.round(m.sub/pos)>1?-fcpPulses(m,col,bpr,pos,slotW).at[0]:0; }
 /* the titles' lead-in and tail, in seconds — the project's, defaults here (see fcpSpans) */
 const FCP_TIMING={lead:5,tail:5,fade:0.32};   // fade: the table's own fade in and out, where it meets nothing (16 Sep) — 0.32 s is 16 frames at 50p (David: "16 frames when it's 50p, and the equivalent for other frame rates"); the writer rounds it to the take's frames
 /* THE HEADER'S AND THE LABEL'S COLOUR (David, 16 Sep: "if the video doesn't have a
@@ -1573,7 +1584,10 @@ function drawFcpStage(){
     /* a stack's lines are one LINE apart as Motion sets them: the font's own line box (ascent + descent,
        1.20 em for Loopiejuice Mono, read from the font) plus the run's line spacing — 1.37 em was a
        guess and drew stacks taller and lower than David's render (17 Sep) */
-    const lineBox=s=>fcpLineBox()*s;   // the font's own box (FCP_LINE): a canvas answers differently from one engine to the next (patches/lab-fcp-font-metrics-fixed.py)
+    const lineBox=s=>fcpLineBox()*s;
+    if(runs.some(r=>r.at!=null)){ const pitch=lineBox(size)+(st0.lineSpacing||0); let li=-1;   // runs with places (fcpSlotText): each note at its own (patches/lab-places-measured.py)
+      for(const r of runs){ if(r.text.startsWith("\n")||li<0) li++; const t=r.text.replace(/^\n/,""); if(r.at==null||!t.trim()) continue;
+        g.font=SF.font(r.style.size*k); g.fillStyle=fill(r.style); g.fillText(SF.tx(t),X(cx+r.at),base(r.style,li,pitch)+SF.dy*r.style.size*k); } return; }   // the font's own box (FCP_LINE): a canvas answers differently from one engine to the next (patches/lab-fcp-font-metrics-fixed.py)
     if(stacked){ const pitch=lineBox(size)+(st0.lineSpacing||0), lines=[]; runs.forEach(r=>{ if(r.text.startsWith("\n")||!lines.length) lines.push([]); lines[lines.length-1].push(r); });   // a line each, its runs side by side where it has several: fast notes beside a stack (patches/lab-fast-stacks.py)
       lines.forEach((ln,i)=>drawRuns(ln.map(r=>({text:r.text.replace(/^\n/,""),style:Object.assign({},r.style,{baseline:(r.style.baseline||0)-i*pitch})})),cx,cy,tglyph,slotWidth)); return; }
     if(runs.length>1){ // fast notes side by side: each at the centre of its share of the slot (the font's advance at half size IS half a slot, so Final Cut lands the same — the canvas measure packed them, David, 16 Sep)
@@ -1584,15 +1598,15 @@ function drawFcpStage(){
   // count row
   const labels=fcpCountLabels(m);
   const STY=fcpStyle();
-  if(PANEL) fcpPanelHead(PX,labels); else for(let col=0;col<cols;col++){ const L=labels[col%barCols]; if(!L||L.text===" ") continue; const size=L.big?cglyph:cglyph*0.62; drawRuns([{text:L.text,style:{size,color:fcpRGB(STY.header)}}],fcpColX(m,col,bpr,pos,slotW).cx,top+70,cglyph); }   // the count's text sits where the template puts it: centre top+70, baseline 0.45·cglyph below, small labels on the big ones' baseline (17 Sep); the labels repeat per bar of the row, over their glyphs (0.30 em up), so the row did not move when the ink rule came in
+  if(PANEL) fcpPanelHead(PX,labels); else for(let col=0;col<cols;col++){ const L=labels[col%barCols]; if(!L||L.text===" ") continue; const size=L.big?cglyph:cglyph*0.62; drawRuns([{text:L.text,style:{size,color:fcpRGB(STY.header)}}],fcpColX(m,col,bpr,pos,slotW).cx-fcpCountShift(m,col,bpr,pos,slotW),top+70,cglyph); }   // the count's text sits where the template puts it: centre top+70, baseline 0.45·cglyph below, small labels on the big ones' baseline (17 Sep); the labels repeat per bar of the row, over their glyphs (0.30 em up), so the row did not move when the ink rule came in
   // cells
   const TAB=state.face==="tab", lglyph=fcpTabSize(glyph);   // THE STAGE'S TAB FORM (patches/lab-stage-tab.py): a lane for each hand
   for(let r=0;r<rows;r++) for(let col=0;col<cols;col++){ const bar=r*bpr+Math.floor(col/barCols), cw2=col%barCols; if(bar>=tb.bars) continue;   // the bar this column belongs to, in a row of bpr bars
     const q0=tb.sec.pulse+bar*m.bp+cw2*per; const perPulse=[]; for(let i=0;i<per;i++) perPulse.push(c.byPulse.get(q0+i));
     const P=fcpColX(m,col,bpr,pos,slotW);
     const cyc=top-(r+0.5)*FCPV.RH;
-    if(TAB){ for(const [hand,dy] of FCP_TAB.LANES) drawRuns(fcpSlotText(perPulse.map(evs=>evs&&evs.filter(e=>(e.hand==="L"?"L":"R")===hand)),lglyph,P.w,true),P.cx,cyc+fcpTabDy(dy,lglyph)+FCP_TAB.LIFT*lglyph,lglyph,P.w); }
-    else drawRuns(fcpSlotText(perPulse,glyph,P.w),P.cx,cyc,glyph,P.w); }
+    if(TAB){ for(const [hand,dy] of FCP_TAB.LANES) drawRuns(fcpSlotText(perPulse.map(evs=>evs&&evs.filter(e=>(e.hand==="L"?"L":"R")===hand)),lglyph,fcpPulses(m,col,bpr,pos,slotW),true),P.cx,cyc+fcpTabDy(dy,lglyph)+FCP_TAB.LIFT*lglyph,lglyph,P.w); }
+    else drawRuns(fcpSlotText(perPulse,glyph,fcpPulses(m,col,bpr,pos,slotW)),P.cx,cyc,glyph,P.w); }
   // the section letter, right-aligned to the left of the table (the template's "A": Caveat 185 at x 12)
   if(!PANEL&&!fcpNoLetter()){ const L=fcpLetterSet("classic"), F=FCP_LETTER_FACES[L.f], sz=185*L.s, base=712.13+FCP_LETTER_FACES.caveat.cap*185-F.cap*sz+L.dy, xr=12+L.dx, nm=fcpLabelOf(tb);   // its font, size and place (patches/lab-letter-style.py)
     g.font=F.wgt+" "+(sz*k)+"px "+F.css; g.textAlign="right"; g.fillStyle=fcpCSS(STY.label); g.fillText(nm,X(xr),Y(base)); fcpLetterHitAt(X(xr)-g.measureText(nm).width,Y(base+2*F.cap*sz),X(xr),Y(base)); }   // the template's own baseline (Position Y of its "A" layer): a Caveat capital's middle then sits on row 1's centre, as in David's renders (17 Sep)
@@ -1873,7 +1887,32 @@ function fcpFaceM(){ if(fcpFaceM.v) return fcpFaceM.v; const g=document.createEl
   const v={adv,line:(FCP_LINE.loopie.asc+FCP_LINE.loopie.desc)-(FCP_LINE.inter.asc+FCP_LINE.inter.desc)*SF.scale,w:t=>{ g.font=SF.font(100); return g.measureText(t).width/100; }};   // adv: Loopiejuice's advance; line: its line box less Inter's at SCALE - both of the size; w: a word's width in the Studio's face
   let there=false; try{ there=document.fonts.check("700 60px Inter")&&document.fonts.check("60px 'Loopiejuice Mono'"); }catch(e){}
   if(there) fcpFaceM.v=v; return v; }
-function fcpFaceRuns(runs,chord){ if(fcpSym()===FCP_SYM.loopie||!runs||!runs.length) return runs;
+/* PLACES INTO KERNING, BY FINAL CUT'S LINE (_lab/fcp-measure/, read 29 Oct 2026): from a letter's middle to the next is the
+   advance, plus the kerning, less the tracking; blanks at a line's end count for nothing; the kerning of the last note
+   counts where something follows it, its tracking does not. So between two runs: the distance of their places less their
+   half widths, plus the tracking; on the line's last note: what puts the line's middle where its first run must stand.
+   W: a run's width, T: the tracking after it. A line that does not end in a blank is left to its natural middle. (patches/lab-places-measured.py) */
+function fcpKernByPlace(runs,W,T){ const ks=runs.map(()=>null), ls=[];
+  runs.forEach((r,i)=>{ if(r.text.startsWith("\n")||!ls.length) ls.push([]); ls[ls.length-1].push(i); });
+  for(const ln of ls){ const at=c=>runs[ln[c]].at, w=ln.map(i=>W(runs[i])), full=ln.map(i=>!!runs[i].text.replace(/^\n/,"").trim());
+    let j=ln.length-1; while(j>0&&!full[j]) j--;
+    if(j>=ln.length-1||ln.slice(0,j+1).some((_,c)=>at(c)==null)) continue;
+    for(let c=0;c<j;c++) ks[ln[c]]=(at(c+1)-at(c))-(w[c]+w[c+1])/2+T(runs[ln[c]]);
+    ks[ln[j]]=w[0]/2-at(0)-at(j)-w[j]/2; }
+  return ks; }
+/* runs with places, written: kerning by fcpKernByPlace, a run of two letters (a field 10) kerned on its last; the Studio's
+   symbols in Inter at their scale, as fcpFaceRuns lays them (patches/lab-places-measured.py) */
+function fcpPlacedRuns(runs){ const studio=fcpSym()!==FCP_SYM.loopie, SF=FCP_SYM.studio, M=studio?fcpFaceM():null, stacked=runs.some(r=>r.text.startsWith("\n"));
+  const tx=r=>{ const t=r.text.replace(/^\n/,""); return studio?SF.tx(t):t; }, tr=r=>FCP_TRACK*(studio?SF.scale:1)*r.style.size;
+  const W=r=>{ const t=tx(r), s=r.style.size; return studio?M.w(t)*s:FCPC.ADV*s*[...t].length-tr(r)*Math.max(0,[...t].length-1); };   // Loopiejuice: one advance a letter, the tracking between
+  const ks=fcpKernByPlace(runs,W,tr);
+  return runs.flatMap((r,i)=>{ const nl=r.text.startsWith("\n")?"\n":"", cs=[...tx(r)], sz=r.style.size, st=Object.assign({},r.style); delete st.kerning;
+    if(studio){ Object.assign(st,{font:"Inter",face:"Bold",size:SF.scale*sz,baseline:(st.baseline||0)-SF.dy*sz}); if(stacked) st.lineSpacing=(st.lineSpacing||0)+M.line*sz; }
+    const last=Object.assign({},st,ks[i]!=null?{kerning:+ks[i].toFixed(4)}:{});
+    if(cs.length<2) return [{text:nl+cs.join(""),style:last,at:r.at}];
+    return [{text:nl+cs.slice(0,-1).join(""),style:studio?Object.assign({},st,{kerning:+tr(r).toFixed(4)}):st},{text:cs[cs.length-1],style:last,at:r.at}]; }); }   // Inter's letters keep their own spacing (the tracking taken back), as fcpFaceRuns does
+function fcpFaceRuns(runs,chord){ if(!chord&&runs&&runs.some(r=>r.at!=null)) return fcpPlacedRuns(runs);   // a fast slot's places (patches/lab-places-measured.py)
+  if(fcpSym()===FCP_SYM.loopie||!runs||!runs.length) return runs;
   const SF=FCP_SYM.studio, M=fcpFaceM(), back=chord?0:FCP_TRACK*SF.scale;
   const piece=(r,kn,extra)=>{ const nl=r.text.startsWith("\n")?"\n":"", cs=[...SF.tx(r.text.slice(nl.length))], sz=r.style.size;
     const st=k=>Object.assign({},r.style,{font:"Inter",face:"Bold",size:SF.scale*sz,baseline:(r.style.baseline||0)-(chord?0:SF.dy*sz)},extra||{},k!=null?{kerning:k}:{});
@@ -1958,7 +1997,7 @@ function fcpPanelChrome(P){
    name in the margin beside the first row - made smaller where it is broader than the margin (Groove, Ending) */
 function fcpPanelHead(P,labels){ const {g,X,Y,k,m,pos,bpr,barCols,cols,slotW,top,tb}=P, shrink=Math.min(1,slotW/((FCPV.FR-FCPV.FL)/16)); g.textAlign="center"; g.textBaseline="alphabetic";
   for(let col=0;col<cols;col++){ const L=labels[col%barCols]; if(!L||!L.text||L.text===" ") continue; const size=(L.big?FCPP.CNTB:FCPP.CNT)*shrink, word=/^[0-9a-z+]+$/i.test(L.text)?L.text:"·";   // the font's ghost dot is a plain dot here
-    g.font=(L.big?"800 ":"700 ")+(size*k)+"px "+FCPP.F; g.fillStyle=L.big?FCPP.TEXT:FCPP.MUTED; g.fillText(word,X(fcpColX(m,col,bpr,pos,slotW).cx),Y(top+FCPP.HEAD/2-FCPP.CAP*size)); }
+    g.font=(L.big?"800 ":"700 ")+(size*k)+"px "+FCPP.F; g.fillStyle=L.big?FCPP.TEXT:FCPP.MUTED; g.fillText(word,X(fcpColX(m,col,bpr,pos,slotW).cx-fcpCountShift(m,col,bpr,pos,slotW)),Y(top+FCPP.HEAD/2-FCPP.CAP*size)); }
   const TB=fcpPanelTabBox(P); if(!TB) return;   // the name, on its tile beside the first row
   { const e=FCPP.EDGE_W*k, x=X(TB.x0), y=Y(TB.ya), w=(TB.x1-TB.x0)*k, h=(TB.ya-TB.yb)*k, r=FCPP.TILE_R*TB.s*k;   // the edge as the cards have it: the shape in the edge's colour, the fill EDGE_W inside it
     g.beginPath(); g.roundRect(x,y,w,h,r); g.fillStyle=FCPP.EDGE||FCPP.OUT||FCPP.LINE; g.fill();
@@ -5615,6 +5654,10 @@ async function fcpPanelTableSide(fam,key,need,cols){   // cols: the row's slots 
 function fcpCssRGB(css){ const s=String(css), h=/^#([0-9a-f]{6})$/i.exec(s), m=/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/.exec(s);   // a colour of the look as the export's 0..1 triple
   return h?[1,3,5].map(i=>parseInt(s.slice(i,i+2),16)/255):m?[+m[1]/255,+m[2]/255,+m[3]/255]:[0,0,0]; }
 function fcpPanelRuns(runs){ return runs.map(r=>Object.assign({},r,{style:Object.assign({},r.style,{color:fcpCssRGB(fcpPanelInk(r.style.color))})})); }   // a cell's runs in the skin's ink
+/* a count label d left of its text's middle in Final Cut: a blank after it, kerning 2d on its last letter (measured: the
+   kerning before a line's closing blank counts, the blank not; the counts carry no tracking) (patches/lab-places-measured.py) */
+function fcpCountAt(runs,d){ const r=runs&&runs[0]; if(!d||!r||!r.text.trim()) return runs; const cs=[...r.text];
+  return (cs.length>1?[{text:cs.slice(0,-1).join(""),style:r.style}]:[]).concat([{text:cs[cs.length-1],style:Object.assign({},r.style,{kerning:+(2*d).toFixed(3)})},{text:" ",style:r.style}]); }
 function fcpPanelCount(L,side){ const P=side.panel, shrink=side.count_glyph/P.count, size=(L.big?P.count_big:P.count)*shrink, word=!L.text||L.text===" "?" ":/^[0-9a-z+]+$/i.test(L.text)?L.text:"·";
   return [{text:word,style:{font:"Figtree",face:L.big?"ExtraBold":"Bold",size,color:fcpCssRGB(L.big?FCPP.TEXT:FCPP.MUTED),baseline:-FCPP.CAP*(size-side.count_glyph)}}]; }
 /* THE LETTER'S TILE IN THE FILE (David, 14 Oct 2026: "Let's build 12"; v4d tables): the tile as the stage rules it (fcpPanelTabBox), from
@@ -6042,10 +6085,16 @@ function fcpRank(ev){ if(ev.v==="ghost") return -2; if(ev.v==="perc") return -1;
    glyph, a ghost's dot at GHOST of that, raised by BASE of what it lost so its middle stays the cell's (the fast notes'
    rule). Stacks, fast notes and the Tab form's lanes (tab) keep their sizes. (patches/lab-table-symbols-smaller.py) */
 const FCP_FULL={ALL:0.95,GHOST:0.95};
+/* THE LOOPIEJUICE GHOST DOT 1.6 TIMES ITS SIZE (David, 29 Oct 2026: "Can we make the ghost notes bigger for the Loopy Juice
+   version?" - "1.6x"): MID is the dot's middle above the baseline, of the size (Loopiejuice Mono's §: 36.4 up, 23.1 clear
+   of the baseline at 100). Only while Loopiejuice is the face - the Studio draws its own dot; not in a stack nor a Tab lane. (patches/lab-ghost-size.py) */
+const FCP_GHOST={LOOPIE:1.6,MID:0.2975};
+function fcpGhostBig(r,tab){ if(fcpSym()!==FCP_SYM.loopie||r.text.replace(/^\n/,"")!=="\u00a7") return r; const s=r.style.size, G=FCP_GHOST.LOOPIE, drop=FCP_GHOST.MID*s*(G-1);   // the Tab lanes too (patches/lab-ghost-tab.py)
+  return Object.assign({},r,{ghostDrop:drop,style:Object.assign({},r.style,{size:s*G,baseline:(r.style.baseline||0)-drop})}); }
 function fcpCell(evs,glyph,tab){
   if(!evs||!evs.length) return [{text:" ",style:{size:glyph,color:FCP_HAND.R}}];
   const sorted=evs.slice().sort((a,b)=>fcpRank(b)-fcpRank(a)).slice(0,4), N=sorted.length;
-  if(N===1){ const tx=fcpGlyph(sorted[0]), size=tab?glyph:glyph*FCP_FULL.ALL*(tx==="§"?FCP_FULL.GHOST:1), st={size,color:FCP_HAND[sorted[0].hand]||FCP_HAND.R}; if(size!==glyph) st.baseline=FCPV.BASE*(glyph-size); return [{text:tx,style:st}]; }
+  if(N===1){ const tx=fcpGlyph(sorted[0]), size=tab?glyph:glyph*FCP_FULL.ALL*(tx==="§"?FCP_FULL.GHOST:1), st={size,color:FCP_HAND[sorted[0].hand]||FCP_HAND.R}; if(size!==glyph) st.baseline=FCPV.BASE*(glyph-size); return [fcpGhostBig({text:tx,style:st},tab)]; }
   const S=FCP_STACK[N], size=glyph*S.size, lead=1.37*size, pitch=lead+S.lineSpacing*size;
   const baseline=((N-1)*pitch)/2-0.45*size+0.45*glyph;   // the block's centre on the cell's centre (the template's baseline sits 0.45·glyph below it)
   return sorted.map((ev,i)=>({text:(i?"\n":"")+fcpGlyph(ev),style:{size,color:FCP_HAND[ev.hand]||FCP_HAND.R,lineSpacing:S.lineSpacing*size,baseline}}));
@@ -6064,14 +6113,26 @@ function fcpCell(evs,glyph,tab){
    pulse's i-th note, a blank where a pulse has fewer - all at one size: the font's advance N times across the slot's inner
    width, never above a lone symbol's (or a stack's of as many lines). slotW: the slot's inner width (fcpColX), the stage's
    and the file's alike. (patches/lab-fast-stacks.py) */
-function fcpSlotText(perPulse,glyph,slotW,tab){ // perPulse: the events of each stored pulse inside one drawn slot
-  if(perPulse.length===1||!perPulse.slice(1).some(e=>e&&e.length)) return fcpCell(perPulse[0],glyph,tab);
-  const cols=perPulse.map(evs=>(evs||[]).slice().sort((a,b)=>fcpRank(b)-fcpRank(a)).slice(0,4)), N=cols.length, L=Math.max(...cols.map(c=>c.length));
-  const S=FCP_STACK[L], size=Math.min(L>1?glyph*S.size:tab?glyph:glyph*FCP_FULL.ALL,slotW/(N*FCPC.ADV));
-  const pitch=L>1?1.37*size+S.lineSpacing*size:0, baseline=((L-1)*pitch)/2-0.45*size+0.45*glyph;   // fcpCell's centring of a stack; one line: raised so its centre is the cell's
-  const st=e=>Object.assign({size,color:FCP_HAND[e&&e.hand]||FCP_HAND.R,baseline},L>1?{lineSpacing:S.lineSpacing*size}:{});
-  const out=[]; for(let i=0;i<L;i++) cols.forEach((c,j)=>out.push({text:(i&&!j?"\n":"")+(c[i]?fcpGlyph(c[i]):" "),style:st(c[i])}));
-  return out;
+/* …AND EVERY NOTE ON ITS OWN SIXTEENTH'S PLACE, BY WHAT FINAL CUT DOES (David, 29 Oct 2026: "eighth notes should be placed where
+   the left of the two sixteenth notes would be placed" - "the whole table", an eighth at its full size; the first build,
+   reverted, modelled Final Cut and missed; this one is built on _lab/fcp-measure/). Where a slot holds several stored pulses,
+   each pulse's notes stand at the middle of that pulse's share of the slot: a run's `at`, from the slot's middle. A slot on
+   the drawn grid keeps its cell's sizes and has a blank for every later pulse; every line ends in a blank, so the file can
+   set its last note (fcpKernByPlace). The stage draws at `at` (drawRuns). The places are fcpPulses': the cell's own margin, a
+   fifth of the PULSE's width (David, 17 Sep: "Let's go with a fifth" - chosen on a row of sixteenths; measured in a drawn slot
+   it was a fifth of a beat in a 4x1 table, and two eighths stood close: "There should be a gap towards the end of a cell, but it
+   should be smaller"). G: fcpPulses' {share, at}. (patches/lab-places-measured.py) */
+function fcpSlotText(perPulse,glyph,G,tab){ // perPulse: the events of each stored pulse inside one drawn slot
+  if(perPulse.length===1||!perPulse.some(e=>e&&e.length)) return fcpCell(perPulse[0],glyph,tab);
+  const N=perPulse.length, lines=[];
+  if(!perPulse.slice(1).some(e=>e&&e.length)) fcpCell(perPulse[0],glyph,tab).forEach(r=>lines.push([r].concat(Array.from({length:N-1},()=>({text:" ",style:r.style})))));   // on the drawn grid: the cell's own note or stack, on the first pulse's place
+  else { const cols=perPulse.map(evs=>(evs||[]).slice().sort((a,b)=>fcpRank(b)-fcpRank(a)).slice(0,4)), L=Math.max(...cols.map(c=>c.length));
+    const S=FCP_STACK[L], size=Math.min(L>1?glyph*S.size:tab?glyph:glyph*FCP_FULL.ALL,G.share/FCPC.ADV);   // as large as its share allows
+    const pitch=L>1?1.37*size+S.lineSpacing*size:0, baseline=((L-1)*pitch)/2-0.45*size+0.45*glyph;   // fcpCell's centring of a stack; one line: raised so its centre is the cell's
+    const st=e=>Object.assign({size,color:FCP_HAND[e&&e.hand]||FCP_HAND.R,baseline},L>1?{lineSpacing:S.lineSpacing*size}:{});
+    for(let i=0;i<L;i++) lines.push(cols.map(c=>({text:c[i]?fcpGlyph(c[i]):" ",style:st(c[i])})).map(r=>L>1?r:fcpGhostBig(r,tab))); }   // one line: its dots grow (patches/lab-ghost-size.py)
+  return lines.flatMap((ln,i)=>ln.map((r,j)=>({text:(i&&!j?"\n":"")+r.text.replace(/^\n/,""),style:Object.assign({},r.style),at:G.at[j],ghostDrop:r.ghostDrop}))
+    .concat([{text:" ",style:Object.assign({},ln[ln.length-1].style)}]));   // the line's closing blank: Final Cut lets it count for nothing, but not the kerning before it
 }
 /* THE TAB FORM IN THE FILE (David, 13 Oct 2026: "tab notation still imports to FCP as table"). The stage's rule (FCP_TAB): a
    slot is read once and written once a lane - its events parted by hand, each part through fcpSlotText at the lane's size.
@@ -6102,13 +6163,13 @@ function fcpTabRuns(perPulse,glyph,slotW){
     if(!runs.some(r=>r.text.trim())) continue;   // an empty lane is no line
     const off=fcpTabDy(dy,lg)+(FCP_TAB.LIFT-FCPV.BASE)*lg+FCPV.BASE*glyph, parts=[]; runs.forEach(r=>{ if(r.text.startsWith("\n")||!parts.length) parts.push([]); parts[parts.length-1].push(r); });
     const s0=runs[0].style, pitch=box*s0.size+(s0.lineSpacing||0);   // a stack's own step, where the lane holds one
-    parts.forEach((p,i)=>lines.push({runs:p.map(r=>({text:r.text.replace(/^\n/,""),style:Object.assign({},r.style)})),A:off+(p[0].style.baseline||0)-i*pitch,size:p[0].style.size})); }
+    parts.forEach((p,i)=>lines.push({runs:p.map(r=>({text:r.text.replace(/^\n/,""),style:Object.assign({},r.style),at:r.at,ghostDrop:r.ghostDrop})),A:off+(p[0].style.baseline||0)+(p[0].ghostDrop||0)-i*pitch,size:Math.max(...p.map(r=>r.style.size))})); }   // a bigger dot: the lane's place without its drop, the lane as large as its largest run (patches/lab-ghost-tab.py)
   if(!lines.length) return [{text:" ",style:{size:glyph,color:FCP_HAND.R}}];
   const A0=lines[0].A, out=[];
   const AD=fcpLineAD(studio), W=s=>studio?FCP_SYM.studio.scale*s:s;   // the written face's ascent and descent; a size as it is written
   lines.forEach((L,k)=>{ const up=lines[k+1]?L:lines[k-1], lo=lines[k+1]||L;   // the step this line's spacing rules: down to the next line - the last line repeats the one above it
     const sp=lines.length>1?(up.A-lo.A)-(AD.desc*W(up.size)+AD.asc*W(lo.size)):null;
-    for(const r of L.runs){ r.style.baseline=A0; if(sp!=null) r.style.lineSpacing=sp; else delete r.style.lineSpacing; }
+    for(const r of L.runs){ r.style.baseline=A0-(r.ghostDrop||0); if(sp!=null) r.style.lineSpacing=sp; else delete r.style.lineSpacing; }   // a bigger dot keeps its drop (patches/lab-ghost-tab.py)
     const rr=fcpFaceRuns(L.runs); if(k&&rr.length) rr[0]=Object.assign({},rr[0],{text:"\n"+rr[0].text}); out.push(...rr); });
   return out; }
 /* THE MARKER'S SPAN IN A GROUPED BAR follows the app's Marker follows setting (David,
@@ -6363,9 +6424,9 @@ async function fcpTablesOf(staticMarker,clipSet){   // the open piece's titles f
       if(nm==="2x"||nm==="3x") texts.push([{text:nm,style:{font:"Caveat",size:120,color:fcpRGB(STY.label),alignment:"right"}}]);
       else if(nm==="A") texts.push(side.skin?fcpPanelLabel(fcpNoLetter()?" ":fcpLabelOf(tb),side):[{text:fcpNoLetter()?" ":fcpLabelOf(tb),style:(()=>{ const st={font:"Caveat",size:185,color:fcpRGB(STY.label),alignment:"right"}, L=fcpLetterSet("classic"), F=FCP_LETTER_FACES[L.f];   // its font, size and move up or down (patches/lab-letter-style.py)
         if(L.f!=="caveat"||L.s!==1||L.dy){ st.font=F.font; st.face=F.face; st.size=+(185*L.s).toFixed(2); st.baseline=+(FCP_LETTER_FACES.caveat.cap*185-F.cap*185*L.s+L.dy).toFixed(2); } return st; })()}]);   // the label's colour (David, 16 Sep)
-      else if((mm=/^Count (\d+)$/.exec(nm))){ const L=labels[(+mm[1]-1)%barCols]||{text:" ",big:false}; texts.push(side.skin?fcpPanelCount(L,side):[{text:L.text,style:{size:L.big?cglyph:cglyph*0.62,color:fcpRGB(STY.header)}}]); }   // the header's; the labels repeat per bar of the row
+      else if((mm=/^Count (\d+)$/.exec(nm))){ const L=labels[(+mm[1]-1)%barCols]||{text:" ",big:false}; texts.push(fcpCountAt(side.skin?fcpPanelCount(L,side):[{text:L.text,style:{size:L.big?cglyph:cglyph*0.62,color:fcpRGB(STY.header)}}],fcpCountShift(m,+mm[1]-1,bpr,pos,(FCPV.FR-FCPV.FL)/(bpr*barCols)))); }   // the header's; the labels repeat per bar of the row
       else if((mm=/^Cell (\d+)\.(\d+)$/.exec(nm))){ const r=+mm[1]-1, col=+mm[2]-1; const cols=(side.flex?bpr:(side.bars||1))*barCols, bar=r*bpr+Math.floor(col/barCols), cw2=col%barCols;   // the bar this column belongs to, in a row of bpr bars
-        if(r<rows&&col<cols&&bar<tb.bars){ const q0=tb.sec.pulse+bar*m.bp+cw2*per; const perPulse=[]; for(let i=0;i<per;i++) perPulse.push(c2.byPulse.get(q0+i)); { const sw=fcpColX(m,col,bpr,pos,(FCPV.FR-FCPV.FL)/(bpr*barCols)).w, rr0=state.face==="tab"?fcpTabRuns(perPulse,glyph,sw):fcpFaceRuns(fcpSlotText(perPulse,glyph,sw)), rr=rr0.some(r=>String(r.text).trim())?rr0:fcpBlankCell(glyph); texts.push(side.skin?fcpPanelRuns(rr):rr); }   /* Tab: a lane a line (patches/lab-fcp-tab-form.py) */ }
+        if(r<rows&&col<cols&&bar<tb.bars){ const q0=tb.sec.pulse+bar*m.bp+cw2*per; const perPulse=[]; for(let i=0;i<per;i++) perPulse.push(c2.byPulse.get(q0+i)); { const sw=fcpPulses(m,col,bpr,pos,(FCPV.FR-FCPV.FL)/(bpr*barCols)), rr0=state.face==="tab"?fcpTabRuns(perPulse,glyph,sw):fcpFaceRuns(fcpSlotText(perPulse,glyph,sw)), rr=rr0.some(r=>String(r.text).trim())?rr0:fcpBlankCell(glyph); texts.push(side.skin?fcpPanelRuns(rr):rr); }   /* Tab: a lane a line (patches/lab-fcp-tab-form.py) */ }
         else texts.push([{text:" ",style:{size:glyph,color:FCP_HAND.R}}]); }
       else texts.push([{text:" ",style:{size:glyph,color:FCP_HAND.R}}]);
     }

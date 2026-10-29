@@ -133,8 +133,8 @@ FCPXML.titleXML=function(T,r,ref,ind,ids){ // one connected title; T = {t, dur, 
       L.push(p+'        </keyframeAnimation>',p+'    </param>'); }
     else L.push(p+'    <param name="'+E(P.name)+'" key="'+E(P.key)+'" value="'+E(P.value)+'"/>'); }
   for(const runs of (T.texts||[])){ L.push(p+'    <text>');
-    for(const run of runs){ const id=sid(run.style); const parts=String(run.text==null?" ":run.text).split("\n");
-      parts.forEach((part,i)=>{ if(i>0) L.push(p+'        <text-style ref="'+id+'">\n</text-style>'); L.push(p+'        <text-style ref="'+id+'">'+E(part)+'</text-style>'); }); }
+    for(const run of runs){ const id=sid(run.style); const parts=String(run.text==null?" ":run.text).split("\n");   // a line break is never kerned: a kerned break throws a stack's lines apart (measured, _lab/fcp-measure/; patches/lab-places-measured.py)
+      parts.forEach((part,i)=>{ if(i>0) L.push(p+'        <text-style ref="'+sid(Object.assign({},run.style,{kerning:null}))+'">\n</text-style>'); L.push(p+'        <text-style ref="'+id+'">'+E(part)+'</text-style>'); }); }
     L.push(p+'    </text>'); }
   for(const [attrs,id] of styles) L.push(p+'    <text-style-def id="'+id+'">',p+'        <text-style '+attrs+'/>',p+'    </text-style-def>');
   if(T.transform){ const tr=T.transform; L.push(p+'    <adjust-transform position="'+(+(+tr.x).toFixed(4))+' '+(+(+tr.y).toFixed(4))+'"'+(tr.s&&tr.s!==1?' scale="'+(+(+tr.s).toFixed(4))+' '+(+(+tr.s).toFixed(4))+'"':'')+'/>'); }   // the piece's place and size in the frame (David, 16 Sep); after the text-style-defs, as the DTD orders
