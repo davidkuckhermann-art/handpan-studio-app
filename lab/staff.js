@@ -16,6 +16,10 @@
      ("placement B"). A numbers row under the staff exists for the printed sheet only.
    - A note lasts until the next sounding stroke in its bar (a tuplet range's start counts as a stroke);
      ghosts do not cut it off. Inside a tuplet range every position is one tuplet unit: a note or a rest.
+     A note is written as long as it sounds (David, 29 Oct 2026). A HANDPAN stroke lasts to the next stroke inside its
+     beat, from a beat it keeps the whole beats it rings, the rest of the way is a rest - as the PanScript print. The bass
+     and the band voices write their own rests, so theirs hold to the next event, tied, as before. Percussion and
+     drums: a stroke to the next stroke or the end of its beat, then a rest - drum practice, never held.
    - Hands stay as colour: right --hand-r, left --hand-l, stand-in --hand-s; a slap is an x-head.
    - The staff sits on the page background, no frame.
 
@@ -189,7 +193,23 @@ function barItems(bar,bi,ctx,keep){
   if(first>1e-6)pushRest(0,first*pulse32,null);
   /* A REST ENTRY IS A REST (the bass line's, 28 Sep 2026): it ends the note before it and sounds nothing */
   const restOnly=ev=>ev.every(e=>e.v==="rest");
-  outside.forEach(t=>{const nxt=Math.min(ppb,...outside.filter(u=>u>t),...ranges.map(r=>r.a).filter(a=>a>t));if(restOnly(byT.get(t)))pushRest(t,(nxt-t)*pulse32,null);else pushNotes(t,(nxt-t)*pulse32,byT.get(t),null)});
+  /* ONE RULE FOR EVERY STAFF (David, 29 Oct 2026: "Half notes should stay half notes" - "we should have one rule that
+     governs all staff notation" - "punctuated eighth should stay punctuated eighth"): a note lasts to the next stroke inside
+     its beat (a dotted eighth stays one); a note that starts ON a beat keeps as many whole beats as it rings (a quarter, a
+     half, a dotted half, a whole; dotted quarters in 3/8, 6/8, 9/8, 12/8); what is left before the next stroke is a rest.
+     The handpan, the bass and the band voices alike, and the PanScript print (patches/rhythm-whole-beats.py) */
+  /* AS LONG AS IT SOUNDS (David, 29 Oct 2026: "If notes are actually held, then they should be notated as held"): the band
+     voices write their own rests where their sound stops (the bass's rest entries, the recorded voices' real lengths), so
+     theirs hold to the next event, tied where they must; the rule below is the handpan's, whose strokes decay (patches/staff-held-as-sounding.py) */
+  const panOwn=ev=>ev.every(e=>!e.bass&&!e.inst);
+  /* PERCUSSION AND DRUMS AS DRUMMERS READ THEM (David, 29 Oct 2026: "For percussion and drums, please follow best practices"):
+     a stroke to the next stroke or the end of its beat, then a rest - never held, never tied (patches/staff-drums-beat.py) */
+  const drumOwn=ev=>ev.every(e=>e.inst==="drm"||e.inst==="kit");
+  const beatP=(beat32===4&&beats%3===0?12:beat32)/pulse32;
+  const noteEnd=(t,nxt)=>{const k=t/beatP,on=Math.abs(k-Math.round(k))<1e-6,whole=Math.floor((nxt-t)/beatP+1e-9)*beatP;
+    return on&&whole>=beatP-1e-9?t+whole:Math.min(nxt,(Math.floor(k+1e-9)+1)*beatP)};
+  outside.forEach(t=>{const nxt=Math.min(ppb,...outside.filter(u=>u>t),...ranges.map(r=>r.a).filter(a=>a>t));if(restOnly(byT.get(t))){pushRest(t,(nxt-t)*pulse32,null);return}
+    const ev=byT.get(t), end=drumOwn(ev)?Math.min(nxt,(Math.floor(t/beatP+1e-9)+1)*beatP):panOwn(ev)?noteEnd(t,nxt):nxt;pushNotes(t,(end-t)*pulse32,byT.get(t),null);if(end<nxt-1e-6)pushRest(end,(nxt-end)*pulse32,null)});
   for(const r of ranges){
     const S=(r.e-r.a)*pulse32,unit=S/r.n;let v=1;while(v<unit-1e-6)v*=2;while(v/2>=unit-1e-6)v/=2;   // the written unit: the smallest plain value not shorter than the real one - below a 32nd too (a 64th is plain, 24 Sep)
     const m=S/v,plain=near(m)!=null&&Math.abs(v-unit)<1e-6;

@@ -1132,6 +1132,8 @@ function paintTnav(){
   const hosts=document.querySelectorAll(".tnav"), p=state.piece;
   if(!ready||!p||!p.arrangement||!p.arrangement.length){ hosts.forEach(h=>{ h.textContent=""; h.dataset.arr=""; }); return; }
   const arr=p.arrangement, key=arr.join("\u0001"), shown=tnavShown(), now=tnavNow();
+  /* A TABLE WITH ITS OWN LABEL WEARS AN ASTERISK (David, 29 Oct 2026: "pls place an asterix behind the tables where I have set a custom label"): the label typed for a place, where it is not the name (patches/lab-label-asterisk.py) */
+  const LO=(state.fcp||{}).labelOwn||{}, own=arr.map((nm,ai)=>{ const v=LO[ai]; return typeof v==="string"&&v.trim()&&v.trim()!==nm?v.trim():""; }), ownKey=JSON.stringify(own);
   hosts.forEach(h=>{
     if(h.dataset.arr!==key||!h.firstChild){   // the segments are rebuilt only when the arrangement changes, so a press is never cut by a repaint
       h.dataset.arr=key; h.dataset.st=""; h.textContent="";
@@ -1142,9 +1144,10 @@ function paintTnav(){
         const b=document.createElement("button"); b.type="button"; b.tabIndex=-1; b.dataset.ai=ai; b.textContent=nm;
         b.title=nm+" — table "+(ai+1)+" of "+arr.length+". Click: on screen. Click again, or double-click: the video goes to its start"; run.appendChild(b); });
       h.appendChild(trk); }
-    const st=shown+"~"+now+"~"+(h.offsetParent?1:0); if(h.dataset.st===st) return; h.dataset.st=st;
+    const st=shown+"~"+now+"~"+(h.offsetParent?1:0)+"~"+ownKey; if(h.dataset.st===st) return; h.dataset.st=st;
     const trk=h.firstChild, kids=trk.querySelectorAll("button");   // inside their runs
-    for(let ai=0;ai<kids.length;ai++){ kids[ai].classList.toggle("on",ai===shown); kids[ai].classList.toggle("now",ai===now); }
+    for(let ai=0;ai<kids.length;ai++){ kids[ai].classList.toggle("on",ai===shown); kids[ai].classList.toggle("now",ai===now);
+      kids[ai].textContent=arr[ai]+(own[ai]?"*":""); kids[ai].title=arr[ai]+(own[ai]?" (label: "+own[ai]+")":"")+" — table "+(ai+1)+" of "+arr.length+". Click: on screen. Click again, or double-click: the video goes to its start"; }
     const tgt=kids[now!=null?now:shown];   // a long piece: the track scrolls, and the playing table is kept in view
     if(tgt&&trk.scrollWidth>trk.clientWidth){ const l=tgt.offsetLeft, r=l+tgt.offsetWidth;
       if(l<trk.scrollLeft+2||r>trk.scrollLeft+trk.clientWidth-2) trk.scrollLeft=l-(trk.clientWidth-tgt.offsetWidth)/2; }
@@ -1768,9 +1771,9 @@ function fcpLetterPut(patch){ const sp=state.fcp=Object.assign({dx:0,dy:0,s:1},s
   if(Object.keys(all).length) sp.letter=all; else delete sp.letter; }
 function fcpLetterHitAt(x0,y0,x1,y1){ if(PIECE_AS) return; const h=$("fcpLetterHit"), d=window.devicePixelRatio||1; if(!h) return;   // canvas px; the open piece's letter only
   const p=6*d; h.style.left=((x0-p)/d)+"px"; h.style.top=((y0-p)/d)+"px"; h.style.width=((x1-x0+2*p)/d)+"px"; h.style.height=((y1-y0+2*p)/d)+"px"; }
-function fcpLetterPaint(){ const L=fcpLetterSet(fcpLook()), off=fcpNoLetter(); $("fcpLabels").value=fcpLabelMode(); paintSegs();   // (patches/lab-table-labels.py) $("fcpLetterFont").value=L.f; $("fcpLetterSize").value=String(Math.round(L.s*100)); $("fcpLetterSizeN").textContent=Math.round(L.s*100)+" %";
+function fcpLetterPaint(){ const L=fcpLetterSet(fcpLook()), off=fcpNoLetter(); $("fcpLabels").value=fcpLabelMode(); paintSegs(); $("fcpLetterFont").value=L.f; $("fcpLetterSize").value=String(Math.round(L.s*100)); $("fcpLetterSizeN").textContent=Math.round(L.s*100)+" %";   // (patches/lab-table-labels.py; its comment had swallowed these three until 29 Oct)
   $("fcpLetterPos").textContent=L.dx||L.dy?(L.dx>=0?"+":"")+Math.round(L.dx)+", "+(L.dy>=0?"+":"")+Math.round(L.dy):"drag it"; $("fcpLetterReset").disabled=L.dx===FCP_LETTER_OWN[fcpLook()].dx&&L.dy===FCP_LETTER_OWN[fcpLook()].dy;
-  document.querySelectorAll(".fcpLetterRow").forEach(r=>r.classList.toggle("scoff",off)); }
+  document.querySelectorAll(".fcpLetterRow").forEach(r=>r.classList.toggle("scoff",off)); paintTnav(); }   // a label typed or undone: its asterisk (patches/lab-label-asterisk.py)
 function fcpLetterSaid(){   // the export says what the titles cannot be told
   if(fcpNoLetter()) return; const look=fcpLook(), L=fcpLetterSet(look);
   if(look==="classic"&&L.dx) FCP_PANEL_SAID.left.add("the section letter's sideways move is on the stage only - Final Cut keeps it at the table's left (the size, the font and the move up or down are written)");
