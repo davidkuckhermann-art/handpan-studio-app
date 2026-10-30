@@ -630,7 +630,7 @@ body.tlane .scrub{border-radius:0}
   <!-- WRITE and SYNC: the pan window with the small timeline under it, the editor beside -->
   <div class="editwrap">
     <div class="vcol">
-      <div class="phead"><span class="lbl">Video · pan</span><span class="hint" id="vidName"></span><span class="sp"></span><button class="btn ghost" id="panCropBtn" style="font-size:12px" title="Pan crop on / off. Off: the whole video — drag a box on it to draw the crop. On: the window shows the pan. ⌥-click forgets the box">Pan crop</button></div>
+      <div class="phead"><span class="lbl">Video · pan</span><span class="hint" id="vidName"></span><span class="sp"></span><button class="btn ghost" id="panCropBtn" style="font-size:12px" title="Pan crop on / off. Off: the whole video — drag a box on it to draw the crop. On: the window shows the pan — drag in it to move the crop. ⌥-click forgets the box">Pan crop</button></div>
       <div id="panwin" class="empty">Open a video — the pan shows here, cropped, beside the table</div>
       <div id="mini"><canvas id="minicv"></canvas><span class="cap">the whole take</span></div>
     </div>
@@ -2437,7 +2437,7 @@ function sizeCropVideo(){
    OFF, the window shows the whole video, and a drag on it draws the crop box (dashed while
    dragging) and switches ON; ON, the window shows the crop, and the Pan crop button switches
    OFF (the box is kept, the button switches it back ON). ⌥-click forgets the box. The 5 Sep
-   drag-to-pan and wheel-to-zoom are gone. The stage's Pan crop draws the same box on the big
+   drag-to-pan and wheel-to-zoom are gone (since 30 Oct a drag moves the crop while it is ON - patches/lab-crop-drag.py). The stage's Pan crop draws the same box on the big
    picture. The crop stays a rectangle in video fractions, so the stage's own drawing of it
    and the project file need nothing new but the flag. */
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -2449,7 +2449,17 @@ $("panCropBtn").onclick=(e)=>{
   labToast(cropOn()?"Pan crop on — the window shows the pan":"Pan crop off — the whole video; drag on it to draw a new crop");
 };
 $("panwin").addEventListener("pointerdown",e=>{
-  if(!vid||!isEdit()||cropOn()) return;              // ON: nothing to draw; the window is the pan
+  if(!vid||!isEdit()) return;
+  /* A DRAG MOVES THE CROP WHILE IT IS ON (David, 30 Oct 2026: "when I'm zoomed into a video, pls allow me to drag the visible
+     video part that I'm seeing in the window so I can adjust it"): its size kept, its corner moved against the hand by the
+     hand's travel in the whole video, held inside the video - the picture follows the hand. One undo step, on release.
+     (patches/lab-crop-drag.py) */
+  if(cropOn()){ if(e.button!==0) return; const pw=$("panwin"), r=vid.getBoundingClientRect(), c0=Object.assign({},state.crop); let moved=false;
+    e.preventDefault(); try{ pw.setPointerCapture(e.pointerId); }catch(err){}
+    const move=ev=>{ const dx=(ev.clientX-e.clientX)/r.width, dy=(ev.clientY-e.clientY)/r.height; if(!moved&&Math.abs(ev.clientX-e.clientX)<3&&Math.abs(ev.clientY-e.clientY)<3) return; moved=true;
+      state.crop=Object.assign({},c0,{x:clamp(c0.x-dx,0,1-c0.w),y:clamp(c0.y-dy,0,1-c0.h)}); sizeCropVideo(); paintCrop(); };
+    const up=()=>{ pw.removeEventListener("pointermove",move); pw.removeEventListener("pointerup",up); pw.removeEventListener("pointercancel",up); if(moved) markDirty(); };
+    pw.addEventListener("pointermove",move); pw.addEventListener("pointerup",up); pw.addEventListener("pointercancel",up); return; }
   const pw=$("panwin"); e.preventDefault(); try{ pw.setPointerCapture(e.pointerId); }catch(err){}
   const r=vid.getBoundingClientRect();
   const fx=x=>clamp((x-r.left)/r.width,0,1), fy=y=>clamp((y-r.top)/r.height,0,1);
