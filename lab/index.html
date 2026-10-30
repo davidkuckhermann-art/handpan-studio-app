@@ -704,6 +704,7 @@ body.mklock #tlane .th{cursor:default}
     <span class="seg"><button id="loopIn" title="[">Loop in</button><button id="loopOut" title="]">out</button><button id="loopOn" title="L">Loop off</button></span>
     <span class="vsep"></span>
     <button class="btn" id="followBtn" title="The notation's marker follows the video's clock through the playhead markers">Follow video <span class="dot"></span></button>
+    <button class="btn" id="tableLoopsBtn" title="A double-click or a drag in the notation sets a loop, as in the Studio — Off: the table makes no loops">Table loops <span class="dot"></span></button>
     <button class="btn" id="clickSeekBtn" title="A click in the notation jumps the video to that slot's time on the map, as the embed player does — in Write and Sync, editing or not">Click jumps <span class="dot"></span></button>
     <button class="btn" id="scrubSndBtn" title="Hear the take while you drag the playhead on the waveform or the small timeline (short snippets)">Scrub sound <span class="dot"></span></button>
     <span class="sp"></span>
@@ -893,6 +894,7 @@ const state={
   snap:true,                   // markers snap to the strokes the Lab hears; off = free
   follow:true,                 // the notation's marker rides the map while the video runs (Follow video)
   clickSeek:true,              // a click in the notation jumps the video there (Click jumps, David 16 Sep)
+  tableLoops:true,             // the notation table makes loops (Table loops, David 30 Oct - patches/lab-table-loops.py)
   scrubSound:false,            // a dragged playhead is heard (short snippets from the twin)
   unit:"bars",                 // what a tap, Auto-map and From marks produce: "bars" | "beats" — the TOOL's, never the piece's
   mapOrig:null,                // the playhead markers as the project was opened or last saved — Restore goes back to it
@@ -1027,6 +1029,7 @@ function appEditing(){ try{ return !!appEval("editing"); }catch(e){ return false
   },100); }
 function frameReady(){
   ready=true;
+  { const own=cw.allowed; cw.allowed=n=>n==="loops"&&!state.tableLoops?false:own(n); }   // Table loops Off (patches/lab-table-loops.py)
   pushPiece(state.piece||cw.edBlankPiece()); loadTemplates();
   HIST.past.length=0; HIST.future.length=0; HIST.last=histSnap(); paintHist();
   obs=new MutationObserver(()=>{ fitNow(); clearTimeout(obs.t); obs.t=setTimeout(pullPiece,120); });   // fitNow: the fit does not wait for the pull (patches/lab-fit-at-once.py)
@@ -1097,7 +1100,7 @@ function pushPiece(p){
   if(!ready) { state.piece=p; return; }
   p=clone(p); if(cw.migratePiece) p=cw.migratePiece(p);   // the app's door, so the Lab's copy and the app's agree
   state.piece=clone(p); pieceRev++;
-  cw.loadPiece(clone(p));
+  cw.loadPiece(clone(p)); tableLoopsSync();
   if(!state.cur||!p.sections[state.cur]) state.cur=p.arrangement[0];
   showSection(state.cur);
   if(!appEditing()) cd.getElementById("editBtn").click();
@@ -5398,6 +5401,16 @@ function paintClickSeek(){ $("clickSeekBtn").classList.toggle("on",!!state.click
 $("clickSeekBtn").onclick=()=>{ state.clickSeek=!state.clickSeek; try{ localStorage.setItem("hpdlab.clickseek",state.clickSeek?"1":"0"); }catch(e){} paintClickSeek();
   labToast(state.clickSeek?"A click in the notation jumps the video there":"Clicks in the notation leave the video where it is"); };
 paintClickSeek();
+/* ---- TABLE LOOPS OFF: THE FRAME IS AN EDITION WITHOUT LOOPS (David, 30 Oct 2026: "loops that are set in the notation
+   table with the mouse, but I want to be able to toggle this on and off"). The app's own door, allowed("loops"), is
+   answered by the Lab (frameReady); a loop the frame holds goes when it is switched Off and when a piece goes in.
+   A switch, remembered (patches/lab-table-loops.py) ---- */
+try{ if(localStorage.getItem("hpdlab.tableloops")==="0") state.tableLoops=false; }catch(e){}
+function tableLoopsSync(){ if(!ready||state.tableLoops) return; try{ appEval("if(loopSec){ loopSec=null; paintLoopFrame(); reanchorLoop(); }"); }catch(e){} }
+function paintTableLoops(){ $("tableLoopsBtn").classList.toggle("on",!!state.tableLoops); }
+$("tableLoopsBtn").onclick=()=>{ state.tableLoops=!state.tableLoops; try{ localStorage.setItem("hpdlab.tableloops",state.tableLoops?"1":"0"); }catch(e){} paintTableLoops(); tableLoopsSync();
+  labToast(state.tableLoops?"A double-click or a drag in the notation sets a loop":"The notation makes no loops — a click just goes there"); };
+paintTableLoops();
 /* ---- scrub sound: a switch, remembered ---- */
 try{ if(localStorage.getItem("hpdlab.scrubSound")==="1") state.scrubSound=true; }catch(e){}
 function paintScrubSnd(){ $("scrubSndBtn").classList.toggle("on",!!state.scrubSound); }
