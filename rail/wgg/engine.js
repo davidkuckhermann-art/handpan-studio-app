@@ -1,4 +1,4 @@
-/* wgg/engine.js — COPIED VERBATIM from World Groove Grid, engine.js @ commit 4a13539 (28 Sep 2026),
+/* wgg/engine.js — COPIED VERBATIM from World Groove Grid, engine.js @ commit b73d0cc (28 Oct 2026),
    by sync_wgg.py. Every playback rule of the jam's rhythm track lives here.
    Do not edit — run sync_wgg.py to take a newer WGG. Below this line is WGG's. */
 function detectOnsets(buf){
@@ -597,6 +597,31 @@ function wggDerive(row,n){
     return {start:s, len:end-s, accent:row.slots[s]};
   });
 }
+// ---- AN OLD PATTERN MEANT MORE JINGLES (27 Oct 2026) --------------------
+// Until today a jingle TILED its gap: the recording repeated until the row's
+// next stroke, so a painted X on an 8th sounded as two jingle strokes and
+// "X---" as four. Now an X is one jingle (planJingles), which would quietly
+// halve every jingle in a groove written before the change — 42 of the
+// library's riq rows, every lesson embed already pasted into Kajabi, every link
+// and .gg file a student holds. So a pattern that carries no version, or one
+// below 3, is UPGRADED as it is read: the gap behind each jingle is filled with
+// the jingles it used to tile, and the groove sounds and reads as it always
+// did. New saves and new embeds carry the version and are played as painted.
+// Shape-agnostic on purpose: the app hands it slots and art, the mini its
+// tokens, and the rule itself lives here once.
+function wggJingleFill(slots,art,n){
+  n=n||slots.length;
+  for(let i=0;i<n;i++){
+    if(slots[i]!=="J") continue;
+    if(art && art[i]==="stop") continue;        // a stopped jingle sounded once
+    for(let k=1;k<n;k++){
+      const j=(i+k)%n;
+      if(slots[j]) break;                       // the gap ends at the next stroke
+      slots[j]="J";
+    }
+  }
+  return slots;
+}
 function WGGCore(env){
 const LIB=env.LIB, SETS=env.SETS, DIAG=env.DIAG, EXPECT=env.EXPECT;
 const ctx=()=>env.ctx(), CYC=()=>env.cycle(), QUANT=()=>env.quant(), pulseDur=()=>env.pulseDur();
@@ -856,19 +881,21 @@ function shortestType(L,accent,variation){
   const t=alts[0].k;
   return (variation && L.files[t+"v"]) ? t+"v" : t;
 }
-// 0 when pi is the cell's own start; for a JINGLE cell, k when pi is its k-th
-// repeat inside the gap (the recording's length in pulses times k); else -1
+// 0 when pi is the cell's own start, else -1: one sound per painted stroke.
+// A JINGLE used to tile its gap here (6 Sep 2026) — the recording repeating at
+// its own length until the row's next stroke, a four-step X sounding the
+// two-ghost J2 twice. Since 27 Oct 2026 a jingle sounds only where it is
+// painted and a stretch of them is one segment (planJingles), so nothing
+// repeats inside a gap any more and this answers for every cell alike.
 function cellRepeat(row,c,pi){
-  if(c.start===pi) return 0;
-  if(c.accent!=="J" || artOf(row,c.start)==="stop") return -1;   // a stopped jingle sounds once
-  const L=LIB[row.set]; if(!L) return -1;
-  const r=resolve(row,c), n=r ? (L.pulses[r.type]||0) : 0;
-  if(n<=0) return -1;
-  const off=(pi-c.start+CYC())%CYC();
-  return (off<c.len && off%n===0) ? off/n : -1;
+  return c.start===pi ? 0 : -1;
 }
-function resolve(row,c,pfFire){
+function resolve(row,c,pfFire,ownLen){
   const L=LIB[row.set]; if(!L) return null;
+  // the length the cell is PLAYED at: for an accent that owns the jingles
+  // painted after it (planAccentJingles) that is 1 + those jingles, not the
+  // distance to the row's next stroke. A fill still spans the gap it fills.
+  const CLEN=ownLen||c.len;
   // a FIRING periodic fill replaces the accent's cell outright with a recorded
   // fill spanning to the next accent — exact length first, else the nearest
   // recorded one, exactly like the painted cross. An instrument with no fill
@@ -886,12 +913,12 @@ function resolve(row,c,pfFire){
   // until variation cells are recorded this silently plays the base cell
   if(row.fills && row.fills[c.start] && L.files[c.accent+c.len+"v"])
     return {type:c.accent+c.len+"v", exact:true, fill:true};
-  const exact=c.accent+c.len;
+  const exact=c.accent+CLEN;
   if(L.files[exact]) return {type:exact, exact:true};
   const alts=Object.keys(L.files)
     .filter(k=>k[0]===c.accent && /^\d+$/.test(k.slice(1)))
     .map(k=>({k,n:+k.slice(1)}))
-    .sort((a,b)=>Math.abs(a.n-c.len)-Math.abs(b.n-c.len));
+    .sort((a,b)=>Math.abs(a.n-CLEN)-Math.abs(b.n-CLEN));
   return alts.length ? {type:alts[0].k, exact:false} : null;
 }
 // ------------------------------------------------------------------ audio
@@ -933,16 +960,18 @@ function ghostRuns(row,cells){
   const cov=new Array(CYC()).fill(false);
   const plan=runPlan(row,cells);
   for(const c of cells){
-    const r=resolve(row,c);
-    if(!r) continue;
-    // a jingle tiles its gap; a STOPPED stroke owns its gap in silence
     const rp=plan.get(c);
-    // what this accent's own sound covers: a run covers its strokes, a single
-    // stroke covers its own step (the rest is ghost fill), a jingle tiles its
-    // gap and a stopped stroke owns it in silence, and a cell covers its length
+    // A JINGLE HAS NO CELL OF ITS OWN (27 Oct 2026): resolve() finds nothing
+    // for it and the planner answers for it instead — its coverage is its
+    // segment's, so the ghost carpet is not laid over what it plays.
+    const r=resolve(row,c);
+    if(!r && !(rp && (rp.type || rp.covered))) continue;
+    // what this accent's own sound covers: a run or a jingle segment covers its
+    // strokes, a single stroke covers its own step (the rest is ghost fill), a
+    // stopped stroke owns its gap in silence, and a cell covers its length
     const span=(rp && rp.type) ? rp.k
              : (rp && rp.covered) ? 1
-             : (c.accent==="J" || artOf(row,c.start)==="stop") ? c.len
+             : (artOf(row,c.start)==="stop") ? c.len
              : (SETS[row.set].strokeAccents && /^[DTP]$/.test(c.accent)) ? 1
              : Math.min(L.pulses[r.type]||c.len, c.len);
     for(let k=0;k<span;k++) cov[(c.start+k)%CYC()]=true;
@@ -1214,13 +1243,156 @@ function runPlay(row,rp){
           lastBuf: ms.length ? at(Math.min(from+rp.k-1, ms.length-1)) : pre,
           stopBuf: ms.length>from+rp.k ? at(from+rp.k) : null};  // the next recorded stroke
 }
+// ---- JINGLES ARE SEGMENTS (David, 27 Oct 2026) ---------------------------
+// "Depending on how many jingles are placed after each other in the grid, it
+// should use that amount of jingles in one sample, so not each jingle gets
+// retriggered from a different sample … there are three jingles behind each
+// other, then a segment of three jingle strokes should be triggered there."
+//
+//   EVERY STRETCH OF JINGLES NEXT TO EACH OTHER IS ONE SEGMENT OF THAT MANY
+//   JINGLES, cut where the row's next stroke lands.
+//
+// It is the run rule above, and the one difference is the instrument: a tak
+// with space behind it goes back to being its own cell, because a tak cell IS a
+// stroke plus the ghosts after it. A jingle has no cell of its own any more, so
+// the LAST jingle of a stretch belongs to its segment too and a lone X is a
+// segment of one. No hand alternation (David: "I don't think it's needed for
+// the riq") and no four-stroke cap: the longest segment is whatever the
+// recording holds, so a long jingle run gives long segments from one sample.
+// Chaining as runs chain, longest piece first, and never one jingle left
+// stitched on its own: with three-jingle takes a stretch of four is 2+2.
+const JINGLE=/^J(?:\d+|run)v?$/;      // Jrun, and any older J cell: a jingle recording
+function jingleMax(L){
+  if(L._jmax==null){
+    let m=0;
+    for(const ty of Object.keys(L.files)){
+      if(!JINGLE.test(ty)||!L.buffers[ty]) continue;
+      for(let i=0;i<L.buffers[ty].length;i++)
+        m=Math.max(m,((L.manstrokes[ty]||[])[i]||[]).length);
+    }
+    L._jmax=m;
+  }
+  return L._jmax;
+}
+// the jingle takes that hold at least k strokes: a segment of three can only
+// come from a recording that has three, while a pair draws on all of them
+function jingleTakes(L,k){
+  for(const ty of Object.keys(L.files)){
+    if(!JINGLE.test(ty)||!L.buffers[ty]) continue;
+    const takes=takeIdxs(L,ty).filter(i=>((L.manstrokes[ty]||[])[i]||[]).length>=k);
+    if(takes.length) return {type:ty, takes};
+  }
+  return null;
+}
+// ---- AN ACCENT OWNS THE JINGLES PAINTED AFTER IT (27 Oct 2026) ----------
+// David: "any accent should now be played from a single shot sample, since the
+// jingles are dealt with by its own jingle triggers ... if an accent is
+// followed directly by a jingle sound, it should be taken from an
+// 'Accent+jingle(s)' sample."
+//
+//   AN ACCENT OWNS THE JINGLE STROKES PAINTED DIRECTLY AFTER IT, AND NOTHING
+//   ELSE: it plays the recording of itself with that many jingles, cut where
+//   what it owns ends.
+//
+// A cell used to run to the row's next stroke, so a doum with three empty steps
+// behind it played D4 - the doum AND the three jingles in that take - with no X
+// painted anywhere. That was right while a jingle tiled its gap; now that a
+// jingle is a stroke of its own it is a second helping nobody asked for.
+// The riq's cells already ARE "an accent plus the jingles after it" (T2 = tak +
+// one, D3/T3 = accent + two, D4/P4 = accent + three), so the rule only has to
+// ask for letter+(1+owned) and resolve's nearest-cell step does the rest: a
+// lone doum asks for D1, is given D3, and is cut after one pulse.
+// Only an instrument with jingle recordings can reach any of this.
+function accentJingleMax(L,letter){
+  const cache=L._amax||(L._amax={});
+  if(cache[letter]==null){
+    let m=0;
+    for(const ty of Object.keys(L.files))
+      if(ty[0]===letter && /^\d+$/.test(ty.slice(1)) && L.buffers[ty]) m=Math.max(m,+ty.slice(1));
+    cache[letter]=m ? m-1 : -1;     // -1: no recording of this accent at all
+  }
+  return cache[letter];
+}
+function planAccentJingles(row,cells,plan){
+  const L=LIB[row.set], CY=CYC(), m=cells.length;
+  if(jingleMax(L)<1) return;        // no jingle recordings: not this instrument
+  const jing=c=>c.accent==="J" && artOf(row,c.start)!=="stop";   // a stop is a segment of one
+  for(let i=0;i<m;i++){
+    const c=cells[i];
+    if(!/^[DTPK]$/.test(c.accent)) continue;
+    if(artOf(row,c.start)==="stop") continue;   // a stop is one stroke, nothing after
+    const max=accentJingleMax(L,c.accent);
+    if(max<0) continue;                          // nothing recorded: leave it alone
+    // walk the jingles standing on the very next steps. A cell's len is the
+    // room to the row's NEXT stroke, so "the next step is painted" is this
+    // cell's len===1 - the LAST jingle of a stretch has room behind it and a
+    // len of its own, which is why the walk tests the cell it stands on.
+    let own=0, at=c;
+    while(own<max && m>1){
+      const nxt=cells[(i+own+1)%m];
+      if(nxt===c || at.len!==1 || !jing(nxt)) break;
+      own++; at=nxt;
+    }
+    plan.set(c,{own, span:1+own});
+    for(let j=1;j<=own;j++) plan.set(cells[(i+j)%m],{covered:true});
+  }
+}
+function planJingles(row,cells,plan){
+  const L=LIB[row.set], CY=CYC(), m=cells.length;
+  if(jingleMax(L)<1) return;        // no jingle recording: nothing plays, as before
+  const jing=c=>c.accent==="J" && !(plan.get(c)||{}).covered;   // an owned jingle belongs to its accent
+  const free=c=>jing(c)&&artOf(row,c.start)!=="stop";    // a stop joins nothing
+  const joins=(a,b)=>free(a)&&free(b)&&a.len===1&&(a.start+1)%CY===b.start;
+  const done=new Set();
+  const cover=(i0)=>{
+    const group=[cells[i0]];
+    for(let k=1;k<m;k++){
+      const a=cells[(i0+k-1)%m], b=cells[(i0+k)%m];
+      if(b===group[0]||!joins(a,b)) break;
+      group.push(b);
+    }
+    for(const c of group) done.add(c);
+    let idx=0;
+    while(idx<group.length){
+      let k=Math.min(jingleMax(L),group.length-idx), ts=null;
+      if(group.length-idx-k===1 && k>1) k--;   // never one jingle stitched on its own
+      while(k>=1 && !(ts=jingleTakes(L,k))) k--;
+      if(!ts){ idx++; continue; }
+      const head=group[idx], last=group[idx+k-1];
+      // the segment ends where the row's next stroke lands: its last jingle may
+      // have room behind it, where a run's last stroke never does. A stop is
+      // one jingle and nothing after it, so it ends at the next step.
+      const span=artOf(row,head.start)==="stop" ? 1
+               : ((last.start-head.start+CY)%CY)+last.len;
+      plan.set(head,{type:ts.type, k, span, hand:"R", takes:ts.takes});
+      for(let j=1;j<k;j++) plan.set(group[idx+j],{covered:true});
+      idx+=k;
+    }
+  };
+  for(let i=0;i<m;i++){
+    const c=cells[i];
+    if(!jing(c)||done.has(c)) continue;
+    if(m>1&&joins(cells[(i-1+m)%m],c)) continue;    // its group starts earlier
+    cover(i);
+  }
+  for(let i=0;i<m;i++){             // a row that is nothing but jingles
+    const c=cells[i];
+    if(jing(c)&&!done.has(c)) cover(i);
+  }
+}
 const RUNPLAN=new WeakMap();
 function planRuns(row,cells){
   const L=LIB[row.set];
   const plan=new Map();
+  if(!L||!cells.length) return plan;
+  // a jingle is a segment on every engine: it is a ghost, not an accent, so the
+  // drum computer's one-shots have nothing to say about it — but the jingles an
+  // accent owns are part of that accent's own recording, so they are claimed first
+  planAccentJingles(row,cells,plan);
+  planJingles(row,cells,plan);
   // the drum computer plays single strokes only — except where the instrument
   // plays its accents that way anyway, and the runs are what it has instead
-  if(!L||!cells.length||(row.eng==="drum" && !SETS[row.set].strokeAccents)) return plan;
+  if(row.eng==="drum" && !SETS[row.set].strokeAccents) return plan;
   const n=runMax(L);
   if(n<2) return plan;
   const CY=CYC(), m=cells.length;
@@ -1551,10 +1723,10 @@ function playPulse(row,cells,ghosts,pi,nextTime,pd,absPulse){
     // fragment carries his recorded hand-to-hand feel
     if(ghosts && ghosts.has(pi)) fireGhost(row,pi,ghosts.get(pi),nextTime+feelAt(absPulse,pi));
     for(const c of cells){
-      // a JINGLE cell tiles its gap (David, 6 Sep 2026): the recording repeats
-      // at its own length until the row's next stroke, each repeat ending
-      // under the cut rule — a four-step X on the riq is the two-ghost J2
-      // twice. Repeat 0 is the painted stroke; visuals and fills are its alone.
+      // one sound per painted stroke, at its own start. A JINGLE used to tile
+      // its gap here (6 Sep 2026) — the recording repeating until the row's
+      // next stroke; since 27 Oct 2026 it is one segment of as many jingles as
+      // are painted (planJingles), so there is nothing left to repeat.
       const rep=cellRepeat(row,c,pi);
       if(rep<0) continue;
       if(rep===0 && env.onHit) env.onHit(row,pi,nextTime);   // the player's visual, released on the ear's beat
@@ -1571,21 +1743,26 @@ function playPulse(row,cells,ghosts,pi,nextTime,pd,absPulse){
       // cycle is queued before the visual counter has ticked — both counters
       // count the same boundaries, audio's just leads by the look-ahead
       const pfFire = rep===0 && !!env.pfFire && env.pfFire(row,c);   // the app's periodic fills
-      const r=resolve(row,c,pfFire);
+      // an accent that owns jingles asks for the take that HOLDS them (D3 for a
+      // doum and two), instead of the one that fills the gap to the next stroke
+      const r=resolve(row,c,pfFire,rp&&rp.own!=null?1+rp.own:0);
       const L=LIB[row.set];
       // a doum or pa on a drum with a one-shot bank stops the rings that
       // are still sounding from earlier doums (the resonance-voice rule)
       if(L&&L.os&&SETS[row.set].ring&&(c.accent==="D"||c.accent==="P")) muteRings(row,at,c.accent);
       // where this row's next stroke lands — the cell's sound ends there. A
       // run reaches over the accents it covers, so its own end is its last
-      // stroke's step, not the head's.
-      const left=(rp&&rp.type?rp.k:c.len)-((pi-c.start+CYC())%CYC());
+      // stroke's step, not the head's; a JINGLE SEGMENT carries its own span,
+      // because its last jingle may have room behind it (planJingles).
+      const left=(rp&&(rp.type||rp.own!=null)?(rp.span||rp.k):c.len)-((pi-c.start+CYC())%CYC());
       const cutAt=nextTime+left*pd+feelAt(absPulse+left,(c.start+c.len)%CYC());
       const variation=!!(row.fills&&row.fills[c.start]);
       // a STOP (David, 6 Sep 2026): one stroke, nothing after — the one-shot
       // where a bank exists, else the shortest cell cut before its first
-      // ghost (fire's stop deadline); a firing fill still wins
-      if(artOf(row,c.start)==="stop" && !(r&&r.type[0]==="F")){
+      // ghost (fire's stop deadline); a firing fill still wins. A JINGLE
+      // carries its stop inside its segment (one jingle, cut at the next
+      // step), so a cell the planner owns is never taken here.
+      if(artOf(row,c.start)==="stop" && !(r&&r.type[0]==="F") && !(rp&&rp.type)){
         if(!(L&&L.os&&/^[DTP]$/.test(c.accent)&&fireOneShot(row,c.accent,at,variation,c.start))){
           const ty=shortestType(L,c.accent,variation);   // no single stroke: the shortest cell
           if(ty) fire(row,ty,at,c.start,{cutAt, stop:pd}); }
@@ -1636,7 +1813,12 @@ function playPulse(row,cells,ghosts,pi,nextTime,pd,absPulse){
         const S1=SETS[row.set];
         if(L&&L.os&&S1.ring&&(r.type[0]==="D"||(S1.takRing&&r.type[0]==="T")))
           fireRing(row,r.type,at,c.start,cutAt);
-        else fire(row,r.type,at,c.start,{cutAt});
+        // an accent that owns no jingle also takes the STOP's deadline: the cut
+        // at its own pulse lands within a millisecond or two of the first
+        // jingle recorded in the take, so the attack of a jingle nobody painted
+        // can lead the fade. Where the take has no stroke map the pulse cut
+        // stands, exactly as before.
+        else fire(row,r.type,at,c.start,(rp&&rp.own===0)?{cutAt, stop:pd}:{cutAt});
         DIAG.fired++;
       }
     }

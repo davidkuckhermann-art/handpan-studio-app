@@ -52,12 +52,26 @@ const RND_MS=10;
 const rndOff=()=>((Math.random()+Math.random()+Math.random())/3*2-1)*RND_MS/1000;
 
 // ---------------- what sync_wgg.py brought across
+/* AN OLD GROOVE MEANT MORE JINGLES (Handpan Studio, 28 Oct 2026; patches/riq-old-grooves.py): WGG's engine plays one
+   jingle per X since 27 Oct, where an X used to tile its gap. A groove carrying no version, or one below 3 - the app's
+   own saved grooves, a piece's copies, a WGG groove saved before the change - is read as WGG reads it: engine.js's
+   wggJingleFill fills each gap behind a jingle, and the copy is v 3. Every groove enters the app through this. */
+W.upgrade=function(g){
+  if(!g||!Array.isArray(g.rows)||(+g.v||1)>=3||typeof wggJingleFill!=="function") return g;
+  const n=+g.steps||16;
+  const rows=g.rows.map(r=>{ const p=String(r.p||""), a=String(r.a||"");
+    if(p.indexOf("J")<0) return r;
+    const slots=Array.from({length:n},(_,i)=>{ const c=p[i]; return (!c||c==="-"||c===" ")?null:c; });
+    wggJingleFill(slots, Array.from({length:n},(_,i)=>a[i]==="_"?"stop":null), n);
+    return Object.assign({},r,{p:slots.map(s=>s||"-").join("")}); });
+  return Object.assign({},g,{v:3,rows});
+};
 W.source=null;
 W.grooves=()=>GROOVES||[];
 W.loaded=()=>!!(GROOVES&&DEFS);
 /* d = {base, defs (bank/instruments.json), grooves (grooves.json), source (SOURCE.json)} */
 W.attach=function(d){
-  BASE=d.base||""; DEFS=d.defs; GROOVES=d.grooves||[];
+  BASE=d.base||""; DEFS=d.defs; GROOVES=(d.grooves||[]).map(W.upgrade);
   W.source=d.source?{commit:d.source.commit, built:d.source.synced}:null;
   for(const i of DEFS.instruments) SETS[i.id]=wggInstView(i, BASE+"bank/");
 };
