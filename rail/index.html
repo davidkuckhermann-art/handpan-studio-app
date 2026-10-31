@@ -10641,9 +10641,9 @@ body.phone:not(.tablet) #edFxDrop #edArtPills>button{flex:1 1 0; position:relati
   function split(raw){ var P={}; if(raw==null) return P; var v; try{ v=JSON.parse(raw); }catch(e){ P[""]=raw; return P; }
     if(Array.isArray(v)){
       var objs=v.every(function(x){ return x&&typeof x==="object"&&!Array.isArray(x); }), prim=v.every(function(x){ return x===null||typeof x!=="object"; });
-      var by=null; if(objs&&v.length){ for(var f of ["id","name"]){ var seen={}, ok=v.every(function(x){ var y=x[f]; if(y==null||seen[y]) return false; return seen[y]=1; }); if(ok){ by=f; break; } } }
+      var by=objs&&v.length?keysOf(v):null;   // each member's key, or null (patches/accounts-sync-members.py)
       if(!v.length||by||prim){ var ord=[];
-        v.forEach(function(x){ var p=by?(by==="id"?"i:":"n:")+x[by]:"s:"+JSON.stringify(x); ord.push(p); P[p]=by?x:true; });
+        v.forEach(function(x,i){ var p=by?by[i]:"s:"+JSON.stringify(x); ord.push(p); P[p]=by?x:true; });
         P["#"]=ord; return P; } }
     else if(v&&typeof v==="object"){ P["{"]=true; for(var f in v) P["f:"+f]=v[f]; return P; }
     P[""]=raw; return P; }
@@ -10655,13 +10655,23 @@ body.phone:not(.tablet) #edFxDrop #edArtPills>button{flex:1 1 0; position:relati
     if(P["{"]||ks.some(function(p){ return p.slice(0,2)==="f:"; })){ var o={}; for(var p in P) if(p.slice(0,2)==="f:") o[p.slice(2)]=P[p]; return JSON.stringify(o); }
     return ""in P?P[""]:null; }
   function same(a,b){ return JSON.stringify(a)===JSON.stringify(b); }
+  /* a list's members, each known by its id - where two share an id, by the id and the title (or name) together, as
+     the app knows a saved piece; a list without ids by its name (name, or n: a saved band). Only members that share
+     an id change their key, so a list of different ids keeps its keys. null: no way to tell them apart (patches/accounts-sync-members.py) */
+  function keysOf(v){ var F=["id","name","n"];
+    for(var i=0;i<F.length;i++){ var f=F[i]; if(!v.every(function(x){ return x[f]!=null&&typeof x[f]!=="object"; })) continue;
+      var c={}, pre=f==="id"?"i:":"n:", seen={}; v.forEach(function(x){ c[x[f]]=(c[x[f]]||0)+1; });
+      var ks=v.map(function(x){ var y=x[f]; if(c[y]===1) return pre+y; var t=f!=="name"&&typeof x.title==="string"?x.title:f==="id"&&typeof x.name==="string"?x.name:null;
+        return t==null?null:pre+JSON.stringify([y,t]); });
+      if(ks.every(function(k){ if(k==null||k.length>300||seen[k]) return false; return seen[k]=1; })) return ks; }
+    return null; }
   function member(p){ return p.slice(0,2)==="i:"||p.slice(0,2)==="n:"; }
 
   /* a write by the app: note which parts changed, and when */
   function touch(k,o,n){ var A=split(o), B=split(n), t=Date.now(), any=false; meta.parts=meta.parts||{}; meta.out=meta.out||{};
     Object.keys(A).concat(Object.keys(B)).forEach(function(p){ if(same(A[p],B[p])) return; var id=k+SEP+p;
       var r=meta.parts[id]||[0,0]; meta.parts[id]=[t,r[1]];
-      meta.out[id]={t:t}; if(!(p in B)&&member(p)){ meta.out[id].was=A[p]; binAdd(k,p,A[p],t,meta.dev); }
+      meta.out[id]={t:t}; if(!(p in B)&&member(p)&&!Object.keys(B).some(function(q){ return member(q)&&same(B[q],A[p]); })){ meta.out[id].was=A[p]; binAdd(k,p,A[p],t,meta.dev); }   // a new key for the same member is not a deletion (patches/accounts-sync-members.py)
       any=true; });
     if(any){ save(); soon(3000); } }
   Storage.prototype.setItem=function(k,v){ if(this===LS&&S.on&&!S.quiet&&isAcct(k)){ var o=get(k); set0.call(this,k,v); touch(String(k),o,String(v)); return; }
@@ -10682,20 +10692,21 @@ body.phone:not(.tablet) #edFxDrop #edArtPills>button{flex:1 1 0; position:relati
   /* another device's parts: written quietly into the value they belong to */
   function land(list){ var by={};
     list.forEach(function(c){ (by[c.k]=by[c.k]||[]).push(c); });
-    Object.keys(by).forEach(function(k){ try{ var P=split(get(k)), copies=[];   // each key on its own: one bad part cannot stop the rest
+    Object.keys(by).forEach(function(k){ try{ var P=split(get(k)), copies=[], gone=[];   // each key on its own: one bad part cannot stop the rest
       by[k].forEach(function(c){ var id=k+SEP+c.p;
         if(c.copy){ copies.push(c); return; }
-        if(c.v==null){ if(member(c.p)&&(c.p in P)) binAdd(k,c.p,P[c.p],c.t,c.d); delete P[c.p]; }
+        if(c.v==null){ if(member(c.p)&&(c.p in P)) gone.push([c.p,P[c.p],c.t,c.d]); delete P[c.p]; }
         else { P[c.p]=c.v; if(member(c.p)) binDrop(k,c.p); }   // back from another device: no longer recently deleted
         meta.parts=meta.parts||{}; meta.parts[id]=[c.t,c.s]; });
+      gone.forEach(function(g){ if(!Object.keys(P).some(function(q){ return member(q)&&same(P[q],g[1]); })) binAdd(k,g[0],g[1],g[2],g[3]); });   // only a member truly gone (patches/accounts-sync-members.py)
       S.quiet=true; try{ var j=join(P); if(j==null) rem0.call(LS,k); else set0.call(LS,k,j); }catch(e){} S.quiet=false;
       copies.forEach(function(c){ addCopy(k,c); }); }catch(e){} });
     save(); }
   /* both versions kept: the older is added as a copy, a new member that is then sent like any other change */
   function addCopy(k,c){ if(!c.v||typeof c.v!=="object"||Array.isArray(c.v)) return; var x=JSON.parse(JSON.stringify(c.v)), tag=" (from "+(c.d||"another device")+")", P=split(get(k));
     if(c.p.slice(0,2)==="i:") x.id=String(x.id)+"-"+Math.random().toString(36).slice(2,7);
-    if(typeof x.title==="string") x.title+=tag; else if(typeof x.name==="string") x.name+=tag; else return;
-    var p=c.p.slice(0,2)==="i:"?"i:"+x.id:"n:"+x.name; P[p]=x; if(!("#" in P)) P["#"]=[]; P["#"].push(p);
+    if(typeof x.title==="string") x.title+=tag; else if(typeof x.name==="string") x.name+=tag; else if(typeof x.n==="string") x.n+=tag; else return;   // n: a saved band (patches/accounts-sync-members.py)
+    var p=c.p.slice(0,2)==="i:"?"i:"+x.id:"n:"+(typeof x.name==="string"?x.name:x.n); P[p]=x; if(!("#" in P)) P["#"]=[]; P["#"].push(p);
     try{ LS.setItem(k,join(P)); }catch(e){} }
   function arrive(list){ var now=[], later=[];
     list.forEach(function(c){ if(!okChange(c)) return; var id=c.k+SEP+c.p; if(meta.out&&meta.out[id]&&!c.copy) return;   // changed here meanwhile: the next exchange decides
@@ -10750,6 +10761,11 @@ body.phone:not(.tablet) #edFxDrop #edArtPills>button{flex:1 1 0; position:relati
   function call(path,o){ o=o||{}; if(!S.on||!serverOk(meta.url)||!/^\/v1\/[a-z\/]+$/.test(String(path))) return Promise.reject(new Error("signed out"));
     return fetch(String(meta.url).replace(/\/$/,"")+path,{method:o.method||"GET",headers:{"Authorization":"Bearer "+meta.tok,"Content-Type":"application/json"},body:o.body?JSON.stringify(o.body):undefined})
       .then(function(r){ return r.json().then(function(j){ return {status:r.status,json:j||{}}; },function(){ return {status:r.status,json:{}}; }); }); }
+  /* what the account has never heard of goes up at the start, as old as can be (as at signing in) (patches/accounts-sync-members.py) */
+  if(S.on){ try{ meta.parts=meta.parts||{}; meta.out=meta.out||{}; var fresh=0;
+    for(var i=0;i<LS.length;i++){ var k=String(LS.key(i)); if(!isAcct(k)) continue; var P=split(get(k));
+      Object.keys(P).forEach(function(p){ var id=k+SEP+p; if(!meta.parts[id]){ meta.parts[id]=[0,0]; meta.out[id]={t:0}; fresh++; } }); }
+    if(fresh) save(); }catch(e){} }
   addEventListener("load",function(){ if(S.on) soon(1500); });
   document.addEventListener("visibilitychange",function(){ if(!S.on) return; if(document.hidden) sync(true); else soon(500); });
   setInterval(function(){ if(S.on&&!document.hidden) sync(); },300000);
